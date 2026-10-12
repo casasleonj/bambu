@@ -88,6 +88,46 @@ describe('PedidosWorkspace (Composición)', () => {
     }))
   })
 
+  async function llegarACommit() {
+    await elegirCliente()
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+  }
+
+  it('idempotencia (§5.B): si el guardado falla, el borrador queda reintentable y reenvía la MISMA clave', async () => {
+    const onSubmit = vi.fn<(d: { offlineId?: string }) => Promise<boolean>>()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true)
+    render(<PedidosWorkspace clientes={clientes} onSubmit={onSubmit} />)
+    await llegarACommit()
+
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled())
+    expect(screen.getByText(/no se duplica/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2))
+    const [primera, segunda] = onSubmit.mock.calls.map((c) => c[0].offlineId)
+    expect(primera).toBeTruthy()
+    expect(segunda).toBe(primera)
+  })
+
+  it('idempotencia (§5.B): cada borrador nuevo tiene su propia clave', async () => {
+    const onSubmit = vi.fn<(d: { offlineId?: string }) => Promise<boolean>>().mockResolvedValue(true)
+    const { unmount } = render(<PedidosWorkspace clientes={clientes} onSubmit={onSubmit} />)
+    await llegarACommit()
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    unmount()
+
+    render(<PedidosWorkspace clientes={clientes} onSubmit={onSubmit} />)
+    await llegarACommit()
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2))
+    const [a, b] = onSubmit.mock.calls.map((c) => c[0].offlineId)
+    expect(a).not.toBe(b)
+  })
+
   it('F-ENTREGA-i: zona Entrega adaptativa por preview.entrega — SUFICIENTE compacta, sin inputs', async () => {
     render(<PedidosWorkspace clientes={clientes} onSubmit={vi.fn()} />)
     await elegirCliente()

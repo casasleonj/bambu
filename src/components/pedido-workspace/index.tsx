@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useReducer, useState } from 'react'
+import { generateUUID } from '@/lib/uuid'
 import { PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
 import { matchCliente } from '@/lib/cliente-search'
 import { PedidoPricingSummary } from '@/components/pedido-form-unified/pedido-pricing-summary'
@@ -91,8 +92,12 @@ export interface PedidosWorkspaceProps {
   modo?: 'crear' | 'nueva-demanda'
   /** número del pedido origen — sólo para el encabezado en modo nueva-demanda. */
   pedidoOrigenNumero?: number
-  /** mismo contrato que `PedidoFormUnified.onSubmit` — reusa `handlePedidoSubmit` de pedidos-client. */
-  onSubmit: (data: PedidoUnifiedData) => void
+  /**
+   * mismo contrato que `PedidoFormUnified.onSubmit` — reusa `handlePedidoSubmit`
+   * de pedidos-client. `false` = no se guardó: el workspace sale de COMMITTING
+   * para reintentar el mismo borrador (misma clave de idempotencia).
+   */
+  onSubmit: (data: PedidoUnifiedData) => void | Promise<boolean>
   onCancel?: () => void
 }
 
@@ -112,6 +117,9 @@ export interface PedidosWorkspaceProps {
 export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial, modo = 'crear', pedidoOrigenNumero, onSubmit, onCancel }: PedidosWorkspaceProps) {
   const modoEdicion = Boolean(pedidoInicial)
   const esNuevaDemanda = modo === 'nueva-demanda'
+  // Clave de idempotencia del borrador (plan de integridad v1.2 §5.B): nace al
+  // abrir el workspace y se reusa en cada reintento de este mismo borrador.
+  const [claveBorrador] = useState(generateUUID)
 
   const [state, dispatch] = useReducer(
     workspaceReducer,
@@ -276,7 +284,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
     dispatch({ type: 'ACKNOWLEDGE_REVIEW', motivo: reviewMotivo })
   }
 
-  const handleCommit = () => {
+  const handleCommit = async () => {
     dispatch({ type: 'COMMIT_START' })
     const tieneClienteReal = Boolean(clienteSeleccionado) || (mostrarNuevo && nuevoCliente.nombre.trim().length > 0)
     const clienteNuevo = mostrarNuevo && !clienteSeleccionado && nuevoCliente.nombre.trim()
@@ -299,7 +307,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
       soloParaEstePedido: state.draft.soloParaEstePedido ?? false,
     })
 
-    onSubmit({
+    const guardado = await onSubmit({
       clienteId: clienteSeleccionado ? clienteSeleccionado.id : (clienteNuevo ? undefined : 'CONSUMIDOR_FINAL'),
       negocioId: state.draft.negocioId ?? undefined,
       canal: state.draft.canal,
@@ -326,8 +334,16 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
       direccionEntrega: state.draft.canal === 'DOMICILIO' ? (state.draft.direccionEntrega || undefined) : undefined,
       barrioEntrega: state.draft.canal === 'DOMICILIO' ? (state.draft.barrioEntrega || undefined) : undefined,
       // modo edición: el PUT /api/pedidos/[id] (handlePedidoSubmit bifurca en isEdit).
-      ...(modoEdicion ? { isEdit: true, pedidoId: pedidoInicial!.id } : {}),
+      ...(modoEdicion ? { isEdit: true, pedidoId: pedidoInicial!.id } : { offlineId: claveBorrador }),
     })
+    if (guardado === false) {
+      dispatch({
+        type: 'COMMIT_ERROR',
+        message: 'No se pudo confirmar el guardado. Al reintentar se usa este mismo pedido: no se duplica.',
+      })
+    } else if (guardado === true) {
+      dispatch({ type: 'COMMIT_SUCCESS' })
+    }
   }
 
   return (

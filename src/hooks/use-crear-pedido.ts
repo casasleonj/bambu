@@ -57,11 +57,21 @@ export interface CrearPedidoPayload {
    * obtiene por consulta. Ver `docs/pedidos/fase6-g11-flujo-plan.md` P6.
    */
   pedidoOrigenId?: string
+  /**
+   * Clave de idempotencia del BORRADOR (plan de integridad v1.2 §5.B). El
+   * formulario la genera al abrirse y la reusa en cada reintento: si el primer
+   * envío llegó al servidor aunque la respuesta se perdió, el reintento
+   * devuelve ese mismo pedido (`deduped`) en vez de crear otro (#285/#286).
+   * Sin ella, el hook genera una por llamada (comportamiento anterior).
+   */
+  offlineId?: string
 }
 
 export interface CrearPedidoResult {
   pedido: unknown
   clienteId: string
+  /** el servidor ya tenía un pedido con esta clave y devolvió ese. */
+  deduped: boolean
 }
 
 export interface UseCrearPedidoOptions {
@@ -88,15 +98,15 @@ export function useCrearPedido(options?: UseCrearPedidoOptions) {
       // con el mismo payload crean dos pedidos duplicados.
       // Bug original: este hook NO enviaba offlineId (C-2). Test regresión:
       // e2e/offline-first/crear-pedido-hook-dedup.spec.ts
-      const offlineId = generateUUID()
-      const result = await fetchResilient<{ success: boolean; pedido: unknown; error?: { message?: string } }>(
+      const offlineId = payload.offlineId ?? generateUUID()
+      const result = await fetchResilient<{ success: boolean; pedido: unknown; deduped?: boolean; error?: { message?: string } }>(
         '/api/pedidos',
         { method: 'POST', body: { ...payload, offlineId }, localEndpoint: 'crear-pedido' }
       )
 
       if (result.status === 'ok') {
         const data = result.data
-        const ok = { pedido: data.pedido, clienteId: payload.clienteId } as CrearPedidoResult
+        const ok: CrearPedidoResult = { pedido: data.pedido, clienteId: payload.clienteId, deduped: data.deduped === true }
         setLastResult(ok)
         options?.onSuccess?.(ok)
         return ok
