@@ -315,8 +315,20 @@ test.describe('Transiciones críticas: ni el PUT ni la UI las ejecutan por atajo
     const embarque = await createEmbarque(page, trabajador.trabajador.id)
     expect((await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId: embarque.embarque.id })).status()).toBeLessThan(300)
 
-    await page.context().grantPermissions(['geolocation'])
-    await page.context().setGeolocation({ latitude: 4.711, longitude: -74.0721 })
+    // Determinista en cualquier runner: no depende del proveedor de geolocalización
+    // del navegador headless ni de la foto de entrega (Config de la BD de test).
+    await prisma.config.upsert({ where: { clave: 'REQUIERE_FOTO_ENTREGA' }, update: { valor: 'false' }, create: { clave: 'REQUIERE_FOTO_ENTREGA', valor: 'false' } })
+    await page.addInitScript(() => {
+      const posicion = { coords: { latitude: 4.711, longitude: -74.0721, accuracy: 10, altitude: null, altitudeAccuracy: null, heading: null, speed: null }, timestamp: Date.now() }
+      Object.defineProperty(navigator, 'geolocation', {
+        configurable: true,
+        value: {
+          getCurrentPosition: (ok: (p: unknown) => void) => { setTimeout(() => ok(posicion), 0) },
+          watchPosition: () => 0,
+          clearWatch: () => undefined,
+        },
+      })
+    })
     await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
     const entregaReq = page.waitForRequest((r) => r.url().endsWith(`/api/pedidos/${pedidoId}/entrega`) && r.method() === 'POST')
     await page.getByRole('button', { name: /Marcar Entregado/ }).click()
