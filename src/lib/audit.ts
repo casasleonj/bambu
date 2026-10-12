@@ -10,6 +10,8 @@ export type AuditAction =
   | 'LOGIN'
   | 'SESSION_EVICTED'
   | 'FORCE_LOGOUT'
+  /** PlantillaRecurrente: un intento de generación (GENERADO, SALTADO:<motivo> o ERROR). */
+  | 'GENERACION'
 
 export interface AuditEntry {
   entidad: string
