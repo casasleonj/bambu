@@ -317,7 +317,8 @@ test.describe('Transiciones críticas: ni el PUT ni la UI las ejecutan por atajo
 
     // Determinista en cualquier runner: no depende del proveedor de geolocalización
     // del navegador headless ni de la foto de entrega (Config de la BD de test).
-    await prisma.config.upsert({ where: { clave: 'REQUIERE_FOTO_ENTREGA' }, update: { valor: 'false' }, create: { clave: 'REQUIERE_FOTO_ENTREGA', valor: 'false' } })
+    // Por la API (no por Prisma): el servidor cachea la Config 60 s y solo la API la invalida.
+    expect((await apiPost(page, '/api/config', { clave: 'REQUIERE_FOTO_ENTREGA', valor: 'false' })).status()).toBeLessThan(300)
     await page.addInitScript(() => {
       const posicion = { coords: { latitude: 4.711, longitude: -74.0721, accuracy: 10, altitude: null, altitudeAccuracy: null, heading: null, speed: null }, timestamp: Date.now() }
       Object.defineProperty(navigator, 'geolocation', {
