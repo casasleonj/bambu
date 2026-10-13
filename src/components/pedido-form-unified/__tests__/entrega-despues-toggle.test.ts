@@ -43,11 +43,11 @@ describe('FIX: toggle "entregar después" — flag-gated, solo venta rápida', (
     expect(block).toMatch(/if \(nuevoCanal !== 'PUNTO'\) setEntregarDespues\(false\)/)
   })
 
-  it('en el submit, `entregado: false` solo con flag + PUNTO + toggle; si no, undefined', () => {
+  it('en el submit, `entregado: false` solo con flag + PUNTO + toggle; `true` solo en el modal Venta Rápida (PUNTO, creando); si no, undefined', () => {
     const idx = source.indexOf('const data: PedidoUnifiedData = {')
     const block = source.slice(idx, source.indexOf('await onSubmit(data)', idx))
     expect(block).toMatch(
-      /entregado:\s*\n?\s*VENTA_RUTA_ENTREGA_POSTERIOR_ON && canal === 'PUNTO' && entregarDespues\s*\n?\s*\?\s*false\s*\n?\s*:\s*undefined/,
+      /entregado:\s*\n?\s*VENTA_RUTA_ENTREGA_POSTERIOR_ON && canal === 'PUNTO' && entregarDespues\s*\n?\s*\?\s*false\s*\n?\s*:\s*\(contexto === 'PUNTO' && canal === 'PUNTO' && !pedidoInicial\?\.id \? true : undefined\)/,
     )
   })
 

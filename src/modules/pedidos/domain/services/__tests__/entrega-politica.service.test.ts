@@ -8,9 +8,18 @@ import {
 } from '../entrega-politica.service'
 
 describe('estadoEntregaAlCrear — autoridad única para Preview y Crear', () => {
-  it('PEDIDO nunca nace entregado, aunque llegue entregado:true', () => {
+  it('PEDIDO sin canal PUNTO nunca nace entregado, aunque llegue entregado:true', () => {
     expect(estadoEntregaAlCrear({ origen: 'PEDIDO', entregado: true })).toBe('PENDIENTE')
+    expect(estadoEntregaAlCrear({ origen: 'PEDIDO', canal: 'DOMICILIO', entregado: true })).toBe('PENDIENTE')
     expect(estadoEntregaAlCrear({ origen: 'PEDIDO' })).toBe('PENDIENTE')
+  })
+  it('venta de PUNTO con entregado:true EXPLÍCITO nace ENTREGADA aunque tenga cliente (origen PEDIDO)', () => {
+    expect(estadoEntregaAlCrear({ origen: 'PEDIDO', canal: 'PUNTO', entregado: true })).toBe('ENTREGADO')
+  })
+  it('un pedido de PUNTO sin entregado explícito, o con entregado:false, sigue PENDIENTE ("para recoger"/entrega posterior)', () => {
+    expect(estadoEntregaAlCrear({ origen: 'PEDIDO', canal: 'PUNTO' })).toBe('PENDIENTE')
+    expect(estadoEntregaAlCrear({ origen: 'PEDIDO', canal: 'PUNTO', entregado: null })).toBe('PENDIENTE')
+    expect(estadoEntregaAlCrear({ origen: 'PEDIDO', canal: 'PUNTO', entregado: false })).toBe('PENDIENTE')
   })
   it('VENTA_RAPIDA nace ENTREGADO salvo que se pida entrega posterior (entregado:false)', () => {
     expect(estadoEntregaAlCrear({ origen: 'VENTA_RAPIDA' })).toBe('ENTREGADO')
