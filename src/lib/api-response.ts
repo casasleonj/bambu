@@ -16,6 +16,8 @@ interface ApiErrorResponse {
     code?: string
     formErrors?: string[]
     fieldErrors?: Record<string, string[]>
+    /** Impacto estructurado (p.ej. diferencias monetarias) para que la UI lo muestre sin parsear el mensaje. */
+    impacto?: Record<string, number | string>
   }
 }
 
@@ -55,7 +57,7 @@ export function apiList<T>(
 export function apiError(
   message: string,
   status = 500,
-  details?: { code?: string; formErrors?: string[]; fieldErrors?: Record<string, string[]> }
+  details?: { code?: string; formErrors?: string[]; fieldErrors?: Record<string, string[]>; impacto?: Record<string, number | string> }
 ): NextResponse<ApiErrorResponse> {
   return NextResponse.json(
     { success: false, error: { message, ...details } },

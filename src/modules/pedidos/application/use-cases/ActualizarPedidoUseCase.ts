@@ -1,7 +1,23 @@
 /**
  * ActualizarPedidoUseCase.
  *
- * Handles item updates, state transitions, and recalculations.
+ * Edición de un Pedido. Tres clases de modificación, con reglas distintas:
+ *
+ *  - INFORMACIÓN (obs, dirección/barrio de entrega, dirección del cliente):
+ *    no toca dinero. La dirección no se reescribe en pedidos cerrados.
+ *  - ECONÓMICA (items): recalcula total/factura. Solo líneas NUEVAS o con
+ *    cantidad/precio manual cambiados se (re)precifican; una línea idéntica
+ *    conserva precio y origen históricos. Nunca deja `total < totalPagado`
+ *    (eso sería devolver/absorber dinero cobrado: decisión comercial, no de
+ *    este endpoint).
+ *  - ESTADO (transición de entrega).
+ *
+ * Ajustar cantidades de un pedido con entrega o cerrado NO es una edición:
+ * pasa por `AjustarPedidoCantidadUseCase`.
+ *
+ * Contrato: devuelve `aplicado.campos` (lo que realmente cambió) y
+ * `aplicado.sinCambios`. Una auditoría por llamada, con antes/después,
+ * dentro de la transacción del lock `PEDIDO:{id}`.
  */
 
 import { Money } from '@/shared/domain'
@@ -15,61 +31,47 @@ import type { IClienteRepository } from '../../domain/repositories/IClienteRepos
 import type { IPricingPort } from '../../domain/repositories/IPricingPort'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
 import { PedidoItem } from '../../domain/entities/PedidoItem'
-import type { Pedido as PedidoEntity, PedidoProps } from '../../domain/entities/Pedido'
+import type { ProductCode } from '@/shared/domain'
+import { Pedido } from '../../domain/entities/Pedido'
 import type { ActualizarPedidoInput } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
+import { lineaSinCambio as lineaSinCambioPlana } from '@/lib/pedido-edicion-items'
 import type { ResolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
 import { resolverEntrega } from '../../domain/services/entrega-suficiencia.service'
 import { EntregaInsuficienteError } from '../../domain/services/entrega-suficiencia.errors'
+import {
+  EdicionEconomicaN2Error,
+  EdicionNoPersistidaError,
+  LineasDuplicadasError,
+  OperacionEspecializadaError,
+  PedidoCerradoError,
+  TotalMenorAPagadoError,
+  VIA_OPERACION_ESPECIALIZADA,
+} from '../../domain/services/pedido-edicion.errors'
 
-// FIX BAMBU-LOG-018: `{...pedido}` sobre una instancia de la clase Pedido
-// NO copia sus campos — Pedido guarda todo en una única propiedad interna
-// `props`, y sus getters (id, numero, clienteId, ...) viven en el
-// prototipo, no como propiedades propias enumerables. Un spread shallow
-// solo copia `{ props: <objeto original> }`, produciendo un PedidoProps
-// malformado (items/clienteId/etc. quedan `undefined` un nivel más
-// profundo) que rompe cualquier lectura posterior (ej. toLegacyFields()
-// lanza "Cannot read properties of undefined (reading 'find')"). Este
-// helper reconstruye un objeto plano real a partir de los getters.
-function cloneProps(pedido: PedidoEntity): PedidoProps {
-  return {
-    id: pedido.id,
-    numero: pedido.numero,
-    clienteId: pedido.clienteId,
-    negocioId: pedido.negocioId,
-    embarqueId: pedido.embarqueId,
-    canal: pedido.canal,
-    origen: pedido.origen,
-    estadoEntrega: pedido.estadoEntrega,
-    estadoPago: pedido.estadoPago,
-    items: [...pedido.items],
-    total: pedido.total,
-    totalPagado: pedido.totalPagado,
-    pagos: [...pedido.pagos],
-    fecha: pedido.fecha,
-    fechaEntrega: pedido.fechaEntrega,
-    obs: pedido.obs,
-    idOrigen: pedido.idOrigen,
-    fotoEntrega: pedido.fotoEntrega,
-    gpsLat: pedido.gpsLat,
-    gpsLng: pedido.gpsLng,
-    gpsAccuracy: pedido.gpsAccuracy,
-    gpsJustificacion: pedido.gpsJustificacion,
-    entregadoConGps: pedido.entregadoConGps,
-    entregadoAt: pedido.entregadoAt,
-    codigoVisita: pedido.codigoVisita,
-    direccionEntrega: pedido.direccionEntrega,
-    barrioEntrega: pedido.barrioEntrega,
-    adminOverrideNota: pedido.adminOverrideNota,
-    adminOverrideBy: pedido.adminOverrideBy,
-    adminOverrideAt: pedido.adminOverrideAt,
-    offlineId: pedido.offlineId,
-    // createdById no tiene getter público en Pedido (solo se setea en
-    // creación, ver CrearPedidoUseCase) y toPrismaUpdate() tampoco lo
-    // persiste en updates — se omite intencionalmente, igual que en el
-    // rebuild ya existente de la rama de items más arriba.
-  }
+const ESTADOS_CERRADOS = ['ENTREGADO', 'CANCELADO', 'ANULADO']
+
+export interface ActualizarPedidoResult {
+  pedido: ReturnType<typeof PedidoDTOMapper.toResumen>
+  aplicado: { campos: string[]; sinCambios: boolean }
+}
+
+interface LineaSnapshot { producto: string; cantidad: number; precio: number; precioOrigen: string }
+
+const snapshotLineas = (items: readonly PedidoItem[]): LineaSnapshot[] =>
+  items
+    .map((i) => ({ producto: i.producto as string, cantidad: i.cantPedido, precio: i.precio.toDecimal(), precioOrigen: i.precioOrigen }))
+    .sort((a, b) => a.producto.localeCompare(b.producto))
+
+type LineaSolicitada = { producto: ProductCode; cantidad: number; precioManual?: number }
+
+/** Adaptador al dominio de la regla compartida (`lib/pedido-edicion-items`, misma que usa el formulario). */
+function lineaSinCambio(previo: PedidoItem | undefined, i: LineaSolicitada): boolean {
+  return lineaSinCambioPlana(
+    previo ? { cantidad: previo.cantPedido, precio: previo.precio.toDecimal(), precioOrigen: previo.precioOrigen } : undefined,
+    i,
+  )
 }
 
 export class ActualizarPedidoUseCase {
@@ -85,155 +87,177 @@ export class ActualizarPedidoUseCase {
     private resolverCoordsDeLink: ResolverCoordsDeLink,
   ) {}
 
-  async execute(input: ActualizarPedidoInput) {
+  async execute(input: ActualizarPedidoInput): Promise<ActualizarPedidoResult> {
+    const tocaDireccion = input.direccionEntrega !== undefined || input.barrioEntrega !== undefined
     // F-ENTREGA: resolver el link a coords ANTES del lock (I/O), igual que
-    // CrearPedidoUseCase / PreviewPedidoUseCase. Solo aplica si el update
-    // toca items + el snapshot de entrega (única rama que re-valida
-    // suficiencia). El commit vuelve a validar adentro con `resolverEntrega`.
-    const coordsDeLink =
-      input.items && (input.direccionEntrega !== undefined || input.barrioEntrega !== undefined)
-        ? await this.resolverCoordsDeLinkParaEntrega(input.pedidoId)
-        : null
-    // F3 (INVENTARIO §F3): `PUT /api/pedidos/[id]` mutaba hechos críticos
-    // (total, factura, estado, dirección del cliente) en un `$transaction`
-    // plano, sin lock — dos ediciones concurrentes del mismo pedido podían
-    // pisarse. Ahora bajo `PEDIDO:{id}` (mismo agregado que AjustarPedidoCantidad,
-    // ADR-CONCURRENCIA-001 §6). El PUT es declarativo (reemplaza items, no
-    // incrementa), así que el lock cierra la exposición sin necesidad de una
-    // clave `offlineId` persistida — ésta queda como follow-up de Fase 2.
+    // CrearPedidoUseCase / PreviewPedidoUseCase.
+    const coordsDeLink = tocaDireccion ? await this.resolverCoordsDeLinkParaEntrega(input.pedidoId) : null
+
+    // F3 (INVENTARIO §F3): toda mutación bajo `PEDIDO:{id}` (ADR-CONCURRENCIA-001 §6).
     return this.txManager.executeWithLock('PEDIDO', input.pedidoId, async (tx) => {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
 
-      // F3: auditoría única, dentro de la transacción del lock, para TODAS las
-      // ramas que mutan el pedido (antes: solo la rama de items auditaba, y el
-      // route.ts hacía otra auditoría post-commit fire-and-forget → filas
-      // duplicadas + ramas sin auditar). `casoId` (antifraude) viaja acá.
-      const auditar = (saved: PedidoEntity) =>
-        logAudit({
-          entidad: 'Pedido',
-          registroId: saved.id.get(),
-          accion: 'UPDATE',
-          datos: { numero: saved.numero, estado: saved.estadoEntrega.get() },
-          usuarioId: input.usuarioId,
-          casoId: input.casoId,
-        }, tx)
+      const estadoActual = pedido.estadoEntrega.get()
+      const cerrado = ESTADOS_CERRADOS.includes(estadoActual)
+      const tocaClienteDir = Boolean(input.actualizarCliente)
 
-      // Update items if provided
+      // ── ESTADO: este caso de uso NO cambia el estado de entrega ────────────
+      // Entregar, cancelar, anular, enviar, no-entregar y volver a pendiente
+      // (quitar del embarque) tienen su operación especializada: factura/nota
+      // de crédito, pagos, trazabilidad física del embarque, notificación al
+      // repartidor y reconexión N2. Aquí solo se edita información y líneas.
+      if (input.estadoEntrega && input.estadoEntrega !== estadoActual) {
+        const destino = EstadoEntregaVO.from(input.estadoEntrega).get()
+        throw new OperacionEspecializadaError(
+          destino,
+          VIA_OPERACION_ESPECIALIZADA[destino] ?? 'Use la operación especializada.',
+        )
+      }
+
+      // Pedido cerrado: la información de entrega es historia. (obs sí: se
+      // audita con antes/después.)
+      if (cerrado && (tocaDireccion || tocaClienteDir)) {
+        throw new PedidoCerradoError(estadoActual, [
+          ...(input.direccionEntrega !== undefined ? ['direccionEntrega'] : []),
+          ...(input.barrioEntrega !== undefined ? ['barrioEntrega'] : []),
+          ...(tocaClienteDir ? ['actualizarCliente'] : []),
+        ])
+      }
+
+      const props = pedido.toProps()
+      const antes: Record<string, unknown> = {}
+      const despues: Record<string, unknown> = {}
+      const campos: string[] = []
+      const registrar = (campo: string, a: unknown, d: unknown) => {
+        campos.push(campo)
+        antes[campo] = a
+        despues[campo] = d
+      }
+      const totalAnterior = pedido.total.toDecimal()
+      const totalPagado = pedido.totalPagado.toDecimal()
+      let totalCambio = false
+
+      // ── ECONÓMICA: items ───────────────────────────────────────────────────
       if (input.items && input.items.length > 0) {
-        // FIX (hallazgo antifraude 2026-09-06, revisión ALS/Plan Técnico UX
-        // de Pedidos, G11): este PUT declarativo reemplazaba `items` de
-        // CUALQUIER pedido sin pasar por ninguno de los guards de
-        // AjustarPedidoCantidadUseCase (G11 — PR #206). Un request que solo
-        // enviara `items` (sin `estadoEntrega`) sobre un pedido ya cerrado o
-        // con cantidad ya entregada bypaseaba por completo la corrección
-        // guardada, con auditoría genérica sin diff — exactamente el vector
-        // de "modificación posterior de pedidos" / "alteración de
-        // cantidades para ocultar faltantes" del modelo antifraude. Se
-        // exigen los mismos 2 guards que G11 ya aplica (mismos códigos de
-        // error, mapeados en route.ts) — la corrección sobre un pedido
-        // cerrado o con entrega parcial debe pasar por
-        // POST /api/pedidos/[id]/ajustar-cantidad, no por este endpoint.
-        if (['ENTREGADO', 'CANCELADO', 'ANULADO'].includes(pedido.estadoEntrega.get())) {
-          throw new Error('PEDIDO_CERRADO_USE_AJUSTAR_CANTIDAD')
-        }
-        if (pedido.items.some(i => i.cantEntrega > 0)) {
-          throw new Error('CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD')
-        }
+        const solicitados = input.items.filter((i) => i.cantidad > 0)
+        const productos = solicitados.map((i) => i.producto as string)
+        const repetidos = productos.filter((p, idx) => productos.indexOf(p) !== idx)
+        if (repetidos.length > 0) throw new LineasDuplicadasError([...new Set(repetidos)])
 
-        // FIX BAMBU-LOG-001: validar la transición de estado también en esta
-        // rama. Antes, un cambio de estado enviado junto con items se
-        // aplicaba sin pasar por canTransitionTo() (solo se validaba el
-        // enum), permitiendo transiciones prohibidas por la máquina de
-        // estados (ej. PENDIENTE -> ANULADO).
-        if (input.estadoEntrega) {
-          const nuevoEstadoEntrega = EstadoEntregaVO.from(input.estadoEntrega)
-          if (!pedido.estadoEntrega.canTransitionTo(nuevoEstadoEntrega)) {
-            throw new Error(`Transición inválida: ${pedido.estadoEntrega.get()} → ${nuevoEstadoEntrega.get()}`)
+        const previoPorProducto = new Map(pedido.items.map((i) => [i.producto as string, i]))
+        const hayCambioDeclarado =
+          solicitados.length !== pedido.items.length ||
+          solicitados.some((i) => !lineaSinCambio(previoPorProducto.get(i.producto), i))
+
+        // Las guardas de cantidades/N2 aplican SOLO si de verdad se pide cambiar
+        // líneas: reenviar lo mismo (lo que hace el formulario al editar una
+        // nota) no puede quedar bloqueado por entregas, cierre o N2.
+        if (hayCambioDeclarado) {
+          if (cerrado) throw new Error('PEDIDO_CERRADO_USE_AJUSTAR_CANTIDAD')
+          if (pedido.items.some((i) => i.cantEntrega > 0)) throw new Error('CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD')
+
+          const productosActuales = pedido.items.map((i) => i.producto as string)
+          const duplicadosActuales = productosActuales.filter((p, idx) => productosActuales.indexOf(p) !== idx)
+          if (duplicadosActuales.length > 0) throw new LineasDuplicadasError([...new Set(duplicadosActuales)])
+
+          // Diferencial N2 ya aplicado: Pedido.total = Σ ítems + diferenciales.
+          // Recalcular desde los ítems lo borraría (o lo duplicaría al revertirlo).
+          const [obligaciones, ajustesConDiferencial] = await Promise.all([
+            tx.obligacionPendiente.count({ where: { pedidoId: input.pedidoId } }),
+            tx.pedidoCantidadAjuste.count({ where: { pedidoId: input.pedidoId, montoDiferencial: { not: 0 } } }),
+          ])
+          if (obligaciones > 0 || ajustesConDiferencial > 0) throw new EdicionEconomicaN2Error()
+
+          const aResolver = solicitados.filter((i) => !lineaSinCambio(previoPorProducto.get(i.producto), i))
+          const resueltos = aResolver.length === 0
+            ? []
+            : await this.pricingPort.resolverPrecios(
+                aResolver.map((i) => ({ codigo: i.producto, cantidad: i.cantidad, precioManual: i.precioManual })),
+                pedido.canal.get(),
+                await this.pricingPort.loadPricingContext(
+                  pedido.clienteId, pedido.negocioId, aResolver.map((i) => i.producto), tx,
+                ),
+              )
+          const resueltoPorProducto = new Map(resueltos.map((r) => [r.producto as string, r]))
+
+          const nuevosItems = solicitados.map((i) => {
+            const r = resueltoPorProducto.get(i.producto)
+            if (r) return new PedidoItem(r.producto, r.cantidad, Money.fromDecimal(r.precio), r.origen, 0)
+            const previo = previoPorProducto.get(i.producto)!
+            return new PedidoItem(previo.producto, previo.cantPedido, previo.precio, previo.precioOrigen, 0)
+          })
+
+          const nuevoTotal = nuevosItems.reduce((sum, i) => sum + i.subtotalPedido.toDecimal(), 0)
+          const lineasAntes = snapshotLineas(pedido.items)
+          const lineasDespues = snapshotLineas(nuevosItems)
+          if (JSON.stringify(lineasAntes) !== JSON.stringify(lineasDespues)) {
+            // Dinero ya cobrado: no se decide aquí devolverlo ni absorberlo.
+            if (nuevoTotal < totalPagado) {
+              throw new TotalMenorAPagadoError({
+                totalAnterior, totalNuevo: nuevoTotal, totalPagado, diferencia: totalPagado - nuevoTotal,
+              })
+            }
+            props.items = nuevosItems
+            props.total = Money.fromDecimal(nuevoTotal)
+            totalCambio = nuevoTotal !== totalAnterior
+            registrar('items', { items: lineasAntes, total: totalAnterior }, { items: lineasDespues, total: nuevoTotal })
+          }
+        }
+      }
+
+      // ── INFORMACIÓN: obs ───────────────────────────────────────────────────
+      if (input.obs !== undefined && (input.obs || '') !== (pedido.obs || '')) {
+        registrar('obs', pedido.obs ?? null, input.obs || null)
+        props.obs = input.obs || undefined
+      }
+
+      // ── INFORMACIÓN: dirección de entrega / dirección del cliente ──────────
+      let clienteActualizar: { direccion: string; barrio?: string } | null = null
+      if (tocaDireccion || tocaClienteDir) {
+        const clienteActual = await this.clienteRepo.findById(pedido.clienteId, tx)
+        const negocioActual = pedido.negocioId ? await this.clienteRepo.findNegocioById(pedido.negocioId, tx) : null
+        const esCF = pedido.clienteId === 'CONSUMIDOR_FINAL'
+        const aplicaraActualizarCliente = Boolean(input.actualizarCliente && !pedido.negocioId && !esCF)
+
+        if (aplicaraActualizarCliente && clienteActual) {
+          const dir = input.actualizarCliente?.direccion || ''
+          const barrio = input.actualizarCliente?.barrio
+          if (dir !== (clienteActual.direccion || '') || (barrio ?? '') !== (clienteActual.barrio ?? '')) {
+            clienteActualizar = { direccion: dir, barrio }
+            registrar(
+              'actualizarCliente',
+              { direccion: clienteActual.direccion || null, barrio: clienteActual.barrio ?? null },
+              { direccion: dir || null, barrio: barrio ?? null },
+            )
           }
         }
 
-        const activeCodes = input.items.filter(i => i.cantidad > 0).map(i => i.producto)
-        const pricingData = await this.pricingPort.loadPricingContext(
-          pedido.clienteId,
-          pedido.negocioId,
-          activeCodes,
-          tx,
-        )
-
-        const preciosResueltos = await this.pricingPort.resolverPrecios(
-          input.items.filter(i => i.cantidad > 0).map(i => ({
-            codigo: i.producto,
-            cantidad: i.cantidad,
-            precioManual: i.precioManual,
-          })),
-          pedido.canal.get(),
-          pricingData,
-        )
-
-        // Recalculate total
-        const nuevoTotal = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
-        const totalPagadoActual = pedido.totalPagado.toDecimal()
-
-        // Build new items preserving existing prices if no manual override
-        const nuevosItems = preciosResueltos.map(pr =>
-          new PedidoItem(
-            pr.producto,
-            pr.cantidad,
-            Money.fromDecimal(pr.precio),
-            pr.origen,
-            0,
-          ),
-        )
-
-        // Snapshot de dirección puntual del pedido (Pedido.direccionEntrega/
-        // barrioEntrega). Por defecto se preserva el valor existente (una
-        // edición de cantidades no debe borrar un override ya guardado).
-        // Solo se recalcula si el body trae explícitamente direccionEntrega
-        // o barrioEntrega, comparando contra la dirección resuelta en vivo
-        // (negocio gana, fallback cliente) — mismo criterio que
-        // CrearPedidoUseCase. El fetch de cliente considera un
-        // actualizarCliente pendiente en este mismo request para no marcar
-        // como "distinta" una dirección que está por convertirse en la
-        // permanente del cliente.
-        let direccionEntregaSnapshot: string | undefined = pedido.direccionEntrega
-        let barrioEntregaSnapshot: string | undefined = pedido.barrioEntrega
-        if (input.direccionEntrega !== undefined || input.barrioEntrega !== undefined) {
-          const clienteActual = await this.clienteRepo.findById(pedido.clienteId, tx)
-          const negocioActual = pedido.negocioId
-            ? await this.clienteRepo.findNegocioById(pedido.negocioId, tx)
-            : null
-          const aplicaraActualizarCliente = Boolean(
-            input.actualizarCliente && !pedido.negocioId && pedido.clienteId !== 'CONSUMIDOR_FINAL',
-          )
+        if (tocaDireccion) {
           const clienteParaResolucion = aplicaraActualizarCliente
             ? { direccion: input.actualizarCliente?.direccion || '', barrio: input.actualizarCliente?.barrio }
             : clienteActual
-          const resuelta = pickDireccionTexto({
-            cliente: clienteParaResolucion,
-            negocio: negocioActual,
-          })
-          if (
-            (input.direccionEntrega || '') !== resuelta.direccion ||
-            (input.barrioEntrega || '') !== resuelta.barrio
-          ) {
-            direccionEntregaSnapshot = input.direccionEntrega
-            barrioEntregaSnapshot = input.barrioEntrega
-          } else {
-            direccionEntregaSnapshot = undefined
-            barrioEntregaSnapshot = undefined
-          }
+          const resuelta = pickDireccionTexto({ cliente: clienteParaResolucion, negocio: negocioActual })
+          // Edición PARCIAL: lo no enviado conserva el valor efectivo actual
+          // (snapshot propio, o la dirección resuelta si no hay snapshot).
+          const dirNueva = input.direccionEntrega !== undefined
+            ? input.direccionEntrega
+            : (pedido.direccionEntrega ?? resuelta.direccion)
+          const barrioNuevo = input.barrioEntrega !== undefined
+            ? input.barrioEntrega
+            : (pedido.barrioEntrega ?? resuelta.barrio)
+          const igualAResuelta = dirNueva === resuelta.direccion && barrioNuevo === resuelta.barrio
+          const snapshotDir = igualAResuelta ? undefined : (dirNueva || undefined)
+          const snapshotBarrio = igualAResuelta ? undefined : (barrioNuevo || undefined)
 
-          // Suficiencia de entrega — MISMA autoridad que el preview (§16). El
-          // PUT no cambia cliente/negocio/canal, pero sí el snapshot de
-          // dirección; si el usuario lo vacía y no hay otra fuente → rechazar.
-          if (pedido.canal.get() === 'DOMICILIO' && pedido.clienteId !== 'CONSUMIDOR_FINAL') {
+          // Suficiencia de entrega — MISMA autoridad que el preview (§16).
+          if (pedido.canal.get() === 'DOMICILIO' && !esCF) {
             const entrega = resolverEntrega({
               canal: 'DOMICILIO',
-              overrideDireccion: input.direccionEntrega,
-              overrideBarrio: input.barrioEntrega,
-              cliente: clienteActual
-                ? { direccion: clienteActual.direccion, barrio: clienteActual.barrio, referencia: clienteActual.referencia, linkUbicacion: clienteActual.linkUbicacion, lat: clienteActual.lat, lng: clienteActual.lng, geocodeOrigen: clienteActual.geocodeOrigen }
+              overrideDireccion: dirNueva,
+              overrideBarrio: barrioNuevo,
+              cliente: clienteParaResolucion && clienteActual
+                ? { direccion: clienteParaResolucion.direccion, barrio: clienteParaResolucion.barrio, referencia: clienteActual.referencia, linkUbicacion: clienteActual.linkUbicacion, lat: clienteActual.lat, lng: clienteActual.lng, geocodeOrigen: clienteActual.geocodeOrigen }
                 : null,
               negocio: negocioActual
                 ? { direccion: negocioActual.direccion, barrio: negocioActual.barrio, referencia: negocioActual.referencia, linkUbicacion: negocioActual.linkUbicacion, lat: negocioActual.lat, lng: negocioActual.lng }
@@ -242,150 +266,78 @@ export class ActualizarPedidoUseCase {
             })
             if (entrega.estado === 'INSUFICIENTE') throw new EntregaInsuficienteError()
           }
+
+          if ((snapshotDir ?? null) !== (pedido.direccionEntrega ?? null)) {
+            registrar('direccionEntrega', pedido.direccionEntrega ?? null, snapshotDir ?? null)
+            props.direccionEntrega = snapshotDir
+          }
+          if ((snapshotBarrio ?? null) !== (pedido.barrioEntrega ?? null)) {
+            registrar('barrioEntrega', pedido.barrioEntrega ?? null, snapshotBarrio ?? null)
+            props.barrioEntrega = snapshotBarrio
+          }
         }
+      }
 
-        // Create updated pedido entity (rebuild)
-        const { Pedido } = await import('../../domain/entities/Pedido')
-        const updatedPedido = Pedido.create({
-          id: pedido.id,
-          numero: pedido.numero,
-          clienteId: pedido.clienteId,
-          negocioId: pedido.negocioId,
-          embarqueId: pedido.embarqueId,
-          canal: pedido.canal,
-          origen: pedido.origen,
-          estadoEntrega: input.estadoEntrega
-            ? EstadoEntregaVO.from(input.estadoEntrega)
-            : pedido.estadoEntrega,
-          // G5.1: proyección desde el estadoEntrega resuelto de esta edición.
-          estadoPago: EstadoPagoVO.proyectar(
-            nuevoTotal,
-            totalPagadoActual,
-            input.estadoEntrega ?? pedido.estadoEntrega.get(),
-          ),
-          items: nuevosItems,
-          total: Money.fromDecimal(nuevoTotal),
-          totalPagado: pedido.totalPagado,
-          pagos: [...pedido.pagos],
-          fecha: pedido.fecha,
-          fechaEntrega: pedido.fechaEntrega,
-          obs: input.obs !== undefined ? input.obs : pedido.obs,
-          idOrigen: pedido.idOrigen,
-          fotoEntrega: pedido.fotoEntrega,
-          gpsLat: pedido.gpsLat,
-          gpsLng: pedido.gpsLng,
-          codigoVisita: pedido.codigoVisita,
-          direccionEntrega: direccionEntregaSnapshot,
-          barrioEntrega: barrioEntregaSnapshot,
-        })
+      // ── Sin cambios reales: se informa, no se escribe ni se audita ─────────
+      if (campos.length === 0) {
+        return { pedido: PedidoDTOMapper.toResumen(pedido), aplicado: { campos: [], sinCambios: true } }
+      }
 
-        const saved = await this.pedidoRepo.update(updatedPedido, tx)
+      // ── Persistir UNA vez, con TODOS los cambios ya aplicados a `props` ────
+      // (La entidad se construye recién ahora: construirla antes de procesar
+      // obs/dirección fue la causa del falso éxito reportado en la revisión.)
+      if (props.total.toDecimal() !== totalAnterior) {
+        // G5.1: proyección de pago desde el estado final y el total vigente.
+        props.estadoPago = EstadoPagoVO.proyectar(props.total.toDecimal(), totalPagado, props.estadoEntrega.get())
+      }
+      const saved = await this.pedidoRepo.update(Pedido.create(props), tx)
 
-        // Update factura
+      // Guardia final: nada se declara aplicado si no quedó persistido.
+      const noPersistidos: string[] = []
+      if (campos.includes('obs') && (saved.obs || '') !== (props.obs || '')) noPersistidos.push('obs')
+      if (campos.includes('direccionEntrega') && (saved.direccionEntrega ?? null) !== (props.direccionEntrega ?? null)) noPersistidos.push('direccionEntrega')
+      if (campos.includes('barrioEntrega') && (saved.barrioEntrega ?? null) !== (props.barrioEntrega ?? null)) noPersistidos.push('barrioEntrega')
+      if (campos.includes('items') && JSON.stringify(snapshotLineas(saved.items)) !== JSON.stringify(snapshotLineas(props.items))) noPersistidos.push('items')
+      if (noPersistidos.length > 0) throw new EdicionNoPersistidaError(noPersistidos)
+
+      // Factura alineada con el pedido si el total cambió.
+      if (totalCambio) {
         const factura = await this.facturaRepo.findByPedidoId(saved.id.get(), tx)
         if (factura) {
+          const saldo = Math.max(0, saved.total.toDecimal() - totalPagado)
           await this.facturaRepo.update({
             ...factura,
-            total: nuevoTotal,
-            saldo: Math.max(0, nuevoTotal - totalPagadoActual),
-            estado: nuevoTotal <= totalPagadoActual
-              ? 'PAGADA'
-              : (totalPagadoActual > 0 ? 'PARCIAL' : 'EMITIDA'),
+            total: saved.total.toDecimal(),
+            saldo,
+            estado: saved.total.toDecimal() <= totalPagado ? 'PAGADA' : (totalPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
           }, tx)
         }
-
-        // Update cliente address if needed
-        // NUNCA aplicar si el pedido está destinado a un negocio/sucursal:
-        // en ese caso actualizarCliente trae la dirección del negocio, no
-        // una edición real de la dirección propia del cliente.
-        if (input.actualizarCliente && !saved.negocioId && saved.clienteId !== 'CONSUMIDOR_FINAL') {
-          await this.clienteRepo.updateDireccion(
-            saved.clienteId,
-            input.actualizarCliente.direccion || '',
-            input.actualizarCliente.barrio,
-            tx,
-            { usuarioId: input.usuarioId, pedidoId: saved.id.get() },
-          )
-        }
-
-        await auditar(saved)
-        return { pedido: PedidoDTOMapper.toResumen(saved) }
       }
 
-      // Simple state transition or obs update
-      if (input.estadoEntrega) {
-        const nuevoEstado = EstadoEntregaVO.from(input.estadoEntrega)
-        if (!pedido.estadoEntrega.canTransitionTo(nuevoEstado)) {
-          throw new Error(`Transición inválida: ${pedido.estadoEntrega.get()} → ${nuevoEstado.get()}`)
-        }
-
-        // Handle ENTREGADO without items (entregar lo que falte de cada línea).
-        // PR-1: `entregar()` acumula, así que se pasa el RESTO (`cantPedido -
-        // cantEntrega`); en un pedido fresco eso es `cantPedido` (sin cambio),
-        // en uno parcialmente entregado completa el faltante.
-        if (nuevoEstado.get() === 'ENTREGADO') {
-          pedido.entregar(pedido.items.map(i => ({
-            producto: i.producto,
-            cantidad: Math.max(0, i.cantPedido - i.cantEntrega),
-          })))
-
-          // FIX BAMBU-LOG-017: pedido.entregar() solo muta el agregado en
-          // memoria. Antes, este branch terminaba sin llamar a
-          // pedidoRepo.update(), por lo que la transición a ENTREGADO nunca
-          // se persistía — el endpoint respondía 200 con datos coherentes
-          // (entregadoAt, cantidades entregadas) mientras la fila en la DB
-          // quedaba intacta en su estado anterior.
-          const saved = await this.pedidoRepo.update(pedido, tx)
-
-          const factura = await this.facturaRepo.findByPedidoId(saved.id.get(), tx)
-          if (factura) {
-            await this.facturaRepo.update({
-              ...factura,
-              total: saved.total.toDecimal(),
-              saldo: saved.saldo.toDecimal(),
-              estado: saved.saldo.toDecimal() <= 0
-                ? 'PAGADA'
-                : (saved.totalPagado.toDecimal() > 0 ? 'PARCIAL' : 'EMITIDA'),
-            }, tx)
-          }
-
-          await auditar(saved)
-          return { pedido: PedidoDTOMapper.toResumen(saved) }
-        } else {
-          // Rebuild with new state
-          const { Pedido } = await import('../../domain/entities/Pedido')
-          const updated = Pedido.create({
-            ...cloneProps(pedido),
-            estadoEntrega: nuevoEstado,
-            // G5.1: al cambiar el estado de entrega, re-proyectar estadoPago
-            // (p.ej. → CANCELADO/ANULADO ⇒ ANULADO; → ENTREGADO ⇒ PAGADO).
-            estadoPago: EstadoPagoVO.proyectar(
-              pedido.total.toDecimal(),
-              pedido.totalPagado.toDecimal(),
-              nuevoEstado.get(),
-            ),
-            obs: input.obs !== undefined ? input.obs : pedido.obs,
-          })
-
-          const saved = await this.pedidoRepo.update(updated, tx)
-          await auditar(saved)
-          return { pedido: PedidoDTOMapper.toResumen(saved) }
-        }
+      // NUNCA si el destino es un negocio/sucursal: ahí `actualizarCliente`
+      // trae la dirección del negocio, no una edición real del cliente.
+      if (clienteActualizar) {
+        await this.clienteRepo.updateDireccion(
+          saved.clienteId,
+          clienteActualizar.direccion,
+          clienteActualizar.barrio,
+          tx,
+          { usuarioId: input.usuarioId, pedidoId: saved.id.get() },
+        )
       }
 
-      if (input.obs !== undefined) {
-        const { Pedido } = await import('../../domain/entities/Pedido')
-        const updated = Pedido.create({
-          ...cloneProps(pedido),
-          obs: input.obs,
-        })
-        const saved = await this.pedidoRepo.update(updated, tx)
-        await auditar(saved)
-        return { pedido: PedidoDTOMapper.toResumen(saved) }
-      }
+      // Auditoría única, dentro del lock, con antes/después (`numero`/`estado`
+      // se conservan para los lectores existentes del Historial).
+      await logAudit({
+        entidad: 'Pedido',
+        registroId: saved.id.get(),
+        accion: 'UPDATE',
+        datos: { numero: saved.numero, estado: saved.estadoEntrega.get(), campos, antes, despues },
+        usuarioId: input.usuarioId,
+        casoId: input.casoId,
+      }, tx)
 
-      // Sin cambios reales → no se audita.
-      return { pedido: PedidoDTOMapper.toResumen(pedido) }
+      return { pedido: PedidoDTOMapper.toResumen(saved), aplicado: { campos, sinCambios: false } }
     })
   }
 

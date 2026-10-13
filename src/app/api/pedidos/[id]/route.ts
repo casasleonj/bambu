@@ -15,6 +15,15 @@ import { PedidoId } from '@/modules/pedidos/domain/value-objects/PedidoId'
 import { PedidoDTOMapper } from '@/modules/pedidos/application/dto/PedidoDTOMapper'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
+import { clasificarCamposPut } from '@/lib/pedido-put-contrato'
+import {
+  EdicionEconomicaN2Error,
+  EdicionNoPersistidaError,
+  LineasDuplicadasError,
+  OperacionEspecializadaError,
+  PedidoCerradoError,
+  TotalMenorAPagadoError,
+} from '@/modules/pedidos/domain/services/pedido-edicion.errors'
 
 function getUserFromSession(authResult: unknown) {
   return { id: (authResult as { user?: { id?: string } })?.user?.id || '', role: (authResult as { user?: { role?: string } })?.user?.role }
@@ -211,9 +220,29 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // no dato de negocio).
     const casoId: string | null = typeof body?.casoId === 'string' ? body.casoId : null
 
+    // Contrato de campos: ningún cambio pedido puede descartarse en silencio.
+    const { solicitados, rechazados } = clasificarCamposPut(body)
+    if (Object.keys(rechazados).length > 0) {
+      return apiError(
+        `Campos no soportados en la edición: ${Object.keys(rechazados).join(', ')}. No se aplicó ningún cambio.`,
+        422,
+        { code: 'CAMPO_NO_SOPORTADO', fieldErrors: rechazados },
+      )
+    }
+    if (solicitados.length === 0) {
+      return apiError('La petición no pide ningún cambio.', 422, { code: 'SIN_CAMBIOS_SOLICITADOS' })
+    }
+
     const parsed = PedidoUpdateSchema.safeParse(body)
     if (!parsed.success) {
       return apiError(formatZodError(parsed.error), 400)
+    }
+    if (parsed.data.items !== undefined && parsed.data.items.length === 0) {
+      return apiError('Un pedido necesita al menos un producto.', 422, { code: 'ITEMS_VACIOS' })
+    }
+    // `estado` (legacy) y `estadoEntrega` son el mismo cambio: si vienen ambos, deben coincidir.
+    if (parsed.data.estado && parsed.data.estadoEntrega && parsed.data.estado !== parsed.data.estadoEntrega) {
+      return apiError('`estado` y `estadoEntrega` no coinciden.', 422, { code: 'CONFLICTO_ESTADO' })
     }
 
     const result = await actualizarPedidoUseCase.execute({
@@ -223,8 +252,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         cantidad: i.cantidad,
         precioManual: i.precioManual,
       })),
-      estadoEntrega: parsed.data.estado,
-      obs: parsed.data.obs || undefined,
+      estadoEntrega: parsed.data.estadoEntrega ?? parsed.data.estado,
+      // `null` y '' LIMPIAN la observación (antes `|| undefined` lo hacía imposible).
+      obs: parsed.data.obs === null ? '' : parsed.data.obs,
       actualizarCliente: parsed.data.actualizarCliente ? {
         direccion: parsed.data.actualizarCliente.direccion || undefined,
         barrio: parsed.data.actualizarCliente.barrio || undefined,
@@ -238,21 +268,64 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       casoId: casoId ?? undefined,
     })
 
-    publishRealtimeEvent('pedido.updated', id).catch(() => {})
+    if (!result.aplicado.sinCambios) publishRealtimeEvent('pedido.updated', id).catch(() => {})
 
-    return apiSuccess({ pedido: result.pedido })
+    return apiSuccess({ pedido: result.pedido, aplicado: result.aplicado })
   } catch (error) {
     if (error instanceof Error && error.message === 'PEDIDO_NOT_FOUND') {
       return apiError('Pedido no encontrado', 404)
     }
     if (error instanceof Error && error.message === 'PEDIDO_CERRADO_USE_AJUSTAR_CANTIDAD') {
-      return apiError('El pedido ya está cerrado (entregado/cancelado/anulado) — use el flujo de corrección de cantidad', 409)
+      return apiError('El pedido ya está cerrado (entregado/cancelado/anulado) — use el flujo de corrección de cantidad', 409, { code: 'PEDIDO_CERRADO_USE_AJUSTAR_CANTIDAD' })
     }
     if (error instanceof Error && error.message === 'CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD') {
-      return apiError('Ya se entregó cantidad de este pedido — use el flujo de corrección de cantidad', 409)
+      return apiError('Ya se entregó cantidad de este pedido — use el flujo de corrección de cantidad', 409, { code: 'CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD' })
     }
     if (error instanceof Error && error.name === 'EntregaInsuficienteError') {
       return apiError('Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.', 422, { code: 'ENTREGA_INSUFICIENTE' })
+    }
+    if (error instanceof PedidoCerradoError) {
+      return apiError(
+        `El pedido ya está ${error.estado.toLowerCase()}: ${error.campos.join(', ')} es historia y no se edita.`,
+        409,
+        { code: 'PEDIDO_CERRADO' },
+      )
+    }
+    if (error instanceof TotalMenorAPagadoError) {
+      const { totalNuevo, totalPagado, diferencia, totalAnterior } = error.impacto
+      return apiError(
+        `El nuevo total ($${totalNuevo}) queda por debajo de lo ya cobrado ($${totalPagado}): la diferencia de $${diferencia} requiere una decisión (devolución, saldo a favor o ajuste) que esta edición no toma. No se guardó ningún cambio.`,
+        409,
+        { code: 'TOTAL_MENOR_A_PAGADO', impacto: { totalAnterior, totalNuevo, totalPagado, diferencia } },
+      )
+    }
+    if (error instanceof OperacionEspecializadaError) {
+      return apiError(
+        `Este endpoint no ejecuta el cambio a ${error.destino}. ${error.via}`,
+        409,
+        { code: 'OPERACION_ESPECIALIZADA', fieldErrors: { estado: [error.via] } },
+      )
+    }
+    if (error instanceof EdicionEconomicaN2Error) {
+      return apiError(
+        'Este pedido tiene gestión N2 o un diferencial ya aplicado: sus cantidades se corrigen con «Corregir cantidad» (ajustar-cantidad), no editando. No se guardó ningún cambio.',
+        409,
+        { code: 'PEDIDO_CON_N2_USE_AJUSTAR_CANTIDAD' },
+      )
+    }
+    if (error instanceof LineasDuplicadasError) {
+      return apiError(
+        `El pedido tiene el mismo producto en más de una línea (${error.productos.join(', ')}). Una línea por producto: corrija los datos antes de editar. No se guardó ningún cambio.`,
+        409,
+        { code: 'LINEAS_DUPLICADAS' },
+      )
+    }
+    if (error instanceof EdicionNoPersistidaError) {
+      logger.error({ campos: error.campos, pedidoId: id }, 'Edición de pedido no persistida (revertida)')
+      return apiError('La edición no se pudo guardar completa y se revirtió. Intente de nuevo.', 500, { code: 'EDICION_NO_PERSISTIDA' })
+    }
+    if (error instanceof Error && error.message.startsWith('Transición inválida')) {
+      return apiError(error.message, 409, { code: 'TRANSICION_INVALIDA' })
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating pedido:')
     return apiError('Error updating', 500)

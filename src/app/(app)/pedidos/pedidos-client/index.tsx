@@ -40,6 +40,7 @@ import { useAnularPedido } from '@/hooks/use-anular-pedido'
 import { useCancelarPedido } from '@/hooks/use-cancelar-pedido'
 import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
 import { useEntregarPedido } from '@/hooks/use-entregar-pedido'
+import { itemsCambiaron } from '@/lib/pedido-edicion-items'
 import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
@@ -960,7 +961,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       refreshPedidos()
       refetchFiados()
       refetchAlertas()
-      toast.success('Pedido entregado con foto')
+      toast.success('Pedido entregado')
     },
     onError: (error) => {
       toast.error(error || 'Error registrando entrega')
@@ -977,20 +978,52 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       const isEdit = data.isEdit && data.pedidoId
       if (isEdit) {
         // Edit uses PUT endpoint directly (not yet migrated to hook)
+        const itemsEditados = !pedidoEditando || itemsCambiaron(
+          (pedidoEditando.items ?? []).map((i) => ({ producto: i.producto, cantidad: i.cantPedido, precio: Number(i.precio), precioOrigen: i.precioOrigen ?? 'base' })),
+          data.items,
+        )
+        const cuerpo = {
+          // Solo si de verdad cambiaron líneas: editar una nota o la dirección
+          // NO debe reenviar ítems (el servidor los rechaza en pedidos con
+          // entregas, cerrados o con N2 — y no hay nada que cambiar en ellos).
+          items: itemsEditados ? data.items : undefined,
+          // Se envía solo si cambió: '' significa "borrar la observación", y
+          // mandarlo sin que el usuario lo haya tocado la borraría.
+          obs: (data.obs ?? '') === (pedidoEditando?.obs ?? '') ? undefined : (data.obs ?? ''),
+          actualizarCliente: data.actualizarCliente,
+          // La dirección efectiva actual del pedido es zonaCli/barrioCli: si el
+          // formulario la devuelve igual, no hay nada que pedir.
+          direccionEntrega: data.direccionEntrega !== undefined && data.direccionEntrega === (pedidoEditando?.zonaCli ?? '') && (data.barrioEntrega ?? '') === (pedidoEditando?.barrioCli ?? '') ? undefined : data.direccionEntrega,
+          barrioEntrega: data.direccionEntrega !== undefined && data.direccionEntrega === (pedidoEditando?.zonaCli ?? '') && (data.barrioEntrega ?? '') === (pedidoEditando?.barrioCli ?? '') ? undefined : data.barrioEntrega,
+        }
+        if (Object.values(cuerpo).every((v) => v === undefined)) {
+          // Nada que pedir: no se llama al servidor ni se aparenta haber guardado.
+          setShowModal(false)
+          setShowVentaRapida(false)
+          setPedidoInicial(undefined)
+          setPedidoEditando(null)
+          toast.info('Sin cambios: no modificaste nada')
+          return true
+        }
         const res = await fetch(`/api/pedidos/${data.pedidoId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           signal: AbortSignal.timeout(8_000),
-          body: JSON.stringify({
-            items: data.items,
-            obs: data.obs,
-            actualizarCliente: data.actualizarCliente,
-            direccionEntrega: data.direccionEntrega,
-            barrioEntrega: data.barrioEntrega,
-          }),
+          body: JSON.stringify(cuerpo),
         })
+        const payload = await res.json().catch(() => null) as
+          | { aplicado?: { campos: string[]; sinCambios: boolean }; error?: { message?: string; formErrors?: string[]; fieldErrors?: Record<string, string[]>; code?: string } }
+          | null
         if (res.ok) {
+          // Contrato PR-1: el servidor informa qué se aplicó. Sin `aplicado`
+          // (servidor anterior) no se puede afirmar que algo se guardó.
+          const aplicado = payload?.aplicado
+          if (!aplicado) {
+            toast.warning('No se pudo confirmar qué se guardó. Recarga el pedido para verificar.')
+            refreshPedidos()
+            return false
+          }
           setShowModal(false)
           setShowVentaRapida(false)
           setPedidoInicial(undefined)
@@ -998,11 +1031,12 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           setShowDetailModal(false)
           refreshPedidos()
           fetchClientes()
-          toast.success('Pedido actualizado')
+          if (aplicado.sinCambios) toast.info('Sin cambios: el pedido ya tenía esos valores')
+          else toast.success(`Pedido actualizado (${aplicado.campos.join(', ')})`)
           return true
         }
-        const err = await res.json()
-        toast.error(err.error?.message || err.error?.formErrors?.[0] || 'Error al guardar')
+        const campo = payload?.error?.fieldErrors ? Object.values(payload.error.fieldErrors)[0]?.[0] : undefined
+        toast.error(campo || payload?.error?.message || payload?.error?.formErrors?.[0] || 'Error al guardar')
         return false
       } else {
         // Create uses the hook
@@ -1270,8 +1304,27 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
   const [updatingId, setUpdatingId] = useState<string | null>(null)
 
+  /**
+   * Entregar SIEMPRE pasa por POST /api/pedidos/[id]/entrega (cantidades,
+   * pagos, GPS/foto según Config, reconexión N2, factura). El PUT ya no
+   * ejecuta transiciones críticas. Con o sin foto, el flujo converge en la
+   * captura de GPS y luego `handleGpsConfirm`.
+   */
+  function iniciarEntrega(pedido: Pedido) {
+    setPedidoParaEntregar(pedido)
+    setFotoParaEntregar(null)
+    if (requiereFotoEntrega) setShowFotoEntrega(true)
+    else setShowGpsCapture(true)
+  }
+
   async function cambiarEstado(id: string, nuevoEstado: string) {
     if (updatingId) return
+
+    if (nuevoEstado === 'ENTREGADO') {
+      const pedido = (selectedPedido?.id === id ? selectedPedido : null) ?? pedidos.find((p) => p.id === id)
+      if (pedido) iniciarEntrega(pedido)
+      return
+    }
 
     if (nuevoEstado === 'EN_RUTA') {
       setShowDetailModal(false)
@@ -1353,14 +1406,26 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         // lo que no generaba NC automática y permitía inconsistencias.
         success = await cancelarPedido({ pedidoId: id })
       } else {
-        // Other state transitions still use PUT directly (not yet migrated)
-        const res = await fetch(`/api/pedidos/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+        // Volver a PENDIENTE = quitar el pedido de su embarque, con la operación
+        // especializada (libera la asignación, audita y avisa al repartidor).
+        // El PUT /api/pedidos/[id] ya NO cambia estados.
+        const embarqueId = (selectedPedido?.id === id ? selectedPedido : pedidos.find((p) => p.id === id))?.embarqueId
+        if (nuevoEstado !== 'PENDIENTE' || !embarqueId) {
+          toast.error('Esa transición se hace con su operación específica')
+          return
+        }
+        const res = await fetch(`/api/embarques/${embarqueId}/pedidos/${id}`, {
+          method: 'DELETE',
+          credentials: 'include',
           signal: AbortSignal.timeout(8_000),
-          body: JSON.stringify({ estado: nuevoEstado }),
         })
-        success = res.ok
+        const cuerpo = await res.json().catch(() => null) as { error?: { message?: string } | string } | null
+        if (!res.ok) {
+          const msg = typeof cuerpo?.error === 'string' ? cuerpo.error : cuerpo?.error?.message
+          toast.error(msg || 'Error actualizando estado')
+          return
+        }
+        success = true
       }
       if (success) {
         setShowDetailModal(false)
@@ -1530,7 +1595,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
    * After GPS capture/justification, mark the pedido as ENTREGADO via the hook.
    */
   async function handleGpsConfirm(coords: { lat: number; lng: number; accuracy?: number } | null, justificacion?: string) {
-    if (!pedidoParaEntregar || !fotoParaEntregar) {
+    if (!pedidoParaEntregar || (requiereFotoEntrega && !fotoParaEntregar)) {
       toast.error('No hay pedido o foto seleccionados')
       return
     }
@@ -1549,7 +1614,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         pedidoId: id,
         itemsEntregados,
         pagos: [],
-        fotoEntrega: fotoParaEntregar,
+        fotoEntrega: fotoParaEntregar ?? undefined,
         gpsLat: coords?.lat,
         gpsLng: coords?.lng,
         gpsAccuracy: coords?.accuracy,
@@ -2440,14 +2505,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
                   {selectedPedido.estadoEntrega === 'EN_RUTA' && (
                     <>
                       <button
-                        onClick={() => {
-                          if (requiereFotoEntrega) {
-                            setPedidoParaEntregar(selectedPedido)
-                            setShowFotoEntrega(true)
-                          } else {
-                            cambiarEstado(selectedPedido.id, 'ENTREGADO')
-                          }
-                        }}
+                        onClick={() => iniciarEntrega(selectedPedido)}
                         disabled={updatingId === selectedPedido.id}
                         className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50"
                       >

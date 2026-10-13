@@ -156,17 +156,60 @@ export class PrismaPedidoRepository implements IPedidoRepository {
   async update(pedido: Pedido, tx?: TransactionClient): Promise<Pedido> {
     const client = tx || prisma
     const data = PedidoMapper.toPrismaUpdate(pedido)
+    const pedidoId = pedido.id.get()
 
-    await client.pedidoItem.deleteMany({ where: { pedidoId: pedido.id.get() } })
+    // Ítems IN SITU (por producto), no `deleteMany` + `create`: esa forma
+    // regeneraba cada fila y perdía las columnas que el dominio no modela
+    // (`autorizadoPorAdmin`, `autorizadoPorId`, `autorizadoEn` — marca
+    // antifraude de un precio manual autorizado). Una línea cuyo precio u
+    // origen CAMBIÓ pierde su autorización (era del precio anterior); las
+    // demás conservan todas sus columnas.
+    const existentes = await client.pedidoItem.findMany({ where: { pedidoId } })
+    const usados = new Set<string>()
+    const crear: Array<Record<string, unknown>> = []
+    const nuevos = PedidoMapper.toPrismaItemsCreate(pedido)
+    // Identidad de línea = producto. Si (estado inválido) hubiera líneas
+    // repetidas, se empareja primero la que coincide EXACTO (cantidad/precio) y
+    // luego cualquiera libre del mismo producto: cada fila existente conserva su
+    // id y sus marcas de autorización; nunca se mezclan ni se pierden líneas.
+    const emparejar = (nuevo: Record<string, unknown>) =>
+      existentes.find((e) => !usados.has(e.id) && e.producto === nuevo.producto &&
+        e.cantPedido === nuevo.cantPedido && Number(e.precio) === Number(nuevo.precio)) ??
+      existentes.find((e) => !usados.has(e.id) && e.producto === nuevo.producto)
+    for (const nuevo of nuevos) {
+      const previo = emparejar(nuevo)
+      if (!previo) {
+        crear.push(nuevo)
+        continue
+      }
+      usados.add(previo.id)
+      const precioCambio =
+        Number(previo.precio) !== Number(nuevo.precio) || previo.precioOrigen !== nuevo.precioOrigen
+      await client.pedidoItem.update({
+        where: { id: previo.id },
+        data: {
+          cantPedido: nuevo.cantPedido as number,
+          cantEntrega: nuevo.cantEntrega as number,
+          precio: nuevo.precio as never,
+          subtotal: nuevo.subtotal as never,
+          precioOrigen: nuevo.precioOrigen as string,
+          ...(precioCambio ? { autorizadoPorAdmin: false, autorizadoPorId: null, autorizadoEn: null } : {}),
+        },
+      })
+    }
+    const sobrantes = existentes.filter((e) => !usados.has(e.id)).map((e) => e.id)
+    if (sobrantes.length > 0) {
+      await client.pedidoItem.deleteMany({ where: { id: { in: sobrantes } } })
+    }
+    if (crear.length > 0) {
+      await client.pedidoItem.createMany({
+        data: crear.map((c) => ({ ...c, pedidoId })) as unknown as Prisma.PedidoItemCreateManyInput[],
+      })
+    }
 
     const raw = await client.pedido.update({
-      where: { id: pedido.id.get() },
-      data: {
-        ...(data as unknown as Prisma.PedidoUpdateInput),
-        items: {
-          create: PedidoMapper.toPrismaItemsCreate(pedido) as unknown as Prisma.PedidoItemCreateWithoutPedidoInput[],
-        },
-      } as unknown as Prisma.PedidoUpdateInput,
+      where: { id: pedidoId },
+      data: data as unknown as Prisma.PedidoUpdateInput,
       include: { items: true, pagos: true },
     })
 

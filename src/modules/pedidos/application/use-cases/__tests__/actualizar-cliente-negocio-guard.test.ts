@@ -28,16 +28,6 @@ describe('CrearPedidoUseCase: no actualiza dirección del cliente si el pedido v
   })
 })
 
-describe('ActualizarPedidoUseCase: no actualiza dirección del cliente si el pedido va a un negocio', () => {
-  const source = readFileSync(
-    join(process.cwd(), 'src/modules/pedidos/application/use-cases/ActualizarPedidoUseCase.ts'),
-    'utf-8',
-  )
-
-  it('el guard de actualizarCliente incluye !saved.negocioId', () => {
-    const idx = source.indexOf('if (input.actualizarCliente')
-    expect(idx).toBeGreaterThan(-1)
-    const guardLine = source.slice(idx, source.indexOf('{', idx))
-    expect(guardLine).toContain('!saved.negocioId')
-  })
-})
+// ActualizarPedidoUseCase: el guard se verifica por comportamiento en
+// ActualizarPedidoUseCase.test.ts ("actualizarCliente NUNCA se aplica si el
+// pedido va a un negocio/sucursal").
