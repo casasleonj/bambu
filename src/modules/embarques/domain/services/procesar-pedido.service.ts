@@ -135,6 +135,52 @@ function construirEntregasAValidar(pedido: PedidoRawInput, entProd: ProductosEnt
   ].filter((e) => e.cantidadAEntregar > 0)
 }
 
+/**
+ * B-12: acumulado final por producto (lo ya entregado + lo de este cierre).
+ * BOTELLON agrega Fab+Dom: el pedido tiene un único ítem BOTELLON y las
+ * columnas legacy se reparten por canal (ver `Pedido.toLegacyFields`).
+ */
+function acumuladoPorProducto(pedido: PedidoRawInput, entProd: ProductosEntregados) {
+  return [
+    { producto: 'PACA_AGUA', pedido: pedido.cPacaAguaPed || 0, acum: (pedido.cPacaAguaEnt || 0) + (entProd.cPacaAguaEnt || 0) },
+    { producto: 'PACA_HIELO', pedido: pedido.cPacaHieloPed || 0, acum: (pedido.cPacaHieloEnt || 0) + (entProd.cPacaHieloEnt || 0) },
+    {
+      producto: 'BOTELLON',
+      pedido: (pedido.cBotellonFabPed || 0) + (pedido.cBotellonDomPed || 0),
+      acum:
+        (pedido.cBotellonFabEnt || 0) + (pedido.cBotellonDomEnt || 0) +
+        (entProd.cBotellonFabEnt || 0) + (entProd.cBotellonDomEnt || 0),
+    },
+    { producto: 'BOLSA_AGUA', pedido: pedido.cBolsaAguaPed || 0, acum: (pedido.cBolsaAguaEnt || 0) + (entProd.cBolsaAguaEnt || 0) },
+    { producto: 'BOLSA_HIELO', pedido: pedido.cBolsaHieloPed || 0, acum: (pedido.cBolsaHieloEnt || 0) + (entProd.cBolsaHieloEnt || 0) },
+  ]
+}
+
+/**
+ * B-12: invariante de `COMPLETO` — para todo producto, 0 ≤ acumulado = pedido.
+ * - acumulado > pedido → `ENTREGA_EXCEDE_PEDIDO` (misma señal que la rama PARCIAL).
+ * - acumulado < pedido → `ENTREGA_INCOMPLETA`: no se fuerza `ENTREGADO`; el
+ *   remanente se gestiona con el flujo PARCIAL aprobado.
+ * Un pedido ya totalmente entregado con delta cero cumple la invariante y no se
+ * degrada ni se reescribe su cumplimiento.
+ */
+function validarEntregaCompleta(pedido: PedidoRawInput, entProd: ProductosEntregados): void {
+  const filas = acumuladoPorProducto(pedido, entProd)
+  const exceso = filas.find((f) => f.acum > f.pedido)
+  if (exceso) {
+    throw new Error(
+      `ENTREGA_EXCEDE_PEDIDO: la entrega acumulada supera lo pedido en #${pedido.numero} (${exceso.producto} ${exceso.acum}/${exceso.pedido})`,
+    )
+  }
+  const faltantes = filas.filter((f) => f.acum < f.pedido)
+  if (faltantes.length > 0) {
+    const detalle = faltantes.map((f) => `${f.producto} ${f.acum}/${f.pedido}`).join(', ')
+    throw new Error(
+      `ENTREGA_INCOMPLETA: el pedido #${pedido.numero} no está completo (${detalle}). Registre una entrega PARCIAL o ajuste las cantidades.`,
+    )
+  }
+}
+
 export class ProcesarPedidoService {
   /**
    * Procesa un pedido individual según su estado de entrega:
@@ -171,6 +217,14 @@ export class ProcesarPedidoService {
     // NO_ENTREGADO case
     if (cuadre.entregado === 'NO_ENTREGADO') {
       return this.procesarNoEntregado(client, pedido, cuadre, pedidosActualizados)
+    }
+
+    // B-12 (AB-ALS-EMB-2026-10-13, Adenda v1.2 §4): `COMPLETO` exige que la
+    // cantidad ACUMULADA por producto iguale lo pedido. Se valida ANTES de
+    // cualquier escritura (obligación pendiente, pedido, pagos, factura): el
+    // rechazo aborta la transacción del cierre sin dejar efectos parciales.
+    if (cuadre.entregado === 'COMPLETO') {
+      validarEntregaCompleta(pedido, entProd)
     }
 
     // Reconexión N2 (I-11, AGUA_BAMBU_N2_ALS_v2.0.md §3.4bis): la porción de
@@ -304,10 +358,11 @@ export class ProcesarPedidoService {
     })
 
     // Update PedidoItems (cantidad acumulada)
-    await this.updatePedidoItems(client, pedido.id, entAcum, precios)
+    await this.updatePedidoItems(client, pedido, entAcum, precios)
 
-    // Log price changes (audita el delta de precio en el cierre)
-    await this.logPrecioCierre(client, pedido, totalReal, userId)
+    // B-11: audita SOLO un cambio de precio unitario con autoridad (ADMIN),
+    // con antes/después. El valor entregado en el cierre se registra aparte.
+    await this.logPrecioCierre(client, pedido, preciosOriginales, precios, totalReal, userId)
 
     pedidosActualizados.push({ id: pedido.id, estado: 'ENTREGADO' })
 
@@ -593,17 +648,41 @@ export class ProcesarPedidoService {
       pedidoItem: { updateMany: (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => Promise<unknown> }
     }
 
-    const updateData: Record<string, unknown> = {
-      estadoEntrega: 'NO_ENTREGADO',
-      estado: 'NO_ENTREGADO',
-      embarqueId: null,
-      cPacaAguaEnt: 0,
-      cPacaHieloEnt: 0,
-      cBotellonFabEnt: 0,
-      cBotellonDomEnt: 0,
-      cBolsaAguaEnt: 0,
-      cBolsaHieloEnt: 0,
+    // B-08 (Adenda v1.2 §4): `NO_ENTREGADO` significa "0 unidades NUEVAS en esta
+    // misión", no anulación ni devolución de lo ya entregado. Antes se ponían a 0
+    // `Pedido.cXEnt` y `PedidoItem.cantEntrega`, borrando el cumplimiento histórico
+    // de misiones anteriores. Ahora se CONSERVA el acumulado y el estado resultante
+    // se deriva del cumplimiento comercial acumulado:
+    //   0 entregado            → NO_ENTREGADO (como antes)
+    //   0 < acumulado < pedido → PENDIENTE, replanificable
+    //   acumulado = pedido     → ya ENTREGADO: no se degrada ni se toca
+    const ceros: ProductosEntregados = {
+      cPacaAguaEnt: 0, cPacaHieloEnt: 0, cBotellonFabEnt: 0,
+      cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0,
     }
+    const filas = acumuladoPorProducto(pedido, ceros)
+    const totalEntregado = filas.reduce((s, f) => s + f.acum, 0)
+    const totalPedido = filas.reduce((s, f) => s + f.pedido, 0)
+
+    if (totalPedido > 0 && totalEntregado >= totalPedido) {
+      pedidosActualizados.push({ id: pedido.id, estado: pedido.estadoEntrega })
+      return 0
+    }
+
+    const parcialmenteEntregado = totalEntregado > 0
+    const updateData: Record<string, unknown> = parcialmenteEntregado
+      ? {
+          estadoEntrega: 'PENDIENTE',
+          estado: 'PENDIENTE',
+          embarqueId: null,
+          // chk_pedido_estadopago_proyectado: el estado de pago depende del de entrega.
+          estadoPago: calcularEstadoPago(toNumber(pedido.total), toNumber(pedido.totalPagado), 'PENDIENTE'),
+        }
+      : {
+          estadoEntrega: 'NO_ENTREGADO',
+          estado: 'NO_ENTREGADO',
+          embarqueId: null,
+        }
 
     if (cuadre.nuevoEmbarqueId) {
       const nuevoEmbarque = await tx.embarque.findUnique({
@@ -623,20 +702,13 @@ export class ProcesarPedidoService {
 
     await tx.pedido.update({ where: { id: pedido.id }, data: updateData })
 
-    for (const item of pedido.items) {
-      await tx.pedidoItem.updateMany({
-        where: { pedidoId: pedido.id, producto: item.producto },
-        data: { cantEntrega: 0 },
-      })
-    }
-
     pedidosActualizados.push({ id: pedido.id, estado: updateData.estadoEntrega as string })
     return 0
   }
 
   private async updatePedidoItems(
     client: TxOrPrisma,
-    pedidoId: string,
+    pedido: PedidoRawInput,
     entProd: ProductosEntregados,
     precios: PreciosPedido,
   ): Promise<void> {
@@ -644,65 +716,80 @@ export class ProcesarPedidoService {
       pedidoItem: { updateMany: (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => Promise<unknown> }
     }
 
-    const precioKeyMap: Record<string, keyof PreciosPedido> = {
-      PACA_AGUA: 'pacaAgua',
-      PACA_HIELO: 'pacaHielo',
-      BOTELLON_FAB: 'botellonFab',
-      BOTELLON_DOM: 'botellonDom',
-      BOLSA_AGUA: 'bolsaAgua',
-      BOLSA_HIELO: 'bolsaHielo',
-    }
+    // B-13: el pedido tiene UN ítem `BOTELLON` (las columnas legacy Fab/Dom se
+    // reparten por canal, ver `Pedido.toLegacyFields`). Antes se buscaban ítems
+    // `BOTELLON_FAB`/`BOTELLON_DOM`, que no existen: `updateMany` no afectaba
+    // ninguna fila y `PedidoItem.cantEntrega` de botellones quedaba en 0 aunque
+    // el pedido estuviera ENTREGADO. El precio es el de la columna del canal.
+    const precioBotellon = (pedido.cBotellonFabPed || 0) > 0 ? precios.botellonFab : precios.botellonDom || precios.botellonFab
 
     const itemUpdates = [
-      { producto: 'PACA_AGUA', cantidad: entProd.cPacaAguaEnt },
-      { producto: 'PACA_HIELO', cantidad: entProd.cPacaHieloEnt },
-      { producto: 'BOTELLON_FAB', cantidad: entProd.cBotellonFabEnt },
-      { producto: 'BOTELLON_DOM', cantidad: entProd.cBotellonDomEnt },
-      { producto: 'BOLSA_AGUA', cantidad: entProd.cBolsaAguaEnt },
-      { producto: 'BOLSA_HIELO', cantidad: entProd.cBolsaHieloEnt },
+      { producto: 'PACA_AGUA', cantidad: entProd.cPacaAguaEnt, precio: precios.pacaAgua },
+      { producto: 'PACA_HIELO', cantidad: entProd.cPacaHieloEnt, precio: precios.pacaHielo },
+      { producto: 'BOTELLON', cantidad: entProd.cBotellonFabEnt + entProd.cBotellonDomEnt, precio: precioBotellon },
+      { producto: 'BOLSA_AGUA', cantidad: entProd.cBolsaAguaEnt, precio: precios.bolsaAgua },
+      { producto: 'BOLSA_HIELO', cantidad: entProd.cBolsaHieloEnt, precio: precios.bolsaHielo },
     ]
 
     for (const itemUpd of itemUpdates) {
       await tx.pedidoItem.updateMany({
-        where: { pedidoId, producto: itemUpd.producto },
+        where: { pedidoId: pedido.id, producto: itemUpd.producto },
         data: {
           cantEntrega: itemUpd.cantidad,
-          precio: precios[precioKeyMap[itemUpd.producto]] || 0,
+          precio: itemUpd.precio || 0,
         },
       })
     }
   }
 
+  /**
+   * B-11 (Adenda v1.2 §4): `Historial.PRECIO_CIERRE` registra únicamente un
+   * cambio de PRECIO UNITARIO (antes/después por producto). Antes comparaba el
+   * valor de lo entregado en ESTE cierre (`totalReal`) con `Pedido.total`
+   * completo: magnitudes inconmensurables que fabricaban "cambios de precio"
+   * al completar el remanente de un pedido parcial, sin tocar ningún precio.
+   * `valorEntregadoEnCierre` va como dato informativo, nunca como precio del pedido.
+   */
   private async logPrecioCierre(
     client: TxOrPrisma,
     pedido: PedidoRawInput,
-    totalReal: number,
+    originales: PreciosPedido,
+    aplicados: PreciosPedido,
+    valorEntregadoEnCierre: number,
     userId: string | undefined,
   ): Promise<void> {
     const tx = client as unknown as {
       historial: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }
     }
 
-    const totalOriginal = toNumber(pedido.total)
-    const deltaTotal = totalReal - totalOriginal
-    if (Math.abs(deltaTotal) > 0.01) {
-      await tx.historial.create({
-        data: {
-          entidad: 'Pedido',
-          registroId: pedido.id,
-          accion: 'PRECIO_CIERRE',
-          datos: JSON.stringify({
-            pedidoNumero: pedido.numero,
-            precioOriginal: totalOriginal,
-            precioCierre: totalReal,
-            delta: deltaTotal,
-            deltaPct: totalOriginal > 0 ? ((deltaTotal / totalOriginal) * 100).toFixed(1) : '0',
-            usuario: userId || 'unknown',
-          }),
-          usuarioId: userId,
-        },
-      })
+    const etiquetas: Record<keyof PreciosPedido, string> = {
+      pacaAgua: 'PACA_AGUA',
+      pacaHielo: 'PACA_HIELO',
+      botellonFab: 'BOTELLON_FAB',
+      botellonDom: 'BOTELLON_DOM',
+      bolsaAgua: 'BOLSA_AGUA',
+      bolsaHielo: 'BOLSA_HIELO',
     }
+    const cambios = (Object.keys(etiquetas) as Array<keyof PreciosPedido>)
+      .filter((k) => Math.abs(aplicados[k] - originales[k]) > 0.001)
+      .map((k) => ({ producto: etiquetas[k], antes: originales[k], despues: aplicados[k] }))
+
+    if (cambios.length === 0) return
+
+    await tx.historial.create({
+      data: {
+        entidad: 'Pedido',
+        registroId: pedido.id,
+        accion: 'PRECIO_CIERRE',
+        datos: JSON.stringify({
+          pedidoNumero: pedido.numero,
+          cambios,
+          valorEntregadoEnCierre,
+          usuario: userId || 'unknown',
+        }),
+        usuarioId: userId,
+      },
+    })
   }
 
   // PR-1: `crearPedidoHijo` (copia productiva del cierre) se elimina — la rama
