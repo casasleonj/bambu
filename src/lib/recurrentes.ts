@@ -440,7 +440,8 @@ export async function generarPedidosRecurrentes(
     if (pedidosExistentes.length > 0) {
       return {
         generados: pedidosExistentes,
-        saltados: [],
+        saltados: [] as string[],
+        omitidos: [] as Array<{ recurrenteId: string; motivo: typeof MOTIVO_ENTREGA_INSUFICIENTE }>,
       }
     }
   }
