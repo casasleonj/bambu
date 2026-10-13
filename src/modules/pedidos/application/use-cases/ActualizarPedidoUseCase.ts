@@ -47,8 +47,15 @@ import {
   OperacionEspecializadaError,
   PedidoCerradoError,
   TotalMenorAPagadoError,
+  UbicacionEntregaInvalidaError,
+  UbicacionSoloDomicilioError,
   VIA_OPERACION_ESPECIALIZADA,
 } from '../../domain/services/pedido-edicion.errors'
+import {
+  destinoEfectivoCambia,
+  requiereEntregaSuficiente,
+  ubicacionEntregaValida,
+} from '../../domain/services/entrega-politica.service'
 
 const ESTADOS_CERRADOS = ['ENTREGADO', 'CANCELADO', 'ANULADO']
 
@@ -88,7 +95,17 @@ export class ActualizarPedidoUseCase {
   ) {}
 
   async execute(input: ActualizarPedidoInput): Promise<ActualizarPedidoResult> {
-    const tocaDireccion = input.direccionEntrega !== undefined || input.barrioEntrega !== undefined
+    const tocaUbicacion = input.entregaLat !== undefined || input.entregaLng !== undefined
+    const tocaDireccion =
+      input.direccionEntrega !== undefined || input.barrioEntrega !== undefined || tocaUbicacion
+    // Ubicación propia: juntas y utilizables, o ambas null (quitarla). Un par
+    // a medias o inválido nunca se persiste ni se ignora en silencio.
+    let ubicacionNueva: { lat: number; lng: number } | null | undefined // undefined = no se toca
+    if (tocaUbicacion) {
+      const quitar = input.entregaLat == null && input.entregaLng == null
+      ubicacionNueva = quitar ? null : ubicacionEntregaValida(input.entregaLat, input.entregaLng)
+      if (!quitar && ubicacionNueva === null) throw new UbicacionEntregaInvalidaError()
+    }
     // F-ENTREGA: resolver el link a coords ANTES del lock (I/O), igual que
     // CrearPedidoUseCase / PreviewPedidoUseCase.
     const coordsDeLink = tocaDireccion ? await this.resolverCoordsDeLinkParaEntrega(input.pedidoId) : null
@@ -121,6 +138,7 @@ export class ActualizarPedidoUseCase {
         throw new PedidoCerradoError(estadoActual, [
           ...(input.direccionEntrega !== undefined ? ['direccionEntrega'] : []),
           ...(input.barrioEntrega !== undefined ? ['barrioEntrega'] : []),
+          ...(tocaUbicacion ? ['entregaLat', 'entregaLng'] : []),
           ...(tocaClienteDir ? ['actualizarCliente'] : []),
         ])
       }
@@ -250,10 +268,33 @@ export class ActualizarPedidoUseCase {
           const snapshotDir = igualAResuelta ? undefined : (dirNueva || undefined)
           const snapshotBarrio = igualAResuelta ? undefined : (barrioNuevo || undefined)
 
-          // Suficiencia de entrega — MISMA autoridad que el preview (§16).
-          if (pedido.canal.get() === 'DOMICILIO' && !esCF) {
+          // Ubicación propia efectiva tras la edición (undefined = no se toca → la actual).
+          if (ubicacionNueva !== undefined && ubicacionNueva !== null && pedido.canal.get() !== 'DOMICILIO') {
+            throw new UbicacionSoloDomicilioError()
+          }
+          const coordsActuales = pedido.entregaLat != null && pedido.entregaLng != null
+            ? { lat: pedido.entregaLat, lng: pedido.entregaLng }
+            : null
+          const coordsNuevas = ubicacionNueva === undefined ? coordsActuales : ubicacionNueva
+
+          // Suficiencia de entrega — MISMA autoridad que el preview (§16), y solo
+          // cuando CAMBIA el destino efectivo de un domicilio todavía pendiente
+          // (D2): una edición independiente nunca se bloquea por una
+          // insuficiencia histórica. El carácter anónimo no es excepción (D3).
+          const resueltaActual = pickDireccionTexto({ cliente: clienteActual, negocio: negocioActual })
+          const cambiaDestino = destinoEfectivoCambia(
+            {
+              direccion: pedido.direccionEntrega ?? resueltaActual.direccion,
+              barrio: pedido.barrioEntrega ?? resueltaActual.barrio,
+              lat: coordsActuales?.lat ?? null,
+              lng: coordsActuales?.lng ?? null,
+            },
+            { direccion: dirNueva ?? '', barrio: barrioNuevo ?? '', lat: coordsNuevas?.lat ?? null, lng: coordsNuevas?.lng ?? null },
+          )
+          if (cambiaDestino && requiereEntregaSuficiente({ canal: pedido.canal.get(), estadoEntrega: estadoActual })) {
             const entrega = resolverEntrega({
               canal: 'DOMICILIO',
+              pedidoCoords: coordsNuevas,
               overrideDireccion: dirNueva,
               overrideBarrio: barrioNuevo,
               cliente: clienteParaResolucion && clienteActual
@@ -265,6 +306,15 @@ export class ActualizarPedidoUseCase {
               coordsDeLink,
             })
             if (entrega.estado === 'INSUFICIENTE') throw new EntregaInsuficienteError()
+          }
+
+          if (ubicacionNueva !== undefined) {
+            const antesLat = pedido.entregaLat ?? null
+            const antesLng = pedido.entregaLng ?? null
+            const dLat = ubicacionNueva?.lat ?? null
+            const dLng = ubicacionNueva?.lng ?? null
+            if (antesLat !== dLat) { registrar('entregaLat', antesLat, dLat); props.entregaLat = dLat ?? undefined }
+            if (antesLng !== dLng) { registrar('entregaLng', antesLng, dLng); props.entregaLng = dLng ?? undefined }
           }
 
           if ((snapshotDir ?? null) !== (pedido.direccionEntrega ?? null)) {
@@ -297,6 +347,8 @@ export class ActualizarPedidoUseCase {
       if (campos.includes('obs') && (saved.obs || '') !== (props.obs || '')) noPersistidos.push('obs')
       if (campos.includes('direccionEntrega') && (saved.direccionEntrega ?? null) !== (props.direccionEntrega ?? null)) noPersistidos.push('direccionEntrega')
       if (campos.includes('barrioEntrega') && (saved.barrioEntrega ?? null) !== (props.barrioEntrega ?? null)) noPersistidos.push('barrioEntrega')
+      if (campos.includes('entregaLat') && (saved.entregaLat ?? null) !== (props.entregaLat ?? null)) noPersistidos.push('entregaLat')
+      if (campos.includes('entregaLng') && (saved.entregaLng ?? null) !== (props.entregaLng ?? null)) noPersistidos.push('entregaLng')
       if (campos.includes('items') && JSON.stringify(snapshotLineas(saved.items)) !== JSON.stringify(snapshotLineas(props.items))) noPersistidos.push('items')
       if (noPersistidos.length > 0) throw new EdicionNoPersistidaError(noPersistidos)
 

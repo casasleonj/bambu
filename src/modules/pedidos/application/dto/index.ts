@@ -52,6 +52,9 @@ export interface CrearPedidoInput {
    */
   direccionEntrega?: string
   barrioEntrega?: string
+  /** Ubicación del DESTINO (≠ GPS de comprobación de entrega). Ambas o ninguna. */
+  entregaLat?: number
+  entregaLng?: number
   createdById?: string
   createdByRole?: string
   // Offline-first: id generado por el cliente para dedup al reenviar
@@ -77,6 +80,9 @@ export interface ActualizarPedidoInput {
   /** Snapshot de dirección puntual del pedido — ver CrearPedidoInput. */
   direccionEntrega?: string
   barrioEntrega?: string
+  /** Ubicación del destino: undefined = no se toca; ambas null = quitarla. */
+  entregaLat?: number | null
+  entregaLng?: number | null
   /** Quién dispara la actualización — usado para auditar cambios de dirección. */
   usuarioId?: string
   offlineId?: string
@@ -176,6 +182,8 @@ export interface PedidoResumenDTO {
   obs?: string
   direccionEntrega?: string | null
   barrioEntrega?: string | null
+  entregaLat?: number | null
+  entregaLng?: number | null
   offlineId?: string | null
   gpsAccuracy?: number | null
   gpsJustificacion?: string | null
@@ -303,6 +311,8 @@ export interface PreviewPedidoInput {
   /** snapshot de dirección/barrio que el usuario capturó para ESTE pedido (gana sobre negocio/cliente). */
   direccionEntrega?: string | null
   barrioEntrega?: string | null
+  entregaLat?: number | null
+  entregaLng?: number | null
   pedidoOrigenId?: string
   /** modo edición: preview de un PUT declarativo de items sobre un pedido existente. */
   pedidoId?: string

@@ -152,3 +152,29 @@ describe('resolverEntrega — matriz de suficiencia (docs/pedidos/entrega-sufici
     expect(r.estado).toBe('SUFICIENTE')
   })
 })
+
+describe('resolverEntrega — ubicación propia del pedido (entregaLat/entregaLng)', () => {
+  it('DOMICILIO sin ningún dato pero con coords propias del pedido → SUFICIENTE por vía GEO', () => {
+    const r = resolverEntrega({ canal: 'DOMICILIO', pedidoCoords: { lat: 4.711, lng: -74.0721 } })
+    expect(r.estado).toBe('SUFICIENTE_COMPLEMENTARIA_FALTANTE')
+    expect(r.via).toBe('GEO')
+    expect(r.coords).toEqual({ lat: 4.711, lng: -74.0721, origen: 'PEDIDO' })
+    expect(r.faltaBloqueante).toEqual([])
+  })
+  it('coords propias ganan sobre las del cliente (el destino puntual manda)', () => {
+    const r = resolverEntrega({
+      canal: 'DOMICILIO',
+      pedidoCoords: { lat: 4.7, lng: -74.1 },
+      cliente: { lat: 4.5, lng: -73.9, geocodeOrigen: 'MANUAL' },
+    })
+    expect(r.coords).toEqual({ lat: 4.7, lng: -74.1, origen: 'PEDIDO' })
+  })
+  it('coords propias inválidas ((0,0), NaN) NO bastan', () => {
+    expect(resolverEntrega({ canal: 'DOMICILIO', pedidoCoords: { lat: 0, lng: 0 } }).estado).toBe('INSUFICIENTE')
+    expect(resolverEntrega({ canal: 'DOMICILIO', pedidoCoords: { lat: NaN, lng: -74 } }).estado).toBe('INSUFICIENTE')
+  })
+  it('barrio solo sigue sin bastar, con o sin cliente anónimo', () => {
+    expect(resolverEntrega({ canal: 'DOMICILIO', overrideBarrio: 'Chapinero' }).estado).toBe('INSUFICIENTE')
+  })
+})
+

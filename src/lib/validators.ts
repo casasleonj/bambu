@@ -90,6 +90,10 @@ export const PedidoCreateSchema = z.object({
   // ver CrearPedidoUseCase.
   direccionEntrega: z.string().max(200).optional(),
   barrioEntrega: z.string().max(100).optional(),
+  // Ubicación del DESTINO del pedido (≠ GPS de comprobación de entrega). Juntas
+  // o ninguna: el use case rechaza un par a medias/inválido (422).
+  entregaLat: z.number().min(-90).max(90).optional().nullable(),
+  entregaLng: z.number().min(-180).max(180).optional().nullable(),
   // Offline-first: id generado por el cliente para dedup si se encola
   offlineId: z.string().optional(),
   // G6/ventaRapida→origen (decisión PO 2026-09-06): `ventaRapida: boolean`
@@ -153,6 +157,8 @@ export const PreviewPedidoSchema = z.object({
   /** snapshot de dirección/barrio del pedido → suficiencia de entrega. */
   direccionEntrega: z.string().max(500).optional().nullable(),
   barrioEntrega: z.string().max(200).optional().nullable(),
+  entregaLat: z.number().min(-90).max(90).optional().nullable(),
+  entregaLng: z.number().min(-180).max(180).optional().nullable(),
   pedidoOrigenId: z.string().optional(),
   /** modo edición: preview de un PUT declarativo sobre un pedido existente. */
   pedidoId: z.string().trim().min(1).optional(),
@@ -347,6 +353,9 @@ export const PedidoUpdateSchema = z.object({
   // Snapshot de dirección puntual del pedido — ver PedidoCreateSchema.
   direccionEntrega: z.string().max(200).optional(),
   barrioEntrega: z.string().max(100).optional(),
+  // Ubicación del destino: undefined = no se toca; ambas null = quitarla.
+  entregaLat: z.number().min(-90).max(90).optional().nullable(),
+  entregaLng: z.number().min(-180).max(180).optional().nullable(),
   items: z.array(PedidoItemSchema).superRefine(itemsSinProductosDuplicados).optional(),
   // Offline-first: dedup si la request se encola y se reintenta
   offlineId: z.string().optional(),

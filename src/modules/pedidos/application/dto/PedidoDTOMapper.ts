@@ -69,6 +69,8 @@ export class PedidoDTOMapper {
       obs: pedido.obs,
       direccionEntrega: pedido.direccionEntrega ?? null,
       barrioEntrega: pedido.barrioEntrega ?? null,
+      entregaLat: pedido.entregaLat ?? null,
+      entregaLng: pedido.entregaLng ?? null,
       offlineId: pedido.offlineId ?? null,
       gpsAccuracy: pedido.gpsAccuracy ?? null,
       gpsJustificacion: pedido.gpsJustificacion ?? null,

@@ -13,15 +13,14 @@ const source = readFileSync(
 )
 
 describe('CrearPedidoUseCase: entrega posterior de venta rápida', () => {
-  it('`entregaInmediata` = venta rápida sin `entregado: false`', () => {
-    expect(source).toMatch(
-      /entregaInmediata\s*=\s*origen\.isVentaRapida\(\)\s*&&\s*input\.entregado\s*!==\s*false/,
-    )
+  it('el estado de entrega al crear sale de `estadoEntregaAlCrear` (misma función que el preview)', () => {
+    expect(source).toMatch(/estadoEntregaCreacion\s*=\s*estadoEntregaAlCrear\(\{\s*origen:\s*origenCreacion,\s*entregado:\s*input\.entregado\s*\}\)/)
+    // la regla en sí está cubierta por entrega-politica.service.test.ts
   })
 
-  it('estadoEntrega y cantEntrega derivan de `entregaInmediata` (no de isVentaRapida directo)', () => {
-    expect(source).toMatch(/estadoEntrega\s*=\s*entregaInmediata/)
-    expect(source).toMatch(/entregaInmediata\s*\?\s*pr\.cantidad\s*:\s*0/)
+  it('estadoEntrega y cantEntrega derivan de ese estado (no de isVentaRapida directo)', () => {
+    expect(source).toMatch(/EstadoEntregaVO\.create\(estadoEntregaCreacion\)/)
+    expect(source).toMatch(/estadoEntregaCreacion\s*===\s*'ENTREGADO'\s*\?\s*pr\.cantidad\s*:\s*0/)
     expect(source).not.toMatch(/origen\.isVentaRapida\(\)\s*\?\s*pr\.cantidad\s*:\s*0/)
   })
 

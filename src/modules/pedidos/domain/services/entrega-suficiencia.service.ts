@@ -37,6 +37,12 @@ export interface ResolverEntregaInput {
   negocio?: EntregaFuente | null
   /** coords resueltas en vivo desde linkUbicacion (server-only), si el caller lo intentó. */
   coordsDeLink?: { lat: number; lng: number } | null
+  /**
+   * Ubicación propia del pedido (`Pedido.entregaLat/entregaLng`): el destino
+   * puntual de ESTE pedido. Gana sobre las coords de negocio/cliente. Nunca
+   * debe recibir el GPS de comprobación de entrega.
+   */
+  pedidoCoords?: { lat: unknown; lng: unknown } | null
 }
 
 export type EstadoEntrega =
@@ -75,6 +81,16 @@ const coordValida = (lat: number, lng: number): boolean =>
   Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)
 
 function coordsUtilizables(input: ResolverEntregaInput): { lat: number; lng: number; origen: string | null } | null {
+  // 0) Destino propio del pedido: gana sobre todo lo demás. Se valida acá
+  // (finitas, ≠ (0,0)); si no es utilizable no cuenta como fuente propia y se
+  // evalúan negocio/cliente como siempre (la API rechaza coords propias
+  // inválidas antes de persistirlas, así que esto es defensa en profundidad).
+  const propia = input.pedidoCoords
+  if (propia && propia.lat != null && propia.lng != null) {
+    const lat = Number(propia.lat)
+    const lng = Number(propia.lng)
+    if (coordValida(lat, lng)) return { lat, lng, origen: 'PEDIDO' }
+  }
   // pickCoords valida isFinite y salta null; NO descarta el literal (0,0)
   // (Golfo de Guinea) — eso lo hace `coordValida` acá. Prioridad negocio → cliente.
   const efectivas = pickCoords({

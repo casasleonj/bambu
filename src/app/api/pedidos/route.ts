@@ -258,6 +258,8 @@ export async function POST(request: NextRequest) {
       actualizarCliente,
       direccionEntrega,
       barrioEntrega,
+      entregaLat,
+      entregaLng,
       origen,
       entregado,
       pedidoOrigenId,
@@ -334,6 +336,8 @@ export async function POST(request: NextRequest) {
       } : undefined,
       direccionEntrega,
       barrioEntrega,
+      entregaLat: entregaLat ?? undefined,
+      entregaLng: entregaLng ?? undefined,
       createdById: authResult.user?.id ?? undefined,
       createdByRole: authResult.user?.role ?? undefined,
     })
@@ -395,6 +399,12 @@ export async function POST(request: NextRequest) {
       if (error.message === 'EXCEPCION_CREDITO_YA_CONSUMIDA') return apiError('La excepción de crédito ya fue utilizada por otro pedido', 409)
       if (error.name === 'EntregaInsuficienteError') {
         return apiError('Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.', 422, { code: 'ENTREGA_INSUFICIENTE' })
+      }
+      if (error.name === 'UbicacionEntregaInvalidaError') {
+        return apiError('La ubicación del domicilio debe traer latitud y longitud válidas.', 422, { code: 'UBICACION_ENTREGA_INVALIDA' })
+      }
+      if (error.name === 'UbicacionSoloDomicilioError') {
+        return apiError('La ubicación de destino solo aplica a pedidos a domicilio.', 422, { code: 'UBICACION_SOLO_DOMICILIO' })
       }
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating pedido:')

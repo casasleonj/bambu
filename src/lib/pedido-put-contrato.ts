@@ -22,6 +22,8 @@ export const PUT_CAMPOS_PROCESADOS = [
   'actualizarCliente',
   'direccionEntrega',
   'barrioEntrega',
+  'entregaLat',
+  'entregaLng',
   'estado',
   'estadoEntrega',
 ] as const

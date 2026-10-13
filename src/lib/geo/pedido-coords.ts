@@ -6,7 +6,7 @@
  * consumidores (TSP, Maps del repartidor, payload API de pedidos, SSR de
  * /pedidos, validación GPS) usan ESTA función para que no diverjan.
  *
- * Resolución: negocio con coords válidas → negocio; si no → cliente.
+ * Resolución: coords propias del pedido → negocio con coords válidas → cliente.
  * `Number` cast (los campos son Decimal nullable) + `isFinite`.
  */
 
@@ -17,6 +17,12 @@ export interface CoordSource {
 }
 
 export interface PedidoCoordInput {
+  /**
+   * Destino PROPIO del pedido (`Pedido.entregaLat/entregaLng`). Gana sobre
+   * negocio y cliente: es el destino puntual de ESTE pedido. NO es el GPS de
+   * comprobación de entrega (`gpsLat/gpsLng`), que nunca se pasa acá.
+   */
+  pedido?: CoordSource | null
   cliente?: CoordSource | null
   negocio?: CoordSource | null
 }
@@ -44,5 +50,5 @@ function firstValid(sources: Array<CoordSource | null | undefined>): EffectiveCo
 
 /** Resuelve las coords efectivas de un pedido. `null` si ninguna fuente tiene coords válidas. */
 export function pickCoords(p: PedidoCoordInput): EffectiveCoords | null {
-  return firstValid([p.negocio, p.cliente])
+  return firstValid([p.pedido, p.negocio, p.cliente])
 }

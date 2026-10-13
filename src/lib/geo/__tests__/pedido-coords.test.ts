@@ -49,4 +49,29 @@ describe('pickCoords', () => {
     expect(pickCoords({ cliente: { lat: NaN, lng: -74.05 } })).toBeNull()
     expect(pickCoords({ cliente: { lat: Infinity, lng: -74.05 } })).toBeNull()
   })
+
+  describe('coords propias del pedido (entregaLat/entregaLng)', () => {
+    it('GANAN sobre negocio y cliente: es el destino de ESTE pedido', () => {
+      const r = pickCoords({
+        pedido: { lat: 4.7, lng: -74.1 },
+        negocio: { lat: 4.6, lng: -74.0 },
+        cliente: { lat: 4.5, lng: -73.9 },
+      })
+      expect(r).toEqual({ lat: 4.7, lng: -74.1, nombre: null })
+    })
+    it('sin coords propias, se mantiene negocio → cliente', () => {
+      expect(pickCoords({ pedido: { lat: null, lng: null }, negocio: { lat: 4.6, lng: -74.0 } }))
+        .toEqual({ lat: 4.6, lng: -74.0, nombre: null })
+      expect(pickCoords({ pedido: null, cliente: { lat: 4.5, lng: -73.9 } }))
+        .toEqual({ lat: 4.5, lng: -73.9, nombre: null })
+    })
+    it('coords propias a medias (solo lat) no cuentan', () => {
+      expect(pickCoords({ pedido: { lat: 4.7, lng: null }, cliente: { lat: 4.5, lng: -73.9 } }))
+        .toEqual({ lat: 4.5, lng: -73.9, nombre: null })
+    })
+    it('Decimal-like (string) se castea a number', () => {
+      const r = pickCoords({ pedido: { lat: '4.700000', lng: '-74.100000' } })
+      expect(r).toEqual({ lat: 4.7, lng: -74.1, nombre: null })
+    })
+  })
 })
