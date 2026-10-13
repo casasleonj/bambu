@@ -11,6 +11,7 @@ import { startOfDayInBogota, endOfDayInBogota, nowInBogota } from '@/lib/date-he
 import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
+import { whereEmbarquesPendientesCierreDia } from '@/lib/cierre-dia-embarques'
 
 type PagoMetodoMonto = { metodo: MetodoPago; monto: unknown }
 type DiasPreviosAgg = { _count: number; _sum: { monto: unknown } }
@@ -186,7 +187,7 @@ export async function GET(request: NextRequest) {
       pagosCapturadosHoy,
     ] = await prisma.$transaction([
       prisma.embarque.findMany({
-        where: { fecha: dateRange, estado: EstadoEmbarque.ABIERTO },
+        where: whereEmbarquesPendientesCierreDia(dateRange),
         select: { id: true, numero: true, trabajador: { select: { nombre: true } } },
       }),
       prisma.pedido.findMany({
@@ -575,7 +576,7 @@ export async function POST(request: NextRequest) {
 
         // 4. Verify no open embarques
         const embarquesAbiertos = await tx.embarque.count({
-          where: { fecha: { gte: startOfDay, lt: nextDay }, estado: { in: [EstadoEmbarque.ABIERTO, EstadoEmbarque.EN_RUTA] } },
+          where: whereEmbarquesPendientesCierreDia({ gte: startOfDay, lt: nextDay }),
         })
         if (embarquesAbiertos > 0) {
           throw new Error('EMBARQUES_ABIERTOS')
