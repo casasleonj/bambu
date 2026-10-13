@@ -1,0 +1,38 @@
+name: Backlog
+
+# Hace cumplir la regla de docs/BACKLOG.md: todo issue abierto tiene exactamente
+# una etiqueta estado:*, y todo PR cita el issue que resuelve.
+# Lógica y tests: .github/scripts/backlog.cjs + .github/scripts/__tests__/.
+
+on:
+  issues:
+    types: [opened, reopened, closed, labeled, unlabeled]
+  pull_request:
+    types: [opened, reopened, edited, synchronize, ready_for_review, labeled, unlabeled, closed]
+  schedule:
+    - cron: '37 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: backlog-${{ github.event.pull_request.number || github.event.issue.number || 'barrido' }}
+  cancel-in-progress: false
+
+jobs:
+  backlog:
+    name: Backlog (estado de issues y PR vinculado)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const backlog = require('./.github/scripts/backlog.cjs')
+            await backlog.run({ github, context, core })
