@@ -17,6 +17,9 @@ export interface Pedido {
   telefonoCli: string
   zonaCli: string
   barrioCli: string
+  /** Ubicación propia del pedido (destino de la entrega); `lat`/`lng` son las efectivas. */
+  entregaLat?: number | null
+  entregaLng?: number | null
   tipo: string
   canal: string
   estado: string

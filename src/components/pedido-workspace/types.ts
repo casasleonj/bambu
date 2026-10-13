@@ -34,6 +34,9 @@ export interface DraftPedido {
   obs?: string
   direccionEntrega?: string
   barrioEntrega?: string
+  /** Ubicación propia del pedido (destino de la entrega). NUNCA es el GPS de comprobación. */
+  entregaLat?: number | null
+  entregaLng?: number | null
   /** DOMICILIO sin negocio: si true, la dirección puntual NO se persiste al Cliente. */
   soloParaEstePedido?: boolean
   /** G11.B — trazabilidad cuando el flujo es "nueva demanda". */
@@ -92,6 +95,7 @@ export type WorkspaceAction =
   | { type: 'SET_ENTREGADO'; entregado: boolean }
   | { type: 'SET_OBS'; obs: string }
   | { type: 'SET_DIRECCION'; direccion: string; barrio: string }
+  | { type: 'SET_UBICACION'; lat: number | null; lng: number | null }
   /** flujo "Repetir" — aplica varios campos de una con su procedencia. */
   | { type: 'APPLY_PROPOSAL'; draft: Partial<DraftPedido>; origins: Record<string, ValueOrigin> }
   | { type: 'PREVIEW_PENDING' }

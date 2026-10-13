@@ -64,6 +64,9 @@ export interface WorkspacePedidoInicial {
   /** dirección/barrio del NEGOCIO cuando `negocioId` está seteado (ya resueltos por el caller). */
   negocioDireccion?: string | null
   negocioBarrio?: string | null
+  /** ubicación propia ya guardada en el pedido */
+  entregaLat?: number | null
+  entregaLng?: number | null
   canal: 'PUNTO' | 'DOMICILIO'
   /**
    * Origen PERSISTIDO del pedido — se usa tal cual, NUNCA se re-deriva del
@@ -90,6 +93,12 @@ export interface PedidosWorkspaceProps {
    * traer `clienteId`, `canal` y `pedidoOrigenId`.
    */
   modo?: 'crear' | 'nueva-demanda'
+  /**
+   * Corrección de un pedido offline rechazado (422): reusa la clave de
+   * idempotencia ORIGINAL para que reenviarlo no cree un segundo pedido ni
+   * un segundo cobro.
+   */
+  offlineIdInicial?: string
   /** número del pedido origen — sólo para el encabezado en modo nueva-demanda. */
   pedidoOrigenNumero?: number
   /**
@@ -114,12 +123,12 @@ export interface PedidosWorkspaceProps {
  * "aplicada" del patrón) vive como `useState` local — igual que en el
  * monolito, no es parte del "draft" que se envía.
  */
-export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial, modo = 'crear', pedidoOrigenNumero, onSubmit, onCancel }: PedidosWorkspaceProps) {
+export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial, modo = 'crear', pedidoOrigenNumero, offlineIdInicial, onSubmit, onCancel }: PedidosWorkspaceProps) {
   const modoEdicion = Boolean(pedidoInicial)
   const esNuevaDemanda = modo === 'nueva-demanda'
   // Clave de idempotencia del borrador (plan de integridad v1.2 §5.B): nace al
   // abrir el workspace y se reusa en cada reintento de este mismo borrador.
-  const [claveBorrador] = useState(generateUUID)
+  const [claveBorrador] = useState(() => offlineIdInicial ?? generateUUID())
 
   const [state, dispatch] = useReducer(
     workspaceReducer,
@@ -135,6 +144,8 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
           obs: pedidoInicial.obs ?? undefined,
           direccionEntrega: (pedidoInicial.negocioId ? pedidoInicial.negocioDireccion : pedidoInicial.clienteDireccion) ?? '',
           barrioEntrega: (pedidoInicial.negocioId ? pedidoInicial.negocioBarrio : pedidoInicial.clienteBarrio) ?? '',
+          entregaLat: pedidoInicial.entregaLat ?? null,
+          entregaLng: pedidoInicial.entregaLng ?? null,
         }
       : intent === 'venta-rapida'
         // venta rápida = entrega inmediata: el preview proyecta lo mismo que el
@@ -333,6 +344,8 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
       actualizarCliente,
       direccionEntrega: state.draft.canal === 'DOMICILIO' ? (state.draft.direccionEntrega || undefined) : undefined,
       barrioEntrega: state.draft.canal === 'DOMICILIO' ? (state.draft.barrioEntrega || undefined) : undefined,
+      entregaLat: state.draft.canal === 'DOMICILIO' ? (state.draft.entregaLat ?? undefined) : undefined,
+      entregaLng: state.draft.canal === 'DOMICILIO' ? (state.draft.entregaLng ?? undefined) : undefined,
       // modo edición: el PUT /api/pedidos/[id] (handlePedidoSubmit bifurca en isEdit).
       ...(modoEdicion ? { isEdit: true, pedidoId: pedidoInicial!.id } : { offlineId: claveBorrador }),
     })
@@ -437,6 +450,9 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
           barrioEntrega={state.draft.barrioEntrega ?? ''}
           onDireccionChange={(v) => dispatch({ type: 'SET_DIRECCION', direccion: v, barrio: state.draft.barrioEntrega ?? '' })}
           onBarrioChange={(v) => dispatch({ type: 'SET_DIRECCION', direccion: state.draft.direccionEntrega ?? '', barrio: v })}
+          entregaLat={state.draft.entregaLat ?? null}
+          entregaLng={state.draft.entregaLng ?? null}
+          onUbicacionChange={(lat, lng) => dispatch({ type: 'SET_UBICACION', lat, lng })}
           previewPending={state.previewPending}
         />
       )}

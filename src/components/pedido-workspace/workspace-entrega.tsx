@@ -1,5 +1,6 @@
 'use client'
 
+import { UbicacionEntregaInput } from './ubicacion-entrega-input'
 import type { EntregaResuelta } from '@/modules/pedidos/application/dto'
 
 const FALTA_LABEL: Record<string, string> = {
@@ -31,6 +32,9 @@ export function WorkspaceEntrega({
   barrioEntrega,
   onDireccionChange,
   onBarrioChange,
+  entregaLat,
+  entregaLng,
+  onUbicacionChange,
   previewPending,
 }: {
   entrega: EntregaResuelta | null | undefined
@@ -39,6 +43,9 @@ export function WorkspaceEntrega({
   barrioEntrega: string
   onDireccionChange: (v: string) => void
   onBarrioChange: (v: string) => void
+  entregaLat: number | null
+  entregaLng: number | null
+  onUbicacionChange: (lat: number | null, lng: number | null) => void
   previewPending: boolean
 }) {
   if (canal !== 'DOMICILIO') return null
@@ -74,6 +81,12 @@ export function WorkspaceEntrega({
         onChange={(e) => onBarrioChange(e.target.value)}
         data-testid="workspace-entrega-barrio"
         className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+      />
+      <UbicacionEntregaInput
+        lat={entregaLat}
+        lng={entregaLng}
+        onChange={onUbicacionChange}
+        className="col-span-2"
       />
     </div>
   )

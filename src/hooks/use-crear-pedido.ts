@@ -50,6 +50,8 @@ export interface CrearPedidoPayload {
   }
   direccionEntrega?: string
   barrioEntrega?: string
+  entregaLat?: number | null
+  entregaLng?: number | null
   /**
    * G11.B (decisión PO 2026-09-06): trazabilidad "nueva demanda" — este
    * Pedido nace de una operación existente (el cliente pidió más/otra cosa

@@ -33,6 +33,7 @@ import { getPresetDate, getTodayString, buildDateRangeFilter, getTodayRange } fr
 import { usePedidos } from '@/hooks/use-pedidos'
 import { usePedidosCounts } from '@/hooks/use-pedidos-counts'
 import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
+import type { DraftPedido } from '@/components/pedido-workspace/types'
 import { useCrearPedido, type CrearPedidoPayload } from '@/hooks/use-crear-pedido'
 import { offlineDb } from '@/lib/db/offline'
 import { SYNC_ITEM_DONE_EVENT } from '@/lib/db/sync'
@@ -180,6 +181,43 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     void offlineDb.failedItems.where('offlineId').equals(offlineId).delete().catch((error) => {
       console.warn('[pendingPedidos] error descartando failedItem', error)
     })
+  }, [])
+
+  // Corrección de un pedido offline rechazado (422): se reabre en el Hub con el
+  // borrador original y la MISMA clave de idempotencia (offlineId).
+  const [correccion, setCorreccion] = useState<{ offlineId: string; draft: Partial<DraftPedido> } | null>(null)
+
+  const corregirFailedPedido = useCallback(async (offlineId: string) => {
+    try {
+      const item = await offlineDb.failedItems.where('offlineId').equals(offlineId).first()
+      if (!item) {
+        toast.error('No se encontró el pedido rechazado en este dispositivo.')
+        return
+      }
+      const body = JSON.parse(item.body) as Record<string, unknown>
+      const draft: Partial<DraftPedido> = {
+        clienteId: (body.clienteId as string | undefined) ?? null,
+        negocioId: (body.negocioId as string | undefined) ?? null,
+        canal: (body.canal as 'PUNTO' | 'DOMICILIO' | undefined) ?? 'DOMICILIO',
+        origen: (body.origen as 'PEDIDO' | 'VENTA_RAPIDA' | undefined) ?? 'PEDIDO',
+        items: Array.isArray(body.items) ? (body.items as DraftPedido['items']) : [],
+        pagos: Array.isArray(body.pagos) ? (body.pagos as DraftPedido['pagos']) : [],
+        entregado: body.entregado as boolean | undefined,
+        obs: body.obs as string | undefined,
+        direccionEntrega: body.direccionEntrega as string | undefined,
+        barrioEntrega: body.barrioEntrega as string | undefined,
+        entregaLat: (body.entregaLat as number | null | undefined) ?? null,
+        entregaLng: (body.entregaLng as number | null | undefined) ?? null,
+        pedidoOrigenId: body.pedidoOrigenId as string | undefined,
+      }
+      setCorreccion({ offlineId, draft })
+      setShowVentaRapida(false)
+      setModalKey((k) => k + 1)
+      setShowModal(true)
+    } catch (error) {
+      console.warn('[pendingPedidos] error reabriendo pedido rechazado', error)
+      toast.error('No se pudo reabrir el pedido rechazado.')
+    }
   }, [])
 
   const [embarques, setEmbarques] = useState<Embarque[]>([])
@@ -973,6 +1011,11 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
    * `false` = no se guardó y el formulario debe permitir reintentar el MISMO
    * borrador (misma clave de idempotencia, ver `use-crear-pedido`).
    */
+  function ubicacionCambio(data: PedidoUnifiedData, actual: Pedido | null): boolean {
+    if (data.entregaLat === undefined && data.entregaLng === undefined) return false
+    return (data.entregaLat ?? null) !== (actual?.entregaLat ?? null) || (data.entregaLng ?? null) !== (actual?.entregaLng ?? null)
+  }
+
   async function handlePedidoSubmit(data: PedidoUnifiedData): Promise<boolean> {
     try {
       const isEdit = data.isEdit && data.pedidoId
@@ -995,6 +1038,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           // formulario la devuelve igual, no hay nada que pedir.
           direccionEntrega: data.direccionEntrega !== undefined && data.direccionEntrega === (pedidoEditando?.zonaCli ?? '') && (data.barrioEntrega ?? '') === (pedidoEditando?.barrioCli ?? '') ? undefined : data.direccionEntrega,
           barrioEntrega: data.direccionEntrega !== undefined && data.direccionEntrega === (pedidoEditando?.zonaCli ?? '') && (data.barrioEntrega ?? '') === (pedidoEditando?.barrioCli ?? '') ? undefined : data.barrioEntrega,
+          // Ubicación propia: solo si cambió (undefined = no tocar; null = quitar).
+          ...(ubicacionCambio(data, pedidoEditando) ? { entregaLat: data.entregaLat ?? null, entregaLng: data.entregaLng ?? null } : {}),
         }
         if (Object.values(cuerpo).every((v) => v === undefined)) {
           // Nada que pedir: no se llama al servidor ni se aparenta haber guardado.
@@ -1047,6 +1092,11 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         envioEncoladoRef.current = false
         const result = await crearPedido(data as unknown as CrearPedidoPayload)
         if (!result) return envioEncoladoRef.current // null: error u offline (encolado)
+        // Corrección de un pedido rechazado: ya se registró con su clave original.
+        if (correccion) {
+          discardFailedPedido(correccion.offlineId)
+          setCorreccion(null)
+        }
         setShowModal(false)
         setShowVentaRapida(false)
         setPedidoInicial(undefined)
@@ -1998,6 +2048,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             onCambiarEstado={cambiarEstado}
             onCreateClick={() => setShowModal(true)}
             onDiscardFailed={discardFailedPedido}
+            onCorrectFailed={hubMode ? corregirFailedPedido : undefined}
           />
         )
       )}
@@ -2064,8 +2115,10 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
               key={`ws-${modalKey}`}
               clientes={clientes}
               intent={showVentaRapida ? 'venta-rapida' : 'pedido'}
+              initialDraft={correccion?.draft}
+              offlineIdInicial={correccion?.offlineId}
               onSubmit={handlePedidoSubmit}
-              onCancel={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setNuevaDemanda(null) }}
+              onCancel={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setNuevaDemanda(null); setCorreccion(null) }}
             />
           ) : (
             <PedidoFormUnified
@@ -2652,6 +2705,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
                     origen: pedidoEditando.origen as 'PEDIDO' | 'VENTA_RAPIDA',
                     items: itemsArray as WorkspacePedidoInicial['items'],
                     obs: pedidoEditando.obs,
+                    entregaLat: pedidoEditando.entregaLat ?? null,
+                    entregaLng: pedidoEditando.entregaLng ?? null,
                   }}
                 />
               ) : (

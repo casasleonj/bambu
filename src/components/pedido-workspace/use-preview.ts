@@ -32,6 +32,8 @@ function toRequestBody(draft: DraftPedido, pedidoId?: string) {
     // snapshot de dirección del pedido → suficiencia de entrega (autoridad única).
     direccionEntrega: draft.canal === 'DOMICILIO' ? (draft.direccionEntrega || undefined) : undefined,
     barrioEntrega: draft.canal === 'DOMICILIO' ? (draft.barrioEntrega || undefined) : undefined,
+    entregaLat: draft.canal === 'DOMICILIO' ? (draft.entregaLat ?? undefined) : undefined,
+    entregaLng: draft.canal === 'DOMICILIO' ? (draft.entregaLng ?? undefined) : undefined,
     pedidoOrigenId: draft.pedidoOrigenId,
     pedidoId,
   }

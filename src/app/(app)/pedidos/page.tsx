@@ -166,6 +166,9 @@ export default async function PedidosPage({
         nombreNegocioCli: negocio?.nombre || null,
         horaAperturaCli: negocio?.horaApertura || null,
         rutaNombre: negocio?.ruta?.nombre || cliente?.ruta?.nombre,
+        // ubicación PROPIA del pedido (editable); lat/lng son las efectivas.
+        entregaLat: p.entregaLat == null ? null : Number(p.entregaLat),
+        entregaLng: p.entregaLng == null ? null : Number(p.entregaLng),
         lat: coordsEfectivas?.lat ?? null,
         lng: coordsEfectivas?.lng ?? null,
       }

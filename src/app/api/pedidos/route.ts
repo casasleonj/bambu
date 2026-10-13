@@ -216,6 +216,9 @@ export async function GET(request: NextRequest) {
         nombreNegocioCli: nombreNegocio,
         horaAperturaCli: horaApertura,
         rutaNombre,
+        // ubicación PROPIA del pedido (editable); lat/lng son las efectivas.
+        entregaLat: p.entregaLat == null ? null : Number(p.entregaLat),
+        entregaLng: p.entregaLng == null ? null : Number(p.entregaLng),
         lat: coordsEfectivas?.lat ?? null,
         lng: coordsEfectivas?.lng ?? null,
         fecha: p.fecha,

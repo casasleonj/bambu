@@ -17,6 +17,7 @@ const common = {
   canal: 'DOMICILIO' as const,
   direccionEntrega: '', barrioEntrega: '',
   onDireccionChange: vi.fn(), onBarrioChange: vi.fn(), previewPending: false,
+  entregaLat: null as number | null, entregaLng: null as number | null, onUbicacionChange: vi.fn(),
 }
 
 describe('WorkspaceEntrega — zona adaptativa (F-ENTREGA-i)', () => {
@@ -71,6 +72,29 @@ describe('WorkspaceEntrega — zona adaptativa (F-ENTREGA-i)', () => {
     render(<WorkspaceEntrega {...common} onDireccionChange={onDireccionChange} entrega={base({ estado: 'INSUFICIENTE', faltaBloqueante: ['direccion', 'ubicacion'] })} />)
     fireEvent.change(screen.getByTestId('workspace-entrega-direccion'), { target: { value: 'Nueva dir 123' } })
     expect(onDireccionChange).toHaveBeenCalledWith('Nueva dir 123')
+  })
+
+  it('pegar un link de Maps con coordenadas fija la ubicación propia del pedido', () => {
+    const onUbicacionChange = vi.fn()
+    render(<WorkspaceEntrega {...common} onUbicacionChange={onUbicacionChange} entrega={base({ estado: 'INSUFICIENTE', faltaBloqueante: ['direccion', 'ubicacion'] })} />)
+    fireEvent.change(screen.getByTestId('workspace-entrega-link'), { target: { value: 'https://www.google.com/maps?q=4.6520,-74.0540' } })
+    expect(onUbicacionChange).toHaveBeenCalledWith(4.652, -74.054)
+  })
+
+  it('un link inválido NO fija nada y avisa', () => {
+    const onUbicacionChange = vi.fn()
+    render(<WorkspaceEntrega {...common} onUbicacionChange={onUbicacionChange} entrega={base({ estado: 'INSUFICIENTE', faltaBloqueante: ['direccion', 'ubicacion'] })} />)
+    fireEvent.change(screen.getByTestId('workspace-entrega-link'), { target: { value: 'hola' } })
+    expect(onUbicacionChange).not.toHaveBeenCalled()
+    expect(screen.getByTestId('workspace-entrega-ubicacion-error')).toBeInTheDocument()
+  })
+
+  it('con ubicación fijada se muestra y se puede quitar', () => {
+    const onUbicacionChange = vi.fn()
+    render(<WorkspaceEntrega {...common} entregaLat={4.65} entregaLng={-74.05} onUbicacionChange={onUbicacionChange} entrega={base({ estado: 'INSUFICIENTE', faltaBloqueante: ['direccion', 'ubicacion'] })} />)
+    expect(screen.getByTestId('workspace-entrega-ubicacion-fijada')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('workspace-entrega-ubicacion-quitar'))
+    expect(onUbicacionChange).toHaveBeenCalledWith(null, null)
   })
 
   it('no recalcula suficiencia: sólo lee `entrega.estado` (guardrail de fuente)', () => {
