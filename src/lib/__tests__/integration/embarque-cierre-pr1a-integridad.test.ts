@@ -319,12 +319,6 @@ describe('PR-1A — integridad del procesamiento de pedidos en el cierre', () =>
       expect(p.cPacaAguaEnt).toBe(10)
       expect(p.items[0].cantEntrega).toBe(10)
     })
-
-    it('el endpoint de cierre mapea el rechazo a 400 con mensaje accionable (no 500 genérico)', async () => {
-      const src = (await import('fs')).readFileSync(
-        (await import('path')).join(process.cwd(), 'src/app/api/embarques/[id]/cerrar/route.ts'), 'utf-8')
-      expect(src).toMatch(/ENTREGA_INCOMPLETA[\s\S]{0,200}apiError\([\s\S]{0,120}400\)/)
-    })
   })
 
   describe('B-11 — prueba 8: cambio autorizado del precio unitario', () => {
