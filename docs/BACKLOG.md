@@ -7,10 +7,16 @@
 1. Toda tarea nueva se registra como issue **antes** de empezar a trabajarla (la idea que surge en el chat también).
 2. El PR que la resuelve la cierra con `Closes #N` en la descripción (el PR debe apuntar a `main`, si no GitHub ignora la palabra clave).
 3. Etiquetas: prioridad `P0` (dinero/integridad) · `P1` · `P2`; tipo `dinero`, `bug`, `tech-debt`; `decision-PO` = bloqueada hasta que el negocio decida.
-4. Una fase = una rama = un PR (ver "Flujo de Entrega" en `AGENTS.md`).
+4. Estado de cada issue (sin tablero, con etiquetas; una sola `estado:*` a la vez):
+   `estado:pendiente` → `estado:en-curso` (al abrir la rama/PR) → se cierra con el merge del PR (`Closes #N`).
+   `estado:bloqueado` = espera una decisión del PO u otra dependencia; al resolverla pasa a `estado:pendiente`.
+5. Una fase = una rama = un PR (ver "Flujo de Entrega" en `AGENTS.md`).
 
 ## Vistas útiles
 
+- Pendientes: <https://github.com/casasleonj/bambu/issues?q=is%3Aopen+label%3Aestado%3Apendiente>
+- En curso: <https://github.com/casasleonj/bambu/issues?q=is%3Aopen+label%3Aestado%3Aen-curso>
+- Bloqueadas: <https://github.com/casasleonj/bambu/issues?q=is%3Aopen+label%3Aestado%3Abloqueado>
 - Abiertas P0: <https://github.com/casasleonj/bambu/issues?q=is%3Aopen+label%3AP0>
 - Esperan decisión del PO: <https://github.com/casasleonj/bambu/issues?q=is%3Aopen+label%3Adecision-PO>
 - Deuda técnica: <https://github.com/casasleonj/bambu/issues?q=is%3Aopen+label%3Atech-debt>
