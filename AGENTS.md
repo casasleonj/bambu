@@ -500,40 +500,12 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
       - **Anti-patrón a evitar**:
         - Una regla de dinero o crédito que vive solo en la UI (ALS A6).
         - Un E2E de venta que no mire la base de datos: el test F10-2 pasaba con el bug activo.
-   29. **Auditoría integral de documentación vs. código (2026-10-10) — 28 hallazgos abiertos, ninguno implementado todavía**: a pedido explícito del equipo, se revisaron ~130 documentos de `docs/` (histórico completo del proyecto, no solo F5) contra el estado real del código, verificando cada afirmación de "pendiente"/"brecha"/"TODO" con `grep`/`Read` antes de reportarla — varios documentos resultaron obsoletos (ya resueltos sin actualizar su "Estado"), otros confirmaron brechas reales todavía vigentes. Registrado aquí como el punto único de entrada a la lista completa, para que no vuelva a dispersarse entre sesiones.
-       - **Reconciliado contra `main` al rebasear este PR (2026-10-10, mismo día)**: dos hallazgos de esta lista quedaron resueltos por trabajo que entró a `main` después de escrita la auditoría original, antes de que mergeara — se corrigen aquí en vez de presentarse como vigentes: (a) el drift de versión de `serwist`/`@serwist/next`/`@vitest/coverage-v8` ya se corrigió (`package.json`, PR #284); (b) el módulo `Zona` de Territorio ya se construyó (`model Zona`/`ZonaBarrio`, PR #279) — ver nota corregida más abajo en vez del punto original.
-       - **🔴 Dinero / antifraude, confirmado en código hoy**:
-         - `POST /api/pedidos/venta-libre` valida pertenencia de embarque solo si `userRole === 'REPARTIDOR'` (`route.ts:126`) — `ADMIN`/`ASISTENTE` crean venta libre contra cualquier embarque `ABIERTO` sin ningún gate de conciliación.
-         - Toda Venta Libre queda con `clienteId` hardcodeado a `'CONSUMIDOR_FINAL'` (`repartidor-client.tsx:98,300`), sin selector de comprador real ni endpoint para identificarlo después.
-         - `alertas-detector.ts:166` excluye explícitamente `clienteId === CONSUMIDOR_FINAL` antes de evaluar alertas → el detector de fraude es ciego al 100% de las ventas libres (consecuencia directa del punto anterior).
-         - `e2e/ciclo-cancelacion.spec.ts:45,154` sigue con `test.skip` documentado: no se puede anular una `VENTA_RAPIDA` ya pagada y no entregada — sin mecanismo de reversa/devolución.
-         - `venta-rapida-form/index.tsx:311-316` trunca cada pago a `Math.min(monto, remaining)` cuando el usuario paga de más — el excedente se descarta en silencio, sin auditarse ni acreditarse (a diferencia de `pagar-fiado`, que sí acredita a `saldoFavor`).
-         - `cierre/route.ts:642` sigue restando `comisiones`/`salarios` del `netoCaja` sin que el negocio haya confirmado si se pagan en efectivo o por transferencia (`docs/PO_MEETING_AGENDA.md` pregunta 4, nunca respondida).
-         - `cierre/route.ts:565` (`CIERRE_HUECO`, `diffDays > 1`) sigue bloqueando el cierre si un día no tuvo operación (ej. domingo) o si un embarque quedó `EN_RUTA` toda la noche (`docs/PO_MEETING_AGENDA.md` pregunta 2, nunca respondida).
-       - **🟠 Dinero / datos, confirmado en código hoy**:
-         - `CrearPedidoUseCase.ts:256-261` sigue aplicando `saldoFavor` disponible automáticamente al crear un pedido, sin ningún `usarSaldoFavor` opt-in en la UI.
-         - `ActualizarPedidoUseCase.ts` (editar pedido) no referencia `GetFiadoStatusUseCase`/`puedeCrearPedido`/`bloqueado` en ningún punto — editar un pedido no valida crédito.
-         - Rol inconsistente: `pagar-fiado/route.ts:26` acepta `[ADMIN, ASISTENTE]`, `cartera/abonos/[id]/corregir/route.ts:32` acepta `[ADMIN, CONTADOR]` — `ADR-CORRECCION-MONETARIA-001.md:99-102` deja esto como "decisión pendiente menor" con propuesta concreta, nunca aplicada.
-         - Campo `devolverStock` declarado en `validators.ts:263`, `use-anular-pedido.ts:16,35` y la UI de `pedidos-client/index.tsx:1308`, pero `anular/route.ts:29` nunca lo lee — no tiene ningún efecto real.
-         - P1-B (`docs/AGUA_BAMBU_F5_P1B_CAPACIDAD_FISICA_v1.0.md`): la fórmula de disponibilidad en vivo no contempla las salidas reales que escribe `Sustitucion` (CAMBIO) vía `EmbarqueMovimiento{tipo:'ENTREGA'}` — pendiente de confirmación del equipo antes de implementar P1-C (RECARGA).
-       - **🟡 Funcionalidad/UX a medio camino**:
-         - Rediseño de Pedidos (flag `NEXT_PUBLIC_PEDIDOS_V2`) está en Production desde 2026-09-23, pero **Fase 10b (retiro de UI legacy) nunca arrancó** — `pedido-form-unified` sigue montado y en uso real (`pedidos-client/index.tsx:1957`); la ventana de soak (2026-09-28→2026-10-10) terminó sin cierre documentado.
-         - `GET/PATCH /api/pedidos/impacto-ubicacion` (F3) tiene backend completo, cero UI lo consume.
-         - SLA de "pedido en ruta" y umbral de autorización para precio manual (`PreviewPedidoUseCase.ts:286`, `requiresAuthorization: false` hardcodeado) siguen sin definición de negocio.
-         - Decisión sin tomar: ¿`/repartidor` se fusiona con el nuevo Hub de Pedidos o sigue separado?
-         - ~~Módulo `Zona` (Territorio, ALS Barrio/Zona F3+F6) nunca se construyó~~ — **resuelto por PR #279** (`feat(territorio): F3 — Zona territorial`, mergeado después de escrita esta auditoría, antes de que mergeara): `model Zona`/`ZonaBarrio` ya existen en el schema. F6 (integración con el planificador) queda como el único resto de ese ALS todavía sin empezar.
-         - 4 epics de control operativo de Embarques sin ninguna línea de código: ventas a empleados, devoluciones fuera de plazo, taxonomía de producto dañado/filtrado, detección de colusión cliente↔repartidor↔empleado.
-         - `/repartidor` no tiene acción de "marcar entregado" offline (el repartidor necesita intervención de oficina) — ver Known Issue original en `docs/AGUA_BAMBU_F5_CONVERGENCIA_HALLAZGOS_RESTANTES_v1.0.md` hallazgo #8.
-         - `origen`/`destino` de `POST /api/embarques/[id]/movimientos` siguen aceptando cualquier string (`z.string().optional()`), no el `CUSTODIAS` ya definido — mismo documento, hallazgo #4.
-       - **🟢 Deuda técnica, confirmada en código/CI hoy**:
-         - `playwright.test.config.ts` (raíz) huérfano, sin confirmar si alguien lo usa a mano.
-         - 4 tests de `prisma/__tests__/*.test.ts` (constraints/secuencias) excluidos de todo config de Vitest — nunca corren en CI.
-         - Causa raíz de por qué los 8 shards de E2E fallan a la vez sigue sin confirmarse (diagnóstico de una línea en `e2e/fixtures.ts`, `stdio:'ignore'→'inherit'`, pendiente de autorización para consumir CI real).
-         - `requestQueue` (Dexie, offline) no tiene campo `userId` — en un dispositivo compartido un usuario puede sincronizar/ver la cola de otro (`docs/superpowers/specs/2026-07-17-offline-sync-unification-design.md:138`, marcado "Post-M7", nunca implementado).
-         - Shim legacy de `syncQueue` (`src/lib/db/sync.ts:135-217`) — el propio QA (`docs/qa/reporte-07-offline-sync.md:42`) pedía revisar en 30 días si ya se podía quitar; van ~3 meses sin esa revisión.
-         - 2 bugs de QA nunca cerrados (`docs/qa/reporte-02-rbac.md`): `DescuentoRepartidor.motivo` sin validar/sin endpoint de persistencia; loop de redirección en roles `EMPACADOR`/`ENTUBADOR`.
-         - Entidad de dominio `VentaLibre`/`IVentaLibreRepository` inerte, nunca borrada pese a que el propio doc que la señaló pedía quitarla primero.
-       - **Metodología y límite honesto**: cada punto de esta lista fue verificado contra el código real en la sesión del 2026-10-10 (no es una relectura de los documentos originales), y vuelto a reconciliar contra `main` al abrir/mergear el PR de esta auditoría (ver nota de reconciliación arriba). Lo que SÍ se confirmó ya resuelto (Autoridad de Crédito F1-F2, Reprogramación F4, unificación de `cliente.bloqueado`, ledger de Barrio 53/53, PWA, push notifications, importación histórica, migración 1FN, `NotaCredito`, versión pinneada de Serwist/Vitest, módulo `Zona`) no se repite aquí. Esta entrada es el índice; el detalle completo con cita exacta de archivo:línea para cada punto vive en el registro de la sesión que hizo la auditoría — si se pierde ese contexto, cualquiera de los 28 puntos es reproducible desde cero con las referencias de archivo:línea ya dadas arriba.
+   29. **Auditoría integral de documentación vs. código (2026-10-10)** — 28 hallazgos abiertos, **migrados a GitHub Issues #300–#325, #327 y #328** (etiqueta `auditoria-2026-10-10`). El detalle y la evidencia archivo:línea viven en cada issue; el índice por prioridad está en `docs/BACKLOG.md`. No se repite aquí para mantener este archivo corto.
+
+
+## Registro de tareas
+
+El backlog vive en **GitHub Issues** (índice en `docs/BACKLOG.md`). Toda tarea nueva —incluida la que surge en el chat— se registra como issue **antes** de empezar, y el PR que la resuelve la cierra con `Closes #N` (el PR debe apuntar a `main`). No guardes pendientes en este archivo ni en notas de sesión.
 
 ---
 
