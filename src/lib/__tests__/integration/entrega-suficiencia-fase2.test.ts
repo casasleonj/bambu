@@ -119,6 +119,33 @@ describe('Fase 2 — suficiencia de domicilio (Postgres real)', () => {
     })
   })
 
+  // ── Regla de negocio: la dirección/barrio SOLO se piden cuando el canal es
+  // DOMICILIO. Una venta en PUNTO (anónima o con cliente) nunca las exige,
+  // ni aunque sea "entregar después". Mismos resultados que `main`.
+  describe('PUNTO nunca exige dirección ni barrio (no es regresión)', () => {
+    const casos: Array<[string, { cliente: 'cf' | 'real'; origen: 'PEDIDO' | 'VENTA_RAPIDA'; canal: 'PUNTO' | 'DOMICILIO'; entregado?: boolean }, boolean]> = [
+      ['anónimo, venta rápida, PUNTO', { cliente: 'cf', origen: 'VENTA_RAPIDA', canal: 'PUNTO' }, true],
+      ['anónimo, venta rápida, PUNTO, entregar después', { cliente: 'cf', origen: 'VENTA_RAPIDA', canal: 'PUNTO', entregado: false }, true],
+      ['anónimo, venta rápida del Hub (canal DOMICILIO por defecto, entregado)', { cliente: 'cf', origen: 'VENTA_RAPIDA', canal: 'DOMICILIO', entregado: true }, true],
+      ['cliente real sin dirección, PUNTO', { cliente: 'real', origen: 'PEDIDO', canal: 'PUNTO' }, true],
+      ['cliente real sin dirección, PUNTO, entregar después', { cliente: 'real', origen: 'PEDIDO', canal: 'PUNTO', entregado: false }, true],
+      ['cliente real sin dirección, DOMICILIO (la regla sí aplica)', { cliente: 'real', origen: 'PEDIDO', canal: 'DOMICILIO' }, false],
+      ['anónimo, DOMICILIO con entrega posterior (la regla sí aplica)', { cliente: 'cf', origen: 'VENTA_RAPIDA', canal: 'DOMICILIO', entregado: false }, false],
+    ]
+    it.each(casos)('%s', async (_n, c, debeCrear) => {
+      const clienteId = c.cliente === 'cf' ? 'CONSUMIDOR_FINAL' : clienteSinDestinoId
+      const base = { clienteId, canal: c.canal, origen: c.origen, items: ITEMS, ...(c.entregado === undefined ? {} : { entregado: c.entregado }) }
+      const p = await preview().execute({ ...base, actorId: adminId })
+      const total = p.calculation.total
+      const pagos = c.cliente === 'cf' ? PAGO_COMPLETO(total) : []
+      const pPago = await preview().execute({ ...base, pagos, actorId: adminId })
+      expect(pPago.permissions.canCreate, 'preview').toBe(debeCrear)
+      const intento = crear().execute({ ...base, pagos, createdById: adminId, createdByRole: 'ADMIN', offlineId: uniqueId('f2-punto-matriz') })
+      if (debeCrear) await expect(intento).resolves.toBeDefined()
+      else await expect(intento).rejects.toThrow('ENTREGA_INSUFICIENTE')
+    })
+  })
+
   it('CF con entrega AHORA (mostrador): NO exige destino futuro y no persiste ubicación', async () => {
     const total = await totalDe('CONSUMIDOR_FINAL', {}, 'VENTA_RAPIDA')
     const { pedido } = await crear().execute({
