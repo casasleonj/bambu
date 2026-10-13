@@ -7,10 +7,24 @@
 1. Toda tarea nueva se registra como issue **antes** de empezar a trabajarla (la idea que surge en el chat también).
 2. El PR que la resuelve la cierra con `Closes #N` en la descripción (el PR debe apuntar a `main`, si no GitHub ignora la palabra clave).
 3. Etiquetas: prioridad `P0` (dinero/integridad) · `P1` · `P2`; tipo `dinero`, `bug`, `tech-debt`; `decision-PO` = bloqueada hasta que el negocio decida.
-4. Estado de cada issue (sin tablero, con etiquetas; una sola `estado:*` a la vez):
+4. Estado de cada issue (sin tablero, con etiquetas; una sola `estado:*` a la vez). **Lo hace cumplir el workflow `.github/workflows/backlog.yml`** (lógica y tests en `.github/scripts/`), no depende de que alguien se acuerde:
    `estado:pendiente` → `estado:en-curso` (al abrir la rama/PR) → se cierra con el merge del PR (`Closes #N`).
    `estado:bloqueado` = espera una decisión del PO u otra dependencia; al resolverla pasa a `estado:pendiente`.
 5. Una fase = una rama = un PR (ver "Flujo de Entrega" en `AGENTS.md`).
+
+## Qué automatiza el workflow Backlog
+
+| Evento | Resultado |
+|---|---|
+| Issue abierto/reabierto sin `estado:*` | recibe `estado:pendiente` |
+| Issue con varios `estado:*` | queda uno (`en-curso` > `bloqueado` > `pendiente`) |
+| Issue cerrado | se le quitan los `estado:*` |
+| PR abierto/editado/actualizado | **el check falla** si no cita un issue (`Closes/Fixes/Resolves/Refs #N`, rangos `#300–#305` válidos) salvo etiqueta `sin-issue`; los issues citados pasan a `estado:en-curso` |
+| PR cerrado sin merge | los issues citados vuelven a `estado:pendiente` |
+| PR mergeado | `Closes #N` cierra el issue; los que solo tenían `Refs` vuelven a `estado:pendiente` |
+| Barrido diario (11:37 UTC) | corrige cualquier issue abierto sin estado (red de seguridad si se perdió un evento) |
+
+Para que el check bloquee el merge hay que marcarlo como *required* en Settings → Branches → `main` (check `Backlog (estado de issues y PR vinculado)`). El hook `SessionStart` de `.claude/settings.json` recuerda la regla al agente en cada sesión.
 
 ## Vistas útiles
 
