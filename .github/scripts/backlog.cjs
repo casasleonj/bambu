@@ -13,6 +13,7 @@ const ESTADOS = [PENDIENTE, EN_CURSO, BLOQUEADO]
 // Si un issue trae varios estados, gana el primero de esta lista.
 const PRIORIDAD = [EN_CURSO, BLOQUEADO, PENDIENTE]
 const SIN_ISSUE = 'sin-issue'
+const DECISION_PO = 'decision-PO'
 const MAX_RANGO = 100
 
 const LISTA = String.raw`#\d+(?:\s*[–-]\s*#\d+)?(?:\s*(?:,|y|and|&)\s*#\d+(?:\s*[–-]\s*#\d+)?)*`
@@ -83,6 +84,16 @@ async function aplicar({ github, context, core }, issue, opciones) {
   return quitar.length + agregar.length > 0
 }
 
+/** Devuelve a su estado de reposo un issue que ya no tiene PR: `bloqueado` si espera al PO, si no `pendiente`. */
+async function liberar(ctx, n) {
+  const { github, context } = ctx
+  const { data: issue } = await github.rest.issues.get({ ...context.repo, issue_number: n })
+  if (issue.pull_request || issue.state !== 'open') return
+  const etiquetas = issue.labels.map((l) => l.name)
+  if (!etiquetas.includes(EN_CURSO)) return
+  await aplicar(ctx, issue, { objetivo: etiquetas.includes(DECISION_PO) ? BLOQUEADO : PENDIENTE })
+}
+
 async function handleIssue(ctx) {
   const { issue } = ctx.context.payload
   if (issue.pull_request) return
@@ -98,14 +109,16 @@ async function handlePullRequest(ctx) {
   if (action === 'closed') {
     // Un PR que terminó libera lo que tenía en curso. Los que cierra con
     // Closes/Fixes los cierra GitHub al hacer merge (y se limpian por el evento issues.closed).
-    const liberar = pr.merged ? refs.todos.filter((n) => !refs.cierre.includes(n)) : refs.todos
-    for (const n of liberar) {
-      const { data: issue } = await github.rest.issues.get({ ...context.repo, issue_number: n })
-      if (issue.pull_request || issue.state !== 'open') continue
-      const etiquetas = issue.labels.map((l) => l.name)
-      if (etiquetas.includes(EN_CURSO)) await aplicar(ctx, issue, { objetivo: PENDIENTE })
-    }
+    const aLiberar = pr.merged ? refs.todos.filter((n) => !refs.cierre.includes(n)) : refs.todos
+    for (const n of aLiberar) await liberar(ctx, n)
     return
+  }
+
+  if (action === 'edited' && context.payload.changes) {
+    const antes = `${context.payload.changes.title?.from ?? pr.title}\n${context.payload.changes.body?.from ?? pr.body ?? ''}`
+    for (const n of extraerIssues(antes).todos) {
+      if (!refs.todos.includes(n)) await liberar(ctx, n)
+    }
   }
 
   if (refs.todos.length === 0) {

@@ -181,6 +181,44 @@ describe('handlePullRequest', () => {
   })
 })
 
+describe('liberación por edición y decision-PO', () => {
+  const pr = (over) => ({ title: 't', body: '', labels: [], user: { login: 'u' }, merged: false, ...over })
+
+  it('quitar una referencia del cuerpo libera ese issue (pendiente)', async () => {
+    const { github, store } = fakeGithub([issue(30, ['estado:en-curso']), issue(31, ['estado:en-curso'])])
+    const { ctx } = ctxOf(github, 'pull_request', {
+      action: 'edited',
+      changes: { body: { from: 'Refs #30, #31' } },
+      pull_request: pr({ body: 'Refs #31' }),
+    })
+    await backlog.handlePullRequest(ctx)
+    expect(estados(store, 30)).toEqual(['estado:pendiente'])
+    expect(estados(store, 31)).toEqual(['estado:en-curso'])
+  })
+  it('un issue con decision-PO vuelve a bloqueado, no a pendiente', async () => {
+    const { github, store } = fakeGithub([issue(32, ['decision-PO', 'estado:en-curso'])])
+    const { ctx } = ctxOf(github, 'pull_request', {
+      action: 'edited',
+      changes: { body: { from: 'Refs #32' } },
+      pull_request: pr({ body: 'Closes #33' }),
+    })
+    store.set(33, { number: 33, state: 'open', labels: [{ name: 'estado:pendiente' }] })
+    await backlog.handlePullRequest(ctx)
+    expect(estados(store, 32)).toEqual(['estado:bloqueado'])
+    expect(estados(store, 33)).toEqual(['estado:en-curso'])
+  })
+  it('editar sin cambiar referencias no libera nada', async () => {
+    const { github, store } = fakeGithub([issue(34, ['estado:en-curso'])])
+    const { ctx } = ctxOf(github, 'pull_request', {
+      action: 'edited',
+      changes: { title: { from: 'otro título' } },
+      pull_request: pr({ body: 'Closes #34' }),
+    })
+    await backlog.handlePullRequest(ctx)
+    expect(estados(store, 34)).toEqual(['estado:en-curso'])
+  })
+})
+
 describe('handleSweep', () => {
   it('corrige abiertos sin estado o con estados duplicados y no toca PRs', async () => {
     const { github, store } = fakeGithub([
