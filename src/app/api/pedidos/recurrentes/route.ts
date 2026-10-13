@@ -241,6 +241,8 @@ export async function POST(request: NextRequest) {
       saltados: resultado.saltados.length,
       pedidos: resultado.generados,
       saltadosIds: resultado.saltados,
+      // Plantillas no generadas por destino no localizable, con motivo.
+      omitidos: resultado.omitidos,
       ...(deduped && { deduped: true }),
     }, deduped ? 200 : 201)
   } catch (error) {

@@ -27,6 +27,11 @@ import { incrementMetric } from '@/lib/metrics'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
 import { datosConfirmacionInicial, parseMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import { OrigenPedido, EstadoEntrega } from '@prisma/client'
+import { resolverEntrega } from '@/modules/pedidos/domain/services/entrega-suficiencia.service'
+import { requiereEntregaSuficiente, ubicacionEntregaValida } from '@/modules/pedidos/domain/services/entrega-politica.service'
+import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
+import { resolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
+import { prisma } from '@/lib/prisma'
 
 // F1 (Autoridad de Crédito, docs/AGUA_BAMBU_F1_DISENO_TECNICO_AUTORIDAD_CREDITO_v1.0.md):
 // esta ruta vive fuera del composition root del módulo `pedidos` (usa `tx`
@@ -59,6 +64,32 @@ export async function POST(request: NextRequest) {
     // pero con el flag OFF ese `false` se ignora → la foto vuelve a ser obligatoria.
     if (entregarAhora && (!fotoEntrega || fotoEntrega.length === 0)) {
       return apiError('Foto de entrega obligatoria', 400)
+    }
+
+    // Destino de la ENTREGA POSTERIOR (`entregado:false`). Una venta ya
+    // entregada físicamente no necesita un destino futuro, así que estos campos
+    // solo cuentan cuando queda mercancía pendiente. El GPS de comprobación
+    // (`gpsLat/gpsLng`) NO se usa como destino: es otro dato.
+    const { direccionEntrega, barrioEntrega, entregaLat, entregaLng } = parsed.data
+    let ubicacionEntrega: { lat: number; lng: number } | null = null
+    let coordsDeLink: { lat: number; lng: number } | null = null
+    if (!entregarAhora) {
+      const trajoUbicacion = entregaLat != null || entregaLng != null
+      ubicacionEntrega = trajoUbicacion ? ubicacionEntregaValida(entregaLat, entregaLng) : null
+      if (trajoUbicacion && !ubicacionEntrega) {
+        return apiError('La ubicación del domicilio debe traer latitud y longitud válidas.', 422, { code: 'UBICACION_ENTREGA_INVALIDA' })
+      }
+      // I/O de red (expandir link corto) FUERA del lock: solo para un cliente real
+      // sin coords almacenadas y con link de ubicación.
+      if (!isConsumidorFinalCanonical(clienteId)) {
+        const c = await prisma.cliente.findUnique({
+          where: { id: clienteId },
+          select: { lat: true, lng: true, linkUbicacion: true },
+        })
+        if (c && !(c.lat != null && c.lng != null) && c.linkUbicacion) {
+          coordsDeLink = await resolverCoordsDeLink(c.linkUbicacion)
+        }
+      }
     }
 
     // FASE 7 (ADR-OFFLINE-001, §11): timestamps de la venta espontánea.
@@ -221,6 +252,33 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // 7b. Suficiencia del destino de la entrega posterior (D3/D4) — MISMA
+      // política y autoridad que Preview/Crear/Actualizar. Va DESPUÉS del
+      // dedup por offlineId (un reintento de algo ya creado no se rechaza) y
+      // ANTES de cualquier escritura. El carácter anónimo no es excepción.
+      let snapshotDireccion: string | undefined
+      let snapshotBarrio: string | undefined
+      if (requiereEntregaSuficiente({ canal, estadoEntrega: estadoEntregaFinal })) {
+        const entrega = resolverEntrega({
+          canal: 'DOMICILIO',
+          pedidoCoords: ubicacionEntrega,
+          overrideDireccion: direccionEntrega,
+          overrideBarrio: barrioEntrega,
+          cliente: cliente
+            ? { direccion: cliente.direccion, barrio: cliente.barrio, referencia: cliente.referencia, linkUbicacion: cliente.linkUbicacion, lat: cliente.lat, lng: cliente.lng, geocodeOrigen: cliente.geocodeOrigen }
+            : null,
+          negocio: null,
+          coordsDeLink,
+        })
+        if (entrega.estado === 'INSUFICIENTE') throw new Error('ENTREGA_INSUFICIENTE')
+        // Snapshot de texto solo si difiere de lo que ya resuelve el cliente.
+        const resuelta = pickDireccionTexto({ cliente: cliente ? { direccion: cliente.direccion, barrio: cliente.barrio } : null, negocio: null })
+        if ((direccionEntrega || '') !== resuelta.direccion || (barrioEntrega || '') !== resuelta.barrio) {
+          snapshotDireccion = direccionEntrega || undefined
+          snapshotBarrio = barrioEntrega || undefined
+        }
+      }
+
       // 8. Crear pedido
       // Sprint 3 (C-2 Fase 1): legacy fields se computan desde items[]
       // vía buildPedidoLegacyFields() — única fuente de verdad.
@@ -265,6 +323,11 @@ export async function POST(request: NextRequest) {
           fotoEntrega: entregarAhora ? (fotoUrl || null) : null,
           gpsLat: gpsLat || null,
           gpsLng: gpsLng || null,
+          // Destino propio de la entrega posterior (≠ GPS de comprobación).
+          direccionEntrega: snapshotDireccion ?? null,
+          barrioEntrega: snapshotBarrio ?? null,
+          entregaLat: ubicacionEntrega?.lat ?? null,
+          entregaLng: ubicacionEntrega?.lng ?? null,
           offlineId: offlineId || null,
           occurredAt: occurredAt ?? null,
           capturedAt: capturedAt ?? null,
@@ -388,6 +451,9 @@ export async function POST(request: NextRequest) {
       if (error.message === 'PAGO_COMPLETO_OBLIGATORIO') return apiError('Cliente no verificado/anónimo debe pagar completo', 400)
       if (error.message.startsWith('CLIENTE_DEBE:')) return apiError(error.message.replace('CLIENTE_DEBE: ', ''), 400)
       if (error.message === 'EXCEPCION_CREDITO_YA_CONSUMIDA') return apiError('La excepción de crédito ya fue utilizada por otro pedido', 409)
+      if (error.message === 'ENTREGA_INSUFICIENTE') {
+        return apiError('Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.', 422, { code: 'ENTREGA_INSUFICIENTE' })
+      }
     }
     logger.error({ err: error instanceof Error ? error.stack || error.message : 'Unknown' }, 'Error creando venta libre:')
     return apiError('Error creando venta libre')

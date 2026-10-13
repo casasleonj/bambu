@@ -235,8 +235,18 @@ export const VentaLibreSchema = z.object({
   fotoEntrega: z.string()
     .max(15 * 1024 * 1024, 'Foto demasiado grande (máx 15MB)')
     .optional(),
+  // GPS de COMPROBACIÓN (dónde estaba el repartidor al vender). NUNCA es el
+  // destino de una entrega posterior: ese va en `entregaLat/entregaLng` o en
+  // `direccionEntrega`.
   gpsLat: z.number(),
   gpsLng: z.number(),
+  // DESTINO de la entrega posterior (`entregado:false`). Se exige dirección
+  // escrita O ubicación utilizable; barrio solo no basta. Ignorado si la
+  // mercancía ya se entregó en el acto.
+  direccionEntrega: z.string().max(200).optional(),
+  barrioEntrega: z.string().max(100).optional(),
+  entregaLat: z.number().min(-90).max(90).optional().nullable(),
+  entregaLng: z.number().min(-180).max(180).optional().nullable(),
   offlineId: z.string(),
   // FASE 7 (ADR-OFFLINE-001, §11): timestamps opcionales de la venta.
   occurredAt: z.string().datetime().optional(),
