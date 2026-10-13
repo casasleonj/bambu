@@ -232,6 +232,9 @@ export function PedidoContextPanel({
             // quedaba interactivo igual, sugiriendo una capacidad que no
             // existe. Se vuelve de solo lectura al editar.
             readOnly={Boolean(pedidoInicialId)}
+            // venta de PUNTO: el negocio se puede elegir (precios) pero no se
+            // muestra dirección ni barrio — solo importan al domicilio.
+            mostrarDireccion={canal === 'DOMICILIO'}
           />
 
           {canal === 'DOMICILIO' && !ocultarInputsEntrega && (
