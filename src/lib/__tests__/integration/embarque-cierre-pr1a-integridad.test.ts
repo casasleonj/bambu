@@ -6,13 +6,24 @@
 // (evento físico vivo + conciliación por misión) y permanecen en PR-0.
 // Datos 100% sintéticos; los montos del caso #331 (2 BOTELLON, $15.000) se
 // reproducen anonimizados.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { CerrarEmbarqueUseCase } from '@/modules/embarques/application/use-cases/CerrarEmbarqueUseCase'
 import { PrismaEmbarqueRepository } from '@/modules/embarques/infrastructure/repositories/PrismaEmbarqueRepository'
 import { PrismaGastoEmbarqueRepository } from '@/modules/embarques/infrastructure/repositories/PrismaGastoEmbarqueRepository'
 import { PrismaEmbarqueProductoRepository } from '@/modules/embarques/infrastructure/repositories/PrismaEmbarqueProductoRepository'
 import { PrismaTransactionManager } from '@/modules/embarques/infrastructure/transactions/PrismaTransactionManager'
+
+// Contrato HTTP del cierre: se invoca el handler REAL de la ruta con sesión ADMIN simulada.
+const authUser = { id: 'placeholder', role: 'ADMIN' }
+vi.mock('@/lib/auth-check', () => ({
+  requireAuth: vi.fn(async () => ({ user: authUser })),
+  requireRole: vi.fn(async () => ({ user: authUser })),
+  requireOwnership: vi.fn(async () => true),
+}))
+vi.mock('@/lib/audit', () => ({ logAudit: vi.fn(async () => {}) }))
+vi.mock('@/lib/realtime', () => ({ publishRealtimeEvent: vi.fn(async () => {}) }))
+vi.mock('@/lib/notifications/notify-event', () => ({ notifyEvent: vi.fn(async () => {}) }))
 
 let adminId: string
 let clienteId: string
@@ -74,7 +85,9 @@ async function crearPedidoPrepago(opts: {
   const pedido = await testPrisma.pedido.create({
     data: {
       clienteId,
-      canal: 'DOMICILIO',
+      // Revisión de PR-1A: el canal debe ser coherente con la columna legacy del
+      // botellón (`Pedido.toLegacyFields`: PUNTO -> Fab, DOMICILIO -> Dom).
+      canal: producto === 'BOTELLON' && botellonCanal === 'FAB' ? 'PUNTO' : 'DOMICILIO',
       origen: 'PEDIDO',
       total,
       totalPagado: total,
@@ -108,6 +121,7 @@ describe('PR-1A — integridad del procesamiento de pedidos en el cierre', () =>
   beforeAll(async () => {
     await resetAndSeed()
     adminId = (await getAdminUser()).id
+    authUser.id = adminId
     const c = await testPrisma.cliente.create({
       data: {
         nombre: 'PR0 Cli', telefono: `3${Math.floor(Math.random() * 1e9).toString().padStart(9, '0')}`,
@@ -371,6 +385,184 @@ describe('PR-1A — integridad del procesamiento de pedidos en el cierre', () =>
       const item = p.items.find((i) => i.producto === 'BOTELLON')
       expect(item?.cantEntrega).toBe(2)
       expect(Number(item?.precio)).toBe(7_500)
+    })
+  })
+
+
+  // ── Revisión de PR-1A: B-08 por producto, no por suma ───────────────────
+  describe('B-08 — completitud por PRODUCTO (no por la suma total)', () => {
+    async function pedidoDosProductos(embarqueId: string, ent: { paca: number; bolsa: number }) {
+      const total = 10 * 1_000 + 5 * 500
+      const pedido = await testPrisma.pedido.create({
+        data: {
+          clienteId, canal: 'DOMICILIO', origen: 'PEDIDO', total, totalPagado: total, saldo: 0,
+          estadoEntrega: 'EN_RUTA', estado: 'EN_RUTA', estadoPago: 'ANTICIPADO', embarqueId,
+          cPacaAguaPed: 10, cPacaAguaEnt: ent.paca, precioPacaAgua: 1_000,
+          cBolsaAguaPed: 5, cBolsaAguaEnt: ent.bolsa, precioBolsaAgua: 500,
+          items: { create: [
+            { producto: 'PACA_AGUA', cantPedido: 10, cantEntrega: ent.paca, precio: 1_000, subtotal: 10_000 },
+            { producto: 'BOLSA_AGUA', cantPedido: 5, cantEntrega: ent.bolsa, precio: 500, subtotal: 2_500 },
+          ] },
+        },
+      })
+      await testPrisma.pago.create({ data: { pedidoId: pedido.id, metodo: 'EFECTIVO', monto: total, confirmacion: 'CONFIRMADO' } })
+      return pedido
+    }
+
+    it('suma igual (15 = 10 + 5) pero líneas inconsistentes (15 paca / 0 bolsa): NO se da por completo; se rechaza con ENTREGA_INCONSISTENTE y nada cambia', async () => {
+      const emb = await crearEmbarque({ PACA_AGUA: 10 })
+      const pedido = await pedidoDosProductos(emb.id, { paca: 15, bolsa: 0 })
+
+      await expect(
+        buildUseCase().execute({
+          id: emb.id, pedidos: [{ pedidoId: pedido.id, entregado: 'NO_ENTREGADO', pagos: [] }], gastos: [], dineroEntregado: 0,
+        }),
+      ).rejects.toThrow(/ENTREGA_INCONSISTENTE/)
+
+      const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+      expect(p.cPacaAguaEnt).toBe(15)
+      expect(p.cBolsaAguaEnt).toBe(0)
+      expect(p.estadoEntrega).toBe('EN_RUTA')
+    })
+
+    it('un producto completo (10/10) y otro sin entregar (0/5): PENDIENTE y se conserva cada acumulado', async () => {
+      const emb = await crearEmbarque({ BOLSA_AGUA: 5 } as never)
+      const pedido = await pedidoDosProductos(emb.id, { paca: 10, bolsa: 0 })
+
+      await buildUseCase().execute({
+        id: emb.id, pedidos: [{ pedidoId: pedido.id, entregado: 'NO_ENTREGADO', pagos: [] }], gastos: [], dineroEntregado: 0,
+      })
+
+      const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id }, include: { items: true } })
+      expect(p.estadoEntrega).toBe('PENDIENTE')
+      expect(p.cPacaAguaEnt).toBe(10)
+      expect(p.cBolsaAguaEnt).toBe(0)
+      expect(p.items.find((i) => i.producto === 'PACA_AGUA')?.cantEntrega).toBe(10)
+      expect(p.items.find((i) => i.producto === 'BOLSA_AGUA')?.cantEntrega).toBe(0)
+    })
+
+    it('ambos productos completos (10/10 y 5/5): no se degrada', async () => {
+      const emb = await crearEmbarque({})
+      const pedido = await pedidoDosProductos(emb.id, { paca: 10, bolsa: 5 })
+      await testPrisma.pedido.update({ where: { id: pedido.id }, data: { estadoEntrega: 'ENTREGADO', estado: 'ENTREGADO', estadoPago: 'PAGADO' } })
+
+      await buildUseCase().execute({
+        id: emb.id, pedidos: [{ pedidoId: pedido.id, entregado: 'NO_ENTREGADO', pagos: [] }], gastos: [], dineroEntregado: 0,
+      })
+
+      const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+      expect(p.estadoEntrega).toBe('ENTREGADO')
+      expect(p.cPacaAguaEnt).toBe(10)
+      expect(p.cBolsaAguaEnt).toBe(5)
+    })
+  })
+
+  // ── Revisión de PR-1A: auditoría de precio también en PARCIAL ───────────
+  describe('B-11 — auditoría de precio unitario en entrega PARCIAL', () => {
+    it('ADMIN cambia $1.000 -> $1.200 en una entrega PARCIAL (4 de 10): 1 PRECIO_CIERRE antes/después; total, saldo y factura NO cambian', async () => {
+      const emb = await crearEmbarque({ PACA_AGUA: 4 })
+      const { pedido, factura } = await crearPedidoPrepago({ embarqueId: emb.id, producto: 'PACA_AGUA', cantPedido: 10 })
+
+      await buildUseCase().execute({
+        id: emb.id,
+        pedidos: [{
+          pedidoId: pedido.id, entregado: 'PARCIAL', productosEntregados: entregaDe('PACA_AGUA', 4),
+          preciosReales: { pacaAgua: 1_200 }, pagos: [],
+        }],
+        gastos: [], dineroEntregado: 0,
+      })
+
+      const filas = await testPrisma.historial.findMany({ where: { entidad: 'Pedido', registroId: pedido.id, accion: 'PRECIO_CIERRE' } })
+      expect(filas).toHaveLength(1)
+      const datos = JSON.parse(String(filas[0].datos))
+      expect(datos.cambios).toEqual([{ producto: 'PACA_AGUA', antes: 1_000, despues: 1_200 }])
+      expect(datos.valorEntregadoEnCierre).toBe(4_000)
+
+      // Contrato aprobado: la obligación económica NO se toca por la entrega parcial.
+      const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+      expect(Number(p.total)).toBe(10_000)
+      expect(Number(p.totalPagado)).toBe(10_000)
+      expect(Number(p.saldo)).toBe(0)
+      const f = await testPrisma.factura.findUniqueOrThrow({ where: { id: factura.id } })
+      expect(Number(f.total)).toBe(10_000)
+      expect(Number(f.saldo)).toBe(0)
+    })
+
+    it('PARCIAL sin cambio de precio: 0 PRECIO_CIERRE', async () => {
+      const emb = await crearEmbarque({ PACA_AGUA: 4 })
+      const { pedido } = await crearPedidoPrepago({ embarqueId: emb.id, producto: 'PACA_AGUA', cantPedido: 10 })
+
+      await buildUseCase().execute({
+        id: emb.id,
+        pedidos: [{ pedidoId: pedido.id, entregado: 'PARCIAL', productosEntregados: entregaDe('PACA_AGUA', 4), pagos: [] }],
+        gastos: [], dineroEntregado: 0,
+      })
+
+      expect(await testPrisma.historial.count({ where: { entidad: 'Pedido', registroId: pedido.id, accion: 'PRECIO_CIERRE' } })).toBe(0)
+    })
+  })
+
+  // ── Contrato HTTP: mismos payloads de los 2 E2E que cambian de COMPLETO a PARCIAL ──
+  describe('Contrato HTTP de POST /api/embarques/[id]/cerrar (payloads de e2e/embarques.spec.ts)', () => {
+    async function pedidoSinPago(embarqueId: string, cantidad: number, precio: number) {
+      const total = cantidad * precio
+      return testPrisma.pedido.create({
+        data: {
+          clienteId, canal: 'DOMICILIO', origen: 'PEDIDO', total, totalPagado: 0, saldo: total,
+          estadoEntrega: 'EN_RUTA', estado: 'EN_RUTA', estadoPago: 'PENDIENTE', embarqueId,
+          cPacaAguaPed: cantidad, precioPacaAgua: precio,
+          items: { create: [{ producto: 'PACA_AGUA', cantPedido: cantidad, cantEntrega: 0, precio, subtotal: total }] },
+        },
+      })
+    }
+    const cuerpo = (pedidoId: string, entregado: 'COMPLETO' | 'PARCIAL', entregadas: number, pago: number) => ({
+      pedidos: [{
+        pedidoId, entregado,
+        productosEntregados: { cPacaAguaEnt: entregadas, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 },
+        preciosReales: { pacaAgua: 2600, pacaHielo: 0, botellonFab: 0, botellonDom: 0, bolsaAgua: 0, bolsaHielo: 0 },
+        pagado: 'COMPLETO', pagos: [{ metodo: 'EFECTIVO', monto: pago }],
+      }],
+      ventasLibres: [],
+      productos: [{ producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 }],
+    })
+    async function llamarCierre(embarqueId: string, body: unknown) {
+      const { POST } = await import('@/app/api/embarques/[id]/cerrar/route')
+      const req = { json: async () => body } as unknown as import('next/server').NextRequest
+      const res = await POST(req, { params: Promise.resolve({ id: embarqueId }) })
+      return { status: res.status, json: (await res.json()) as Record<string, unknown> }
+    }
+
+    it('COMPLETO con faltante (3 de 5) -> 400 accionable; el pedido, el pago y el embarque quedan intactos', async () => {
+      const emb = await crearEmbarque({ PACA_AGUA: 5 })
+      const pedido = await pedidoSinPago(emb.id, 5, 2_600)
+
+      const r = await llamarCierre(emb.id, cuerpo(pedido.id, 'COMPLETO', 3, 7_800))
+
+      expect(r.status).toBe(400)
+      expect(r.json.success).not.toBe(true)
+      expect(JSON.stringify(r.json)).toMatch(/no está completo/)
+      const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+      expect(p.estadoEntrega).not.toBe('ENTREGADO')
+      expect(p.cPacaAguaEnt).toBe(0)
+      expect(await testPrisma.pago.count({ where: { pedidoId: pedido.id } })).toBe(0)
+      expect((await testPrisma.embarque.findUniqueOrThrow({ where: { id: emb.id } })).estado).toBe('EN_RUTA')
+    })
+
+    it('el mismo cierre como PARCIAL (3 de 5) -> 200, pedido PENDIENTE con 3 entregadas, pago de misión registrado y embarque CERRADO', async () => {
+      const emb = await crearEmbarque({ PACA_AGUA: 5 })
+      const pedido = await pedidoSinPago(emb.id, 5, 2_600)
+
+      const r = await llamarCierre(emb.id, cuerpo(pedido.id, 'PARCIAL', 3, 7_800))
+
+      expect(r.status).toBe(200)
+      expect(r.json.success).toBe(true)
+      const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id }, include: { pagos: true } })
+      expect(p.estadoEntrega).toBe('PENDIENTE')
+      expect(p.cPacaAguaEnt).toBe(3)
+      expect(p.pagos).toHaveLength(1)
+      expect(p.pagos[0].embarqueId).toBe(emb.id)
+      expect(Number(p.totalPagado)).toBe(7_800)
+      expect((await testPrisma.embarque.findUniqueOrThrow({ where: { id: emb.id } })).estado).toBe('CERRADO')
     })
   })
 

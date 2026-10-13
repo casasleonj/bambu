@@ -622,14 +622,40 @@ export class ProcesarPedidoService {
     pedidosActualizados.push({ id: pedido.id, estado: completo ? 'ENTREGADO' : 'PENDIENTE' })
 
     // Comisión / totalVentas: solo el valor entregado EN ESTE cierre.
-    return (
+    const valorEntregadoEnCierre =
       toNumber(pedido.precioPacaAgua) * (entProd.cPacaAguaEnt || 0) +
       toNumber(pedido.precioPacaHielo) * (entProd.cPacaHieloEnt || 0) +
       toNumber(pedido.precioBotellonFab) * (entProd.cBotellonFabEnt || 0) +
       toNumber(pedido.precioBotellonDom) * (entProd.cBotellonDomEnt || 0) +
       toNumber(pedido.precioBolsaAgua) * (entProd.cBolsaAguaEnt || 0) +
       toNumber(pedido.precioBolsaHielo) * (entProd.cBolsaHieloEnt || 0)
-    )
+
+    // B-11 (revisión de PR-1A): un cambio de precio unitario con autoridad se
+    // audita también en la entrega PARCIAL (antes solo la rama COMPLETO lo hacía,
+    // aunque ambas persisten los precios corregidos). Solo antes/después; no se
+    // tocan `total`, saldos ni facturas (obligación económica intacta, PR-1).
+    const hayOverride = !!cuadre.preciosReales && userRole === 'ADMIN'
+    const aplicar = (clave: string, original: number): number =>
+      hayOverride ? (cuadre.preciosReales?.[clave] ?? original) : original
+    const originales: PreciosPedido = {
+      pacaAgua: toNumber(pedido.precioPacaAgua),
+      pacaHielo: toNumber(pedido.precioPacaHielo),
+      botellonFab: toNumber(pedido.precioBotellonFab),
+      botellonDom: toNumber(pedido.precioBotellonDom),
+      bolsaAgua: toNumber(pedido.precioBolsaAgua),
+      bolsaHielo: toNumber(pedido.precioBolsaHielo),
+    }
+    const aplicados: PreciosPedido = {
+      pacaAgua: aplicar('pacaAgua', originales.pacaAgua),
+      pacaHielo: aplicar('pacaHielo', originales.pacaHielo),
+      botellonFab: aplicar('botellonFab', originales.botellonFab),
+      botellonDom: aplicar('botellonDom', originales.botellonDom),
+      bolsaAgua: aplicar('bolsaAgua', originales.bolsaAgua),
+      bolsaHielo: aplicar('bolsaHielo', originales.bolsaHielo),
+    }
+    await this.logPrecioCierre(client, pedido, originales, aplicados, valorEntregadoEnCierre, userId)
+
+    return valorEntregadoEnCierre
   }
 
   /**
@@ -661,10 +687,23 @@ export class ProcesarPedidoService {
       cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0,
     }
     const filas = acumuladoPorProducto(pedido, ceros)
-    const totalEntregado = filas.reduce((s, f) => s + f.acum, 0)
-    const totalPedido = filas.reduce((s, f) => s + f.pedido, 0)
 
-    if (totalPedido > 0 && totalEntregado >= totalPedido) {
+    // Revisión de PR-1A: la completitud se evalúa POR PRODUCTO, nunca por la suma
+    // total. Con sumas iguales pero líneas inconsistentes (p. ej. 15 PACA_AGUA
+    // entregadas sobre 10 pedidas y 0 de 5 BOLSA_AGUA) el pedido NO está completo.
+    // Si algún producto excede lo pedido, el dato viola 0 ≤ cantEntrega ≤ cantPedido
+    // (invariante I-01): se rechaza explícitamente en vez de decidir un estado.
+    const excedido = filas.find((f) => f.acum > f.pedido)
+    if (excedido) {
+      throw new Error(
+        `ENTREGA_INCONSISTENTE: el pedido #${pedido.numero} tiene más entregado que pedido en ${excedido.producto} (${excedido.acum}/${excedido.pedido}); revise las cantidades antes de cerrar`,
+      )
+    }
+    const conLineas = filas.filter((f) => f.pedido > 0)
+    const totalEntregado = filas.reduce((s, f) => s + f.acum, 0)
+    const completoPorProducto = conLineas.length > 0 && conLineas.every((f) => f.acum === f.pedido)
+
+    if (completoPorProducto) {
       pedidosActualizados.push({ id: pedido.id, estado: pedido.estadoEntrega })
       return 0
     }
