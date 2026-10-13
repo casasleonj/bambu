@@ -3,6 +3,7 @@ import { requireAuth, requireOwnership } from '@/lib/auth-check'
 import { prisma } from '@/lib/prisma'
 import { calcularPacasEmbarque, calcularPesoEmbarque, getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
+import { mapsLinkDeCoords } from '@/lib/geo/pedido-coords'
 import { EmbarqueClient } from './embarque-client'
 import type { EmbarqueDetalle } from './types'
 import type { Trabajador, Ruta } from '../embarques-client/types'
@@ -74,6 +75,8 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
             negocioId: true,
             direccionEntrega: true,
             barrioEntrega: true,
+            entregaLat: true,
+            entregaLng: true,
             cliente: { select: { id: true, nombre: true, direccion: true, barrio: true, telefono: true, linkUbicacion: true } },
           },
           orderBy: { numero: 'asc' },
@@ -205,11 +208,14 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
         overrideDireccion: p.direccionEntrega,
         overrideBarrio: p.barrioEntrega,
       })
-      const linkUbicacionEfectivo = direccionEfectiva.fuente === 'negocio'
+      // Destino PROPIO del pedido (entregaLat/Lng) gana: el link del
+      // cliente/negocio apuntaría a otro sitio.
+      const linkDestinoPropio = mapsLinkDeCoords(p.entregaLat, p.entregaLng)
+      const linkUbicacionEfectivo = linkDestinoPropio ?? (direccionEfectiva.fuente === 'negocio'
         ? negocioInfo?.linkUbicacion ?? null
         : direccionEfectiva.fuente === 'cliente'
           ? p.cliente.linkUbicacion ?? null
-          : (negocioInfo?.linkUbicacion ?? p.cliente.linkUbicacion ?? null)
+          : (negocioInfo?.linkUbicacion ?? p.cliente.linkUbicacion ?? null))
       return {
         id: p.id,
         numero: p.numero,

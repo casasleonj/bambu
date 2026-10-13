@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { RepartidorClient } from './repartidor-client'
 import { requirePagePermission } from '@/lib/auth-guard'
 import { getConfigBool } from '@/lib/config'
-import { pickCoords } from '@/lib/geo/pedido-coords'
+import { mapsLinkDeCoords, pickCoords } from '@/lib/geo/pedido-coords'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 
 export default async function RepartidorPage() {
@@ -98,8 +98,8 @@ export default async function RepartidorPage() {
         optimizadoEn: embarque.optimizadoEn?.toISOString() || null,
         pedidos: embarque.pedidos.map(p => {
           const negocioInfo = p.negocioId ? negocioMap.get(p.negocioId) : undefined
-          // Coords efectivas del pedido: negocio gana, fallback a cliente.
-          const coordsEfectivas = pickCoords({ cliente: p.cliente, negocio: negocioInfo })
+          // Coords efectivas del pedido: destino propio → negocio → cliente.
+          const coordsEfectivas = pickCoords({ pedido: { lat: p.entregaLat, lng: p.entregaLng }, cliente: p.cliente, negocio: negocioInfo })
           // Dirección de texto efectiva (misma prioridad que coords) + el
           // linkUbicacion de la MISMA fuente que ganó, para que el
           // repartidor tenga un link a Maps cuando no hay dirección en
@@ -110,11 +110,14 @@ export default async function RepartidorPage() {
             overrideDireccion: p.direccionEntrega,
             overrideBarrio: p.barrioEntrega,
           })
-          const linkUbicacionEfectivo = direccionEfectiva.fuente === 'negocio'
+          // Si el pedido tiene destino PROPIO (entregaLat/Lng), el link del
+          // cliente/negocio apuntaría a otro sitio: se navega a SUS coords.
+          const linkDestinoPropio = mapsLinkDeCoords(p.entregaLat, p.entregaLng)
+          const linkUbicacionEfectivo = linkDestinoPropio ?? (direccionEfectiva.fuente === 'negocio'
             ? negocioInfo?.linkUbicacion ?? null
             : direccionEfectiva.fuente === 'cliente'
               ? p.cliente.linkUbicacion ?? null
-              : (negocioInfo?.linkUbicacion ?? p.cliente.linkUbicacion ?? null)
+              : (negocioInfo?.linkUbicacion ?? p.cliente.linkUbicacion ?? null))
           return {
             ...p,
             clienteId: p.clienteId,

@@ -202,8 +202,9 @@ export async function GET(request: NextRequest) {
       })
       const horaApertura = negocio?.horaApertura || null
       const rutaNombre = negocio?.ruta?.nombre || cliente?.ruta?.nombre
-      // Coords efectivas (regla única pickCoords: negocio gana, fallback cliente).
-      const coordsEfectivas = pickCoords({ cliente, negocio })
+      // Coords efectivas (regla única pickCoords): destino propio del pedido →
+      // negocio → cliente. (`entregaLat/Lng` ≠ `gpsLat/gpsLng`, el GPS de entrega.)
+      const coordsEfectivas = pickCoords({ pedido: { lat: p.entregaLat, lng: p.entregaLng }, cliente, negocio })
 
       return {
         ...p,

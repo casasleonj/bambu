@@ -144,8 +144,9 @@ export default async function PedidosPage({
     const enriched = result.pedidos.map(p => {
       const cliente = clienteById.get(p.clienteId)
       const negocio = p.negocioId ? negocioById.get(p.negocioId) : undefined
-      // Coords efectivas (regla única pickCoords: negocio gana, fallback cliente).
-      const coordsEfectivas = pickCoords({ cliente, negocio })
+      // Coords efectivas (regla única pickCoords): destino propio del pedido →
+      // negocio → cliente.
+      const coordsEfectivas = pickCoords({ pedido: { lat: p.entregaLat, lng: p.entregaLng }, cliente, negocio })
       // Dirección de texto efectiva (regla única pickDireccionTexto): el
       // snapshot propio del pedido (direccionEntrega/barrioEntrega) gana
       // sobre negocio, que gana sobre cliente.

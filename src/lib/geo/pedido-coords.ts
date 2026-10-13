@@ -52,3 +52,16 @@ function firstValid(sources: Array<CoordSource | null | undefined>): EffectiveCo
 export function pickCoords(p: PedidoCoordInput): EffectiveCoords | null {
   return firstValid([p.pedido, p.negocio, p.cliente])
 }
+
+/**
+ * Link de Google Maps para unas coords. Se usa cuando el destino es la
+ * ubicación PROPIA del pedido: el `linkUbicacion` del cliente/negocio
+ * apuntaría a otro sitio. Devuelve `null` si las coords no son válidas.
+ */
+export function mapsLinkDeCoords(lat: unknown, lng: unknown): string | null {
+  if (lat == null || lng == null) return null
+  const la = Number(lat)
+  const ln = Number(lng)
+  if (!Number.isFinite(la) || !Number.isFinite(ln)) return null
+  return `https://www.google.com/maps/search/?api=1&query=${la.toFixed(6)},${ln.toFixed(6)}`
+}
