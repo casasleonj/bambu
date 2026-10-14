@@ -113,12 +113,15 @@ describe('F-N14: la route sigue trabajando (no rompe flujo normal)', () => {
   const postSource = routeSource.substring(postStart)
 
   it('FIX: la route sigue llamando a generarPedidosRecurrentes', () => {
-    expect(postSource).toMatch(/generarPedidosRecurrentes\(decisiones,\s*fecha,\s*\{\s*recurrenteBatchId:\s*offlineId\s*\}\)/)
+    expect(postSource).toMatch(/generarPedidosRecurrentes\(decisiones,\s*fecha,\s*\{\s*recurrenteBatchId:\s*offlineId,\s*actor:\s*\{\s*usuarioId,\s*proceso:\s*'hub'\s*\},?\s*\}\)/)
   })
 
-  it('FIX: el logBulkAudit solo se ejecuta si NO es deduped', () => {
-    // No queremos loggear CREATE para pedidos que ya existían
+  it('FIX: los efectos post-commit (realtime) solo corren si NO es deduped', () => {
     expect(postSource).toMatch(/if\s*\(resultado\.generados\.length\s*>\s*0\s*&&\s*!deduped\)/)
+  })
+
+  it('§5.E: la route ya no audita post-commit; la auditoría va en la tx del lib', () => {
+    expect(postSource).not.toMatch(/logBulkAudit/)
   })
 
   it('FIX: la route sigue retornando generados, saltados, pedidos, saltadosIds', () => {

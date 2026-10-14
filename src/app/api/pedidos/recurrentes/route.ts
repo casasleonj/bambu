@@ -7,7 +7,6 @@ import { z } from 'zod'
 import { ROLES, LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
-import { logBulkAudit } from '@/lib/audit'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { resolverLimiteFiados } from '@/lib/pedido-utils'
 
@@ -208,7 +207,12 @@ export async function POST(request: NextRequest) {
     // (admin vs cron procesando en órdenes distintos).
     //
     // Patrón alineado con src/app/api/cierre/route.ts:564-585.
-    const resultado = await generarPedidosRecurrentes(decisiones, fecha, { recurrenteBatchId: offlineId })
+    const usuarioId = (authResult.user as { id?: string } | undefined)?.id
+    if (!usuarioId) return apiError('Sesión sin usuario', 401)
+    const resultado = await generarPedidosRecurrentes(decisiones, fecha, {
+      recurrenteBatchId: offlineId,
+      actor: { usuarioId, proceso: 'hub' },
+    })
 
     // Detectar dedup: si la función retornó pedidos con el mismo
     // recurrenteBatchId que pasamos, fue deduped (ya existían).
@@ -220,17 +224,9 @@ export async function POST(request: NextRequest) {
       deduped = allHaveBatch === resultado.generados.length
     }
 
+    // La auditoría (GENERACION + CREATE del pedido) se escribe dentro de la
+    // transacción de cada plantilla en `generarPedidosRecurrentes` (§5.E).
     if (resultado.generados.length > 0 && !deduped) {
-      logBulkAudit(
-        resultado.generados.map(g => ({
-          entidad: 'Pedido',
-          registroId: g.id,
-          accion: 'CREATE' as const,
-          datos: { numero: g.numero, tipo: g.tipo, generadoDesde: 'recurrentes' },
-          usuarioId: (authResult.user as { id?: string } | undefined)?.id,
-        }))
-      ).catch(() => {})
-
       resultado.generados.forEach((g) => {
         publishRealtimeEvent('pedido.created', g.id).catch(() => {})
       })

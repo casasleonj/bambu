@@ -9,7 +9,7 @@
 // fechaEntrega = now, y el pedido nuevo recibía totalPagado sin Pago ni NC
 // → entrega inexistente, doble conteo de producto, dinero duplicado.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { testPrisma, resetAndSeed, disconnect } from './setup'
+import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { generarPedidosRecurrentes } from '@/lib/recurrentes'
 
 let clienteId: string
@@ -89,6 +89,7 @@ describe('F-A — recurrentes APLICAR_CREDITO: integridad Pedido→Pago→Carter
     await generarPedidosRecurrentes(
       [{ recurrenteId: plantillaId, decision: 'APLICAR_CREDITO' }],
       new Date('2026-09-01T12:00:00Z'),
+      { actor: { usuarioId: (await getAdminUser()).id, proceso: 'hub' } },
     )
   })
 
