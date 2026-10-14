@@ -505,7 +505,7 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
 
 ## Registro de tareas
 
-El backlog vive en **GitHub Issues** (índice en `docs/BACKLOG.md`). Toda tarea nueva —incluida la que surge en el chat— se registra como issue **antes** de empezar, y el PR que la resuelve la cierra con `Closes #N` (el PR debe apuntar a `main`). No guardes pendientes en este archivo ni en notas de sesión. No es solo una convención: el workflow `Backlog` (`.github/workflows/backlog.yml`) falla el PR que no cita un issue y mantiene las etiquetas `estado:*` (ver `docs/BACKLOG.md`).
+El backlog vive en **GitHub Issues** (índice en `docs/BACKLOG.md`). Toda tarea nueva —incluida la que surge en el chat— se registra como issue **antes** de empezar, y el PR que la resuelve la cierra con `Closes #N` (el PR debe apuntar a `main`). Los hallazgos y funcionalidades nuevos se registran con el skill `/hallazgo` o con los formularios de `.github/ISSUE_TEMPLATE/`; los pendientes en el código llevan su issue (`TODO(#123)`). No guardes pendientes en este archivo ni en notas de sesión. No es solo una convención: el workflow `Backlog` (`.github/workflows/backlog.yml`) falla el PR que no cita un issue y mantiene las etiquetas `estado:*` (ver `docs/BACKLOG.md`).
 
 ---
 

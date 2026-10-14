@@ -1,0 +1,47 @@
+name: Funcionalidad
+description: Una funcionalidad o mejora nueva que se quiere construir.
+title: "[Funcionalidad] "
+labels: ["estado:pendiente"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Registra la idea aquí aunque todavía no se vaya a construir. Si depende de una decisión del negocio,
+        indícalo en "Dependencias" (se marcará como bloqueada).
+  - type: textarea
+    id: objetivo
+    attributes:
+      label: Objetivo
+      description: Qué problema resuelve y para quién (roles de usuario afectados).
+    validations:
+      required: true
+  - type: textarea
+    id: alcance
+    attributes:
+      label: Alcance y fuera de alcance
+    validations:
+      required: true
+  - type: textarea
+    id: criterio
+    attributes:
+      label: Criterio de aceptación
+      description: Cómo se comprueba que está lista (pruebas, flujo visible).
+    validations:
+      required: true
+  - type: textarea
+    id: dependencias
+    attributes:
+      label: Dependencias
+      description: Otras fases, issues o decisiones del PO. Escribe "ninguna" si no hay.
+    validations:
+      required: true
+  - type: dropdown
+    id: prioridad
+    attributes:
+      label: Prioridad
+      options:
+        - P0 — dinero, integridad o antifraude
+        - P1 — afecta la operación diaria
+        - P2 — mejora o deuda sin urgencia
+    validations:
+      required: true
