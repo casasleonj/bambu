@@ -131,6 +131,8 @@ export interface PedidoHijoData {
   negocioId?: string
   direccionEntrega?: string
   barrioEntrega?: string
+  entregaLat?: number
+  entregaLng?: number
 }
 
 export type TipoEntrega = 'COMPLETO' | 'PARCIAL' | 'NO_ENTREGADO'

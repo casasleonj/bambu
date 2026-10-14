@@ -42,6 +42,8 @@ interface PrismaPedido {
   codigoVisita: string | null
   direccionEntrega: string | null
   barrioEntrega: string | null
+  entregaLat: number | { toNumber: () => number } | null
+  entregaLng: number | { toNumber: () => number } | null
   adminOverrideNota: string | null
   adminOverrideBy: string | null
   adminOverrideAt: Date | null
@@ -128,6 +130,8 @@ export class PedidoMapper {
       codigoVisita: raw.codigoVisita || undefined,
       direccionEntrega: raw.direccionEntrega || undefined,
       barrioEntrega: raw.barrioEntrega || undefined,
+      entregaLat: raw.entregaLat != null ? toNumber(raw.entregaLat) : undefined,
+      entregaLng: raw.entregaLng != null ? toNumber(raw.entregaLng) : undefined,
       adminOverrideNota: raw.adminOverrideNota || undefined,
       adminOverrideBy: raw.adminOverrideBy || undefined,
       adminOverrideAt: raw.adminOverrideAt || undefined,
@@ -173,6 +177,8 @@ export class PedidoMapper {
       codigoVisita: pedido.codigoVisita || null,
       direccionEntrega: pedido.direccionEntrega || null,
       barrioEntrega: pedido.barrioEntrega || null,
+      entregaLat: pedido.entregaLat ?? null,
+      entregaLng: pedido.entregaLng ?? null,
       adminOverrideNota: pedido.adminOverrideNota || null,
       adminOverrideBy: pedido.adminOverrideBy || null,
       adminOverrideAt: pedido.adminOverrideAt || null,
@@ -217,6 +223,8 @@ export class PedidoMapper {
       codigoVisita: pedido.codigoVisita || null,
       direccionEntrega: pedido.direccionEntrega || null,
       barrioEntrega: pedido.barrioEntrega || null,
+      entregaLat: pedido.entregaLat ?? null,
+      entregaLng: pedido.entregaLng ?? null,
       adminOverrideNota: pedido.adminOverrideNota || null,
       adminOverrideBy: pedido.adminOverrideBy || null,
       adminOverrideAt: pedido.adminOverrideAt || null,

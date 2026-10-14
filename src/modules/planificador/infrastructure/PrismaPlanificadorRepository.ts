@@ -32,6 +32,8 @@ export class PrismaPlanificadorRepository {
           clienteId: true,
           negocioId: true,
           barrioEntrega: true,
+          entregaLat: true,
+          entregaLng: true,
           cPacaAguaPed: true,
           cPacaHieloPed: true,
           cBotellonFabPed: true,
@@ -91,6 +93,8 @@ export class PrismaPlanificadorRepository {
         clienteId: p.clienteId,
         negocioId: p.negocioId,
         barrioEntrega: p.barrioEntrega,
+        entregaLat: p.entregaLat,
+        entregaLng: p.entregaLng,
         cliente: {
           lat: p.cliente.lat,
           lng: p.cliente.lng,

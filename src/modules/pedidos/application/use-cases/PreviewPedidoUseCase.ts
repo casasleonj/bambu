@@ -17,6 +17,13 @@ import type { ProductCode } from '@/shared/domain'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
 import { normalizarPagos, calcularSaldo, calcularEstadoPago } from '../../domain/services/pagos-calculator.service'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
+import {
+  destinoEfectivoCambia,
+  estadoEntregaAlCrear,
+  requiereEntregaSuficiente,
+  ubicacionEntregaValida,
+} from '../../domain/services/entrega-politica.service'
+import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 import { calcularAlertasCliente } from '@/lib/alertas-detector'
 import { draftToPedidoBase, pedidoEntityToPedidoBase } from './pedido-to-pedido-base'
 import { resolverEntrega } from '../../domain/services/entrega-suficiencia.service'
@@ -70,11 +77,20 @@ export class PreviewPedidoUseCase {
     // estadoEntrega actual, no contra 'PENDIENTE'). ──
     let totalPagadoBase = 0
     let estadoEntregaExistente: string | null = null
+    // Destino propio del pedido existente (snapshot de texto + ubicación) — para
+    // decidir, igual que ActualizarPedidoUseCase, si la edición CAMBIA el destino.
+    let destinoExistente: { direccion: string | null; barrio: string | null; lat: number | null; lng: number | null } | null = null
     if (esEdicion) {
       const existente = await this.deps.pedidoRepo.findById(PedidoId.from(input.pedidoId as string))
       if (!existente) throw new PedidoNotFoundError(input.pedidoId as string)
       totalPagadoBase = existente.totalPagado.toDecimal()
       estadoEntregaExistente = existente.estadoEntrega.get()
+      destinoExistente = {
+        direccion: existente.direccionEntrega ?? null,
+        barrio: existente.barrioEntrega ?? null,
+        lat: existente.entregaLat ?? null,
+        lng: existente.entregaLng ?? null,
+      }
     }
 
     // ── Pricing (mismo port que CrearPedidoUseCase) ──
@@ -118,9 +134,11 @@ export class PreviewPedidoUseCase {
     const saldoFavorProyectado = esEdicion || esAnonimo ? 0 : excedente
     // Edición: el estadoEntrega no cambia — se proyecta el estadoPago contra el
     // actual (igual que ActualizarPedidoUseCase). Creación: PENDIENTE/ENTREGADO.
+    // Creación: MISMA función que CrearPedidoUseCase (respeta el origen: antes el
+    // preview ignoraba `origen` y proyectaba distinto al commit).
     const estadoEntregaProyectado = (esEdicion && estadoEntregaExistente
       ? estadoEntregaExistente
-      : input.entregado === true ? 'ENTREGADO' : 'PENDIENTE'
+      : estadoEntregaAlCrear({ origen, entregado: input.entregado })
     ) as PreviewPedidoResult['calculation']['estadoEntregaProyectado']
     const saldoProyectado = calcularSaldo(total, totalPagado)
     const estadoPagoProyectado = calcularEstadoPago(total, totalPagado, estadoEntregaProyectado) as
@@ -187,8 +205,39 @@ export class PreviewPedidoUseCase {
         ? await this.deps.resolverCoordsDeLink(efectivoLink)
         : null
 
+    // Ubicación propia del pedido (destino puntual). Creación: la del input.
+    // Edición: la del pedido existente salvo que el input la toque (igual que
+    // ActualizarPedidoUseCase).
+    const tocaUbicacion = esEdicion
+      ? input.entregaLat !== undefined || input.entregaLng !== undefined
+      : input.entregaLat != null || input.entregaLng != null
+    const quitaUbicacion = tocaUbicacion && input.entregaLat == null && input.entregaLng == null
+    const ubicacionInput = tocaUbicacion && !quitaUbicacion
+      ? ubicacionEntregaValida(input.entregaLat, input.entregaLng)
+      : null
+    if (tocaUbicacion && !quitaUbicacion && !ubicacionInput) {
+      canCreate = false
+      warnings.push({
+        code: 'UBICACION_ENTREGA_INVALIDA',
+        message: 'La ubicación del domicilio debe traer latitud y longitud válidas.',
+        field: 'ubicacion',
+      })
+    } else if (ubicacionInput && canal !== 'DOMICILIO') {
+      canCreate = false
+      warnings.push({
+        code: 'UBICACION_SOLO_DOMICILIO',
+        message: 'La ubicación de destino solo aplica a pedidos a domicilio.',
+        field: 'ubicacion',
+      })
+    }
+    const coordsExistentes = destinoExistente && destinoExistente.lat != null && destinoExistente.lng != null
+      ? { lat: destinoExistente.lat, lng: destinoExistente.lng }
+      : null
+    const pedidoCoords = !tocaUbicacion ? coordsExistentes : ubicacionInput
+
     const entrega = resolverEntrega({
       canal,
+      pedidoCoords,
       overrideDireccion: input.direccionEntrega,
       overrideBarrio: input.barrioEntrega,
       cliente: {
@@ -201,17 +250,33 @@ export class PreviewPedidoUseCase {
       coordsDeLink,
     })
 
-    // La venta anónima (CONSUMIDOR_FINAL) no gatea por suficiencia de entrega
-    // — se sigue calculando `entrega` para mostrarla, pero no bloquea (paridad
-    // con CrearPedidoUseCase, que salta el guard para el canónico).
-    if (!esAnonimo && entrega.estado === 'INSUFICIENTE') {
+    // ¿Se exige la suficiencia? MISMA decisión que Crear/Actualizar (D3): hay
+    // mercancía pendiente en un DOMICILIO — el carácter anónimo del cliente NO
+    // es una excepción. En edición solo si CAMBIA el destino efectivo (D2).
+    let gateaSuficiencia = requiereEntregaSuficiente({ canal, estadoEntrega: estadoEntregaProyectado })
+    if (gateaSuficiencia && esEdicion && destinoExistente) {
+      const actualTexto = pickDireccionTexto({ cliente, negocio })
+      const dirActual = destinoExistente.direccion ?? actualTexto.direccion
+      const barrioActual = destinoExistente.barrio ?? actualTexto.barrio
+      gateaSuficiencia = destinoEfectivoCambia(
+        { direccion: dirActual, barrio: barrioActual, lat: coordsExistentes?.lat ?? null, lng: coordsExistentes?.lng ?? null },
+        {
+          direccion: input.direccionEntrega !== undefined ? (input.direccionEntrega ?? '') : dirActual,
+          barrio: input.barrioEntrega !== undefined ? (input.barrioEntrega ?? '') : barrioActual,
+          lat: pedidoCoords?.lat ?? null,
+          lng: pedidoCoords?.lng ?? null,
+        },
+      )
+    }
+
+    if (gateaSuficiencia && entrega.estado === 'INSUFICIENTE') {
       canCreate = false
       warnings.push({
         code: 'ENTREGA_INSUFICIENTE',
         message: 'Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.',
         field: 'direccion',
       })
-    } else if (!esAnonimo && entrega.estado === 'SUFICIENTE_COMPLEMENTARIA_FALTANTE') {
+    } else if (gateaSuficiencia && entrega.estado === 'SUFICIENTE_COMPLEMENTARIA_FALTANTE') {
       warnings.push({
         code: 'ENTREGA_COMPLEMENTARIA',
         message: 'Puedes continuar. Agregar ' + entrega.faltaComplementario.join(' y ') + ' puede facilitar la entrega.',

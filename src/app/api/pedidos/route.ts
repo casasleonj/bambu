@@ -202,8 +202,9 @@ export async function GET(request: NextRequest) {
       })
       const horaApertura = negocio?.horaApertura || null
       const rutaNombre = negocio?.ruta?.nombre || cliente?.ruta?.nombre
-      // Coords efectivas (regla única pickCoords: negocio gana, fallback cliente).
-      const coordsEfectivas = pickCoords({ cliente, negocio })
+      // Coords efectivas (regla única pickCoords): destino propio del pedido →
+      // negocio → cliente. (`entregaLat/Lng` ≠ `gpsLat/gpsLng`, el GPS de entrega.)
+      const coordsEfectivas = pickCoords({ pedido: { lat: p.entregaLat, lng: p.entregaLng }, cliente, negocio })
 
       return {
         ...p,
@@ -215,6 +216,9 @@ export async function GET(request: NextRequest) {
         nombreNegocioCli: nombreNegocio,
         horaAperturaCli: horaApertura,
         rutaNombre,
+        // ubicación PROPIA del pedido (editable); lat/lng son las efectivas.
+        entregaLat: p.entregaLat == null ? null : Number(p.entregaLat),
+        entregaLng: p.entregaLng == null ? null : Number(p.entregaLng),
         lat: coordsEfectivas?.lat ?? null,
         lng: coordsEfectivas?.lng ?? null,
         fecha: p.fecha,
@@ -258,6 +262,8 @@ export async function POST(request: NextRequest) {
       actualizarCliente,
       direccionEntrega,
       barrioEntrega,
+      entregaLat,
+      entregaLng,
       origen,
       entregado,
       pedidoOrigenId,
@@ -334,6 +340,8 @@ export async function POST(request: NextRequest) {
       } : undefined,
       direccionEntrega,
       barrioEntrega,
+      entregaLat: entregaLat ?? undefined,
+      entregaLng: entregaLng ?? undefined,
       createdById: authResult.user?.id ?? undefined,
       createdByRole: authResult.user?.role ?? undefined,
     })
@@ -395,6 +403,12 @@ export async function POST(request: NextRequest) {
       if (error.message === 'EXCEPCION_CREDITO_YA_CONSUMIDA') return apiError('La excepción de crédito ya fue utilizada por otro pedido', 409)
       if (error.name === 'EntregaInsuficienteError') {
         return apiError('Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.', 422, { code: 'ENTREGA_INSUFICIENTE' })
+      }
+      if (error.name === 'UbicacionEntregaInvalidaError') {
+        return apiError('La ubicación del domicilio debe traer latitud y longitud válidas.', 422, { code: 'UBICACION_ENTREGA_INVALIDA' })
+      }
+      if (error.name === 'UbicacionSoloDomicilioError') {
+        return apiError('La ubicación de destino solo aplica a pedidos a domicilio.', 422, { code: 'UBICACION_SOLO_DOMICILIO' })
       }
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating pedido:')

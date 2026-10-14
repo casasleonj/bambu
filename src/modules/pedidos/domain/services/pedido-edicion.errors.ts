@@ -67,6 +67,22 @@ export class EdicionNoPersistidaError extends Error {
   }
 }
 
+/** `entregaLat`/`entregaLng` deben venir juntas y ser una ubicación utilizable (finitas, en rango, ≠ (0,0)). */
+export class UbicacionEntregaInvalidaError extends Error {
+  constructor() {
+    super('UBICACION_ENTREGA_INVALIDA')
+    this.name = 'UbicacionEntregaInvalidaError'
+  }
+}
+
+/** La ubicación de destino solo existe para pedidos DOMICILIO. */
+export class UbicacionSoloDomicilioError extends Error {
+  constructor() {
+    super('UBICACION_SOLO_DOMICILIO')
+    this.name = 'UbicacionSoloDomicilioError'
+  }
+}
+
 /** Vía correcta para cada destino de estado que el PUT NO ejecuta. */
 export const VIA_OPERACION_ESPECIALIZADA: Readonly<Record<string, string>> = {
   ENTREGADO: 'Registre la entrega con POST /api/pedidos/[id]/entrega (cantidades, pagos, GPS/foto y reconexión N2).',

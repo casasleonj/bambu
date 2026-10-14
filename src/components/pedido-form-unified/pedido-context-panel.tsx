@@ -1,4 +1,5 @@
 import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
+import { UbicacionEntregaInput } from '@/components/pedido-workspace/ubicacion-entrega-input'
 import { NegocioSelector } from '@/components/negocio-selector'
 import type { FiadoStatus } from '@/modules/pedidos/domain/types'
 import type { Cliente } from './types'
@@ -40,6 +41,9 @@ export interface PedidoContextPanelProps {
   onEditDireccionChange: (value: string) => void
   editBarrio: string
   onEditBarrioChange: (value: string) => void
+  entregaLat?: number | null
+  entregaLng?: number | null
+  onUbicacionChange?: (lat: number | null, lng: number | null) => void
   soloParaEstePedido: boolean
   onSoloParaEstePedidoChange: (value: boolean) => void
 
@@ -105,6 +109,9 @@ export function PedidoContextPanel({
   onEditDireccionChange,
   editBarrio,
   onEditBarrioChange,
+  entregaLat,
+  entregaLng,
+  onUbicacionChange,
   soloParaEstePedido,
   onSoloParaEstePedidoChange,
   searchTerm,
@@ -225,6 +232,9 @@ export function PedidoContextPanel({
             // quedaba interactivo igual, sugiriendo una capacidad que no
             // existe. Se vuelve de solo lectura al editar.
             readOnly={Boolean(pedidoInicialId)}
+            // venta de PUNTO: el negocio se puede elegir (precios) pero no se
+            // muestra dirección ni barrio — solo importan al domicilio.
+            mostrarDireccion={canal === 'DOMICILIO'}
           />
 
           {canal === 'DOMICILIO' && !ocultarInputsEntrega && (
@@ -249,6 +259,9 @@ export function PedidoContextPanel({
                   className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
                 />
               </div>
+              {onUbicacionChange && (
+                <UbicacionEntregaInput lat={entregaLat ?? null} lng={entregaLng ?? null} onChange={onUbicacionChange} />
+              )}
               {/* Solo tiene sentido para el domicilio principal: cuando hay
                   negocio seleccionado, la persistencia a Cliente ya está
                   bloqueada incondicionalmente (ver resolveActualizarCliente),

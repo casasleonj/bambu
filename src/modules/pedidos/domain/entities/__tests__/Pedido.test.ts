@@ -267,6 +267,8 @@ describe('Pedido.toProps — copia COMPLETA (fuente única para reconstruir el a
       codigoVisita: 'cv',
       direccionEntrega: 'd',
       barrioEntrega: 'b',
+      entregaLat: 4.711,
+      entregaLng: -74.0721,
       adminOverrideNota: 'an',
       adminOverrideBy: 'ab',
       adminOverrideAt: new Date('2026-01-04T00:00:00Z'),

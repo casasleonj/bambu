@@ -38,6 +38,9 @@ export interface CandidatoGeoInput {
   } | null
   /** Snapshot de barrio del pedido, si lo tiene. */
   barrioEntrega?: string | null
+  /** Destino propio del pedido (`Pedido.entregaLat/entregaLng`), si lo tiene. Gana sobre negocio/cliente. */
+  entregaLat?: unknown
+  entregaLng?: unknown
 }
 
 export interface SenalGeografica {
@@ -47,7 +50,7 @@ export interface SenalGeografica {
   lat: number | null
   lng: number | null
   /** De dónde salió el punto. */
-  fuente: 'NEGOCIO' | 'CLIENTE' | null
+  fuente: 'PEDIDO' | 'NEGOCIO' | 'CLIENTE' | null
   barrio: string | null
   calidad: LocationQuality
   /** ¿Se puede clusterizar/secuenciar con punto exacto? */
@@ -63,14 +66,21 @@ export function pickBarrio(c: CandidatoGeoInput): string | null {
 
 export function normalizarGeo(c: CandidatoGeoInput, ahora: Date = new Date()): SenalGeografica {
   const barrio = pickBarrio(c)
-  const coords = pickCoords({ cliente: c.cliente, negocio: c.negocio ?? undefined })
+  const coords = pickCoords({
+    pedido: { lat: c.entregaLat, lng: c.entregaLng },
+    cliente: c.cliente,
+    negocio: c.negocio ?? undefined,
+  })
+  const pedidoTieneCoords =
+    c.entregaLat != null && c.entregaLng != null &&
+    Number.isFinite(Number(c.entregaLat)) && Number.isFinite(Number(c.entregaLng))
 
   // ¿El punto vino del negocio o del cliente? pickCoords prioriza negocio.
   const negocioTieneCoords =
     c.negocio != null && c.negocio.lat != null && c.negocio.lng != null &&
     Number.isFinite(Number(c.negocio.lat)) && Number.isFinite(Number(c.negocio.lng))
-  const fuente: 'NEGOCIO' | 'CLIENTE' | null = coords
-    ? (negocioTieneCoords ? 'NEGOCIO' : 'CLIENTE')
+  const fuente: 'PEDIDO' | 'NEGOCIO' | 'CLIENTE' | null = coords
+    ? (pedidoTieneCoords ? 'PEDIDO' : negocioTieneCoords ? 'NEGOCIO' : 'CLIENTE')
     : null
 
   const calidad = deriveLocationQuality(
@@ -78,8 +88,10 @@ export function normalizarGeo(c: CandidatoGeoInput, ahora: Date = new Date()): S
       lat: coords?.lat,
       lng: coords?.lng,
       // Si el punto es del negocio, no hay geocodeOrigen (Negocio no lo tiene) → APPROX.
-      geocodeOrigen: fuente === 'NEGOCIO' ? undefined : c.cliente.geocodeOrigen,
-      geocodeAt: fuente === 'NEGOCIO' ? undefined : c.cliente.geocodeAt,
+      // Destino propio del pedido: lo capturó una persona al tomar el pedido
+      // (link de Maps resuelto o ubicación explícita) → equivale a 'MANUAL'.
+      geocodeOrigen: fuente === 'PEDIDO' ? 'MANUAL' : fuente === 'NEGOCIO' ? undefined : c.cliente.geocodeOrigen,
+      geocodeAt: fuente === 'PEDIDO' || fuente === 'NEGOCIO' ? undefined : c.cliente.geocodeAt,
       tieneBarrio: !!barrio,
     },
     ahora,

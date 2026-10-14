@@ -26,6 +26,12 @@ interface NegocioSelectorProps {
   /** Cuando true, el resumen se muestra pero no se puede abrir/cambiar
    * (ej. editando un pedido existente, donde el destino ya no es editable). */
   readOnly?: boolean
+  /**
+   * Dirección/barrio solo importan cuando la venta es a DOMICILIO. En una venta
+   * de PUNTO el selector sigue sirviendo para elegir el negocio (precios), pero
+   * no muestra dirección ni barrio. Por defecto se muestran (comportamiento previo).
+   */
+  mostrarDireccion?: boolean
 }
 
 export function NegocioSelector({
@@ -37,6 +43,7 @@ export function NegocioSelector({
   selectedNegocioId,
   onNegocioSelected,
   readOnly = false,
+  mostrarDireccion = true,
 }: NegocioSelectorProps) {
   const [negocios, setNegocios] = useState<NegocioOption[]>([])
   const [loading, setLoading] = useState(true)
@@ -130,6 +137,8 @@ export function NegocioSelector({
                 {resumenIcono} {resumenNombre}
                 {!negocioActivo && <span className="text-xs text-gray-400 ml-1">— domicilio principal</span>}
               </span>
+              {mostrarDireccion && (
+              <>
               {(resumenDireccion || resumenBarrio) ? (
                 <div className="text-xs text-gray-500 mt-1 truncate">
                   {resumenDireccion && <span>{resumenDireccion}</span>}
@@ -143,6 +152,8 @@ export function NegocioSelector({
                 <div className="mt-1">
                   <DireccionIndicator direccion={resumenDireccion} barrio={resumenBarrio} linkUbicacion={resumenLinkUbicacion} sinLink />
                 </div>
+              )}
+              </>
               )}
             </div>
             {readOnly ? (
@@ -172,6 +183,8 @@ export function NegocioSelector({
                     <span className="text-xs text-gray-400 ml-1">— domicilio principal</span>
                   </span>
                 </div>
+                {mostrarDireccion && (
+                <>
                 {(clienteDireccion || clienteBarrio) ? (
                   <div className="text-xs text-gray-500 mt-1">
                     {clienteDireccion && <span>{clienteDireccion}</span>}
@@ -185,6 +198,8 @@ export function NegocioSelector({
                   <div className="mt-1">
                     <DireccionIndicator direccion={clienteDireccion} barrio={clienteBarrio} linkUbicacion={clienteLinkUbicacion} sinLink />
                   </div>
+                )}
+                </>
                 )}
               </button>
 
@@ -213,6 +228,8 @@ export function NegocioSelector({
                       )}
                     </div>
                   </div>
+                  {mostrarDireccion && (
+                  <>
                   {(negocio.direccion || negocio.barrio || negocio.ruta) ? (
                     <div className="text-xs text-gray-500 mt-1">
                       {negocio.direccion && <span>{negocio.direccion}</span>}
@@ -231,6 +248,8 @@ export function NegocioSelector({
                     <div className="mt-1">
                       <DireccionIndicator direccion={negocio.direccion} barrio={negocio.barrio} linkUbicacion={negocio.linkUbicacion} sinLink />
                     </div>
+                  )}
+                  </>
                   )}
                 </button>
               ))}

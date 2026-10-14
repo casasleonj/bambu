@@ -25,6 +25,8 @@ export async function optimizeEmbarqueOrden(embarqueId: string): Promise<Optimiz
     where: { embarqueId, estadoEntrega: { in: ['PENDIENTE', 'EN_RUTA'] } },
     select: {
       id: true,
+      entregaLat: true,
+      entregaLng: true,
       cliente: { select: { lat: true, lng: true } },
       negocio: { select: { lat: true, lng: true } },
     },
@@ -35,8 +37,8 @@ export async function optimizeEmbarqueOrden(embarqueId: string): Promise<Optimiz
   const puntos: TSPPoint[] = []
 
   for (const p of pedidos) {
-    // Coords efectivas: negocio gana, fallback a cliente (schema.prisma contrato).
-    const coords = pickCoords(p)
+    // Coords efectivas: destino propio del pedido → negocio → cliente.
+    const coords = pickCoords({ pedido: { lat: p.entregaLat, lng: p.entregaLng }, cliente: p.cliente, negocio: p.negocio })
     if (coords) {
       puntos.push({ id: p.id, lat: coords.lat, lng: coords.lng })
     } else {

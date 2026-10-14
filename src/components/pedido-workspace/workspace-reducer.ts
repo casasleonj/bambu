@@ -141,6 +141,12 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         direccionEntrega: action.direccion,
         barrioEntrega: action.barrio,
       })
+    case 'SET_UBICACION':
+      return afterDraftChange(state, {
+        ...state.draft,
+        entregaLat: action.lat,
+        entregaLng: action.lng,
+      })
     case 'APPLY_PROPOSAL': {
       const draft = { ...state.draft, ...action.draft }
       const s = afterDraftChange(state, draft)

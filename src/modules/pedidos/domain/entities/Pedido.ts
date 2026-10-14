@@ -43,6 +43,9 @@ export interface PedidoProps {
   codigoVisita?: string
   direccionEntrega?: string
   barrioEntrega?: string
+  /** Ubicación del DESTINO del pedido (≠ GPS de comprobación `gpsLat/gpsLng`). */
+  entregaLat?: number
+  entregaLng?: number
   adminOverrideNota?: string
   adminOverrideBy?: string
   adminOverrideAt?: Date
@@ -90,6 +93,8 @@ export class Pedido {
   get codigoVisita(): string | undefined { return this.props.codigoVisita }
   get direccionEntrega(): string | undefined { return this.props.direccionEntrega }
   get barrioEntrega(): string | undefined { return this.props.barrioEntrega }
+  get entregaLat(): number | undefined { return this.props.entregaLat }
+  get entregaLng(): number | undefined { return this.props.entregaLng }
   get adminOverrideNota(): string | undefined { return this.props.adminOverrideNota }
   get adminOverrideBy(): string | undefined { return this.props.adminOverrideBy }
   get adminOverrideAt(): Date | undefined { return this.props.adminOverrideAt }
@@ -372,6 +377,8 @@ export class Pedido {
       negocioId: this.props.negocioId,
       direccionEntrega: this.props.direccionEntrega,
       barrioEntrega: this.props.barrioEntrega,
+      entregaLat: this.props.entregaLat,
+      entregaLng: this.props.entregaLng,
     }
   }
 

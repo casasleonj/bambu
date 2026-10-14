@@ -34,6 +34,12 @@ import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 import type { ResolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
 import { resolverEntrega } from '../../domain/services/entrega-suficiencia.service'
 import { EntregaInsuficienteError } from '../../domain/services/entrega-suficiencia.errors'
+import { UbicacionEntregaInvalidaError, UbicacionSoloDomicilioError } from '../../domain/services/pedido-edicion.errors'
+import {
+  estadoEntregaAlCrear,
+  requiereEntregaSuficiente,
+  ubicacionEntregaValida,
+} from '../../domain/services/entrega-politica.service'
 import { ensureConsumidorFinalCanonical, isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
 import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
@@ -193,7 +199,24 @@ export class CrearPedidoUseCase {
       // `coordsDeLink` viene de `resolverCoordsDeLink` ejecutado FUERA del lock
       // (arriba) — así un cliente con solo `linkUbicacion` resoluble llega a la
       // misma suficiencia que en el preview.
-      if (input.canal === 'DOMICILIO' && !isConsumidorFinalCanonical(clienteId)) {
+      //
+      // D3 (fase 2): el carácter anónimo del cliente NO es una excepción. Lo que
+      // decide si se exige es que la operación deje mercancía PENDIENTE — la
+      // misma función (`requiereEntregaSuficiente`) que usa el preview.
+      const origenCreacion = input.origen || 'PEDIDO'
+      const estadoEntregaCreacion = estadoEntregaAlCrear({ origen: origenCreacion, entregado: input.entregado })
+      // Ubicación propia del destino: juntas y utilizables, y solo DOMICILIO. Un
+      // par a medias/inválido o sobre un PUNTO se rechaza (no se ignora en
+      // silencio) — misma regla que el preview y ActualizarPedidoUseCase.
+      const trajoUbicacion = input.entregaLat != null || input.entregaLng != null
+      const ubicacionPropia = trajoUbicacion
+        ? ubicacionEntregaValida(input.entregaLat, input.entregaLng)
+        : null
+      if (trajoUbicacion) {
+        if (!ubicacionPropia) throw new UbicacionEntregaInvalidaError()
+        if (input.canal !== 'DOMICILIO') throw new UbicacionSoloDomicilioError()
+      }
+      if (requiereEntregaSuficiente({ canal: input.canal, estadoEntrega: estadoEntregaCreacion })) {
         const negocioEntrega = input.negocioId
           ? await this.clienteRepo.findNegocioById(input.negocioId, tx)
           : null
@@ -209,6 +232,7 @@ export class CrearPedidoUseCase {
             ? { direccion: negocioEntrega.direccion, barrio: negocioEntrega.barrio, referencia: negocioEntrega.referencia, linkUbicacion: negocioEntrega.linkUbicacion, lat: negocioEntrega.lat, lng: negocioEntrega.lng }
             : null,
           coordsDeLink,
+          pedidoCoords: ubicacionPropia,
         })
         if (entrega.estado === 'INSUFICIENTE') {
           throw new EntregaInsuficienteError()
@@ -233,7 +257,7 @@ export class CrearPedidoUseCase {
       // G6/ventaRapida→origen (decisión PO 2026-09-06): `origen` es explícito
       // desde el caller, nunca inferido de otro campo. `ventaRapida: boolean`
       // salió del contrato — el frontend manda `origen` directamente.
-      const origen = OrigenPedidoVO.create(input.origen || 'PEDIDO')
+      const origen = OrigenPedidoVO.create(origenCreacion)
       // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: la venta rápida deja de forzar
       // ENTREGADO. `entregado === false` → entrega posterior (queda PENDIENTE +
       // ANTICIPADO si va prepago). Solo aplica a venta rápida; el resto de
@@ -244,10 +268,8 @@ export class CrearPedidoUseCase {
       // `canal = DOMICILIO`, así que se cierra marcándola entregada a mano
       // cuando el cliente pasa. Para que entre a ruta, el cliente de la API
       // debe mandar `canal = DOMICILIO` (compra en punto con envío).
-      const entregaInmediata = origen.isVentaRapida() && input.entregado !== false
-      const estadoEntrega = entregaInmediata
-        ? EstadoEntregaVO.create('ENTREGADO')
-        : EstadoEntregaVO.create('PENDIENTE')
+      // (La decisión vive en `estadoEntregaAlCrear`, compartida con el preview.)
+      const estadoEntrega = EstadoEntregaVO.create(estadoEntregaCreacion)
       const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
 
       // P0 (docs/pedidos/HUB_REVISION_INTEGRAL_v1.0.md §11): CONSUMIDOR_FINAL
@@ -315,7 +337,7 @@ export class CrearPedidoUseCase {
           Money.fromDecimal(pr.precio),
           pr.origen,
           // entrega posterior → nada entregado todavía (cantEntrega = 0).
-          entregaInmediata ? pr.cantidad : 0,
+          estadoEntregaCreacion === 'ENTREGADO' ? pr.cantidad : 0,
         ),
       )
 
@@ -339,6 +361,9 @@ export class CrearPedidoUseCase {
         obs: input.obs,
         direccionEntrega: direccionEntregaSnapshot,
         barrioEntrega: barrioEntregaSnapshot,
+        // Destino propio del pedido (≠ GPS de comprobación de entrega).
+        entregaLat: ubicacionPropia?.lat,
+        entregaLng: ubicacionPropia?.lng,
         createdById: input.createdById,
       })
 

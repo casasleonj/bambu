@@ -65,6 +65,7 @@ export async function calcularCalidadDatosGeo(): Promise<CalidadDatosGeo> {
       where: { estadoEntrega: 'ENTREGADO', fecha: { gt: hace60 } },
       select: {
         barrioEntrega: true,
+        entregaLat: true,
         cliente: { select: { lat: true, barrio: true } },
         negocio: { select: { lat: true, barrio: true } },
       },
@@ -75,7 +76,7 @@ export async function calcularCalidadDatosGeo(): Promise<CalidadDatosGeo> {
     where: { activo: true, lat: null, OR: [{ barrio: null }, { barrio: '' }] },
   })
 
-  const demandaConCoords = pedidos60.filter((p) => p.negocio?.lat != null || p.cliente.lat != null).length
+  const demandaConCoords = pedidos60.filter((p) => p.entregaLat != null || p.negocio?.lat != null || p.cliente.lat != null).length
   const demandaConBarrio = pedidos60.filter(
     (p) => p.barrioEntrega || p.negocio?.barrio || p.cliente.barrio,
   ).length

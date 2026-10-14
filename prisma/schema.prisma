@@ -947,6 +947,15 @@ model Pedido {
   // Negocio.direccion/barrio; es un snapshot propio del pedido.
   direccionEntrega      String?
   barrioEntrega         String?
+  // Ubicación geográfica del DESTINO de este pedido (Vía A de la suficiencia
+  // de entrega: dirección escrita O ubicación utilizable). Snapshot propio
+  // del pedido: gana sobre negocio/cliente en `pickCoords`. NO es el GPS de
+  // comprobación de entrega (`gpsLat/gpsLng`, capturado al ENTREGAR): son
+  // conceptos distintos y nunca se copian de uno a otro. Existe porque
+  // CONSUMIDOR_FINAL no puede guardar domicilios individuales (cliente
+  // canónico compartido). Nullable; null = el destino sale de negocio/cliente.
+  entregaLat            Decimal?  @db.Decimal(10, 6)
+  entregaLng            Decimal?  @db.Decimal(10, 6)
 
   // LEGACY — se mantiene para compatibilidad
   estado EstadoPedido @default(PENDIENTE)

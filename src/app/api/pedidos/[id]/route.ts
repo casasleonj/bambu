@@ -261,6 +261,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       } : undefined,
       direccionEntrega: parsed.data.direccionEntrega,
       barrioEntrega: parsed.data.barrioEntrega,
+      entregaLat: parsed.data.entregaLat,
+      entregaLng: parsed.data.entregaLng,
       usuarioId: getUserFromSession(authResult).id,
       // La auditoría (incluido casoId) la hace el use case DENTRO de la
       // transacción del lock — una sola fila, todas las ramas, rollback
@@ -280,6 +282,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     if (error instanceof Error && error.message === 'CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD') {
       return apiError('Ya se entregó cantidad de este pedido — use el flujo de corrección de cantidad', 409, { code: 'CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD' })
+    }
+    if (error instanceof Error && error.name === 'UbicacionEntregaInvalidaError') {
+      return apiError('La ubicación del domicilio debe traer latitud y longitud válidas.', 422, { code: 'UBICACION_ENTREGA_INVALIDA' })
+    }
+    if (error instanceof Error && error.name === 'UbicacionSoloDomicilioError') {
+      return apiError('La ubicación de destino solo aplica a pedidos a domicilio.', 422, { code: 'UBICACION_SOLO_DOMICILIO' })
     }
     if (error instanceof Error && error.name === 'EntregaInsuficienteError') {
       return apiError('Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.', 422, { code: 'ENTREGA_INSUFICIENTE' })

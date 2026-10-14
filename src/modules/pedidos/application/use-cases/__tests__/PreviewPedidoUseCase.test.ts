@@ -67,7 +67,7 @@ describe('PreviewPedidoUseCase — pricing + payment projection', () => {
 
   it('pago exacto + entregado → PAGADO, saldo 0, saldoFavor 0', async () => {
     const r = await new PreviewPedidoUseCase(makeDeps()).execute({
-      clienteId: 'c1', canal: 'DOMICILIO', entregado: true,
+      clienteId: 'c1', canal: 'DOMICILIO', origen: 'VENTA_RAPIDA', entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 10 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 27000 }], actorId: 'u1',
     })
@@ -76,6 +76,16 @@ describe('PreviewPedidoUseCase — pricing + payment projection', () => {
     expect(r.calculation.saldoProyectado).toBe(0)
     expect(r.calculation.saldoFavorProyectado).toBe(0)
     expect(r.calculation.estadoPagoProyectado).toBe('PAGADO')
+  })
+
+  it('el preview proyecta el estado de entrega con la MISMA regla que el commit (respeta el origen)', async () => {
+    const base = { clienteId: 'c1', canal: 'DOMICILIO' as const, items: [{ producto: 'PACA_AGUA' as const, cantidad: 1 }], actorId: 'u1' }
+    const uc = new PreviewPedidoUseCase(makeDeps())
+    // PEDIDO nunca nace entregado, aunque el body diga entregado:true
+    expect((await uc.execute({ ...base, origen: 'PEDIDO', entregado: true })).calculation.estadoEntregaProyectado).toBe('PENDIENTE')
+    // VENTA_RAPIDA sin `entregado` nace ENTREGADO (antes el preview decía PENDIENTE)
+    expect((await uc.execute({ ...base, origen: 'VENTA_RAPIDA' })).calculation.estadoEntregaProyectado).toBe('ENTREGADO')
+    expect((await uc.execute({ ...base, origen: 'VENTA_RAPIDA', entregado: false })).calculation.estadoEntregaProyectado).toBe('PENDIENTE')
   })
 
   it('prepago total + entrega posterior → ANTICIPADO', async () => {

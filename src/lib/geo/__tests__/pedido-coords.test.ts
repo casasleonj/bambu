@@ -3,7 +3,7 @@
 // Resolución: negocio con coords válidas → negocio; si no → cliente.
 
 import { describe, it, expect } from 'vitest'
-import { pickCoords } from '../pedido-coords'
+import { mapsLinkDeCoords, pickCoords } from '../pedido-coords'
 
 describe('pickCoords', () => {
   it('negocio gana cuando tiene coords válidas', () => {
@@ -48,5 +48,42 @@ describe('pickCoords', () => {
   it('descartar NaN/Infinity', () => {
     expect(pickCoords({ cliente: { lat: NaN, lng: -74.05 } })).toBeNull()
     expect(pickCoords({ cliente: { lat: Infinity, lng: -74.05 } })).toBeNull()
+  })
+
+  describe('coords propias del pedido (entregaLat/entregaLng)', () => {
+    it('GANAN sobre negocio y cliente: es el destino de ESTE pedido', () => {
+      const r = pickCoords({
+        pedido: { lat: 4.7, lng: -74.1 },
+        negocio: { lat: 4.6, lng: -74.0 },
+        cliente: { lat: 4.5, lng: -73.9 },
+      })
+      expect(r).toEqual({ lat: 4.7, lng: -74.1, nombre: null })
+    })
+    it('sin coords propias, se mantiene negocio → cliente', () => {
+      expect(pickCoords({ pedido: { lat: null, lng: null }, negocio: { lat: 4.6, lng: -74.0 } }))
+        .toEqual({ lat: 4.6, lng: -74.0, nombre: null })
+      expect(pickCoords({ pedido: null, cliente: { lat: 4.5, lng: -73.9 } }))
+        .toEqual({ lat: 4.5, lng: -73.9, nombre: null })
+    })
+    it('coords propias a medias (solo lat) no cuentan', () => {
+      expect(pickCoords({ pedido: { lat: 4.7, lng: null }, cliente: { lat: 4.5, lng: -73.9 } }))
+        .toEqual({ lat: 4.5, lng: -73.9, nombre: null })
+    })
+    it('Decimal-like (string) se castea a number', () => {
+      const r = pickCoords({ pedido: { lat: '4.700000', lng: '-74.100000' } })
+      expect(r).toEqual({ lat: 4.7, lng: -74.1, nombre: null })
+    })
+  })
+})
+
+describe('mapsLinkDeCoords', () => {
+  it('arma el link de Maps con 6 decimales', () => {
+    expect(mapsLinkDeCoords(4.711, -74.0721)).toBe('https://www.google.com/maps/search/?api=1&query=4.711000,-74.072100')
+    expect(mapsLinkDeCoords('4.7', '-74.1')).toBe('https://www.google.com/maps/search/?api=1&query=4.700000,-74.100000')
+  })
+  it('null si faltan o no son válidas', () => {
+    expect(mapsLinkDeCoords(null, -74)).toBeNull()
+    expect(mapsLinkDeCoords(NaN, 1)).toBeNull()
+    expect(mapsLinkDeCoords(undefined, undefined)).toBeNull()
   })
 })

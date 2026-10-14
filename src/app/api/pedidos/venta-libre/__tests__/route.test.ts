@@ -117,6 +117,7 @@ vi.mock('@/lib/locks', () => ({
       trabajador: mockPrismaTrabajador,
       receivableEntry: { create: vi.fn().mockResolvedValue({}) },
       $queryRaw: vi.fn().mockResolvedValue([]),
+      $executeRaw: vi.fn().mockResolvedValue(1),
     }
     return fn(tx)
   },
@@ -399,6 +400,8 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
         ...validBody,
         entregado: false,
         fotoEntrega: undefined,
+        direccionEntrega: 'Cra 7 # 10-20',
+        barrioEntrega: 'Centro',
       }))
       expect(res.status).toBe(201)
       const data = mockPrismaPedido.create.mock.calls[0][0].data
@@ -422,11 +425,81 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
         entregado: false,
         fotoEntrega: undefined,
         pagos: [],
+        direccionEntrega: 'Cra 7 # 10-20',
       }))
       expect(res.status).toBe(201)
       const data = mockPrismaPedido.create.mock.calls[0][0].data
       expect(data.estadoEntrega).toBe('PENDIENTE')
       expect(data.estadoPago).toBe('PENDIENTE')
+    })
+
+    describe('suficiencia del destino de la entrega posterior (fase 2)', () => {
+      const posterior = { ...validBody, entregado: false, fotoEntrega: undefined } // el anónimo debe pagar completo
+
+      it('CONSUMIDOR_FINAL + entrega posterior SIN destino → 422 ENTREGA_INSUFICIENTE y no crea nada', async () => {
+        process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR = 'true'
+        const res = await POST(makeRequest({ ...posterior, clienteId: 'CONSUMIDOR_FINAL' }))
+        expect(res.status).toBe(422)
+        expect(JSON.stringify(await res.json())).toContain("localizar el domicilio")
+        expect(mockPrismaPedido.create).not.toHaveBeenCalled()
+      })
+
+      it('barrio SOLO no basta (ni para el anónimo)', async () => {
+        process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR = 'true'
+        const res = await POST(makeRequest({ ...posterior, clienteId: 'CONSUMIDOR_FINAL', barrioEntrega: 'Chapinero' }))
+        expect(res.status).toBe(422)
+        expect(mockPrismaPedido.create).not.toHaveBeenCalled()
+      })
+
+      it('ubicación propia basta y se persiste en entregaLat/entregaLng — NUNCA se copia el GPS de comprobación', async () => {
+        process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR = 'true'
+        const res = await POST(makeRequest({
+          ...posterior,
+          clienteId: 'CONSUMIDOR_FINAL',
+          gpsLat: 4.1111,
+          gpsLng: -74.2222,
+          entregaLat: 4.711,
+          entregaLng: -74.0721,
+        }))
+        expect(res.status).toBe(201)
+        const data = mockPrismaPedido.create.mock.calls[0][0].data
+        expect(data.entregaLat).toBe(4.711)
+        expect(data.entregaLng).toBe(-74.0721)
+        expect(data.gpsLat).toBe(4.1111) // el GPS de comprobación sigue siendo otro dato
+        expect(data.entregaLat).not.toBe(data.gpsLat)
+      })
+
+      it('sin ubicación propia, el GPS de comprobación NO se usa como destino', async () => {
+        process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR = 'true'
+        const res = await POST(makeRequest({ ...posterior, clienteId: 'CONSUMIDOR_FINAL', gpsLat: 4.1111, gpsLng: -74.2222 }))
+        expect(res.status).toBe(422)
+      })
+
+      it('ubicación inválida ((0,0) o a medias) → 422 UBICACION_ENTREGA_INVALIDA', async () => {
+        process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR = 'true'
+        const cero = await POST(makeRequest({ ...posterior, clienteId: 'CONSUMIDOR_FINAL', entregaLat: 0, entregaLng: 0, direccionEntrega: 'Cra 1' }))
+        expect(cero.status).toBe(422)
+        const mitad = await POST(makeRequest({ ...posterior, clienteId: 'CONSUMIDOR_FINAL', entregaLat: 4.7, direccionEntrega: 'Cra 1' }))
+        expect(mitad.status).toBe(422)
+        expect(mockPrismaPedido.create).not.toHaveBeenCalled()
+      })
+
+      it('venta ya ENTREGADA físicamente (entregado ausente) NO exige un destino futuro ni lo persiste', async () => {
+        process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR = 'true'
+        const res = await POST(makeRequest({ ...validBody, clienteId: 'CONSUMIDOR_FINAL' }))
+        expect(res.status).toBe(201)
+        const data = mockPrismaPedido.create.mock.calls[0][0].data
+        expect(data.estadoEntrega).toBe('ENTREGADO')
+        expect(data.entregaLat).toBeNull()
+        expect(data.direccionEntrega).toBeNull()
+      })
+
+      it('flag OFF: entregado:false se ignora → entregada, sin exigir destino', async () => {
+        delete process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR
+        const res = await POST(makeRequest({ ...validBody, clienteId: 'CONSUMIDOR_FINAL', entregado: false }))
+        expect(res.status).toBe(201)
+        expect(mockPrismaPedido.create.mock.calls[0][0].data.estadoEntrega).toBe('ENTREGADO')
+      })
     })
 
     it('flag OFF → entregado:false se ignora, foto obligatoria (400 sin foto)', async () => {

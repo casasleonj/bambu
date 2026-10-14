@@ -47,6 +47,9 @@ export interface PedidoInicial {
    * un pedido a negocio para editar. */
   negocioDireccion?: string | null
   negocioBarrio?: string | null
+  /** Ubicación propia ya guardada en el pedido (para editarla). */
+  entregaLat?: number | null
+  entregaLng?: number | null
   items: PedidoInicialItem[]
   obs?: string | null
   // Patrón de consumo del cliente (frecuencia/productos habituales, calculado
@@ -84,6 +87,8 @@ export interface PedidoUnifiedData {
    */
   direccionEntrega?: string
   barrioEntrega?: string
+  entregaLat?: number | null
+  entregaLng?: number | null
   /**
    * G6/ventaRapida→origen (decisión PO 2026-09-06): `origen` responde CÓMO
    * se originó la operación, independiente de `canal` (cómo se entrega).
@@ -158,6 +163,8 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
   const [observaciones, setObservaciones] = useState('')
   const [editDireccion, setEditDireccion] = useState('')
   const [editBarrio, setEditBarrio] = useState('')
+  const [entregaLat, setEntregaLat] = useState<number | null>(pedidoInicial?.entregaLat ?? null)
+  const [entregaLng, setEntregaLng] = useState<number | null>(pedidoInicial?.entregaLng ?? null)
   // Default false preserva el comportamiento actual: toda edición de la
   // dirección del domicilio principal se guarda. Marcarlo es el opt-out
   // explícito para "solo por esta vez, no toques el dato guardado".
@@ -773,6 +780,8 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       actualizarCliente,
       direccionEntrega: canal === 'DOMICILIO' ? editDireccion || undefined : undefined,
       barrioEntrega: canal === 'DOMICILIO' ? editBarrio || undefined : undefined,
+      entregaLat: canal === 'DOMICILIO' ? entregaLat : undefined,
+      entregaLng: canal === 'DOMICILIO' ? entregaLng : undefined,
       // G6/ventaRapida→origen (decisión PO 2026-09-06): origen responde a si
       // hay un cliente real detrás de la operación (seleccionado o nuevo),
       // NUNCA a canal. Antes `ventaRapida: canal === 'PUNTO'` clasificaba
@@ -871,6 +880,9 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
           onEditDireccionChange={setEditDireccion}
           editBarrio={editBarrio}
           onEditBarrioChange={setEditBarrio}
+          entregaLat={entregaLat}
+          entregaLng={entregaLng}
+          onUbicacionChange={(la, ln) => { setEntregaLat(la); setEntregaLng(ln) }}
           soloParaEstePedido={soloParaEstePedido}
           onSoloParaEstePedidoChange={setSoloParaEstePedido}
           searchTerm={searchTerm}

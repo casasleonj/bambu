@@ -88,7 +88,7 @@ describe('EstoSeRepite — wiring en pedidos-client (source-check)', () => {
   const src = readFileSync(join(process.cwd(), 'src/app/(app)/pedidos/pedidos-client/index.tsx'), 'utf-8')
 
   it('la propuesta se dispara DESPUÉS de crearPedido (post-commit), no en el mismo submit', () => {
-    const createBranch = src.slice(src.indexOf('const result = await crearPedido'), src.indexOf('const result = await crearPedido') + 900)
+    const createBranch = src.slice(src.indexOf('const result = await crearPedido'), src.indexOf('const result = await crearPedido') + 1300)
     expect(createBranch).toMatch(/if \(!result\) return/)
     expect(createBranch).toMatch(/setProponerHabitual\(/)
   })

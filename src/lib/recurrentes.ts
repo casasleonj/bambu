@@ -6,6 +6,9 @@ import { executeSerializableWithRetry } from "@/lib/serializable";
 import { hydrateProductos } from "@/lib/cliente-hydrate";
 import { resolverLimiteFiados, calcularEstadoPago, puedeTransicionarEntrega } from "@/lib/pedido-utils";
 import { registrarReversionPedido } from "@/lib/receivable-entry";
+import { resolverEntrega } from "@/modules/pedidos/domain/services/entrega-suficiencia.service";
+import { resolverCoordsDeLink } from "@/lib/geo/resolver-coords-de-link";
+import { logger } from "@/lib/logger";
 
 type ProductosMap = {
   PACA_AGUA: number
@@ -75,6 +78,12 @@ export interface PreviewRecurrente {
   horaPreferida: string | null
   clienteBloqueado: boolean
   esDomingo: boolean
+  /**
+   * `true` si el destino claramente NO alcanza (sin dirección escrita, sin
+   * coords y sin link). Un link sin resolver no se evalúa acá (sería I/O por
+   * plantilla): la generación lo resuelve y, si no sirve, la omite con motivo.
+   */
+  entregaInsuficiente: boolean
   pedidosPendientes: Array<{
     id: string
     numero: number
@@ -132,6 +141,42 @@ export interface PreviewRecurrente {
   }>
   saltos: string[]
   cumpleMinimo: boolean
+}
+
+/** Motivo con el que una plantilla DOMICILIO sin destino localizable se omite. */
+export const MOTIVO_ENTREGA_INSUFICIENTE = 'ENTREGA_INSUFICIENTE' as const
+
+interface FuenteDestino {
+  direccion?: string | null
+  barrio?: string | null
+  referencia?: string | null
+  linkUbicacion?: string | null
+  lat?: unknown
+  lng?: unknown
+  geocodeOrigen?: string | null
+}
+
+/**
+ * ¿El destino de la plantilla alcanza para localizar la entrega? MISMA
+ * autoridad de dominio (`resolverEntrega`) que Preview/Crear/Actualizar de
+ * pedidos: dirección escrita O ubicación utilizable; barrio solo o link sin
+ * resolver NO bastan. Solo aplica a DOMICILIO: un PUNTO es retiro en
+ * mostrador. El destino de una plantilla es su negocio (si lo tiene) o su
+ * cliente — no hay destino "puntual" por plantilla.
+ */
+export function plantillaTieneDestinoSuficiente(
+  pt: { canal: string; cliente?: FuenteDestino | null; negocio?: (FuenteDestino & { cliente?: FuenteDestino | null }) | null },
+  coordsDeLink: { lat: number; lng: number } | null = null,
+): boolean {
+  if (pt.canal !== 'DOMICILIO') return true
+  const cliente = pt.cliente ?? pt.negocio?.cliente ?? null
+  const r = resolverEntrega({
+    canal: 'DOMICILIO',
+    cliente,
+    negocio: pt.negocio ?? null,
+    coordsDeLink,
+  })
+  return r.estado !== 'INSUFICIENTE'
 }
 
 export async function previewGeneracionRecurrentes(
@@ -341,6 +386,10 @@ export async function previewGeneracionRecurrentes(
       horaPreferida: pt.horaPreferida,
       clienteBloqueado,
       esDomingo,
+      entregaInsuficiente:
+        pt.canal === 'DOMICILIO' &&
+        !plantillaTieneDestinoSuficiente(pt, null) &&
+        !(pt.negocio?.linkUbicacion ?? pt.cliente?.linkUbicacion ?? pt.negocio?.cliente?.linkUbicacion),
       pedidosPendientes,
       pedidosConDeuda,
       pedidosPagados,
@@ -391,7 +440,8 @@ export async function generarPedidosRecurrentes(
     if (pedidosExistentes.length > 0) {
       return {
         generados: pedidosExistentes,
-        saltados: [],
+        saltados: [] as string[],
+        omitidos: [] as Array<{ recurrenteId: string; motivo: typeof MOTIVO_ENTREGA_INSUFICIENTE }>,
       }
     }
   }
@@ -405,8 +455,16 @@ export async function generarPedidosRecurrentes(
 
   const generados: Array<{ id: string; numero: number; tipo: string }> = []
   const saltados: string[] = []
+  // Plantillas que NO se generaron por falta de destino localizable: se
+  // reportan con motivo (no se pierden en `saltados`) y NO se avanza su
+  // calendario — se reintentan cuando se corrija el destino.
+  const omitidos: Array<{ recurrenteId: string; motivo: typeof MOTIVO_ENTREGA_INSUFICIENTE }> = []
 
   for (const decision of decisionesOrdenadas) {
+    // I/O de red (expandir un link corto de Maps) FUERA de la transacción
+    // Serializable: solo si el destino no tiene coords almacenadas.
+    const coordsDeLink = await prefetchCoordsDeLinkPlantilla(decision.recurrenteId)
+
     // FIX H-12 (F-α a F-14): toda la lógica de una plantilla corre dentro
     // de una transacción Serializable con retry en P2034. Esto previene:
     //   - LOST UPDATE en plantillaRecurrente.ultimaGeneracion / proxGeneracion
@@ -415,7 +473,7 @@ export async function generarPedidosRecurrentes(
     // El inner $transaction legacy fue removido; ahora la outer tx es la única
     // necesaria.
     const result = await executeSerializableWithRetry<
-      { skipped: true } | { skipped: false; creado: { id: string; numero: number } }
+      { skipped: true; motivo?: typeof MOTIVO_ENTREGA_INSUFICIENTE } | { skipped: false; creado: { id: string; numero: number } }
     >(async (tx) => {
       // 1. findUnique plantilla
       const pt = await tx.plantillaRecurrente.findUnique({
@@ -611,6 +669,13 @@ export async function generarPedidosRecurrentes(
           },
         })
         return { skipped: true }
+      }
+
+      // Suficiencia del destino — ANTES de cualquier efecto (cancelación de
+      // pedidos prepagados, crédito, pedido, factura). Si no hay destino
+      // localizable no se genera NADA y no se toca el calendario.
+      if (!plantillaTieneDestinoSuficiente(pt, coordsDeLink)) {
+        return { skipped: true as const, motivo: MOTIVO_ENTREGA_INSUFICIENTE }
       }
 
       const items: Array<{ codigo: ProductCode; cantidad: number }> = [
@@ -842,10 +907,40 @@ export async function generarPedidosRecurrentes(
 
     if (result.skipped) {
       saltados.push(decision.recurrenteId)
+      if (result.motivo) {
+        omitidos.push({ recurrenteId: decision.recurrenteId, motivo: result.motivo })
+        logger.warn(
+          { recurrenteId: decision.recurrenteId, motivo: result.motivo },
+          '[recurrentes] plantilla omitida: destino de entrega no localizable',
+        )
+      }
     } else {
       generados.push({ id: result.creado.id, numero: result.creado.numero, tipo: decision.decision })
     }
   }
 
-  return { generados, saltados }
+  return { generados, saltados, omitidos }
+}
+
+/**
+ * Resuelve `linkUbicacion → coords` de una plantilla DOMICILIO sin coords
+ * almacenadas (best-effort, fuera de la tx). `null` si no aplica o no resuelve.
+ */
+async function prefetchCoordsDeLinkPlantilla(
+  plantillaId: string,
+): Promise<{ lat: number; lng: number } | null> {
+  const pt = await prisma.plantillaRecurrente.findUnique({
+    where: { id: plantillaId },
+    select: {
+      canal: true,
+      cliente: { select: { lat: true, lng: true, linkUbicacion: true } },
+      negocio: { select: { lat: true, lng: true, linkUbicacion: true, cliente: { select: { lat: true, lng: true, linkUbicacion: true } } } },
+    },
+  })
+  if (!pt || pt.canal !== 'DOMICILIO') return null
+  const cliente = pt.cliente ?? pt.negocio?.cliente ?? null
+  const hayCoords = (pt.negocio?.lat != null && pt.negocio?.lng != null) || (cliente?.lat != null && cliente?.lng != null)
+  if (hayCoords) return null
+  const link = pt.negocio?.linkUbicacion ?? cliente?.linkUbicacion ?? null
+  return link ? resolverCoordsDeLink(link) : null
 }

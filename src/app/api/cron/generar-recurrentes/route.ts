@@ -32,12 +32,15 @@ export async function POST(request: NextRequest) {
     logger.info({
       generados: resultado.generados.length,
       saltados: resultado.saltados.length,
+      omitidos: resultado.omitidos,
     }, 'Cron: pedidos recurrentes generados')
 
     return apiSuccess({
       message: `${resultado.generados.length} generados, ${resultado.saltados.length} saltados`,
       generados: resultado.generados.length,
       saltados: resultado.saltados.length,
+      // Plantillas no generadas por destino no localizable (con motivo).
+      omitidos: resultado.omitidos,
       detalle: resultado.generados,
     })
   } catch (error) {

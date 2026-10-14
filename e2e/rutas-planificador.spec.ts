@@ -45,6 +45,9 @@ test.describe('Rutas · Planificador (Hoy)', () => {
     })
     const p2 = await apiPost(page, '/api/pedidos', {
       clienteId: id2, canal: 'DOMICILIO', items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
+      // Fase 2: un domicilio pendiente exige dirección escrita o ubicación. Con solo
+      // texto (sin coordenadas) sigue siendo una excepción del planificador.
+      direccionEntrega: 'Cra 1 # 2-3',
     })
     expect(p1.ok(), await p1.text()).toBeTruthy()
     expect(p2.ok(), await p2.text()).toBeTruthy()

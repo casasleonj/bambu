@@ -144,3 +144,43 @@ describe('NegocioSelector — resumen colapsado', () => {
     expect(container).toBeEmptyDOMElement()
   })
 })
+
+describe('NegocioSelector — venta de PUNTO no muestra dirección ni barrio', () => {
+  it('con mostrarDireccion=false oculta dirección/barrio del resumen pero conserva la elección de negocio', async () => {
+    render(
+      <NegocioSelector
+        clienteId="cli-1"
+        clienteNombre="Sandra León"
+        clienteDireccion="Cra 7 # 10-20"
+        clienteBarrio="Chapinero"
+        selectedNegocioId={null}
+        onNegocioSelected={vi.fn()}
+        mostrarDireccion={false}
+      />,
+    )
+    const resumen = await screen.findByTestId('negocio-selector-resumen')
+    expect(resumen).toHaveTextContent('Sandra León')
+    expect(resumen).not.toHaveTextContent('Cra 7 # 10-20')
+    expect(resumen).not.toHaveTextContent('Chapinero')
+
+    // la lista abierta tampoco muestra direcciones, y sigue siendo elegible
+    fireEvent.click(resumen)
+    expect(await screen.findByText('Tienda Centro')).toBeInTheDocument()
+    expect(screen.queryByText('Cra 10 #20-30')).not.toBeInTheDocument()
+    expect(screen.queryByText('Cra 7 # 10-20')).not.toBeInTheDocument()
+  })
+
+  it('por defecto (domicilio) sigue mostrando la dirección', async () => {
+    render(
+      <NegocioSelector
+        clienteId="cli-1"
+        clienteNombre="Sandra León"
+        clienteDireccion="Cra 7 # 10-20"
+        clienteBarrio="Chapinero"
+        selectedNegocioId={null}
+        onNegocioSelected={vi.fn()}
+      />,
+    )
+    expect(await screen.findByTestId('negocio-selector-resumen')).toHaveTextContent('Cra 7 # 10-20')
+  })
+})

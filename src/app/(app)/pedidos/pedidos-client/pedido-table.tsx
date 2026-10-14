@@ -128,10 +128,12 @@ interface PedidoTableProps {
    *  (ej. límite de fiado excedido). Opcional: solo se usa si hay filas
    *  pendientes fallidas en `pedidos`. */
   onDiscardFailed?: (offlineId: string) => void
+  /** Reabre el pedido rechazado para corregirlo y reenviarlo con la MISMA clave de idempotencia. */
+  onCorrectFailed?: (offlineId: string) => void
 }
 
 
-function PendingPedidoDesktopRow({ pedido, onDiscardFailed }: { pedido: Pedido; onDiscardFailed?: (offlineId: string) => void }) {
+function PendingPedidoDesktopRow({ pedido, onDiscardFailed, onCorrectFailed }: { pedido: Pedido; onDiscardFailed?: (offlineId: string) => void; onCorrectFailed?: (offlineId: string) => void }) {
   const failed = pedido._pendingFailed
   return (
     <tr className={failed ? 'bg-red-50/60' : 'bg-amber-50/60'}>
@@ -145,6 +147,15 @@ function PendingPedidoDesktopRow({ pedido, onDiscardFailed }: { pedido: Pedido; 
             <span className="text-xs font-medium text-red-700">
               No se pudo crear: {pedido._pendingFailReason || 'motivo desconocido'}
             </span>
+            {pedido._pendingOfflineId && onCorrectFailed && (
+              <button
+                onClick={() => onCorrectFailed(pedido._pendingOfflineId!)}
+                data-testid="pendiente-corregir"
+                className="text-xs font-semibold text-blue-700 hover:text-blue-900 px-2 py-1 rounded hover:bg-blue-100 transition shrink-0"
+              >
+                Corregir
+              </button>
+            )}
             {pedido._pendingOfflineId && onDiscardFailed && (
               <button
                 onClick={() => onDiscardFailed(pedido._pendingOfflineId!)}
@@ -168,7 +179,7 @@ function PendingPedidoDesktopRow({ pedido, onDiscardFailed }: { pedido: Pedido; 
   )
 }
 
-function PendingPedidoMobileCard({ pedido, onDiscardFailed }: { pedido: Pedido; onDiscardFailed?: (offlineId: string) => void }) {
+function PendingPedidoMobileCard({ pedido, onDiscardFailed, onCorrectFailed }: { pedido: Pedido; onDiscardFailed?: (offlineId: string) => void; onCorrectFailed?: (offlineId: string) => void }) {
   const failed = pedido._pendingFailed
   return (
     <div className={`p-4 border rounded-lg border-dashed ${failed ? 'bg-red-50/60 border-red-200' : 'bg-amber-50/60 border-amber-200'}`}>
@@ -179,6 +190,15 @@ function PendingPedidoMobileCard({ pedido, onDiscardFailed }: { pedido: Pedido; 
           <span className="text-xs font-medium text-red-700">
             No se pudo crear: {pedido._pendingFailReason || 'motivo desconocido'}
           </span>
+          {pedido._pendingOfflineId && onCorrectFailed && (
+            <button
+              onClick={() => onCorrectFailed(pedido._pendingOfflineId!)}
+              data-testid="pendiente-corregir"
+              className="text-xs font-semibold text-blue-700 hover:text-blue-900 px-2 py-1 rounded hover:bg-blue-100 transition shrink-0"
+            >
+              Corregir
+            </button>
+          )}
           {pedido._pendingOfflineId && onDiscardFailed && (
             <button
               onClick={() => onDiscardFailed(pedido._pendingOfflineId!)}
@@ -516,6 +536,7 @@ export function PedidoTable({
   onCambiarEstado,
   onCreateClick,
   onDiscardFailed,
+  onCorrectFailed,
 }: PedidoTableProps) {
   const rowProps = { updatingId, userRole, renderOrigenBadge, renderEstadoEntregaBadge, renderEstadoPagoBadge, getAlertasPedido, tieneFiado, onDetail, onCambiarEstado }
   // Filas pendientes (offline, sin id/numero real de servidor): se excluyen
@@ -608,7 +629,7 @@ export function PedidoTable({
             ) : (
               <>
                 {pendingRows.map((pedido) => (
-                  <PendingPedidoDesktopRow key={pedido.id} pedido={pedido} onDiscardFailed={onDiscardFailed} />
+                  <PendingPedidoDesktopRow key={pedido.id} pedido={pedido} onDiscardFailed={onDiscardFailed} onCorrectFailed={onCorrectFailed} />
                 ))}
                 {renderPinnedRows()}
                 {unpinned.map((pedido) => (
@@ -634,7 +655,7 @@ export function PedidoTable({
             {pendingRows.length > 0 && (
               <div className="space-y-3">
                 {pendingRows.map((pedido) => (
-                  <PendingPedidoMobileCard key={pedido.id} pedido={pedido} onDiscardFailed={onDiscardFailed} />
+                  <PendingPedidoMobileCard key={pedido.id} pedido={pedido} onDiscardFailed={onDiscardFailed} onCorrectFailed={onCorrectFailed} />
                 ))}
               </div>
             )}

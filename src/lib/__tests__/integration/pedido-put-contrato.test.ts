@@ -32,7 +32,7 @@ import { crearPedidoUseCase } from '@/modules/pedidos'
 
 /** Columnas de Pedido que una edición legítimamente recalcula/escribe. */
 const PEDIDO_GESTIONADAS = new Set([
-  'obs', 'direccionEntrega', 'barrioEntrega', 'updatedAt',
+  'obs', 'direccionEntrega', 'barrioEntrega', 'entregaLat', 'entregaLng', 'updatedAt',
   // económicas (derivadas de items + pagos)
   'total', 'saldo', 'estadoPago',
   // estado (solo vía `estado`)
