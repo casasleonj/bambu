@@ -36,6 +36,7 @@ export function initWorkspace(draft?: Partial<DraftPedido>): WorkspaceState {
     previewPending: false,
     precioBajoConfirmado: {},
     reviewMotivo: '',
+    sinConexion: false,
     error: null,
   }
 }
@@ -62,7 +63,7 @@ function afterDraftChange(state: WorkspaceState, draft: DraftPedido): WorkspaceS
     return { ...state, draft }
   }
   let phase: WorkspacePhase
-  if (!draft.clienteId) phase = 'EMPTY'
+  if (!draft.clienteId && !draft.clienteNuevo) phase = 'EMPTY'
   else if (hasItems(draft)) phase = 'DRAFTING'
   else phase = 'CONTEXT_READY'
   // un cambio en el draft invalida también el motivo de revisión capturado.
@@ -74,6 +75,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     case 'SET_CLIENTE': {
       const draft = {
         ...state.draft,
+        clienteNuevo: undefined,
         clienteId: action.clienteId,
         negocioId: action.negocioId ?? null,
         // CONSUMIDOR_FINAL ⇒ origen VENTA_RAPIDA (ventaRapida→origen, PO 2026-09-06)
@@ -82,7 +84,17 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return afterDraftChange(state, draft)
     }
     case 'CLEAR_CLIENTE':
-      return afterDraftChange(state, { ...state.draft, clienteId: null, negocioId: null })
+      return afterDraftChange(state, { ...state.draft, clienteId: null, clienteNuevo: undefined, negocioId: null })
+    case 'SET_CLIENTE_NUEVO': {
+      // un cliente nuevo es siempre un cliente real: origen PEDIDO (D-OC4) y
+      // sin cliente existente seleccionado ni negocio.
+      if (action.clienteNuevo) {
+        return afterDraftChange(state, {
+          ...state.draft, clienteId: null, negocioId: null, origen: 'PEDIDO', clienteNuevo: action.clienteNuevo,
+        })
+      }
+      return afterDraftChange(state, { ...state.draft, clienteNuevo: undefined })
+    }
     case 'SET_NEGOCIO': {
       const draft = { ...state.draft, negocioId: action.negocioId }
       // el selector de negocio resuelve la dirección de entrega efectiva
@@ -124,7 +136,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     case 'PAGAR_COMPLETO': {
       // El total lo calcula el backend; si ya hay preview se usa, si no se
       // completa al llegar (PREVIEW_RECEIVED). El reducer no calcula precios.
-      const total = state.preview?.calculation.total ?? 0
+      const total = state.preview?.calculation.total ?? action.total ?? 0
       return afterDraftChange(state, {
         ...state.draft,
         pagoCompleto: action.metodo,
@@ -178,10 +190,17 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         return { ...state, previewPending: false, preview: action.preview }
       }
       const nextPhase: WorkspacePhase = action.preview.requiresAuthorization ? 'REVIEW_REQUIRED' : 'PREVIEW_READY'
-      return { ...state, phase: nextPhase, previewPending: false, preview: action.preview, error: null }
+      return { ...state, phase: nextPhase, previewPending: false, preview: action.preview, error: null, sinConexion: false }
     }
     case 'PREVIEW_ERROR':
-      return { ...state, previewPending: false, error: { kind: action.kind, message: action.message } }
+      // solo un fallo de RED habilita guardar sin conexión; una respuesta de
+      // error del servidor (validación, 404…) sigue bloqueando el commit.
+      return {
+        ...state,
+        previewPending: false,
+        sinConexion: action.kind === 'NETWORK_ERROR',
+        error: { kind: action.kind, message: action.message },
+      }
     case 'ACKNOWLEDGE_REVIEW': {
       // motivo obligatorio (ALS A8 — nada se muta silenciosamente). El motivo
       // + `auditPreview` del backend son la traza; el paso AUTHORIZATION real
@@ -194,14 +213,14 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       if (state.phase !== 'REVIEW_REQUIRED' && state.phase !== 'AUTHORIZATION_REQUIRED') return state
       return { ...state, phase: hasItems(state.draft) ? 'DRAFTING' : 'CONTEXT_READY', reviewMotivo: '' }
     case 'COMMIT_START':
-      if (state.phase !== 'PREVIEW_READY' && state.phase !== 'AUTHORIZATION_REQUIRED') return state
+      if (state.phase !== 'PREVIEW_READY' && state.phase !== 'AUTHORIZATION_REQUIRED' && !(state.sinConexion && state.phase === 'DRAFTING')) return state
       return { ...state, phase: 'COMMITTING', error: null }
     case 'COMMIT_SUCCESS':
       return { ...state, phase: 'COMMITTED' }
     case 'COMMIT_CONFLICT':
       return { ...state, phase: 'DRAFTING', preview: null, error: { kind: 'CONFLICT_ERROR', message: action.message } }
     case 'COMMIT_ERROR':
-      return { ...state, phase: 'PREVIEW_READY', error: { kind: 'VALIDATION_ERROR', message: action.message } }
+      return { ...state, phase: state.sinConexion ? 'DRAFTING' : 'PREVIEW_READY', error: { kind: 'VALIDATION_ERROR', message: action.message } }
     case 'RESET':
       return initWorkspace(action.draft)
     default:
@@ -211,6 +230,9 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
 
 /** ¿el commit está permitido en el estado actual? (se cruza con allowedActions del preview) */
 export function canCommit(state: WorkspaceState, accion: 'crear' | 'actualizar' = 'crear'): boolean {
+  // B-20: sin red no hay preview. Solo se puede GUARDAR un pedido nuevo (la
+  // edición es un PUT que no se encola) y el servidor valida al sincronizar.
+  if (state.sinConexion && accion === 'crear' && state.phase === 'DRAFTING') return true
   if (state.phase !== 'PREVIEW_READY') return false
   return state.preview?.allowedActions.includes(accion) ?? false
 }

@@ -16,12 +16,13 @@ import { PedidoContextPanel, type NuevoClienteForm } from '@/components/pedido-f
 import { resolveActualizarCliente } from '@/components/pedido-form-unified/resolve-actualizar-cliente'
 import { workspaceReducer, initWorkspace, canCommit, EMPTY_DRAFT } from './workspace-reducer'
 import { usePreview } from './use-preview'
+import { estimarTotalOffline } from './estimar-total'
 import { useItemPricing } from './use-item-pricing'
 import { useClienteContext } from './use-cliente-context'
 import { usePedidoPropuesta } from './use-pedido-propuesta'
 import type { Propuesta } from './build-propuestas'
 import type { ValueOrigin } from './types'
-import type { DraftPedido, ProductoCodigo, WorkspaceErrorKind } from './types'
+import type { DraftClienteNuevo, DraftPedido, ProductoCodigo, WorkspaceErrorKind } from './types'
 import type { PreviewPedidoResult } from '@/modules/pedidos/application/dto'
 import type { PedidoUnifiedData } from '@/components/pedido-form-unified'
 import type { Cliente } from '@/components/pedido-form-unified/types'
@@ -45,6 +46,21 @@ function toCodigo(codigo: string): ProductoCodigo | null {
   if (CANONICAL_CODIGOS.has(codigo)) return codigo as ProductoCodigo
   const mapped = LEGACY_CODIGO_TO_CODIGO[codigo]
   return mapped ? (mapped as ProductoCodigo) : null
+}
+
+/** El formulario cuenta como cliente nuevo cuando ya tiene lo mínimo (nombre y teléfono), igual que el formulario antiguo. */
+function toDraftClienteNuevo(f: NuevoClienteForm): DraftClienteNuevo | undefined {
+  const nombre = f.nombre.trim()
+  const telefono = f.telefono.trim()
+  if (!nombre || !telefono) return undefined
+  return {
+    nombre,
+    apellido: f.apellido.trim() || undefined,
+    telefono,
+    direccion: f.direccion.trim() || undefined,
+    barrio: f.barrio.trim() || undefined,
+    fuente: f.fuente || undefined,
+  }
 }
 
 const EMPTY_NUEVO_CLIENTE: NuevoClienteForm = {
@@ -247,8 +263,20 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
     dispatch({ type: 'SET_DIRECCION', direccion: c.direccion ?? '', barrio: c.barrio ?? '' })
     setSearchTerm('')
     setMostrarNuevo(false)
+    setNuevoCliente(EMPTY_NUEVO_CLIENTE)
     setSugerenciaAplicada(false)
     propuesta.clear()
+  }
+
+  const handleNuevoClienteChange = (updater: (prev: NuevoClienteForm) => NuevoClienteForm) => {
+    const next = updater(nuevoCliente)
+    setNuevoCliente(next)
+    dispatch({ type: 'SET_CLIENTE_NUEVO', clienteNuevo: toDraftClienteNuevo(next) })
+  }
+
+  const handleCerrarNuevo = () => {
+    setMostrarNuevo(false)
+    dispatch({ type: 'SET_CLIENTE_NUEVO', clienteNuevo: undefined })
   }
 
   const handleQuitarCliente = () => {
@@ -285,7 +313,13 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
 
   const accionCommit = modoEdicion ? 'actualizar' : 'crear'
   const hasDraftItems = state.draft.items.some((i) => i.cantidad > 0)
-  const commitEnabled = canCommit(state, accionCommit) && state.phase === 'PREVIEW_READY'
+  const sinConexion = state.sinConexion && !modoEdicion
+  const commitEnabled = canCommit(state, accionCommit)
+    && (state.phase === 'PREVIEW_READY' || (sinConexion && state.phase === 'DRAFTING'))
+  // B-20: sin preview del servidor, el cobro "completo" usa un total estimado con la tabla ya cargada.
+  const totalEstimado = sinConexion && !calc
+    ? estimarTotalOffline(state.draft.items, state.draft.canal, tabla, configs)
+    : null
   const blockedReason =
     state.preview && !state.preview.allowedActions.includes(accionCommit)
       ? (state.preview.warnings[0]?.message ?? `El backend no permite ${modoEdicion ? 'guardar' : 'crear'} este pedido.`)
@@ -297,17 +331,8 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
 
   const handleCommit = async () => {
     dispatch({ type: 'COMMIT_START' })
-    const tieneClienteReal = Boolean(clienteSeleccionado) || (mostrarNuevo && nuevoCliente.nombre.trim().length > 0)
-    const clienteNuevo = mostrarNuevo && !clienteSeleccionado && nuevoCliente.nombre.trim()
-      ? {
-          nombre: nuevoCliente.nombre,
-          apellido: nuevoCliente.apellido || undefined,
-          telefono: nuevoCliente.telefono,
-          direccion: nuevoCliente.direccion,
-          barrio: nuevoCliente.barrio || undefined,
-          fuente: nuevoCliente.fuente || undefined,
-        }
-      : undefined
+    const clienteNuevo = clienteSeleccionado ? undefined : state.draft.clienteNuevo
+    const tieneClienteReal = Boolean(clienteSeleccionado) || Boolean(clienteNuevo)
 
     const actualizarCliente = resolveActualizarCliente({
       clienteSeleccionado,
@@ -319,7 +344,10 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
     })
 
     const guardado = await onSubmit({
-      clienteId: clienteSeleccionado ? clienteSeleccionado.id : (clienteNuevo ? undefined : 'CONSUMIDOR_FINAL'),
+      // Contrato de POST /api/pedidos (PedidoCreateSchema exige clienteId): con
+      // cliente nuevo viaja el canónico como marcador y el servidor resuelve el
+      // cliente real por `clienteNuevo` (igual que el formulario antiguo).
+      clienteId: clienteSeleccionado ? clienteSeleccionado.id : 'CONSUMIDOR_FINAL',
       negocioId: state.draft.negocioId ?? undefined,
       canal: state.draft.canal,
       // edición: origen persistido (inmutable). nueva-demanda: siempre PEDIDO.
@@ -340,7 +368,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
         ? `[Revisión: ${state.reviewMotivo}]${state.draft.obs ? ` ${state.draft.obs}` : ''}`
         : state.draft.obs,
       entregado: state.draft.entregado,
-      clienteNuevo,
+      clienteNuevo: clienteNuevo ? { ...clienteNuevo, direccion: clienteNuevo.direccion ?? '' } : undefined,
       actualizarCliente,
       direccionEntrega: state.draft.canal === 'DOMICILIO' ? (state.draft.direccionEntrega || undefined) : undefined,
       barrioEntrega: state.draft.canal === 'DOMICILIO' ? (state.draft.barrioEntrega || undefined) : undefined,
@@ -413,9 +441,9 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
             onSelectCliente={handleSelectCliente}
             onCrearNuevo={() => setMostrarNuevo(true)}
             mostrarNuevo={mostrarNuevo}
-            onCerrarNuevo={() => setMostrarNuevo(false)}
+            onCerrarNuevo={handleCerrarNuevo}
             nuevoCliente={nuevoCliente}
-            onNuevoClienteChange={setNuevoCliente}
+            onNuevoClienteChange={handleNuevoClienteChange}
           />
         )}
         {/* canal: inmutable en edición (el PUT no lo cambia); en nueva-demanda
@@ -509,15 +537,22 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
           conserva los pagos existentes; el cobro posterior va por pagar-fiado. ── */}
       {!modoEdicion && (
         <WorkspaceDinero
-          total={calc?.total ?? null}
+          total={calc?.total ?? totalEstimado}
+          totalEstimado={!calc && totalEstimado != null}
           saldoProyectado={calc?.saldoProyectado ?? null}
           pagos={state.draft.pagos}
           pagoCompleto={state.draft.pagoCompleto ?? null}
-          esAnonima={state.draft.clienteId === 'CONSUMIDOR_FINAL' && !(mostrarNuevo && nuevoCliente.nombre.trim())}
+          esAnonima={state.draft.clienteId === 'CONSUMIDOR_FINAL' && !state.draft.clienteNuevo}
           disabled={state.phase === 'COMMITTING' || state.phase === 'COMMITTED'}
-          onPagarCompleto={(metodo) => dispatch({ type: 'PAGAR_COMPLETO', metodo })}
+          onPagarCompleto={(metodo) => dispatch({ type: 'PAGAR_COMPLETO', metodo, total: totalEstimado ?? undefined })}
           onSetPagos={(pagos) => dispatch({ type: 'SET_PAGOS', pagos })}
         />
+      )}
+
+      {sinConexion && (
+        <p role="status" data-testid="workspace-offline-aviso" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Sin conexión: el pedido se guarda en este equipo y se envía solo al reconectar. El total, los precios especiales y los límites de crédito se confirman al sincronizar.
+        </p>
       )}
 
       {/* ── Zona: Señales de riesgo (blueprint §5.3) ── */}
@@ -545,6 +580,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
         canCommit={commitEnabled}
         blockedReason={blockedReason}
         modoEdicion={modoEdicion}
+        sinConexion={sinConexion}
         onCommit={handleCommit}
         onCancel={onCancel}
       />

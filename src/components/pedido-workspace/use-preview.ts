@@ -14,12 +14,13 @@ export interface UsePreviewCallbacks {
 
 /** ¿el draft tiene lo mínimo para pedir un preview? */
 function isPreviewable(draft: DraftPedido): boolean {
-  return !!draft.clienteId && draft.items.some((i) => i.cantidad > 0)
+  return (!!draft.clienteId || !!draft.clienteNuevo) && draft.items.some((i) => i.cantidad > 0)
 }
 
 function toRequestBody(draft: DraftPedido, pedidoId?: string) {
   return {
-    clienteId: draft.clienteId,
+    clienteId: draft.clienteId ?? undefined,
+    clienteNuevo: draft.clienteId ? undefined : draft.clienteNuevo,
     negocioId: draft.negocioId ?? undefined,
     canal: draft.canal,
     origen: draft.origen,

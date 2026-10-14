@@ -15,6 +15,8 @@ export interface WorkspaceDineroProps {
   pagos: DraftPago[]
   /** método de "pagar completo" activo (el pago sigue al total), o null. */
   pagoCompleto: Metodo | null
+  /** B-20: el total es una estimación local (sin conexión), no el del servidor. */
+  totalEstimado?: boolean
   /** venta a CONSUMIDOR_FINAL: no puede quedar saldo (DEUDOR_REQUERIDO). */
   esAnonima: boolean
   disabled?: boolean
@@ -35,7 +37,7 @@ export interface WorkspaceDineroProps {
  * bloqueo (DEUDOR_REQUERIDO, límite de fiados) vienen del preview del backend.
  */
 export function WorkspaceDinero({
-  total, saldoProyectado, pagos, pagoCompleto, esAnonima, disabled, onPagarCompleto, onSetPagos,
+  total, saldoProyectado, pagos, pagoCompleto, totalEstimado = false, esAnonima, disabled, onPagarCompleto, onSetPagos,
 }: WorkspaceDineroProps) {
   const [recibido, setRecibido] = useState('')
 
@@ -59,7 +61,9 @@ export function WorkspaceDinero({
       <div className="flex items-baseline justify-between">
         <h3 className="text-sm font-semibold text-gray-700">💰 Cobro</h3>
         {total != null && (
-          <span className="text-sm text-gray-500" data-testid="dinero-total">Total {formatCurrency(total)}</span>
+          <span className="text-sm text-gray-500" data-testid="dinero-total">
+            {totalEstimado ? 'Total estimado ' : 'Total '}{formatCurrency(total)}
+          </span>
         )}
       </div>
 

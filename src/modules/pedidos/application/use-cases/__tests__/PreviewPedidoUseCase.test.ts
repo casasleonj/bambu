@@ -400,3 +400,58 @@ describe('PreviewPedidoUseCase — modo edición (pedidoId)', () => {
     ).rejects.toThrow(PedidoNotFoundError)
   })
 })
+
+describe('PreviewPedidoUseCase — cliente nuevo sin persistir (B-19, #346)', () => {
+  const nuevo = { nombre: 'Zulma', telefono: '3015550000', direccion: 'Cra 9 # 4-5', barrio: 'Centro' }
+  const items = [{ producto: 'PACA_AGUA' as const, cantidad: 10 }]
+
+  function depsConTelefonoLibre() {
+    const deps = makeDeps()
+    ;(deps.clienteRepo as unknown as { findByTelefono: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> }).findByTelefono = vi.fn().mockResolvedValue(null)
+    ;(deps.clienteRepo as unknown as { create: ReturnType<typeof vi.fn> }).create = vi.fn()
+    return deps
+  }
+
+  it('teléfono libre: calcula con precios base, no crea el cliente y permite crear (sin pago el saldo queda a cargo del cliente nuevo)', async () => {
+    const deps = depsConTelefonoLibre()
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteNuevo: nuevo, canal: 'DOMICILIO', items, actorId: 'u1' })
+    expect(r.calculation.total).toBe(27000)
+    expect(r.allowedActions).toContain('crear')
+    expect(r.warnings.map((w) => w.code)).not.toContain('DEUDOR_REQUERIDO')
+    expect(deps.clienteRepo.findById).not.toHaveBeenCalled()
+    expect((deps.clienteRepo as unknown as { create: ReturnType<typeof vi.fn> }).create).not.toHaveBeenCalled()
+    // un cliente sin historial tampoco consulta la autoridad de crédito ni pedidos previos
+    expect(deps.getFiadoStatusUseCase.execute).not.toHaveBeenCalled()
+    expect(deps.pedidoRepo.findMany).not.toHaveBeenCalled()
+    // precios: identidad del canónico (base), nunca los del id sintético
+    expect(deps.pricingPort.loadPricingContext).toHaveBeenCalledWith(CANONICAL_CONSUMIDOR_FINAL_ID, null, ['PACA_AGUA'])
+  })
+
+  it('domicilio: la dirección del formulario del cliente nuevo cuenta para la suficiencia de entrega', async () => {
+    const r = await new PreviewPedidoUseCase(depsConTelefonoLibre()).execute({ clienteNuevo: nuevo, canal: 'DOMICILIO', items, actorId: 'u1' })
+    expect(r.entrega?.estado).not.toBe('INSUFICIENTE')
+    const sinDireccion = await new PreviewPedidoUseCase(depsConTelefonoLibre()).execute({
+      clienteNuevo: { nombre: 'Zulma', telefono: '3015550000' }, canal: 'DOMICILIO', items, actorId: 'u1',
+    })
+    expect(sinDireccion.entrega?.estado).toBe('INSUFICIENTE')
+    expect(sinDireccion.allowedActions).not.toContain('crear')
+  })
+
+  it('teléfono de un cliente existente: se previsualiza como ESE cliente (mismo dedup que el commit) y aplica su límite de fiados', async () => {
+    const deps = makeDeps()
+    ;(deps.clienteRepo as unknown as { findByTelefono: ReturnType<typeof vi.fn> }).findByTelefono = vi.fn().mockResolvedValue({ id: 'c1' })
+    ;(deps.getFiadoStatusUseCase.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 4, limite: 4, nivel: 'limite', pedidos: [], outstandingAmount: 0, status: 'OVER_LIMIT', errorDeuda: 'Límite de fiados alcanzado',
+    })
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteNuevo: nuevo, items, actorId: 'u1' })
+    expect(deps.clienteRepo.findById).toHaveBeenCalledWith('c1')
+    expect(r.allowedActions).not.toContain('crear')
+    expect(r.warnings.map((w) => w.code)).toContain('FIADO_SOBRE_LIMITE')
+  })
+
+  it('sin clienteId ni clienteNuevo → ClienteNotFoundError', async () => {
+    await expect(
+      new PreviewPedidoUseCase(makeDeps()).execute({ items, actorId: 'u1' }),
+    ).rejects.toThrow(ClienteNotFoundError)
+  })
+})

@@ -143,9 +143,10 @@ Prepara una operación de **creación de pedido** sin persistir: calcula precios
 
 ```ts
 // Request — subconjunto de PedidoCreateSchema, SIN campos de persistencia
-// (offlineId, clienteNuevo, actualizarCliente, direccionEntrega, barrioEntrega, productos legacy)
+// (offlineId, actualizarCliente, productos legacy). `clienteNuevo` SÍ se acepta, solo para calcular (B-19, #346).
 {
-  clienteId: string                         // requerido; 'CONSUMIDOR_FINAL' válido (= ausencia de cliente real)
+  clienteId?: string                        // requerido salvo que venga `clienteNuevo`; 'CONSUMIDOR_FINAL' válido (= ausencia de cliente real)
+  clienteNuevo?: { nombre: string; apellido?: string; telefono: string; direccion?: string; barrio?: string; fuente?: string }
   negocioId?: string
   canal?: 'PUNTO' | 'DOMICILIO'             // default 'DOMICILIO'
   origen?: 'PEDIDO' | 'VENTA_RAPIDA'         // default 'PEDIDO' — VENTA_LIBRE fuera de alcance
@@ -156,6 +157,12 @@ Prepara una operación de **creación de pedido** sin persistir: calcula precios
   pedidoId?: string                         // modo EDICIÓN: preview de un PUT declarativo de items (404 si no existe)
 }
 ```
+
+**Cliente nuevo (`clienteNuevo` sin `clienteId`) — B-19 (#346):** el preview **no crea** el cliente; lo resuelve igual que el commit (`CrearPedidoUseCase`):
+- si el `telefono` ya pertenece a un cliente, se previsualiza **como ese cliente** (su límite de fiados, bloqueo, precios y riesgo);
+- si no, se trata como un cliente **sin historial**: precios base (identidad del canónico), sin fiados abiertos ni consulta de crédito (el commit revalida), y su dirección/barrio cuentan para la suficiencia de entrega.
+- `valoresRelevantes.clienteId` es `__cliente_nuevo__` (id sintético) cuando aún no existe.
+- Sin `clienteId` ni `clienteNuevo` → 400.
 
 **Modo edición (`pedidoId` presente) — Composición C4:** el PUT `/api/pedidos/[id]` (`ActualizarPedidoUseCase`) es **declarativo de items** y conserva los pagos existentes. En este modo el preview:
 - carga el pedido existente; `totalPagado` sale de **ahí**, no de `pagos` (que se **ignoran**); `saldoFavorProyectado = 0`.

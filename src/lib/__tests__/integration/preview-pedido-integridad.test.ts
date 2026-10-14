@@ -335,3 +335,56 @@ describe('preview — read-only comportamental + integridad vs commit', () => {
     }
   })
 })
+
+// B-19 (#346) — cliente nuevo: el preview lo resuelve igual que el commit y no persiste nada.
+describe('preview con cliente nuevo (B-19) — Postgres real', () => {
+  let adminId: string
+
+  beforeAll(async () => {
+    await resetAndSeed()
+    adminId = (await getAdminUser()).id
+  })
+
+  afterAll(async () => { await disconnect() })
+
+  it('teléfono libre: no crea ningún Cliente y proyecta exactamente lo que el commit persiste', async () => {
+    const clienteNuevo = { nombre: 'Zulma Nueva', telefono: '3019998877', direccion: 'Cra 9 # 4-5', barrio: 'Centro' }
+    const items = [{ producto: 'PACA_AGUA' as const, cantidad: 3 }]
+    const clientesAntes = await testPrisma.cliente.count()
+
+    const preview = await makePreviewUseCase().execute({
+      clienteNuevo, canal: 'DOMICILIO', origen: 'PEDIDO', items,
+      pagos: [{ metodo: 'EFECTIVO', monto: 1000 }], actorId: adminId,
+    })
+    expect(await testPrisma.cliente.count()).toBe(clientesAntes) // read-only
+    expect(preview.allowedActions).toContain('crear')
+    expect(preview.warnings.map((w) => w.code)).not.toContain('DEUDOR_REQUERIDO')
+
+    const { pedido } = await makeCrearUseCase().execute({
+      clienteId: 'CONSUMIDOR_FINAL', // marcador del contrato; el cliente real sale de `clienteNuevo`
+      clienteNuevo, canal: 'DOMICILIO', origen: 'PEDIDO', items,
+      pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
+      createdById: adminId, createdByRole: 'ADMIN', offlineId: `b19-${Date.now()}`,
+    })
+    expect(preview.calculation.total).toBe(Number(pedido.total))
+    expect(preview.calculation.totalPagado).toBe(Number(pedido.totalPagado))
+    expect(preview.calculation.saldoProyectado).toBe(Number(pedido.saldo))
+    expect(preview.calculation.estadoPagoProyectado).toBe(pedido.estadoPago)
+
+    const creado = await testPrisma.cliente.findFirst({ where: { telefono: clienteNuevo.telefono } })
+    expect(creado?.nombre).toBe('Zulma Nueva')
+    expect(await testPrisma.cliente.count()).toBe(clientesAntes + 1)
+    expect(await testPrisma.pedido.findUnique({ where: { id: pedido.id } })).toMatchObject({ clienteId: creado?.id })
+  })
+
+  it('teléfono de un cliente existente: el preview es de ESE cliente (no se crea otro)', async () => {
+    const existente = await createTestCliente('B19Existente')
+    const antes = await testPrisma.cliente.count()
+    const preview = await makePreviewUseCase().execute({
+      clienteNuevo: { nombre: 'Otro nombre', telefono: existente.telefono },
+      canal: 'PUNTO', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: adminId,
+    })
+    expect(preview.auditPreview.valoresRelevantes.clienteId).toBe(existente.id)
+    expect(await testPrisma.cliente.count()).toBe(antes)
+  })
+})

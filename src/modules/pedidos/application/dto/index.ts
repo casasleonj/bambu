@@ -301,7 +301,21 @@ export interface EntregarPedidoResult {
 // Contrato normativo: docs/pedidos/02-api-contract-pedidos.md.
 
 export interface PreviewPedidoInput {
-  clienteId: string
+  /** Obligatorio salvo que venga `clienteNuevo` (B-19, #346). */
+  clienteId?: string
+  /**
+   * Cliente que se va a crear en el commit. El preview no lo crea: lo resuelve
+   * igual que `CrearPedidoUseCase` (mismo teléfono ⇒ ese cliente; si no, un
+   * cliente sin historial).
+   */
+  clienteNuevo?: {
+    nombre: string
+    apellido?: string
+    telefono: string
+    direccion?: string
+    barrio?: string
+    fuente?: string
+  }
   negocioId?: string
   canal?: 'PUNTO' | 'DOMICILIO'
   origen?: 'PEDIDO' | 'VENTA_RAPIDA'

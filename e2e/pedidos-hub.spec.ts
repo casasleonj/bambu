@@ -142,6 +142,79 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     }).toPass({ timeout: 20000 })
   })
 
+  // Paridad Hub ↔ legacy (docs/pedidos/HUB_REVISION_INTEGRAL_v1.0.md §12): una fila
+  // solo es ✅ si el flujo termina bien en la BASE DE DATOS, no solo en pantalla.
+  test('B-19 (#346): crear un cliente nuevo desde el workspace persiste Cliente + Pedido', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    const sufijo = `${Date.now()}`.slice(-9)
+    const nombre = `Nuevo Hub ${sufijo}`
+    const telefono = `31${sufijo}`.slice(0, 10)
+    await page.goto(`${BASE}/pedidos`)
+    await app.getByTestId('fab-main').click()
+    await page.getByTestId('fab-pedido-envio').click()
+    await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
+
+    await page.getByTestId('cliente-search-input').fill(nombre)
+    await page.getByText(/Crear cliente nuevo/i).click()
+    await page.getByPlaceholder('Nombre *').fill(nombre)
+    await page.getByPlaceholder('Teléfono *').fill(telefono)
+    await page.getByPlaceholder('Dirección *').fill('Cra 9 # 4-5')
+    await page.getByPlaceholder('Barrio *').fill('Centro')
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    await page.getByTestId('workspace-commit').click()
+    await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+
+    // BD: el cliente nació con sus datos y el pedido quedó a su nombre, con clave de borrador.
+    await expect(async () => {
+      const cliente = await prisma.cliente.findFirst({ where: { nombre } })
+      expect(cliente?.telefono).toContain(telefono) // el servidor lo normaliza (prefijo 57)
+      const pedidos = await prisma.pedido.findMany({ where: { clienteId: cliente!.id } })
+      expect(pedidos).toHaveLength(1)
+      expect(pedidos[0].origen).toBe('PEDIDO')
+      expect(pedidos[0].offlineId).toBeTruthy()
+    }).toPass({ timeout: 15000 })
+  })
+
+  test('B-20 (#347): sin conexión se puede crear el pedido y al reconectar se crea UNA sola vez', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    const nombre = `Offline Hub ${Date.now()}`
+    const { cliente } = await createCliente(page, { nombre })
+    await page.goto(`${BASE}/pedidos`)
+    await app.getByTestId('fab-main').click()
+    await page.getByTestId('fab-pedido-envio').click()
+    await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
+    await page.getByTestId('cliente-search-input').fill(nombre)
+    await page.getByTestId('cliente-search-result').first().click()
+
+    // se pierde la señal ANTES de componer: no habrá preview del servidor
+    await page.context().setOffline(true)
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await expect(page.getByTestId('workspace-offline-aviso')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled()
+    await expect(page.getByTestId('workspace-commit')).toContainText(/sin conexión/i)
+    await page.getByTestId('workspace-commit').click()
+    await expect(page.getByText(/se enviará al recuperar la red/i)).toBeVisible({ timeout: 5000 })
+
+    // reconexión → el sync drena la cola (bajo Playwright el auto-sync está
+    // apagado: se dispara con el helper de test); exactamente un pedido en BD
+    const encolados = await page.evaluate(() => (window as unknown as { __bambu: { getRequestQueue: () => Promise<unknown[]> } }).__bambu.getRequestQueue())
+    expect(encolados).toHaveLength(1)
+    await page.context().setOffline(false)
+    const sync = () => page.evaluate(() => (window as unknown as { __bambu: { syncWithServer: () => Promise<unknown> } }).__bambu.syncWithServer())
+    await sync()
+    await expect(async () => {
+      expect(await prisma.pedido.count({ where: { clienteId: cliente.id } })).toBe(1)
+    }).toPass({ timeout: 20000 })
+    // un segundo drenaje (reintento) no duplica: misma clave de borrador
+    await sync()
+    expect(await prisma.pedido.count({ where: { clienteId: cliente.id } })).toBe(1)
+    const pedido = await prisma.pedido.findFirst({ where: { clienteId: cliente.id } })
+    expect(pedido?.offlineId).toBeTruthy()
+  })
+
   test('peek: abre sin navegar (G4), ↑/↓ recorren, Escape cierra', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
     const app = appMain(page)

@@ -188,3 +188,46 @@ describe('workspaceReducer — cobro (P0)', () => {
     expect(s.phase).toBe('PREVIEW_READY')
   })
 })
+
+
+describe('B-20 — guardar sin conexión (#347)', () => {
+  const conItems = () => {
+    let st = initWorkspace()
+    st = workspaceReducer(st, { type: 'SET_CLIENTE', clienteId: 'c1' })
+    return workspaceReducer(st, { type: 'SET_ITEM_CANTIDAD', producto: 'PACA_AGUA', cantidad: 2 })
+  }
+
+  it('un fallo de RED habilita crear (pero no actualizar)', () => {
+    const st = workspaceReducer(conItems(), { type: 'PREVIEW_ERROR', kind: 'NETWORK_ERROR', message: 'Sin conexión' })
+    expect(st.sinConexion).toBe(true)
+    expect(canCommit(st, 'crear')).toBe(true)
+    expect(canCommit(st, 'actualizar')).toBe(false)
+  })
+
+  it('una respuesta de error del servidor NO habilita el guardado', () => {
+    const st = workspaceReducer(conItems(), { type: 'PREVIEW_ERROR', kind: 'VALIDATION_ERROR', message: 'Cliente no encontrado' })
+    expect(st.sinConexion).toBe(false)
+    expect(canCommit(st, 'crear')).toBe(false)
+  })
+
+  it('al volver un preview válido se sale del modo sin conexión', () => {
+    let st = workspaceReducer(conItems(), { type: 'PREVIEW_ERROR', kind: 'NETWORK_ERROR', message: 'x' })
+    st = workspaceReducer(st, { type: 'PREVIEW_RECEIVED', preview: { requiresAuthorization: false, allowedActions: ['crear'], calculation: { total: 5000 } } as never })
+    expect(st.sinConexion).toBe(false)
+    expect(st.phase).toBe('PREVIEW_READY')
+  })
+
+  it('COMMIT_START funciona desde DRAFTING sin conexión y un error de guardado vuelve a DRAFTING', () => {
+    let st = workspaceReducer(conItems(), { type: 'PREVIEW_ERROR', kind: 'NETWORK_ERROR', message: 'x' })
+    st = workspaceReducer(st, { type: 'COMMIT_START' })
+    expect(st.phase).toBe('COMMITTING')
+    st = workspaceReducer(st, { type: 'COMMIT_ERROR', message: 'no se guardó' })
+    expect(st.phase).toBe('DRAFTING')
+    expect(canCommit(st, 'crear')).toBe(true)
+  })
+
+  it('PAGAR_COMPLETO usa el total estimado cuando no hay preview', () => {
+    const st = workspaceReducer(conItems(), { type: 'PAGAR_COMPLETO', metodo: 'EFECTIVO', total: 5000 })
+    expect(st.draft.pagos).toEqual([{ metodo: 'EFECTIVO', monto: 5000 }])
+  })
+})

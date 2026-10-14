@@ -28,17 +28,19 @@ describe('PreviewPedidoSchema', () => {
     expect(PreviewPedidoSchema.safeParse({ clienteId: '  ', items: [{ producto: 'PACA_AGUA', cantidad: 1 }] }).success).toBe(false)
   })
 
-  it('descarta campos de persistencia (offlineId, clienteNuevo) pero ACEPTA direccionEntrega/barrioEntrega (suficiencia de entrega)', () => {
+  it('descarta campos de persistencia (offlineId, actualizarCliente) pero ACEPTA clienteNuevo (solo lectura, B-19) y direccionEntrega/barrioEntrega (suficiencia de entrega)', () => {
     const r = PreviewPedidoSchema.safeParse({
       clienteId: 'c1',
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
-      offlineId: 'x', clienteNuevo: { nombre: 'x', telefono: '1234567' },
+      offlineId: 'x', actualizarCliente: { direccion: 'x' }, clienteNuevo: { nombre: 'x', telefono: '1234567' },
       direccionEntrega: 'Calle 1', barrioEntrega: 'Centro',
     })
     expect(r.success).toBe(true)
     if (r.success) {
       expect('offlineId' in r.data).toBe(false)
-      expect('clienteNuevo' in r.data).toBe(false)
+      expect('actualizarCliente' in r.data).toBe(false)
+      // B-19 (#346): el cliente nuevo viaja SOLO para calcular el preview (no se crea nada).
+      expect(r.data.clienteNuevo).toEqual({ nombre: 'x', telefono: '571234567' }) // normalizado igual que el commit
       // direccionEntrega/barrioEntrega son input legítimo del preview (F-ENTREGA-0)
       expect(r.data.direccionEntrega).toBe('Calle 1')
       expect(r.data.barrioEntrega).toBe('Centro')
