@@ -19,6 +19,10 @@ export interface EntregarPedidoPayload {
   // (400) si `pagos` trae montos. La app captura el embarque de la ruta en el
   // momento de la entrega y lo congela (incluso al encolar offline).
   embarqueId?: string
+  // PR-1B (Adenda v1.2 §3.2): misión cuyo vehículo sacó el producto. Se congela
+  // al capturar la entrega (también al encolar offline). Ausente = entrega en
+  // punto/oficina sin custodia de vehículo → no genera movimiento físico.
+  embarqueEntregaId?: string
   fotoEntrega?: string
   gpsLat?: number
   gpsLng?: number

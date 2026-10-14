@@ -36,6 +36,8 @@ import { CerrarEmbarqueSideEffectsService } from '../../domain/services/cerrar-e
 import { CierreDedupService } from '../../domain/services/cierre-dedup.service'
 import { RegistrarMovimientosCierre } from '../../domain/services/registrar-movimientos-cierre.service'
 import type { PedidoRawInput } from '../../domain/services/procesar-pedido.service'
+import type { EntregaDelCierre } from '../../domain/services/procesar-pedido.service'
+import { SalidasMisionService } from '../../domain/services/salidas-mision.service'
 import { Carga, type ProductCode } from '../../domain/value-objects/Carga'
 import { EstadoEmbarque as EstadoEmbarqueVO } from '../../domain/value-objects/EstadoEmbarque'
 import type { CerrarEmbarqueInput, CierreResultadoDTO } from '../dto'
@@ -98,6 +100,8 @@ export class CerrarEmbarqueUseCase {
     // FASE FINAL (dual-write §23): escribe el ledger físico del cierre.
     private readonly registrarMovimientosService: RegistrarMovimientosCierre = new RegistrarMovimientosCierre(),
     private readonly dedupService: CierreDedupService = new CierreDedupService(), // BAMBU-LOG-006
+    // PR-1C: salidas de la misión desde el ledger (modo entrega viva).
+    private readonly salidasMision: SalidasMisionService = new SalidasMisionService(),
   ) {}
 
   async execute(input: CerrarEmbarqueInput): Promise<CierreResultadoDTO> {
@@ -123,8 +127,14 @@ export class CerrarEmbarqueUseCase {
       const transitionResult = this.transitions.cerrar(embarque.estado)
       if (!transitionResult.success) throw new Error(transitionResult.error)
 
+      // PR-1C: modo "entrega viva" → se bloquean los pedidos de la misión ANTES de
+      // leerlos (una `/entrega` concurrente termina antes o espera: sin foto vencida).
+      const modoVivo = await this.salidasMision.esModoVivo(client, input.id, embarque.createdAt)
+      if (modoVivo) await this.salidasMision.bloquearPedidos(client, input.id)
+
       // 2. Fetch pedidos for this embarque
       const pedidosRaw = await this.fetchPedidosForEmbarque(input.id, client)
+      const entregasDelCierre: EntregaDelCierre[] = []
 
       const pedidosHijosCreados: Array<{ id: string; numero: number }> = []
       const pedidosActualizados: Array<{ id: string; estado: string }> = []
@@ -151,6 +161,7 @@ export class CerrarEmbarqueUseCase {
           pedidosHijosCreados,
           pedidosActualizados,
           metodosConfirmacion,
+          entregasDelCierre,
         )
         totalVentas += totalReal
       }
@@ -163,13 +174,18 @@ export class CerrarEmbarqueUseCase {
         metodosConfirmacion,
       )
 
+      // PR-1C: en modo vivo lo entregado sale del ledger (se lee ANTES de que el
+      // cierre escriba sus propios movimientos), no de `pedidosRaw.cXEnt`.
+      const vivo = modoVivo
+        ? await this.salidasMision.calcular(client, input.id, embarque, pedidosRaw, entregasDelCierre, input.ventasLibres ?? [])
+        : null
+
       // 5. Reconcile products
       const { totalDiscrepancia, discrepanciasPorProducto } = await this.conciliarProductos(
         client,
         input.id,
         embarque,
-        pedidosRaw,
-        input.ventasLibres ?? [],
+        vivo?.entregadas ?? this.salidasMision.entregadasPorAcumulado(pedidosRaw, input.ventasLibres ?? []),
         input.productosRetorno ?? [],
       )
 
@@ -209,6 +225,7 @@ export class CerrarEmbarqueUseCase {
         pedidosRaw,
         ventasLibres: input.ventasLibres ?? [],
         productosRetorno: input.productosRetorno ?? [],
+        entregasCierre: vivo?.entregasCierre,
       })
 
       // 9. Reconcile cash before closing to detect faltante de caja.
@@ -333,8 +350,9 @@ export class CerrarEmbarqueUseCase {
     client: TxOrPrisma,
     embarqueId: string,
     embarque: { productos: Array<{ producto: string; cargadas: number }> },
-    pedidosRaw: PedidoRawInput[],
-    ventasLibres: CerrarEmbarqueInput['ventasLibres'],
+    // Entregadas por producto: del ledger (modo vivo) o del acumulado del pedido
+    // (camino anterior). La fuente la decide `SalidasMisionService`.
+    entregadas: Record<ProductCode, number>,
     productosRetorno: CerrarEmbarqueInput['productosRetorno'],
   ): Promise<{ totalDiscrepancia: number; discrepanciasPorProducto: Array<{ producto: string; discrepancia: number }> }> {
     // 1. Construir Carga VO desde embarque.productos
@@ -354,32 +372,16 @@ export class CerrarEmbarqueUseCase {
       BOLSA_HIELO: cargaMap.BOLSA_HIELO,
     })
 
-    // 2. Agregar entregas: pedidos + ventas libres
+    // 2. Entregas por producto (pedidos + ventas libres, según la fuente)
     const productosEntregados: Record<
       ProductCode,
       { entregadas: number; devueltas: number; cambios: number; rotas: number; promociones: number }
     > = {
-      PACA_AGUA: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
-      PACA_HIELO: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
-      BOTELLON: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
-      BOLSA_AGUA: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
-      BOLSA_HIELO: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
-    }
-
-    for (const p of pedidosRaw) {
-      productosEntregados.PACA_AGUA.entregadas += p.cPacaAguaEnt || 0
-      productosEntregados.PACA_HIELO.entregadas += p.cPacaHieloEnt || 0
-      productosEntregados.BOTELLON.entregadas += (p.cBotellonFabEnt || 0) + (p.cBotellonDomEnt || 0)
-      productosEntregados.BOLSA_AGUA.entregadas += p.cBolsaAguaEnt || 0
-      productosEntregados.BOLSA_HIELO.entregadas += p.cBolsaHieloEnt || 0
-    }
-
-    for (const v of ventasLibres ?? []) {
-      productosEntregados.PACA_AGUA.entregadas += v.cPacaAgua || 0
-      productosEntregados.PACA_HIELO.entregadas += v.cPacaHielo || 0
-      productosEntregados.BOTELLON.entregadas += (v.cBotellonFab || 0) + (v.cBotellonDom || 0)
-      productosEntregados.BOLSA_AGUA.entregadas += v.cBolsaAgua || 0
-      productosEntregados.BOLSA_HIELO.entregadas += v.cBolsaHielo || 0
+      PACA_AGUA: { entregadas: entregadas.PACA_AGUA, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
+      PACA_HIELO: { entregadas: entregadas.PACA_HIELO, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
+      BOTELLON: { entregadas: entregadas.BOTELLON, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
+      BOLSA_AGUA: { entregadas: entregadas.BOLSA_AGUA, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
+      BOLSA_HIELO: { entregadas: entregadas.BOLSA_HIELO, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
     }
 
     // 3. Devueltas y rotas desde productosRetorno
@@ -422,6 +424,7 @@ export class CerrarEmbarqueUseCase {
       })),
     }
   }
+
 
 
   private getTx(tx: unknown): TxOrPrisma {

@@ -7,10 +7,15 @@ import { PedidoId } from '../../domain/value-objects/PedidoId'
 import type { IPedidoRepository } from '../../domain/repositories/IPedidoRepository'
 import type { IFacturaRepository } from '../../domain/repositories/IFacturaRepository'
 import type { IPagoRepository } from '../../domain/repositories/IPagoRepository'
-import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
+import type { ITransactionManager, TransactionClient } from '../../infrastructure/transactions/PrismaTransactionManager'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
 import { leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import { aplicarEntregaConObligacion } from '@/lib/obligacion-guard'
+import {
+  CAPTURA_ENTREGA_PEDIDO,
+  claveEventoEntrega,
+  embarqueUsaEntregaVivaPorFlag,
+} from '@/lib/entrega-fisica-viva'
 import type { EntregarPedidoInput, EntregarPedidoResult } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 
@@ -53,6 +58,25 @@ export class EntregarPedidoUseCase {
         return {
           pedido: PedidoDTOMapper.toResumen(pedido),
           deduped: true,
+        }
+      }
+
+      // PR-1B (Adenda v1.2 §3.2 punto 4): contexto físico de la entrega. Se
+      // resuelve y se deduplica ANTES de modificar Pedido/Pago. `entregaOfflineId`
+      // guarda una sola clave reciente y no cubre el replay viejo tras varios
+      // parciales; la clave por línea del evento (`entrega:<id>:<PRODUCTO>`, única
+      // en `EmbarqueMovimiento.offlineId`) sí.
+      const eventoFisico = await this.resolverEventoFisico(tx, input)
+      if (eventoFisico) {
+        const previo = await tx.embarqueMovimiento.findFirst({
+          where: { offlineId: { startsWith: claveEventoEntrega(eventoFisico.eventoEntregaId, '') } },
+          select: { id: true },
+        })
+        if (previo) {
+          return {
+            pedido: PedidoDTOMapper.toResumen(pedido),
+            deduped: true,
+          }
         }
       }
 
@@ -128,6 +152,12 @@ export class EntregarPedidoUseCase {
       // Persist pedido
       const updated = await this.pedidoRepo.update(pedido, tx)
 
+      // PR-1B: evento físico en la MISMA transacción que `cantEntrega`, con la
+      // cantidad realmente aplicada tras el clamp (nunca la pedida; nunca 0).
+      if (eventoFisico) {
+        await this.registrarEventoFisico(tx, eventoFisico, input.pedidoId, entregasClampeadas)
+      }
+
       // FASE FINAL (ADR-MONETARIO-001, §12): proyección de auditoría de los pagos.
       if (input.pagos && input.pagos.length > 0) {
         const montoPagadoEnEntrega = input.pagos.reduce((sum, p) => sum + p.monto, 0)
@@ -180,5 +210,68 @@ export class EntregarPedidoUseCase {
         hijo: undefined,
       }
     })
+  }
+
+  /**
+   * PR-1B: ¿esta entrega genera evento físico? Solo si el payload declara el
+   * contexto físico (`embarqueEntregaId`) Y ese embarque usa el modo de entrega
+   * viva (flag por fecha de creación, o ya tiene eventos atribuidos). Sin
+   * contexto físico = punto/oficina sin custodia de vehículo → sin evento.
+   */
+  private async resolverEventoFisico(
+    tx: TransactionClient,
+    input: EntregarPedidoInput,
+  ): Promise<{ embarqueId: string; eventoEntregaId: string; posCierre: boolean } | null> {
+    if (!input.embarqueEntregaId || !input.offlineId) return null
+    const embarque = await tx.embarque.findUnique({
+      where: { id: input.embarqueEntregaId },
+      select: { id: true, estado: true, createdAt: true },
+    })
+    if (!embarque || embarque.estado === 'CANCELADO') return null
+    const activo =
+      embarqueUsaEntregaVivaPorFlag(embarque.createdAt) ||
+      (await tx.embarqueMovimiento.count({
+        where: { embarqueId: embarque.id, tipo: 'ENTREGA', metadata: { path: ['captura'], equals: CAPTURA_ENTREGA_PEDIDO } },
+      })) > 0
+    if (!activo) return null
+    return { embarqueId: embarque.id, eventoEntregaId: input.offlineId, posCierre: embarque.estado === 'CERRADO' }
+  }
+
+  private async registrarEventoFisico(
+    tx: TransactionClient,
+    evento: { embarqueId: string; eventoEntregaId: string; posCierre: boolean },
+    pedidoId: string,
+    lineas: Array<{ producto: string; cantidadAEntregar: number }>,
+  ): Promise<void> {
+    for (const l of lineas) {
+      if (l.cantidadAEntregar <= 0) continue
+      await tx.embarqueMovimiento.create({
+        data: {
+          embarqueId: evento.embarqueId,
+          tipo: 'ENTREGA',
+          producto: l.producto,
+          cantidad: l.cantidadAEntregar,
+          origen: 'VEHICULO',
+          destino: 'CLIENTE',
+          offlineId: claveEventoEntrega(evento.eventoEntregaId, l.producto),
+          metadata: {
+            captura: CAPTURA_ENTREGA_PEDIDO,
+            pedidoId,
+            eventoEntregaId: evento.eventoEntregaId,
+            ...(evento.posCierre ? { posCierre: true } : {}),
+          },
+        },
+      })
+    }
+    if (evento.posCierre) {
+      // Adenda §3.2 punto 5: un evento genuino que llega con el embarque ya
+      // cerrado no se reatribuye ni se bloquea; queda auditado para revisión.
+      await logAudit({
+        entidad: 'Embarque',
+        registroId: evento.embarqueId,
+        accion: 'UPDATE',
+        datos: { accion: 'ENTREGA_POST_CIERRE', pedidoId, eventoEntregaId: evento.eventoEntregaId },
+      }, tx)
+    }
   }
 }
