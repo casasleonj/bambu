@@ -1,12 +1,13 @@
 name: Backlog
 
 # Hace cumplir la regla de docs/BACKLOG.md: todo issue abierto tiene exactamente
-# una etiqueta estado:*, y todo PR cita el issue que resuelve.
+# una etiqueta estado:*, tiene prioridad P0/P1/P2 (o queda `sin-priorizar`), todo PR cita el
+# issue que resuelve y los pendientes nuevos escritos en el código citan su issue.
 # Lógica y tests: .github/scripts/backlog.cjs + .github/scripts/__tests__/.
 
 on:
   issues:
-    types: [opened, reopened, closed, labeled, unlabeled]
+    types: [opened, reopened, edited, closed, labeled, unlabeled]
   pull_request:
     types: [opened, reopened, edited, synchronize, ready_for_review, labeled, unlabeled, closed]
   schedule:

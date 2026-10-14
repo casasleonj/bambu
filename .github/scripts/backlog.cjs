@@ -13,6 +13,8 @@ const ESTADOS = [PENDIENTE, EN_CURSO, BLOQUEADO]
 // Si un issue trae varios estados, gana el primero de esta lista.
 const PRIORIDAD = [EN_CURSO, BLOQUEADO, PENDIENTE]
 const SIN_ISSUE = 'sin-issue'
+const SIN_PRIORIZAR = 'sin-priorizar'
+const PRIORIDADES = ['P0', 'P1', 'P2']
 const DECISION_PO = 'decision-PO'
 const MAX_RANGO = 100
 
@@ -66,9 +68,31 @@ function reconciliar(etiquetas, { cerrado = false, objetivo = null } = {}) {
   }
 }
 
+/** Prioridad elegida en el formulario de issue (`### Prioridad` + opción `P0 — …`). */
+function prioridadDelCuerpo(cuerpo) {
+  const m = /^#{1,6}\s*Prioridad\s*\n+\s*(P[012])\b/im.exec(String(cuerpo || ''))
+  return m ? m[1].toUpperCase() : null
+}
+
+/**
+ * Todo issue abierto tiene prioridad P0/P1/P2 o queda marcado `sin-priorizar`.
+ * Si el formulario trae la prioridad y no hay etiqueta P*, se aplica esa.
+ */
+function reconciliarPrioridad(etiquetas, cuerpo, { cerrado = false } = {}) {
+  const tieneSin = etiquetas.includes(SIN_PRIORIZAR)
+  const tieneP = PRIORIDADES.some((p) => etiquetas.includes(p))
+  if (cerrado || tieneP) return { quitar: tieneSin ? [SIN_PRIORIZAR] : [], agregar: [] }
+  const delForm = prioridadDelCuerpo(cuerpo)
+  if (delForm) return { quitar: tieneSin ? [SIN_PRIORIZAR] : [], agregar: [delForm] }
+  return { quitar: [], agregar: tieneSin ? [] : [SIN_PRIORIZAR] }
+}
+
 async function aplicar({ github, context, core }, issue, opciones) {
   const etiquetas = (issue.labels || []).map((l) => (typeof l === 'string' ? l : l.name))
-  const { quitar, agregar } = reconciliar(etiquetas, opciones)
+  const estado = reconciliar(etiquetas, opciones)
+  const prioridad = reconciliarPrioridad(etiquetas, issue.body, opciones)
+  const quitar = [...estado.quitar, ...prioridad.quitar]
+  const agregar = [...estado.agregar, ...prioridad.agregar]
   const base = { owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number }
   for (const name of quitar) {
     try {
@@ -169,15 +193,95 @@ async function handleSweep(ctx) {
     if (await aplicar(ctx, issue, {})) corregidos++
     if (issue.labels.some((l) => (typeof l === 'string' ? l : l.name) === EN_CURSO)) enCurso.push(issue.number)
   }
+  const sinPriorizar = issues
+    .filter((i) => !i.pull_request)
+    .filter((i) => !PRIORIDADES.some((p) => (i.labels || []).some((l) => (typeof l === 'string' ? l : l.name) === p)))
+    .map((i) => `#${i.number}`)
   core.info(`Barrido: ${issues.length} abiertos, ${corregidos} corregidos.`)
+  if (sinPriorizar.length) core.info(`Sin priorizar: ${sinPriorizar.join(', ')}`)
+  if (core.summary && sinPriorizar.length) {
+    await core.summary.addHeading('Issues sin priorizar').addRaw(sinPriorizar.join(', ')).write()
+  }
   if (enCurso.length) core.info(`En curso: ${enCurso.map((n) => `#${n}`).join(', ')}`)
+}
+
+const RE_MARCADOR = /\b(TODO|FIXME|HACK|XXX)\b/
+const RE_ISSUE = /#\d+/
+// Documentación y los propios scripts del backlog nombran estos marcadores sin ser pendientes.
+const RE_EXCLUIDOS = /^(docs\/|\.github\/scripts\/|node_modules\/|public\/)|\.md$|(^|\/)package-lock\.json$/
+const RE_EXENCION = /^\s*todo-ok:\s*\S+/im
+
+/** Líneas añadidas por un parche unificado con su número de línea en el archivo nuevo. */
+function lineasAnadidas(patch) {
+  const salida = []
+  let n = 0
+  for (const linea of String(patch || '').split('\n')) {
+    const h = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(linea)
+    if (h) {
+      n = Number(h[1])
+      continue
+    }
+    if (linea.startsWith('+') && !linea.startsWith('+++')) {
+      salida.push({ linea: n, texto: linea.slice(1) })
+      n++
+    } else if (!linea.startsWith('-')) {
+      n++
+    }
+  }
+  return salida
+}
+
+/** Los TODO/FIXME/HACK nuevos deben apuntar a un issue (`TODO(#123)`), si no el PR falla. */
+async function revisarTodos({ github, context, core }) {
+  const pr = context.payload.pull_request
+  if (RE_EXENCION.test(pr.body || '')) {
+    core.info('TODO sin issue: exento por "TODO-OK: motivo" en la descripción del PR.')
+    return []
+  }
+  const archivos = await github.paginate(github.rest.pulls.listFiles, {
+    ...context.repo,
+    pull_number: pr.number,
+    per_page: 100,
+  })
+  const huerfanos = []
+  for (const archivo of archivos) {
+    if (RE_EXCLUIDOS.test(archivo.filename)) continue
+    for (const { linea, texto } of lineasAnadidas(archivo.patch)) {
+      if (RE_MARCADOR.test(texto) && !RE_ISSUE.test(texto)) {
+        huerfanos.push(`${archivo.filename}:${linea}`)
+      }
+    }
+  }
+  if (huerfanos.length) {
+    core.setFailed(
+      `TODO/FIXME/HACK sin issue en: ${huerfanos.join(', ')}. Crea el issue y cita su número ` +
+        '(ej. "TODO(#123)"), o agrega "TODO-OK: motivo" a la descripción del PR. Regla: docs/BACKLOG.md.',
+    )
+  }
+  return huerfanos
 }
 
 async function run(ctx) {
   const evento = ctx.context.eventName
   if (evento === 'issues') return handleIssue(ctx)
-  if (evento === 'pull_request') return handlePullRequest(ctx)
+  if (evento === 'pull_request') {
+    await handlePullRequest(ctx)
+    if (ctx.context.payload.action !== 'closed') await revisarTodos(ctx)
+    return
+  }
   return handleSweep(ctx)
 }
 
-module.exports = { ESTADOS, extraerIssues, reconciliar, handleIssue, handlePullRequest, handleSweep, run }
+module.exports = {
+  ESTADOS,
+  extraerIssues,
+  reconciliar,
+  reconciliarPrioridad,
+  prioridadDelCuerpo,
+  lineasAnadidas,
+  revisarTodos,
+  handleIssue,
+  handlePullRequest,
+  handleSweep,
+  run,
+}

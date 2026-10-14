@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'REGLA DE BACKLOG (docs/BACKLOG.md, hace cumplir el workflow Backlog): 1) toda tarea nueva, incluida la que surge en el chat, se registra como issue ANTES de empezar, con prioridad P0/P1/P2 y una etiqueta estado:pendiente|en-curso|bloqueado. 2) El PR cita el issue (Closes #N, o Refs #N si no lo cierra); sin eso el check Backlog falla. 3) Al abrir el PR el issue pasa solo a estado:en-curso; al merge se cierra. 4) Una decision del PO pendiente = estado:bloqueado + decision-PO. 5) Si descubres trabajo nuevo, crea su issue en el momento; no lo dejes solo en el chat.'"
+            "command": "echo 'REGLA DE BACKLOG (docs/BACKLOG.md, la hace cumplir el workflow Backlog): 1) toda tarea, hallazgo o idea nueva, incluida la que surge en el chat, se registra como issue ANTES de empezar; usa el skill /hallazgo (un paso: busca duplicados, prioridad P0/P1/P2, estado:pendiente). 2) Si espera una decision del PO: decision-PO + estado:bloqueado. 3) El PR cita el issue (Closes #N, o Refs #N si no lo cierra) o el check Backlog falla; al abrir el PR el issue pasa solo a estado:en-curso y al merge se cierra. 4) Los pendientes nuevos en el codigo llevan su issue, por ejemplo con el numero entre parentesis; el CI rechaza los que no lo tienen. 5) Registrar no es implementar: crea el issue y sigue con lo que estabas haciendo.'"
           }
         ]
       }

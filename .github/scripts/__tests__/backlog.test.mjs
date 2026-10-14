@@ -7,12 +7,13 @@ const backlog = require('../backlog.cjs')
 const repo = { owner: 'o', repo: 'r' }
 
 /** Cliente de GitHub simulado: guarda issues en memoria y registra las llamadas de escritura. */
-function fakeGithub(issues) {
+function fakeGithub(issues, files = []) {
   const store = new Map(issues.map((i) => [i.number, { ...i, labels: i.labels.map((n) => ({ name: n })) }]))
   const writes = []
   const github = {
-    paginate: async () => [...store.values()].filter((i) => i.state === 'open'),
+    paginate: async (fn) => (fn === github.rest.pulls.listFiles ? files : [...store.values()].filter((i) => i.state === 'open')),
     rest: {
+      pulls: { listFiles: () => {} },
       issues: {
         listForRepo: () => {},
         get: async ({ issue_number }) => {
@@ -47,7 +48,12 @@ function ctxOf(github, eventName, payload) {
   }
 }
 
-const issue = (number, labels, state = 'open', extra = {}) => ({ number, state, labels, ...extra })
+const issue = (number, labels, state = 'open', extra = {}) => ({
+  number,
+  state,
+  labels: extra.sinP ? labels : [...labels, 'P1'],
+  ...extra,
+})
 const estados = (store, n) => store.get(n).labels.map((l) => l.name).filter((x) => x.startsWith('estado:'))
 
 describe('extraerIssues', () => {
@@ -101,7 +107,7 @@ describe('handleIssue', () => {
   it('issue nuevo sin estado recibe estado:pendiente', async () => {
     const { github, writes, store } = fakeGithub([issue(1, ['bug'])])
     const { ctx } = ctxOf(github, 'issues', { action: 'opened', issue: store.get(1) })
-    await backlog.handleIssue({ ...ctx, context: { ...ctx.context, payload: { issue: { ...store.get(1), labels: [{ name: 'bug' }] } } } })
+    await backlog.handleIssue(ctx)
     expect(writes).toEqual(['+1:estado:pendiente'])
   })
   it('issue cerrado pierde sus estados', async () => {
@@ -233,5 +239,125 @@ describe('handleSweep', () => {
     expect(estados(store, 21)).toEqual(['estado:bloqueado'])
     expect(estados(store, 22)).toEqual(['estado:en-curso'])
     expect(estados(store, 23)).toEqual([])
+  })
+})
+
+
+describe('prioridad (capa 3)', () => {
+  const etiq = (store, n) => store.get(n).labels.map((l) => l.name)
+
+  it('prioridadDelCuerpo lee la opción del formulario', () => {
+    expect(backlog.prioridadDelCuerpo('### Origen\n\nx\n\n### Prioridad\n\nP0 — dinero o integridad\n')).toBe('P0')
+    expect(backlog.prioridadDelCuerpo('### Prioridad\n\np2 — menor')).toBe('P2')
+    expect(backlog.prioridadDelCuerpo('## Prioridad\n\nP1 — normal')).toBe('P1')
+    expect(backlog.prioridadDelCuerpo('texto de Prioridad\nP0 en prosa')).toBeNull()
+    expect(backlog.prioridadDelCuerpo('sin formulario')).toBeNull()
+    expect(backlog.prioridadDelCuerpo('### Prioridad\n\nP9')).toBeNull()
+  })
+  it('sin P* queda sin-priorizar', () => {
+    expect(backlog.reconciliarPrioridad(['bug'], '')).toEqual({ quitar: [], agregar: ['sin-priorizar'] })
+  })
+  it('con P* se quita sin-priorizar', () => {
+    expect(backlog.reconciliarPrioridad(['P1', 'sin-priorizar'], '')).toEqual({ quitar: ['sin-priorizar'], agregar: [] })
+  })
+  it('la prioridad del formulario se aplica como etiqueta', () => {
+    expect(backlog.reconciliarPrioridad([], '### Prioridad\n\nP1 — normal')).toEqual({ quitar: [], agregar: ['P1'] })
+  })
+  it('cerrado → fuera sin-priorizar y nada que agregar', () => {
+    expect(backlog.reconciliarPrioridad(['sin-priorizar'], '', { cerrado: true })).toEqual({
+      quitar: ['sin-priorizar'],
+      agregar: [],
+    })
+  })
+  it('ya correcto → no escribe (idempotente)', () => {
+    expect(backlog.reconciliarPrioridad(['sin-priorizar'], '')).toEqual({ quitar: [], agregar: [] })
+  })
+  it('handleIssue etiqueta un issue sin prioridad y luego no vuelve a escribir', async () => {
+    const { github, writes, store } = fakeGithub([issue(40, ['estado:pendiente'], 'open', { sinP: true })])
+    const { ctx } = ctxOf(github, 'issues', { issue: store.get(40) })
+    await backlog.handleIssue(ctx)
+    expect(etiq(store, 40)).toContain('sin-priorizar')
+    writes.length = 0
+    await backlog.handleIssue({ ...ctx, context: { ...ctx.context, payload: { issue: store.get(40) } } })
+    expect(writes).toEqual([])
+  })
+  it('handleIssue aplica la prioridad del formulario y no deja sin-priorizar', async () => {
+    const { github, store } = fakeGithub([
+      issue(41, [], 'open', { sinP: true, body: '### Prioridad\n\nP0 — dinero' }),
+    ])
+    const { ctx } = ctxOf(github, 'issues', { issue: store.get(41) })
+    await backlog.handleIssue(ctx)
+    expect(etiq(store, 41)).toEqual(expect.arrayContaining(['P0', 'estado:pendiente']))
+    expect(etiq(store, 41)).not.toContain('sin-priorizar')
+  })
+})
+
+describe('TODO/FIXME sin issue (capa 4)', () => {
+  const parche = (...lineas) => `@@ -1,2 +10,${lineas.length} @@\n${lineas.map((l) => `+${l}`).join('\n')}`
+  const prDe = (over = {}) => ({ number: 5, body: '', ...over })
+  const correr = async (files, pr = prDe()) => {
+    const { github } = fakeGithub([], files)
+    const { ctx, failed } = ctxOf(github, 'pull_request', { action: 'opened', pull_request: pr })
+    const r = await backlog.revisarTodos(ctx)
+    return { r, failed }
+  }
+
+  it('lineasAnadidas numera según el archivo nuevo', () => {
+    const patch = '@@ -3,3 +7,4 @@\n ctx\n-vieja\n+nueva\n ctx2\n+otra'
+    expect(backlog.lineasAnadidas(patch)).toEqual([
+      { linea: 8, texto: 'nueva' },
+      { linea: 10, texto: 'otra' },
+    ])
+  })
+  it('falla con TODO sin número de issue y reporta archivo:línea', async () => {
+    const { r, failed } = await correr([{ filename: 'src/a.ts', patch: parche('const x = 1', '// TODO: arreglar') }])
+    expect(r).toEqual(['src/a.ts:11'])
+    expect(failed[0]).toMatch(/src\/a\.ts:11/)
+  })
+  it('detecta FIXME, HACK y XXX', async () => {
+    const { r } = await correr([{ filename: 'src/b.ts', patch: parche('// FIXME x', '// HACK y', '// XXX z') }])
+    expect(r).toHaveLength(3)
+  })
+  it('acepta TODO con referencia a issue', async () => {
+    const { r, failed } = await correr([{ filename: 'src/a.ts', patch: parche('// TODO(#123): migrar', '// FIXME #9') }])
+    expect(r).toEqual([])
+    expect(failed).toEqual([])
+  })
+  it('ignora docs, markdown y los scripts del backlog', async () => {
+    const { r } = await correr([
+      { filename: 'docs/x.txt', patch: parche('TODO sin issue') },
+      { filename: 'README.md', patch: parche('TODO sin issue') },
+      { filename: '.github/scripts/backlog.cjs', patch: parche('// TODO') },
+    ])
+    expect(r).toEqual([])
+  })
+  it('ignora archivos sin parche (binarios o muy grandes)', async () => {
+    const { r } = await correr([{ filename: 'src/big.ts' }])
+    expect(r).toEqual([])
+  })
+  it('no marca palabras que solo contienen el marcador', async () => {
+    const { r } = await correr([{ filename: 'src/c.ts', patch: parche('const todos = 1', 'const TODOS = 2') }])
+    expect(r).toEqual([])
+  })
+  it('TODO-OK en la descripción exime con motivo', async () => {
+    const { r, failed } = await correr(
+      [{ filename: 'src/a.ts', patch: parche('// TODO sin issue') }],
+      prDe({ body: 'TODO-OK: código vendorizado de terceros' }),
+    )
+    expect(r).toEqual([])
+    expect(failed).toEqual([])
+  })
+  it('TODO-OK sin motivo no exime', async () => {
+    const { r } = await correr([{ filename: 'src/a.ts', patch: parche('// TODO x') }], prDe({ body: 'TODO-OK:' }))
+    expect(r).toHaveLength(1)
+  })
+  it('run() en un PR cerrado no revisa TODOs', async () => {
+    const { github } = fakeGithub([issue(50, ['estado:en-curso'])], [{ filename: 'src/a.ts', patch: parche('// TODO x') }])
+    const { ctx, failed } = ctxOf(github, 'pull_request', {
+      action: 'closed',
+      pull_request: { number: 5, title: 't', body: 'Closes #50', labels: [], user: { login: 'u' }, merged: true },
+    })
+    await backlog.run(ctx)
+    expect(failed).toEqual([])
   })
 })

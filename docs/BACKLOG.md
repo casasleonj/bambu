@@ -22,11 +22,23 @@
 | PR abierto/editado/actualizado | **el check falla** si no cita un issue (`Closes/Fixes/Resolves/Refs #N`, rangos `#300–#305` válidos) salvo etiqueta `sin-issue`; los issues citados pasan a `estado:en-curso` |
 | PR cerrado sin merge | los issues citados vuelven a `estado:pendiente` |
 | PR mergeado | `Closes #N` cierra el issue; los que solo tenían `Refs` vuelven a `estado:pendiente` |
-| Barrido diario (11:37 UTC) | corrige cualquier issue abierto sin estado (red de seguridad si se perdió un evento) |
+| Barrido diario (11:37 UTC) | corrige cualquier issue abierto sin estado y lista los que siguen sin prioridad (red de seguridad si se perdió un evento) |
+| Issue abierto sin `P0/P1/P2` | recibe `sin-priorizar`; al agregar la prioridad (o si el formulario la trae) se quita |
+| PR que añade `TODO`/`FIXME`/`HACK`/`XXX` sin número de issue | **el check falla**, salvo `TODO(#123)` o `TODO-OK: motivo` en la descripción del PR (no aplica a `docs/`, `*.md` ni `.github/scripts/`) |
 
 Para que el check bloquee el merge hay que marcarlo como *required* en Settings → Branches → `main` (check `Backlog (estado de issues y PR vinculado)`). El hook `SessionStart` de `.claude/settings.json` recuerda la regla al agente en cada sesión.
 
+## Cómo registrar un hallazgo o una funcionalidad nueva
+
+Siempre en el momento en que aparece, aunque no se vaya a hacer ahora. Registrar no es implementar.
+
+- **Desde el agente**: el skill `/hallazgo <descripción>` (`.claude/skills/hallazgo/`) busca duplicados, asigna prioridad y estado y crea el issue. Un hallazgo que el agente descubre solo también debe registrarse así.
+- **Desde GitHub**: New issue → formulario *Hallazgo* o *Funcionalidad* (`.github/ISSUE_TEMPLATE/`). La prioridad elegida en el formulario se convierte en etiqueta `P0/P1/P2`.
+- **En el código**: un pendiente se escribe `TODO(#123)` con su issue. Sin número, el CI rechaza el PR.
+- Prioridades: `P0` dinero, integridad o antifraude · `P1` afecta la operación diaria · `P2` el resto. Sin prioridad = `sin-priorizar` (visible, nunca perdido).
+
 ## Vistas útiles
+- Sin priorizar: <https://github.com/casasleonj/bambu/issues?q=is%3Aopen+label%3Asin-priorizar>
 
 - Pendientes: <https://github.com/casasleonj/bambu/issues?q=is%3Aopen+label%3Aestado%3Apendiente>
 - En curso: <https://github.com/casasleonj/bambu/issues?q=is%3Aopen+label%3Aestado%3Aen-curso>

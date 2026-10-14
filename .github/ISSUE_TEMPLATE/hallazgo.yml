@@ -1,0 +1,41 @@
+name: Hallazgo
+description: Un defecto, riesgo o deuda técnica detectado (en código, datos, CI o proceso).
+title: "[Hallazgo] "
+labels: ["estado:pendiente"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Registra el hallazgo aquí en el momento en que lo encuentras; no lo dejes solo en el chat.
+        Antes de crear uno nuevo, busca si ya existe.
+  - type: textarea
+    id: origen
+    attributes:
+      label: Origen
+      description: Dónde o cómo se detectó (PR, auditoría, sesión, incidente).
+    validations:
+      required: true
+  - type: textarea
+    id: evidencia
+    attributes:
+      label: Evidencia
+      description: Lo verificado, con archivo:línea o salida real. Distingue lo confirmado de lo supuesto.
+    validations:
+      required: true
+  - type: textarea
+    id: criterio
+    attributes:
+      label: Criterio de cierre
+      description: Qué tiene que ser verdad para dar el hallazgo por resuelto (y la prueba que lo demuestra).
+    validations:
+      required: true
+  - type: dropdown
+    id: prioridad
+    attributes:
+      label: Prioridad
+      options:
+        - P0 — dinero, integridad o antifraude
+        - P1 — afecta la operación diaria
+        - P2 — mejora o deuda sin urgencia
+    validations:
+      required: true

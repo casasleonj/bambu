@@ -1,0 +1,3 @@
+# Se permiten issues en blanco: lo importante es que existan. El workflow Backlog
+# les pone estado:pendiente y, si no traen prioridad, sin-priorizar.
+blank_issues_enabled: true
