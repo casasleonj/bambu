@@ -14,7 +14,7 @@ const source = readFileSync(
 
 describe('CrearPedidoUseCase: entrega posterior de venta rápida', () => {
   it('el estado de entrega al crear sale de `estadoEntregaAlCrear` (misma función que el preview)', () => {
-    expect(source).toMatch(/estadoEntregaCreacion\s*=\s*estadoEntregaAlCrear\(\{\s*origen:\s*origenCreacion,\s*entregado:\s*input\.entregado\s*\}\)/)
+    expect(source).toMatch(/estadoEntregaCreacion\s*=\s*estadoEntregaAlCrear\(\{\s*origen:\s*origenCreacion,\s*canal:\s*input\.canal,\s*entregado:\s*input\.entregado\s*\}\)/)
     // la regla en sí está cubierta por entrega-politica.service.test.ts
   })
 

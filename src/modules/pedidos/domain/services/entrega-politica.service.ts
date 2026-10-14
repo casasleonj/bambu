@@ -15,15 +15,26 @@
 export type OrigenCreacion = 'PEDIDO' | 'VENTA_RAPIDA' | 'RECURRENTE' | 'VENTA_LIBRE' | string
 
 /**
- * ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: solo la venta rápida nace entregada, y
- * `entregado === false` pide entrega posterior. El resto de orígenes nace
- * PENDIENTE. (Misma regla que aplicaba `CrearPedidoUseCase`.)
+ * Estado de entrega con el que nace un pedido.
+ *
+ * - `entregado === false` → entrega posterior (ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001): PENDIENTE.
+ * - Venta rápida (`origen = VENTA_RAPIDA`, sin cliente real) → ENTREGADO.
+ * - Venta de PUNTO con `entregado === true` EXPLÍCITO → ENTREGADO, tenga o no
+ *   cliente real: es la venta del mostrador pagada en el momento (modal
+ *   "Venta Rápida" → Punto de Venta). Sin ese `true` explícito un pedido de
+ *   PUNTO sigue naciendo PENDIENTE ("para recoger"). Nunca aplica a DOMICILIO,
+ *   que necesita logística.
+ * - Cualquier otro caso → PENDIENTE.
  */
 export function estadoEntregaAlCrear(input: {
   origen: OrigenCreacion
+  canal?: 'PUNTO' | 'DOMICILIO' | string | null
   entregado?: boolean | null
 }): 'ENTREGADO' | 'PENDIENTE' {
-  return input.origen === 'VENTA_RAPIDA' && input.entregado !== false ? 'ENTREGADO' : 'PENDIENTE'
+  if (input.entregado === false) return 'PENDIENTE'
+  if (input.origen === 'VENTA_RAPIDA') return 'ENTREGADO'
+  if (input.canal === 'PUNTO' && input.entregado === true) return 'ENTREGADO'
+  return 'PENDIENTE'
 }
 
 const ESTADOS_PENDIENTES = new Set(['PENDIENTE', 'EN_RUTA', 'NO_ENTREGADO'])

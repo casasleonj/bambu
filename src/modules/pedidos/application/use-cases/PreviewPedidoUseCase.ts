@@ -138,7 +138,7 @@ export class PreviewPedidoUseCase {
     // preview ignoraba `origen` y proyectaba distinto al commit).
     const estadoEntregaProyectado = (esEdicion && estadoEntregaExistente
       ? estadoEntregaExistente
-      : estadoEntregaAlCrear({ origen, entregado: input.entregado })
+      : estadoEntregaAlCrear({ origen, canal: input.canal, entregado: input.entregado })
     ) as PreviewPedidoResult['calculation']['estadoEntregaProyectado']
     const saldoProyectado = calcularSaldo(total, totalPagado)
     const estadoPagoProyectado = calcularEstadoPago(total, totalPagado, estadoEntregaProyectado) as

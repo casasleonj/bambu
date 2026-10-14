@@ -789,10 +789,14 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       origen: (clienteSeleccionado || mostrarNuevo) ? 'PEDIDO' : 'VENTA_RAPIDA',
       // Solo se envía `false` explícito (entregar después); `undefined` deja el
       // comportamiento histórico. El route lo ignora sin el flag activo.
+      // - "entregar después" (flag) → false.
+      // - Modal "Venta Rápida" en Punto de Venta, entregar ahora → true: la venta
+      //   del mostrador pagada en el momento nace ENTREGADA, con o sin cliente.
+      // - Cualquier otro caso (Nuevo Pedido, domicilio) → sin enviar: nace PENDIENTE.
       entregado:
         VENTA_RUTA_ENTREGA_POSTERIOR_ON && canal === 'PUNTO' && entregarDespues
           ? false
-          : undefined,
+          : (contexto === 'PUNTO' && canal === 'PUNTO' && !pedidoInicial?.id ? true : undefined),
       isEdit: !!pedidoInicial?.id,
       pedidoId: pedidoInicial?.id,
       offlineId: pedidoInicial?.id ? undefined : claveBorrador,

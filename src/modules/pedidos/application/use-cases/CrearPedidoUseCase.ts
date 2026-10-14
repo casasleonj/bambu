@@ -204,7 +204,7 @@ export class CrearPedidoUseCase {
       // decide si se exige es que la operación deje mercancía PENDIENTE — la
       // misma función (`requiereEntregaSuficiente`) que usa el preview.
       const origenCreacion = input.origen || 'PEDIDO'
-      const estadoEntregaCreacion = estadoEntregaAlCrear({ origen: origenCreacion, entregado: input.entregado })
+      const estadoEntregaCreacion = estadoEntregaAlCrear({ origen: origenCreacion, canal: input.canal, entregado: input.entregado })
       // Ubicación propia del destino: juntas y utilizables, y solo DOMICILIO. Un
       // par a medias/inválido o sobre un PUNTO se rechaza (no se ignora en
       // silencio) — misma regla que el preview y ActualizarPedidoUseCase.

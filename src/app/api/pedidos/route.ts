@@ -274,8 +274,12 @@ export async function POST(request: NextRequest) {
     // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: el toggle "entregar después" de la
     // venta rápida solo se respeta con el flag activo; sin él, se ignora y la
     // venta rápida fuerza ENTREGADO como siempre.
+    // `entregado: true` (venta de PUNTO pagada en el mostrador) se respeta
+    // siempre: no es "entrega posterior", es el comportamiento base.
     const entregadoInput =
-      process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR === 'true' ? entregado : undefined
+      entregado === true
+        ? true
+        : process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR === 'true' ? entregado : undefined
 
     const pagosData = parsed.data.pagos || []
 
