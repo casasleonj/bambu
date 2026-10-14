@@ -382,3 +382,18 @@ La fila "Cliente nuevo rápido sin salir" se calificó ✅ porque `PedidoContext
 ### 12.5 Orden de trabajo (alineado con #345)
 
 Cada paso es una rama y un PR, entra a `main` antes del siguiente, y para cada uno se entrega primero la explicación en lenguaje sencillo, ejemplos y maqueta (las 14 maquetas del §8 se producen ahora que D1 está decidido; primero las que bloquean P0), y después la implementación: P0-3 → B-19 → B-20 → P1-1 → P1-2 → P1-3 → P2 → activación gradual con rollback ensayado.
+
+### 12.6 Decisiones del PO sobre las maquetas (2026-10-14)
+
+Respuesta a las cuatro preguntas de las maquetas P0 (artifact "Maquetas Hub P0"):
+
+| # | Maqueta | Decisión |
+|---|---|---|
+| 1 | Límite de fiado, preventivo | **Aprobada.** Panel de límite + **Pedir excepción**; autoriza quien tenga `User.puedeAutorizarExcepcionCredito` (permiso por usuario, ya implementado en el servidor) |
+| 2 | Mercancía ya entregada (D3) | **Opción A**: extender la excepción de crédito (F2) con la marca "ya se entregó". Verificación del repositorio (2026-10-14): el principio consta en §5 y §7 D3, pero no hay ADR ni diseño técnico escrito en `main` ni en las ramas remotas; el Plan Maestro v3.1, que según el equipo lo respalda, sigue sin estar disponible. Queda cerrada con esta decisión; el diseño técnico se presenta antes de implementar |
+| 3 | Venta rápida con cobro | **UX elegida por el equipo de desarrollo, según el PO "la que dé mejor UX":** el botón dice lo que va a pasar. Pago cubre el total → **"Cobrar $X"**; queda saldo → **"Crear pedido $X"**; sin conexión → **"Guardar sin conexión"**. Entra "Identificar comprador (opcional)" (P1-3) |
+| 4 | Pago parcial con cliente | **Aprobada.** Resumen de fiados y saldo dentro del cobro; "Elegir cliente" cuando hay saldo sin deudor |
+
+### 12.7 Avance
+
+- **B-19 (#346) y B-20 (#347)** se implementan y verifican en el PR siguiente (cada una con su prueba que primero falló). Hallazgo durante B-19: el commit del workspace enviaba `clienteId` vacío con cliente nuevo y `PedidoCreateSchema` lo rechaza (400); aunque el botón se habilitara, la venta no se habría creado.
