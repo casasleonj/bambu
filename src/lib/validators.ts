@@ -187,6 +187,11 @@ export const EntregaSchema = z.object({
   // físicamente el pago. OBLIGATORIO si `pagos` trae montos > 0 (ver
   // superRefine). `null`/ausente solo válido cuando no hay cobro.
   embarqueId: z.string().optional(),
+  // PR-1B (Adenda v1.2 §3.2): contexto FÍSICO de la entrega — la misión cuyo
+  // vehículo sacó el producto. Distinto de `embarqueId` (misión que capturó
+  // DINERO). Ausente = entrega en punto/oficina sin custodia de vehículo: no
+  // genera `EmbarqueMovimiento.ENTREGA`. Exige `offlineId` (idempotencia).
+  embarqueEntregaId: z.string().min(1).optional(),
   // fotoEntrega size cap: 15MB covers a 10MB file with ~33% base64 overhead + buffer.
   // DoS protection: prevents a malicious client from sending 100MB+ payloads that
   // would crash JSON parsing or bloat the Postgres TEXT column.
@@ -209,6 +214,15 @@ export const EntregaSchema = z.object({
       code: z.ZodIssueCode.custom,
       message: 'PAGO_MISION_SIN_EMBARQUE: un cobro en la entrega debe declarar el embarque de captura',
       path: ['embarqueId'],
+    })
+  }
+  // PR-1B: el evento físico se deduplica por clave estable de comando; sin
+  // `offlineId` cada reintento inventaría una clave nueva y duplicaría la salida.
+  if (data.embarqueEntregaId && !data.offlineId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'ENTREGA_FISICA_SIN_OFFLINE_ID: una entrega con contexto físico debe traer offlineId',
+      path: ['offlineId'],
     })
   }
 })

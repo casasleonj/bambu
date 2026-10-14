@@ -129,8 +129,8 @@ export async function POST(
       return apiError(message.replace('PAGOS_EXCEDIDOS: ', ''), 400)
     }
     // B-12: mismo rechazo que el cierre real (el preview comparte el use case).
-    if (message.startsWith('ENTREGA_INCOMPLETA') || message.startsWith('ENTREGA_EXCEDE_PEDIDO') || message.startsWith('ENTREGA_INCONSISTENTE')) {
-      return apiError(message.replace(/^ENTREGA_(INCOMPLETA|EXCEDE_PEDIDO|INCONSISTENTE): /, ''), 400)
+    if (message.startsWith('ENTREGA_INCOMPLETA') || message.startsWith('ENTREGA_EXCEDE_PEDIDO') || message.startsWith('ENTREGA_INCONSISTENTE') || message.startsWith('SALIDAS_EXCEDEN_CARGA')) {
+      return apiError(message.replace(/^(?:ENTREGA_(?:INCOMPLETA|EXCEDE_PEDIDO|INCONSISTENTE)|SALIDAS_EXCEDEN_CARGA): /, ''), 400)
     }
     if (message.startsWith('EMBARQUE_DESTINO_NOT_FOUND')) {
       return apiError(message.replace('EMBARQUE_DESTINO_NOT_FOUND: ', ''), 404)

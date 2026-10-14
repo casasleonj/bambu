@@ -1660,10 +1660,17 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         return resto > 0 ? [{ producto: i.producto, cantidad: resto }] : []
       })
 
+      // PR-1B: contexto físico. Solo si el pedido va en un embarque EN_RUTA (el
+      // vehículo ya salió); una entrega marcada desde oficina/punto no lo lleva.
+      const embarqueEntrega = pedidoParaEntregar.embarqueId
+        ? embarques.find((e) => e.id === pedidoParaEntregar.embarqueId && e.estado === 'EN_RUTA')
+        : undefined
+
       await entregar({
         pedidoId: id,
         itemsEntregados,
         pagos: [],
+        embarqueEntregaId: embarqueEntrega?.id,
         fotoEntrega: fotoParaEntregar ?? undefined,
         gpsLat: coords?.lat,
         gpsLng: coords?.lng,
