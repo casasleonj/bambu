@@ -135,7 +135,7 @@ export function NegocioSelector({
             <div className="min-w-0">
               <span className="text-sm font-medium">
                 {resumenIcono} {resumenNombre}
-                {!negocioActivo && <span className="text-xs text-gray-400 ml-1">— domicilio principal</span>}
+                {!negocioActivo && mostrarDireccion && <span className="text-xs text-gray-400 ml-1">— domicilio principal</span>}
               </span>
               {mostrarDireccion && (
               <>
@@ -180,7 +180,7 @@ export function NegocioSelector({
                   <span className="text-sm font-medium">
                     {selectedNegocioId === null && '✓ '}
                     🏠 {clienteNombre}
-                    <span className="text-xs text-gray-400 ml-1">— domicilio principal</span>
+                    {mostrarDireccion && <span className="text-xs text-gray-400 ml-1">— domicilio principal</span>}
                   </span>
                 </div>
                 {mostrarDireccion && (
