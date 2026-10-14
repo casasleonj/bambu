@@ -486,7 +486,9 @@ test.describe('Embarques — Cierre Completo', () => {
     const closeRes = await cerrarEmbarqueTest(page, embarqueId, cierrePayload({
       pedidos: [{
         pedidoId,
-        entregado: 'COMPLETO',
+        // B-12 (AB-ALS-EMB-2026-10-13): `COMPLETO` exige entregar TODO lo pedido (5). Este
+        // test simula una entrega con faltante (3 de 5), que es PARCIAL.
+        entregado: 'PARCIAL',
         productosEntregados: { cPacaAguaEnt: 3, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 },
         preciosReales: { pacaAgua: 2600, pacaHielo: 0, botellonFab: 0, botellonDom: 0, bolsaAgua: 0, bolsaHielo: 0 },
         pagado: 'COMPLETO',

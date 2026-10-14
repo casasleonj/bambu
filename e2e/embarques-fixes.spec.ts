@@ -70,7 +70,9 @@ test.describe('Embarques — Fix #1: Discrepancia valora productos individualmen
     const closeRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
       pedidos: [{
         pedidoId,
-        entregado: 'COMPLETO',
+        // B-12 (AB-ALS-EMB-2026-10-13): `COMPLETO` exige entregar TODO lo pedido (3). Este
+        // test simula una entrega con faltante (2 de 3), que es PARCIAL.
+        entregado: 'PARCIAL',
         productosEntregados: { cPacaAguaEnt: 2, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 },
         preciosReales: { pacaAgua: 2600, pacaHielo: 0, botellonFab: 0, botellonDom: 0, bolsaAgua: 0, bolsaHielo: 0 },
         pagado: 'COMPLETO',

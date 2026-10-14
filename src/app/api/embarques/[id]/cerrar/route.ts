@@ -156,6 +156,10 @@ export async function POST(
     if (message.startsWith('PAGOS_EXCEDIDOS')) {
       return apiError(message.replace('PAGOS_EXCEDIDOS: ', ''), 400)
     }
+    // B-12: `COMPLETO` exige cantidad acumulada completa; rechazo determinista.
+    if (message.startsWith('ENTREGA_INCOMPLETA') || message.startsWith('ENTREGA_EXCEDE_PEDIDO') || message.startsWith('ENTREGA_INCONSISTENTE')) {
+      return apiError(message.replace(/^ENTREGA_(INCOMPLETA|EXCEDE_PEDIDO|INCONSISTENTE): /, ''), 400)
+    }
     // Defensa en profundidad: el guard de dominio `PAGOS_EXCEDIDOS`
     // (procesar-pedido.service.ts) corre ANTES del `pedido.update` y es exacto,
     // pero si algún camino no cubierto persiste `totalPagado > total`, la CHECK
