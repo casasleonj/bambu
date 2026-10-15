@@ -162,12 +162,14 @@ describe('NegocioSelector — venta de PUNTO no muestra dirección ni barrio', (
     expect(resumen).toHaveTextContent('Sandra León')
     expect(resumen).not.toHaveTextContent('Cra 7 # 10-20')
     expect(resumen).not.toHaveTextContent('Chapinero')
+    expect(resumen).not.toHaveTextContent('domicilio principal')
 
     // la lista abierta tampoco muestra direcciones, y sigue siendo elegible
     fireEvent.click(resumen)
     expect(await screen.findByText('Tienda Centro')).toBeInTheDocument()
     expect(screen.queryByText('Cra 10 #20-30')).not.toBeInTheDocument()
     expect(screen.queryByText('Cra 7 # 10-20')).not.toBeInTheDocument()
+    expect(screen.queryByText(/domicilio principal/)).not.toBeInTheDocument()
   })
 
   it('por defecto (domicilio) sigue mostrando la dirección', async () => {
