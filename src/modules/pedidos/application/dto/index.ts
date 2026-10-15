@@ -378,6 +378,25 @@ export interface PreviewPedidoResult {
    * `null` y `canCreate` no se bloqueó por límite de fiados).
    */
   excepcionAplicada?: FiadoStatus['excepcionAplicada']
+  /** P0-3: hay excepción autorizada pero no cubre esta operación (vencida / saldo mayor al autorizado). */
+  excepcionNoAplica?: FiadoStatus['excepcionNoAplica']
+  /**
+   * P0-3 (#357): situación de crédito del cliente para esta operación, tal cual
+   * la calcula la Autoridad de Crédito (F1) — sirve al panel "Límite de crédito"
+   * del Hub. Solo se emite al crear para un cliente real (no anónimo, no nuevo,
+   * no en edición). `bloqueado` = la operación NO puede crearse por límite.
+   */
+  credito?: {
+    limite: number
+    abiertos: number
+    saldoAbierto: number
+    saldoOperacion: number
+    abiertosDespues: number
+    saldoDespues: number
+    bloqueado: boolean
+    /** por qué se bloquea (solo con `bloqueado`): límite de fiados o cliente bloqueado por deuda vencida. */
+    causa?: 'LIMITE' | 'CLIENTE_BLOQUEADO'
+  }
   /**
    * Suficiencia de la información de entrega (docs/pedidos/entrega-suficiencia-plan.md).
    * `PreviewPedidoUseCase` SIEMPRE la emite; opcional en el tipo solo para no

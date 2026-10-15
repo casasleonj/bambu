@@ -317,4 +317,91 @@ describe('F2 — Excepciones de Crédito (integración, Postgres real)', () => {
       await limpiarCliente(cliente.id)
     }
   })
+
+  // P0-3 (#357, decisión del PO 2026-10-15): la excepción vale hasta el saldo
+  // AUTORIZADO y solo el día en que se autorizó (hora Bogotá).
+  it('(d) monto: una excepción autorizada para $5.000 NO cubre una operación que deja más saldo', async () => {
+    const cliente = await createClienteConLimite('monto', 1)
+    try {
+      const fiadoAuthority = makeFiadoAuthority()
+      await ocuparCupoFiado(cliente.id, adminId, fiadoAuthority)
+      const solicitar = new SolicitarExcepcionCreditoUseCase(fiadoAuthority)
+      const resolver = new ResolverExcepcionCreditoUseCase(fiadoAuthority)
+      const crear = makeCrearUseCase(fiadoAuthority)
+
+      const { id: excepcionId } = await solicitar.execute({
+        clienteId: cliente.id, motivoSolicitud: 'monto', solicitadoPorId: adminId,
+        operacion: { total: 5000, totalPagado: 0 },
+      })
+      await resolver.execute({ excepcionId, resolucion: 'AUTORIZAR', actorId: adminId })
+
+      // la autoridad lo dice explícitamente (no solo "bloqueado")
+      const estado = await fiadoAuthority.execute({
+        clienteId: cliente.id, operacion: { total: 50000, totalPagado: 0 }, excepcionId,
+      })
+      expect(estado.errorDeuda).toBeTruthy()
+      expect(estado.excepcionAplicada).toBeUndefined()
+      expect(estado.excepcionNoAplica).toMatchObject({ id: excepcionId, motivo: 'SALDO_EXCEDE_AUTORIZADO', saldoAutorizado: 5000 })
+
+      // y el commit real la rechaza SIN consumirla
+      await expect(crear.execute({
+        clienteId: cliente.id, canal: 'PUNTO', origen: 'PEDIDO',
+        items: [{ producto: 'PACA_AGUA', cantidad: 20 }],
+        pagos: [], createdById: adminId, createdByRole: 'ADMIN',
+        offlineId: `f2-monto-${Date.now()}`, excepcionId,
+      })).rejects.toThrow(/CLIENTE_DEBE/)
+      const intacta = await testPrisma.pedidoExcepcionCredito.findUniqueOrThrow({ where: { id: excepcionId } })
+      expect(intacta.pedidoId).toBeNull()
+
+      // un saldo menor o igual al autorizado sí pasa y la consume
+      const ok = await crear.execute({
+        clienteId: cliente.id, canal: 'PUNTO', origen: 'PEDIDO',
+        items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
+        pagos: [], createdById: adminId, createdByRole: 'ADMIN',
+        offlineId: `f2-monto-ok-${Date.now()}`, excepcionId,
+      })
+      expect(ok.excepcionCreditoConsumida).toBe(excepcionId)
+    } finally {
+      await limpiarCliente(cliente.id)
+    }
+  })
+
+  it('(e) vigencia: una excepción autorizada un día anterior (Bogotá) NO se puede usar', async () => {
+    const cliente = await createClienteConLimite('vigencia', 1)
+    try {
+      const fiadoAuthority = makeFiadoAuthority()
+      await ocuparCupoFiado(cliente.id, adminId, fiadoAuthority)
+      const solicitar = new SolicitarExcepcionCreditoUseCase(fiadoAuthority)
+      const resolver = new ResolverExcepcionCreditoUseCase(fiadoAuthority)
+
+      const { id: excepcionId } = await solicitar.execute({
+        clienteId: cliente.id, motivoSolicitud: 'vigencia', solicitadoPorId: adminId,
+        operacion: { total: 5000, totalPagado: 0 },
+      })
+      await resolver.execute({ excepcionId, resolucion: 'AUTORIZAR', actorId: adminId })
+
+      // hoy: aplica
+      const hoy = await fiadoAuthority.execute({ clienteId: cliente.id, operacion: { total: 3000, totalPagado: 0 }, excepcionId })
+      expect(hoy.excepcionAplicada?.id).toBe(excepcionId)
+
+      // "ayer": se retrocede autorizadoAt 30 horas (siempre es otro día en Bogotá)
+      await testPrisma.pedidoExcepcionCredito.update({
+        where: { id: excepcionId },
+        data: { autorizadoAt: new Date(Date.now() - 30 * 60 * 60 * 1000) },
+      })
+      const ayer = await fiadoAuthority.execute({ clienteId: cliente.id, operacion: { total: 3000, totalPagado: 0 }, excepcionId })
+      expect(ayer.errorDeuda).toBeTruthy()
+      expect(ayer.excepcionAplicada).toBeUndefined()
+      expect(ayer.excepcionNoAplica?.motivo).toBe('VENCIDA')
+
+      await expect(makeCrearUseCase(fiadoAuthority).execute({
+        clienteId: cliente.id, canal: 'PUNTO', origen: 'PEDIDO',
+        items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
+        pagos: [], createdById: adminId, createdByRole: 'ADMIN',
+        offlineId: `f2-vigencia-${Date.now()}`, excepcionId,
+      })).rejects.toThrow(/CLIENTE_DEBE/)
+    } finally {
+      await limpiarCliente(cliente.id)
+    }
+  })
 })

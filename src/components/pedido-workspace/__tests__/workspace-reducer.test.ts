@@ -231,3 +231,24 @@ describe('B-20 — guardar sin conexión (#347)', () => {
     expect(st.draft.pagos).toEqual([{ metodo: 'EFECTIVO', monto: 5000 }])
   })
 })
+
+
+describe('P0-3 — excepción de crédito en el borrador', () => {
+  const conCliente = () => workspaceReducer(initWorkspace(), { type: 'SET_CLIENTE', clienteId: 'c1' })
+
+  it('SET_EXCEPCION guarda el id y invalida el preview (se recalcula con la excepción)', () => {
+    let st = workspaceReducer(conCliente(), { type: 'SET_ITEM_CANTIDAD', producto: 'PACA_AGUA', cantidad: 1 })
+    st = workspaceReducer(st, { type: 'PREVIEW_RECEIVED', preview: { requiresAuthorization: false, allowedActions: [], calculation: { total: 1 } } as never })
+    st = workspaceReducer(st, { type: 'SET_EXCEPCION', excepcionId: 'e1' })
+    expect(st.draft.excepcionId).toBe('e1')
+    expect(st.preview).toBeNull()
+    expect(st.phase).toBe('DRAFTING')
+  })
+
+  it('cambiar o quitar el cliente descarta la excepción (es de UN cliente)', () => {
+    const st = workspaceReducer(conCliente(), { type: 'SET_EXCEPCION', excepcionId: 'e1' })
+    expect(workspaceReducer(st, { type: 'SET_CLIENTE', clienteId: 'c2' }).draft.excepcionId).toBeUndefined()
+    expect(workspaceReducer(st, { type: 'CLEAR_CLIENTE' }).draft.excepcionId).toBeUndefined()
+    expect(workspaceReducer(st, { type: 'SET_CLIENTE_NUEVO', clienteNuevo: { nombre: 'Z', telefono: '573015550000' } }).draft.excepcionId).toBeUndefined()
+  })
+})
