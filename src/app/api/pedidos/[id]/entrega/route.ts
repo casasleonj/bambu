@@ -44,6 +44,7 @@ export async function POST(
       itemsEntregados,
       pagos,
       embarqueId,
+      embarqueEntregaId,
       fotoEntrega,
       gpsLat,
       gpsLng,
@@ -74,6 +75,23 @@ export async function POST(
       }
       if (user?.role === 'REPARTIDOR' && emb.trabajador?.userId !== user.id) {
         return apiError('EMBARQUE_NO_PERTENECE: no puede atribuir un cobro a un embarque ajeno', 403)
+      }
+    }
+
+    // PR-1B (Adenda v1.2 §3.2): contexto físico de la entrega. Mismas reglas de
+    // autoridad que el embarque de captura de dinero; un sync tardío a un
+    // embarque CERRADO es válido (se registra como evento post-cierre).
+    if (embarqueEntregaId) {
+      const embFisico = await prisma.embarque.findUnique({
+        where: { id: embarqueEntregaId },
+        select: { id: true, estado: true, trabajador: { select: { userId: true } } },
+      })
+      if (!embFisico) return apiError('Embarque de entrega no válido', 400)
+      if (embFisico.estado === 'CANCELADO') {
+        return apiError('El embarque de entrega está cancelado', 400)
+      }
+      if (user?.role === 'REPARTIDOR' && embFisico.trabajador?.userId !== user.id) {
+        return apiError('EMBARQUE_NO_PERTENECE: no puede atribuir una entrega a un embarque ajeno', 403)
       }
     }
 
@@ -160,6 +178,7 @@ export async function POST(
       itemsEntregados: entregas,
       pagos: pagosInput,
       embarqueId,
+      embarqueEntregaId,
       fotoEntrega: fotoUrl,
       gpsLat,
       gpsLng,

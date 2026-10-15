@@ -99,6 +99,13 @@ export interface EntregarPedidoInput {
   // ADR-PAGO-EMBARQUE-CAPTURA-001: embarque de captura del cobro. Obligatorio
   // si `pagos` trae montos; nunca se deriva de `Pedido.embarqueId`.
   embarqueId?: string
+  /**
+   * PR-1B (Adenda v1.2 §3.2): misión cuyo vehículo sacó el producto. Si viene y
+   * el embarque usa el modo de entrega viva, la entrega escribe un
+   * `EmbarqueMovimiento.ENTREGA` atribuido en la misma transacción. Distinto de
+   * `embarqueId` (captura de dinero). Requiere `offlineId`.
+   */
+  embarqueEntregaId?: string
   fotoEntrega?: string
   gpsLat?: number
   gpsLng?: number

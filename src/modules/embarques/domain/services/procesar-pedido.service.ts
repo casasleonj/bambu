@@ -181,6 +181,13 @@ function validarEntregaCompleta(pedido: PedidoRawInput, entProd: ProductosEntreg
   }
 }
 
+/** Delta físico entregado por un pedido en el cierre (PR-1C). */
+export interface EntregaDelCierre {
+  pedidoId: string
+  producto: string
+  cantidad: number
+}
+
 export class ProcesarPedidoService {
   /**
    * Procesa un pedido individual según su estado de entrega:
@@ -203,6 +210,10 @@ export class ProcesarPedidoService {
     // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: lista ya resuelta (el use case la lee
     // una vez, no una por pedido dentro del lock del cierre). Fallback al default.
     metodosRequieren?: string[],
+    // PR-1C: deltas físicos que ESTE cierre aplica (producto entregado ahora, no
+    // acumulado). Los lee el caso de uso para conciliar y escribir el ledger sin
+    // volver a mirar el acumulado histórico del pedido.
+    entregasDelCierre?: EntregaDelCierre[],
   ): Promise<number> {
     const entProd = cuadre.productosEntregados ?? {
       cPacaAguaEnt: 0,
@@ -242,6 +253,13 @@ export class ProcesarPedidoService {
       construirEntregasAValidar(pedido, entProd),
       userId,
     )
+    if (entregasDelCierre) {
+      for (const e of construirEntregasAValidar(pedido, entProd)) {
+        if (e.cantidadAEntregar > 0) {
+          entregasDelCierre.push({ pedidoId: pedido.id, producto: e.producto, cantidad: e.cantidadAEntregar })
+        }
+      }
+    }
 
     // PARCIAL (PR-1, integridad de entrega parcial): entrega interina que NO
     // toca la obligación económica (`total`/`totalPagado`/`saldo`), NO crea
