@@ -9,7 +9,7 @@
  */
 
 import type { IPricingPort } from '../../domain/repositories/IPricingPort'
-import type { IClienteRepository } from '../../domain/repositories/IClienteRepository'
+import type { IClienteRepository, ClienteBasico } from '../../domain/repositories/IClienteRepository'
 import type { IPedidoRepository } from '../../domain/repositories/IPedidoRepository'
 import type { GetFiadoStatusUseCase } from './GetFiadoStatusUseCase'
 import type { PreviewPedidoInput, PreviewPedidoResult, PreviewCalculationItem } from '../dto'
@@ -48,6 +48,9 @@ export interface PreviewPedidoDeps {
   resolverCoordsDeLink: (link: string | null | undefined) => Promise<{ lat: number; lng: number } | null>
 }
 
+/** Id sintético de un cliente nuevo que aún no existe (solo vive en el preview, nunca se persiste). */
+const CLIENTE_NUEVO_PREVIEW_ID = '__cliente_nuevo__'
+
 const ESTADOS_ENTREGA_VALIDOS = ['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'NO_ENTREGADO']
 
 export class PreviewPedidoUseCase {
@@ -56,11 +59,44 @@ export class PreviewPedidoUseCase {
   async execute(input: PreviewPedidoInput): Promise<PreviewPedidoResult> {
     const canal = input.canal ?? 'DOMICILIO'
     const origen = input.origen ?? 'PEDIDO'
-    const esAnonimo = input.clienteId === CANONICAL_CONSUMIDOR_FINAL_ID
     const esEdicion = Boolean(input.pedidoId)
 
-    const cliente = await this.deps.clienteRepo.findById(input.clienteId)
-    if (!cliente) throw new ClienteNotFoundError(input.clienteId)
+    // B-19 (#346): cliente nuevo aún sin persistir. Se resuelve igual que el
+    // commit (`CrearPedidoUseCase`): si el teléfono ya pertenece a un cliente,
+    // es ese cliente (con su límite, bloqueo y precios); si no, es un cliente
+    // sin historial. Nada se crea en el preview.
+    let clienteId = input.clienteId
+    let cliente: ClienteBasico | null = null
+    let esClienteNuevo = false
+    if (!clienteId && input.clienteNuevo) {
+      const existente = await this.deps.clienteRepo.findByTelefono(input.clienteNuevo.telefono)
+      if (existente) {
+        clienteId = existente.id
+      } else {
+        esClienteNuevo = true
+        clienteId = CLIENTE_NUEVO_PREVIEW_ID
+        cliente = {
+          id: CLIENTE_NUEVO_PREVIEW_ID,
+          nombre: input.clienteNuevo.nombre,
+          apellido: input.clienteNuevo.apellido,
+          telefono: input.clienteNuevo.telefono,
+          direccion: input.clienteNuevo.direccion,
+          barrio: input.clienteNuevo.barrio,
+          bloqueado: false,
+          verificado: false,
+          creadoPorRol: 'ASISTENTE',
+          limitePedidosFiados: null,
+          preciosEspeciales: null,
+        }
+      }
+    }
+    if (!clienteId) throw new ClienteNotFoundError('')
+    const esAnonimo = clienteId === CANONICAL_CONSUMIDOR_FINAL_ID
+
+    if (!cliente) {
+      cliente = await this.deps.clienteRepo.findById(clienteId)
+      if (!cliente) throw new ClienteNotFoundError(clienteId)
+    }
 
     const negocio = input.negocioId
       ? await this.deps.clienteRepo.findNegocioById(input.negocioId)
@@ -95,7 +131,7 @@ export class PreviewPedidoUseCase {
 
     // ── Pricing (mismo port que CrearPedidoUseCase) ──
     const activeCodes = [...new Set(input.items.map(i => i.producto))] as ProductCode[]
-    const pricingData = await this.deps.pricingPort.loadPricingContext(input.clienteId, input.negocioId ?? null, activeCodes)
+    const pricingData = await this.deps.pricingPort.loadPricingContext(esClienteNuevo ? CANONICAL_CONSUMIDOR_FINAL_ID : clienteId, input.negocioId ?? null, activeCodes)
     const resueltos = await this.deps.pricingPort.resolverPrecios(
       input.items.map(i => ({ codigo: i.producto as ProductCode, cantidad: i.cantidad, precioManual: i.precioManual })),
       canal,
@@ -171,14 +207,15 @@ export class PreviewPedidoUseCase {
           field: 'pagos',
         })
       }
-    } else {
+    } else if (!esClienteNuevo) {
+      // (cliente nuevo: sin fiados abiertos; el commit revalida con la autoridad)
       // F1 (Autoridad de Crédito): misma autoridad que usan CrearPedidoUseCase
       // y venta-libre — mismo guard `totalPagado < total` ya vigente, ahora
       // evaluado DENTRO de GetFiadoStatusUseCase en vez de acá. `errorDeuda`
       // es la única fuente de la decisión; `cliente.bloqueado` solo elige
       // qué código de warning mostrar (bloqueado vs límite), no decide nada.
       const fiado = await this.deps.getFiadoStatusUseCase.execute({
-        clienteId: input.clienteId,
+        clienteId,
         operacion: { total, totalPagado },
         excepcionId: input.excepcionId,
       })
@@ -306,10 +343,12 @@ export class PreviewPedidoUseCase {
     let riskSignals: PreviewPedidoResult['riskSignals'] = []
     if (!esAnonimo) {
       const [pedidosRecientesRaw, precioMinimos] = await Promise.all([
-        this.deps.pedidoRepo.findMany(
-          { clienteId: input.clienteId, estadoEntrega: ESTADOS_ENTREGA_VALIDOS },
-          { take: 6, orderBy: 'desc' },
-        ),
+        esClienteNuevo
+          ? Promise.resolve([])
+          : this.deps.pedidoRepo.findMany(
+              { clienteId, estadoEntrega: ESTADOS_ENTREGA_VALIDOS },
+              { take: 6, orderBy: 'desc' },
+            ),
         this.deps.getPrecioMinimos(),
       ])
       // en edición, el propio pedido no debe compararse contra sí mismo.
@@ -321,7 +360,7 @@ export class PreviewPedidoUseCase {
         pedidoEntityToPedidoBase(p as never, readEntityId(p) ?? `__real_${idx}__`),
       )
       const draft = draftToPedidoBase({
-        clienteId: input.clienteId,
+        clienteId,
         canal,
         resolvedItems: resueltos,
         total,
@@ -366,7 +405,7 @@ export class PreviewPedidoUseCase {
         actor: input.actorId,
         accion: esEdicion ? 'ACTUALIZAR_PEDIDO' : 'CREAR_PEDIDO',
         recurso: esEdicion ? 'Pedido (edición)' : 'Pedido (nuevo)',
-        valoresRelevantes: { total, clienteId: input.clienteId, canal, origen, tienePrecioManual },
+        valoresRelevantes: { total, clienteId, canal, origen, tienePrecioManual },
       },
     }
   }

@@ -53,3 +53,13 @@ describe('PedidoCommitBar', () => {
     expect(screen.getByTestId('workspace-commit')).toHaveTextContent('Guardando…')
   })
 })
+
+
+describe('PedidoCommitBar — sin conexión (B-20)', () => {
+  it('habilitado con la etiqueta "Guardar sin conexión" aunque no haya preview', () => {
+    render(<PedidoCommitBar phase="DRAFTING" total={null} previewPending={false} canCommit blockedReason={null} sinConexion onCommit={vi.fn()} />)
+    const btn = screen.getByTestId('workspace-commit')
+    expect(btn).toBeEnabled()
+    expect(btn).toHaveTextContent(/Guardar sin conexión/)
+  })
+})

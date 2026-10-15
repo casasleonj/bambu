@@ -12,6 +12,8 @@ export interface PedidoCommitBarProps {
   blockedReason: string | null
   /** modo edición: "Guardar cambios" en vez de "Crear pedido". */
   modoEdicion?: boolean
+  /** B-20: sin red el pedido se guarda en este equipo y se envía al reconectar. */
+  sinConexion?: boolean
   onCommit: () => void
   onCancel?: () => void
 }
@@ -30,11 +32,12 @@ export function PedidoCommitBar({
   canCommit,
   blockedReason,
   modoEdicion = false,
+  sinConexion = false,
   onCommit,
   onCancel,
 }: PedidoCommitBarProps) {
   const totalLabel = total != null ? ` $${total.toLocaleString()}` : ''
-  const verbo = modoEdicion ? 'Guardar cambios' : `Crear pedido${totalLabel}`
+  const verbo = modoEdicion ? 'Guardar cambios' : sinConexion ? `Guardar sin conexión${totalLabel}` : `Crear pedido${totalLabel}`
 
   let label: string
   let enabled = false
@@ -42,7 +45,7 @@ export function PedidoCommitBar({
 
   switch (phase) {
     case 'COMMITTING':
-      label = modoEdicion ? 'Guardando…' : 'Creando…'
+      label = modoEdicion || sinConexion ? 'Guardando…' : 'Creando…'
       break
     case 'COMMITTED':
       label = modoEdicion ? 'Guardado ✓' : 'Creado ✓'
@@ -65,7 +68,13 @@ export function PedidoCommitBar({
       }
       break
     default:
-      label = previewPending ? 'Calculando…' : verbo
+      if (canCommit) {
+        // B-20: sin preview del servidor pero con permiso para guardar sin conexión.
+        label = verbo
+        enabled = true
+      } else {
+        label = previewPending ? 'Calculando…' : verbo
+      }
   }
 
   return (

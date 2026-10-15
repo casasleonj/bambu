@@ -142,7 +142,18 @@ export const PedidoCreateSchema = z.object({
  * "descarta campos de persistencia".
  */
 export const PreviewPedidoSchema = z.object({
-  clienteId: z.string().trim().min(1),
+  clienteId: z.string().trim().min(1).optional(),
+  /** B-19 (#346): cliente que se creará en el commit; el preview no lo persiste. */
+  // Mismo esquema que el commit (`PedidoCreateSchema.clienteNuevo`): el teléfono
+  // se NORMALIZA igual, así el dedup por teléfono del preview coincide con el del commit.
+  clienteNuevo: z.object({
+    nombre: z.string().min(1),
+    apellido: z.string().optional(),
+    telefono: TelefonoRequeridoSchema,
+    direccion: z.string().optional(),
+    barrio: z.string().optional(),
+    fuente: z.string().optional(),
+  }).optional(),
   negocioId: z.string().trim().min(1).optional(),
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional().default('DOMICILIO'),
   origen: z.enum(['PEDIDO', 'VENTA_RAPIDA']).optional().default('PEDIDO'),
@@ -164,6 +175,9 @@ export const PreviewPedidoSchema = z.object({
   pedidoId: z.string().trim().min(1).optional(),
   // F2 (Excepciones de Crédito): ver VentaLibreSchema.excepcionId.
   excepcionId: z.string().optional(),
+}).refine((d) => Boolean(d.clienteId) || Boolean(d.clienteNuevo), {
+  message: 'Indica el cliente o los datos del cliente nuevo',
+  path: ['clienteId'],
 });
 
 // ====================

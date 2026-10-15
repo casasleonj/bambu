@@ -17,8 +17,23 @@ export interface DraftPago {
 }
 
 /** El borrador de la operación — lo que el usuario está componiendo. */
+export interface DraftClienteNuevo {
+  nombre: string
+  apellido?: string
+  telefono: string
+  direccion?: string
+  barrio?: string
+  fuente?: string
+}
+
 export interface DraftPedido {
   clienteId: string | null
+  /**
+   * B-19 (#346): cliente que se creará en el commit. Solo existe cuando no hay
+   * `clienteId` y el formulario ya tiene nombre y teléfono: con eso el
+   * servidor puede calcular el preview (no se crea nada hasta confirmar).
+   */
+  clienteNuevo?: DraftClienteNuevo
   negocioId: string | null
   canal: 'PUNTO' | 'DOMICILIO'
   origen: 'PEDIDO' | 'VENTA_RAPIDA'
@@ -77,12 +92,20 @@ export interface WorkspaceState {
   precioBajoConfirmado: Record<string, boolean>
   /** motivo capturado en el paso REVIEW_REQUIRED (flujo de acción sensible, ALS §10). */
   reviewMotivo: string
+  /**
+   * B-20 (#347): el último preview falló por RED (no por una respuesta del
+   * servidor). Permite guardar el borrador de un pedido NUEVO sin conexión
+   * (se encola con su clave de borrador); el servidor valida todo al sincronizar.
+   */
+  sinConexion: boolean
   error: { kind: WorkspaceErrorKind; message: string } | null
 }
 
 export type WorkspaceAction =
   | { type: 'SET_CLIENTE'; clienteId: string; negocioId?: string | null }
   | { type: 'CLEAR_CLIENTE' }
+  /** `undefined` = el formulario de cliente nuevo no está completo (o se cerró). */
+  | { type: 'SET_CLIENTE_NUEVO'; clienteNuevo: DraftClienteNuevo | undefined }
   | { type: 'SET_NEGOCIO'; negocioId: string | null; direccion?: string | null; barrio?: string | null }
   | { type: 'SET_CANAL'; canal: 'PUNTO' | 'DOMICILIO' }
   | { type: 'SET_SOLO_PARA_ESTE_PEDIDO'; value: boolean }
@@ -91,7 +114,7 @@ export type WorkspaceAction =
   | { type: 'CONFIRMAR_PRECIO_BAJO'; producto: ProductoCodigo }
   | { type: 'SET_PAGOS'; pagos: DraftPago[] }
   /** cobra el total completo con un método (sigue al total del preview). */
-  | { type: 'PAGAR_COMPLETO'; metodo: DraftPago['metodo'] }
+  | { type: 'PAGAR_COMPLETO'; metodo: DraftPago['metodo']; total?: number }
   | { type: 'SET_ENTREGADO'; entregado: boolean }
   | { type: 'SET_OBS'; obs: string }
   | { type: 'SET_DIRECCION'; direccion: string; barrio: string }
