@@ -13,6 +13,7 @@
 
 import { CANONICAL_CONSUMIDOR_FINAL_ID, LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { getConfigInt } from '@/lib/config'
+import { dayInBogota, todayInBogota } from '@/lib/date-helpers'
 import { prisma } from '@/lib/prisma'
 import type { IPedidoRepository } from '../../domain/repositories/IPedidoRepository'
 import type { IClienteRepository } from '../../domain/repositories/IClienteRepository'
@@ -124,6 +125,7 @@ export class GetFiadoStatusUseCase {
     let projectedOutstandingAmount: number | undefined
     let errorDeuda: string | null = null
     let excepcionAplicada: FiadoStatus['excepcionAplicada']
+    let excepcionNoAplica: FiadoStatus['excepcionNoAplica']
 
     if (operacion) {
       operationOutstanding = Math.max(0, operacion.total - operacion.totalPagado)
@@ -142,6 +144,9 @@ export class GetFiadoStatusUseCase {
         // F2: una excepción autorizada, válida para ESTE cliente y sin
         // consumir todavía, suprime el bloqueo — SOLO lectura, no se marca
         // como usada acá (eso es responsabilidad exclusiva del commit real).
+        // P0-3 (#357, decisión del PO 2026-10-15): vale solo (a) el día en que
+        // se autorizó (hora Bogotá) y (b) hasta el saldo autorizado — nunca
+        // para una operación que deja más saldo que el que autorizó la persona.
         if (errorDeuda && excepcionId) {
           const client = tx ?? prisma
           const excepcion = await client.pedidoExcepcionCredito.findUnique({ where: { id: excepcionId } })
@@ -152,11 +157,19 @@ export class GetFiadoStatusUseCase {
             excepcion.pedidoId === null &&
             excepcion.autorizadoPorId
           ) {
-            errorDeuda = null
-            excepcionAplicada = {
-              id: excepcion.id,
-              motivoSolicitud: excepcion.motivoSolicitud,
-              autorizadoPorId: excepcion.autorizadoPorId,
+            const saldoAutorizado = Number(excepcion.operacionSaldoSnapshot)
+            const vigente = excepcion.autorizadoAt != null && dayInBogota(excepcion.autorizadoAt) === todayInBogota()
+            if (!vigente) {
+              excepcionNoAplica = { id: excepcion.id, motivo: 'VENCIDA', saldoAutorizado }
+            } else if (operationOutstanding > saldoAutorizado) {
+              excepcionNoAplica = { id: excepcion.id, motivo: 'SALDO_EXCEDE_AUTORIZADO', saldoAutorizado }
+            } else {
+              errorDeuda = null
+              excepcionAplicada = {
+                id: excepcion.id,
+                motivoSolicitud: excepcion.motivoSolicitud,
+                autorizadoPorId: excepcion.autorizadoPorId,
+              }
             }
           }
         }
@@ -175,6 +188,7 @@ export class GetFiadoStatusUseCase {
       status,
       errorDeuda,
       excepcionAplicada,
+      excepcionNoAplica,
     }
   }
 }

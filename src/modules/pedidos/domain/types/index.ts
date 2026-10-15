@@ -178,4 +178,11 @@ export interface FiadoStatus {
    * que crea el Pedido (ver SolicitarExcepcionCreditoUseCase / diseño F2).
    */
   excepcionAplicada?: { id: string; motivoSolicitud: string; autorizadoPorId: string }
+  /**
+   * P0-3 (#357): se pasó `excepcionId` y existe una excepción AUTORIZADA de este
+   * cliente sin consumir, pero NO cubre esta operación: `VENCIDA` (vale solo el
+   * día en que se autorizó, hora Bogotá) o `SALDO_EXCEDE_AUTORIZADO` (la
+   * operación deja más saldo que el autorizado). `errorDeuda` sigue activo.
+   */
+  excepcionNoAplica?: { id: string; motivo: 'VENCIDA' | 'SALDO_EXCEDE_AUTORIZADO'; saldoAutorizado: number }
 }

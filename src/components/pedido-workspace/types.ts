@@ -56,6 +56,12 @@ export interface DraftPedido {
   soloParaEstePedido?: boolean
   /** G11.B — trazabilidad cuando el flujo es "nueva demanda". */
   pedidoOrigenId?: string
+  /**
+   * P0-3 (#357): excepción de crédito AUTORIZADA para este cliente. Viaja al
+   * preview (que levanta el bloqueo si la excepción cubre la operación) y al
+   * crear (que la consume una sola vez).
+   */
+  excepcionId?: string
 }
 
 /**
@@ -104,6 +110,8 @@ export interface WorkspaceState {
 export type WorkspaceAction =
   | { type: 'SET_CLIENTE'; clienteId: string; negocioId?: string | null }
   | { type: 'CLEAR_CLIENTE' }
+  /** `undefined` = sin excepción (se pidió una nueva o se cambió de cliente). */
+  | { type: 'SET_EXCEPCION'; excepcionId: string | undefined }
   /** `undefined` = el formulario de cliente nuevo no está completo (o se cerró). */
   | { type: 'SET_CLIENTE_NUEVO'; clienteNuevo: DraftClienteNuevo | undefined }
   | { type: 'SET_NEGOCIO'; negocioId: string | null; direccion?: string | null; barrio?: string | null }

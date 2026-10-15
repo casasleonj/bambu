@@ -112,6 +112,8 @@ export interface PedidoUnifiedData {
   pedidoOrigenId?: string
   /** Clave de idempotencia del borrador (creación). Ver `use-crear-pedido`. */
   offlineId?: string
+  /** P0-3 (#357): excepción de crédito autorizada que se consume al crear. */
+  excepcionId?: string
 }
 
 // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: el toggle "entregar después" de la

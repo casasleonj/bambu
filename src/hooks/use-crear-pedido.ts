@@ -67,6 +67,8 @@ export interface CrearPedidoPayload {
    * Sin ella, el hook genera una por llamada (comportamiento anterior).
    */
   offlineId?: string
+  /** P0-3 (#357): excepción de crédito AUTORIZADA; el servidor la consume una sola vez. */
+  excepcionId?: string
 }
 
 export interface CrearPedidoResult {
