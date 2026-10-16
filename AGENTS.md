@@ -642,6 +642,7 @@ Aplica DESPUÉS de que el plan quedó aprobado (Ronda 2 del Protocolo de Investi
 - **aprobación requerida** (usuario/PO) + CI del paso 5 resuelto + QA satisfactorio cuando corresponda
 - una vez aprobado, el agente **puede** ejecutar `gh pr merge <N> --squash --delete-branch`
 - no iniciar la siguiente fase solo porque el PR "está listo para merge" — la integración real ocurre cuando el cambio está **en `main`**
+- **PR con migración (`prisma/migrations/*`): aplicarla en producción ANTES de mergear** (el merge despliega el código a Vercel de inmediato; si el código lee columnas que la base no tiene, `/dashboard` y `/pedidos` caen — incidente del 2026-10-14, #350). Orden: migración aditiva e idempotente en Supabase → verificar con una consulta de solo lectura que existe → recién entonces merge. La migración debe ser compatible con el código anterior (solo agrega, nunca renombra ni borra) para poder aplicarse antes del despliegue.
 
 ### 8. POST-MERGE INTEGRATION GATE
 - desde un **worktree dedicado**, NO desde el checkout compartido `/home/cristof/Documents/bambu_demo_multimodelo` (hay otras sesiones Claude ahí; un `git checkout main` las rompe)
