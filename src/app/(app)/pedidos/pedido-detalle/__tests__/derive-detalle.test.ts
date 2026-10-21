@@ -95,6 +95,10 @@ describe('origenPrecio', () => {
     expect(origenPrecio({ precioOrigen: 'volumen' })).toEqual({ label: 'volumen', tone: 'info' })
     expect(origenPrecio({ precioOrigen: 'cliente' })).toEqual({ label: 'especial', tone: 'info' })
   })
+  it('volumen con tramo confirmado lo muestra', () => {
+    expect(origenPrecio({ precioOrigen: 'volumen', tramoVolumen: { cantMin: 4, cantMax: 9 } })?.label).toBe('volumen 4–9 und')
+    expect(origenPrecio({ precioOrigen: 'volumen', tramoVolumen: { cantMin: 10, cantMax: null } })?.label).toBe('volumen 10 o más und')
+  })
   it('manual distingue autorizado de sin autorizar', () => {
     expect(origenPrecio({ precioOrigen: 'manual', autorizadoPorAdmin: true })?.tone).toBe('ok')
     expect(origenPrecio({ precioOrigen: 'manual', autorizadoPorAdmin: false })).toEqual({ label: 'manual · sin autorizar', tone: 'warn' })

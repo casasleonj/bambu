@@ -134,4 +134,26 @@ test.describe('Pantalla de detalle del pedido (P1-1 PR B)', () => {
       item.autorizadoPorAdmin ? 'manual · autorizado' : 'manual · sin autorizar',
     )
   })
+
+  test('un pedido por volumen muestra el tramo que le tocó, según la tabla de precios de la base', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const { cliente } = await createCliente(page, { nombre: `Detalle tramo ${Date.now()}` })
+    const res = await apiPost(page, '/api/pedidos', {
+      clienteId: cliente.id, canal: 'PUNTO', origen: 'PEDIDO',
+      items: [{ producto: 'PACA_AGUA', cantidad: 5 }],
+      offlineId: `detalle-tramo-${Date.now()}`,
+    })
+    const body = await res.json()
+    const id = (body.data?.pedido ?? body.pedido).id as string
+    const item = await prisma.pedidoItem.findFirstOrThrow({ where: { pedidoId: id } })
+    const tramos = await prisma.precioVolumen.findMany({
+      where: { activo: true, producto: { codigo: 'PACA_AGUA' }, cantMin: { lte: 5 } },
+      orderBy: { cantMin: 'desc' },
+    })
+    const tramo = tramos.find((t) => t.cantMax === null || t.cantMax >= 5)
+    test.skip(item.precioOrigen !== 'volumen' || !tramo, 'la base de prueba no tiene un tramo de volumen para 5 und')
+    const rango = tramo!.cantMax === null ? `${tramo!.cantMin} o más und` : `${tramo!.cantMin}–${tramo!.cantMax} und`
+    await page.goto(`${BASE}/pedidos?openPedido=${id}`)
+    await expect(appMain(page).getByTestId('detalle-origen-precio')).toHaveText(`volumen ${rango}`)
+  })
 })

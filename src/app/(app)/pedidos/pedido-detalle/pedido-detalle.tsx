@@ -56,7 +56,7 @@ function Seccion({ titulo, children, testId }: { titulo: string; children: React
   )
 }
 
-function itemsDe(p: Pedido): Array<{ producto: string; cantPedido: number; precio: number; precioOrigen?: string; autorizadoPorAdmin?: boolean }> {
+function itemsDe(p: Pedido): Array<{ producto: string; cantPedido: number; precio: number; precioOrigen?: string; autorizadoPorAdmin?: boolean; tramoVolumen?: { cantMin: number; cantMax: number | null } | null }> {
   if (p.items && p.items.length > 0) return p.items
   const legacy: Array<[string, number, number]> = [
     ['PACA_AGUA', p.cPacaAguaPed, Number(p.precioPacaAgua)],

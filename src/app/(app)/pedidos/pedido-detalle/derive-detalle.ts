@@ -1,4 +1,5 @@
 import type { Pedido } from '../pedidos-client/types'
+import { formatoTramo } from '@/lib/tramo-volumen'
 
 export type AccionDetalleKey = 'editar' | 'enviar' | 'cancelar' | 'entregar' | 'volver-pendiente' | 'anular'
 
@@ -127,14 +128,18 @@ export interface OrigenPrecio {
 }
 
 /** Insignia del origen del precio guardado en la línea; `base` no lleva insignia. */
-export function origenPrecio(item: { precioOrigen?: string; autorizadoPorAdmin?: boolean }): OrigenPrecio | null {
+export function origenPrecio(item: {
+  precioOrigen?: string
+  autorizadoPorAdmin?: boolean
+  tramoVolumen?: { cantMin: number; cantMax: number | null } | null
+}): OrigenPrecio | null {
   switch (item.precioOrigen) {
     case 'manual':
       return item.autorizadoPorAdmin
         ? { label: 'manual · autorizado', tone: 'ok' }
         : { label: 'manual · sin autorizar', tone: 'warn' }
     case 'volumen':
-      return { label: 'volumen', tone: 'info' }
+      return { label: item.tramoVolumen ? `volumen ${formatoTramo(item.tramoVolumen)}` : 'volumen', tone: 'info' }
     case 'cliente':
       return { label: 'especial', tone: 'info' }
     default:

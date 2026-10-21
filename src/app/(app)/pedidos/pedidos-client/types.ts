@@ -7,6 +7,8 @@ export interface PedidoItem {
   precioOrigen?: string
   /** Solo en el detalle (GET /api/pedidos/[id]): un admin autorizó el precio manual. */
   autorizadoPorAdmin?: boolean
+  /** Tramo de volumen aplicado (solo detalle; null si no se puede confirmar). */
+  tramoVolumen?: { cantMin: number; cantMax: number | null } | null
 }
 
 export interface PagoDetalle {

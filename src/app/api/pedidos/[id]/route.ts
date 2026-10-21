@@ -16,6 +16,7 @@ import { PedidoDTOMapper } from '@/modules/pedidos/application/dto/PedidoDTOMapp
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 import { clasificarCamposPut } from '@/lib/pedido-put-contrato'
+import { resolverTramoVolumen, type TramoConfig } from '@/lib/tramo-volumen'
 import {
   EdicionEconomicaN2Error,
   EdicionNoPersistidaError,
@@ -184,10 +185,35 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       select: { producto: true, autorizadoPorAdmin: true },
     })
     const autorizadoPorProducto = new Map(autorizacionRows.map((r) => [r.producto, r.autorizadoPorAdmin]))
-    const itemsConAutorizacion = dto.items.map((i) => ({
-      ...i,
-      autorizadoPorAdmin: autorizadoPorProducto.get(i.producto) ?? false,
-    }))
+    // Tramo de volumen de las líneas con origen `volumen` (se reconstruye con la
+    // tabla vigente; solo se informa si su precio coincide con el guardado).
+    const productosVolumen = [...new Set(dto.items.filter((i) => i.precioOrigen === 'volumen').map((i) => i.producto))]
+    const tramosPorProducto = new Map<string, { tramos: TramoConfig[]; sobreCosto: number }>()
+    if (productosVolumen.length > 0) {
+      const filas = await prisma.precioVolumen.findMany({
+        where: { activo: true, producto: { codigo: { in: productosVolumen } } },
+        select: {
+          cantMin: true, cantMax: true, precio: true,
+          producto: { select: { codigo: true, aplicaDomicilio: true, sobreCostoDomicilio: true } },
+        },
+      })
+      for (const f of filas) {
+        const entrada = tramosPorProducto.get(f.producto.codigo) ?? {
+          tramos: [],
+          sobreCosto: dto.canal === 'DOMICILIO' && f.producto.aplicaDomicilio ? Number(f.producto.sobreCostoDomicilio) : 0,
+        }
+        entrada.tramos.push({ cantMin: f.cantMin, cantMax: f.cantMax, precio: Number(f.precio) })
+        tramosPorProducto.set(f.producto.codigo, entrada)
+      }
+    }
+    const itemsConAutorizacion = dto.items.map((i) => {
+      const cfg = i.precioOrigen === 'volumen' ? tramosPorProducto.get(i.producto) : undefined
+      return {
+        ...i,
+        autorizadoPorAdmin: autorizadoPorProducto.get(i.producto) ?? false,
+        tramoVolumen: cfg ? resolverTramoVolumen(cfg.tramos, i.cantPedido, Number(i.precio), cfg.sobreCosto) : null,
+      }
+    })
     // Dirección de texto efectiva (regla única pickDireccionTexto): el
     // snapshot propio del pedido gana sobre negocio, que gana sobre cliente.
     const direccionEfectiva = pickDireccionTexto({
