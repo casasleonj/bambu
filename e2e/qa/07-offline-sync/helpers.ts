@@ -26,9 +26,28 @@ export async function setupEmbarque(page: Page) {
   await fullLogin(page, 'admin', 'admin123')
   const trabajadorId = await getRepartidorTrabajadorId()
   // Limpiar embarques abiertos previos del repartidor para evitar datos acumulados.
-  await prisma.embarque.deleteMany({
+  // Dos relaciones hijas bloquean el borrado (onDelete Restrict, explícito o por
+  // defecto de una relación obligatoria): Pedido.embarqueOrigenId y
+  // GpsTrack.embarqueId. Si otro spec dejó pedidos hijo (p. ej. de una entrega
+  // parcial) o puntos GPS ligados a esos embarques, un deleteMany directo falla con
+  // `Foreign key constraint violated: Pedido_embarqueOrigenId_fkey` (#360). Se
+  // sueltan primero, en la misma transacción. Los pedidos no se borran: solo
+  // pierden la referencia al embarque de origen.
+  const abiertos = await prisma.embarque.findMany({
     where: { trabajadorId, estado: { in: ['ABIERTO', 'EN_RUTA'] } },
+    select: { id: true },
   })
+  const ids = abiertos.map((e) => e.id)
+  if (ids.length > 0) {
+    await prisma.$transaction([
+      prisma.pedido.updateMany({
+        where: { embarqueOrigenId: { in: ids } },
+        data: { embarqueOrigenId: null },
+      }),
+      prisma.gpsTrack.deleteMany({ where: { embarqueId: { in: ids } } }),
+      prisma.embarque.deleteMany({ where: { id: { in: ids } } }),
+    ])
+  }
   await createEmbarque(page, trabajadorId)
 }
 
