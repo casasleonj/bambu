@@ -16,6 +16,7 @@ import { PedidoDTOMapper } from '@/modules/pedidos/application/dto/PedidoDTOMapp
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 import { clasificarCamposPut } from '@/lib/pedido-put-contrato'
+import { resolverTramoVolumen, type TramoConfig } from '@/lib/tramo-volumen'
 import {
   EdicionEconomicaN2Error,
   EdicionNoPersistidaError,
@@ -66,8 +67,25 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // Fase 4b — datos de la capa 2 del peek (blueprint §9.2). Solo lectura.
     const selfRow = await prisma.pedido.findUnique({
       where: { id },
-      select: { pedidoOrigenId: true, estadoEntrega: true, fechaEntrega: true, fotoEntrega: true, gpsLat: true, gpsLng: true },
+      select: {
+        pedidoOrigenId: true, estadoEntrega: true, fechaEntrega: true, fotoEntrega: true, gpsLat: true, gpsLng: true,
+        createdBy: { select: { nombre: true } },
+      },
     })
+    // P1-1 PR B (#379): detalle de pagos (hora y estado de confirmación) para la
+    // pantalla de detalle. Solo lectura; el resumen `pagos` del DTO no cambia.
+    const pagosDetalleRows = await prisma.pago.findMany({
+      where: { pedidoId: id },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, metodo: true, monto: true, createdAt: true, confirmacion: true },
+    })
+    const pagosDetalle = pagosDetalleRows.map((p) => ({
+      id: p.id,
+      metodo: p.metodo,
+      monto: Number(p.monto),
+      fecha: p.createdAt.toISOString(),
+      confirmacion: p.confirmacion,
+    }))
     const pedidoOrigenId = selfRow?.pedidoOrigenId ?? null
     // Fase 8 F8-0 — "pedido habitual" del contexto (Q4: negocio si hay
     // negocioId, si no cliente). Solo lectura.
@@ -112,13 +130,19 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         }
       : null
 
-    let embarqueResumen: { id: string; numeroDia: number; estado: string; repartidor: string | null } | null = null
+    let embarqueResumen: { id: string; numeroDia: number; estado: string; repartidor: string | null; horaSalida: string | null } | null = null
     if (found.pedido.embarqueId) {
       const e = await prisma.embarque.findUnique({
         where: { id: found.pedido.embarqueId },
-        select: { id: true, numeroDia: true, estado: true, trabajador: { select: { nombre: true } } },
+        select: { id: true, numeroDia: true, estado: true, horaSalida: true, trabajador: { select: { nombre: true } } },
       })
-      if (e) embarqueResumen = { id: e.id, numeroDia: e.numeroDia, estado: e.estado, repartidor: e.trabajador?.nombre ?? null }
+      if (e) {
+        embarqueResumen = {
+          id: e.id, numeroDia: e.numeroDia, estado: e.estado,
+          repartidor: e.trabajador?.nombre ?? null,
+          horaSalida: e.horaSalida ? e.horaSalida.toISOString() : null,
+        }
+      }
     }
 
     const pedidosVinculados = vinculados
@@ -155,6 +179,41 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       : null
 
     const dto = PedidoDTOMapper.toResumen(found.pedido, { factura: found.factura })
+    // P1-1 PR B (#379): marca antifraude de precio manual (autorizado por un admin).
+    const autorizacionRows = await prisma.pedidoItem.findMany({
+      where: { pedidoId: id },
+      select: { producto: true, autorizadoPorAdmin: true },
+    })
+    const autorizadoPorProducto = new Map(autorizacionRows.map((r) => [r.producto, r.autorizadoPorAdmin]))
+    // Tramo de volumen de las líneas con origen `volumen` (se reconstruye con la
+    // tabla vigente; solo se informa si su precio coincide con el guardado).
+    const productosVolumen = [...new Set(dto.items.filter((i) => i.precioOrigen === 'volumen').map((i) => i.producto))]
+    const tramosPorProducto = new Map<string, { tramos: TramoConfig[]; sobreCosto: number }>()
+    if (productosVolumen.length > 0) {
+      const filas = await prisma.precioVolumen.findMany({
+        where: { activo: true, producto: { codigo: { in: productosVolumen } } },
+        select: {
+          cantMin: true, cantMax: true, precio: true,
+          producto: { select: { codigo: true, aplicaDomicilio: true, sobreCostoDomicilio: true } },
+        },
+      })
+      for (const f of filas) {
+        const entrada = tramosPorProducto.get(f.producto.codigo) ?? {
+          tramos: [],
+          sobreCosto: dto.canal === 'DOMICILIO' && f.producto.aplicaDomicilio ? Number(f.producto.sobreCostoDomicilio) : 0,
+        }
+        entrada.tramos.push({ cantMin: f.cantMin, cantMax: f.cantMax, precio: Number(f.precio) })
+        tramosPorProducto.set(f.producto.codigo, entrada)
+      }
+    }
+    const itemsConAutorizacion = dto.items.map((i) => {
+      const cfg = i.precioOrigen === 'volumen' ? tramosPorProducto.get(i.producto) : undefined
+      return {
+        ...i,
+        autorizadoPorAdmin: autorizadoPorProducto.get(i.producto) ?? false,
+        tramoVolumen: cfg ? resolverTramoVolumen(cfg.tramos, i.cantPedido, Number(i.precio), cfg.sobreCosto) : null,
+      }
+    })
     // Dirección de texto efectiva (regla única pickDireccionTexto): el
     // snapshot propio del pedido gana sobre negocio, que gana sobre cliente.
     const direccionEfectiva = pickDireccionTexto({
@@ -166,6 +225,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     return apiSuccess({
       pedido: {
         ...dto,
+        items: itemsConAutorizacion,
         nombreCli: dto.clienteId === 'CONSUMIDOR_FINAL' ? 'Consumidor Final' : (cliente?.nombre || 'Desconocido'),
         apellidoCli: cliente?.apellido || null,
         telefonoCli: cliente?.telefono || '',
@@ -186,6 +246,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         })),
         entregaResumen,
         recurrencia,
+        // P1-1 PR B (#379)
+        pagosDetalle,
+        creadoPor: selfRow?.createdBy?.nombre ?? null,
       },
     })
   } catch (error) {

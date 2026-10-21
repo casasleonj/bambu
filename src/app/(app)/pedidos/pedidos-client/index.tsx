@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
-import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
@@ -11,7 +10,7 @@ import { formatCurrency } from '@/lib/utils'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { fetchRequiereFotoEntrega } from '@/lib/client/config-client'
 import { Modal } from '@/components/modal'
-import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
+import { PedidoDetalle } from '../pedido-detalle/pedido-detalle'
 import { FotoEntregaModal } from '@/components/foto-entrega-modal'
 import { ErrorState } from '@/components/error-state'
 import { SkeletonPage, SkeletonCard } from '@/components/skeleton'
@@ -2382,331 +2381,38 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         })()}
       </Modal>
 
-      {/* Modal Detalle */}
-      <Modal open={showDetailModal && !!selectedPedido} onClose={() => setShowDetailModal(false)} className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+      {/* Detalle del pedido (P1-1 PR B, #379): cajón lateral en escritorio, pantalla completa en móvil */}
+      <Modal
+        open={showDetailModal && !!selectedPedido}
+        onClose={() => setShowDetailModal(false)}
+        overlayClassName="fixed inset-0 bg-black/50 flex justify-end z-50"
+        className="bg-white w-full h-[100dvh] md:max-w-3xl md:shadow-xl flex flex-col"
+        title={selectedPedido ? `Pedido #${selectedPedido.numero}` : 'Detalle del pedido'}
+      >
         {selectedPedido && (
-          <>
-            <div className="p-4 border-b flex justify-between items-start">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm text-gray-400">#{selectedPedido.numero}</span>
-                  {getEstadoEntregaBadge(selectedPedido.estadoEntrega)}
-                  {getCanalBadge(selectedPedido.canal)}
-                </div>
-                <PedidoClienteDisplay
-                  clienteId={selectedPedido.clienteId}
-                  nombreCli={selectedPedido.nombreCli}
-                  apellidoCli={selectedPedido.apellidoCli}
-                  negocioId={selectedPedido.negocioId}
-                  nombreNegocioCli={selectedPedido.nombreNegocioCli}
-                  variant="heading"
-                  showBadge
-                />
-                <p className="text-sm text-gray-500">{selectedPedido.telefonoCli}</p>
-                {(selectedPedido.zonaCli || selectedPedido.barrioCli) && (
-                  <p className="text-sm text-gray-500">
-                    {selectedPedido.zonaCli}
-                    {selectedPedido.zonaCli && selectedPedido.barrioCli ? ' · ' : ''}
-                    {selectedPedido.barrioCli}
-                  </p>
-                )}
-              </div>
-              <button onClick={() => setShowDetailModal(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition" aria-label="Cerrar">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-
-            <div className="p-4 space-y-4">
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-gray-500">Total Pedido</span>
-                  <span className="text-2xl font-bold text-gray-800">{formatCurrency(Number(selectedPedido.total))}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Pagado:</span>
-                  <span className="font-medium text-green-600">{formatCurrency(Number(selectedPedido.totalPagado))}</span>
-                </div>
-                {selectedPedido.estadoEntrega === 'ENTREGADO' && Number(selectedPedido.saldo) > 0 && (
-                  <div className="flex justify-between text-sm mt-1">
-                    <span className="text-gray-500">Pendiente:</span>
-                    <span className="font-medium text-red-600">{formatCurrency(Number(selectedPedido.saldo))}</span>
-                  </div>
-                )}
-                {selectedPedido.estadoEntrega === 'ENTREGADO' && Number(selectedPedido.saldo) <= 0 && Number(selectedPedido.totalPagado) > 0 && (
-                  <div className="flex justify-between text-sm mt-1">
-                    <span className="text-gray-500">Estado:</span>
-                    <span className="font-medium text-green-600">Pagado completo</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="bg-white border rounded-lg p-2.5">
-                  <div className="text-xs text-gray-400 mb-0.5">Canal</div>
-                  <div className="font-medium text-gray-700">{selectedPedido.canal === 'PUNTO' ? 'Punto' : 'Domicilio'}</div>
-                </div>
-                <div className="bg-white border rounded-lg p-2.5">
-                  <div className="text-xs text-gray-400 mb-0.5">Fecha</div>
-                  <div className="font-medium text-gray-700">{new Date(selectedPedido.fecha).toLocaleDateString('es-CO')}</div>
-                </div>
-                <div className="bg-white border rounded-lg p-2.5">
-                  <div className="text-xs text-gray-400 mb-0.5">Hora</div>
-                  <div className="font-medium text-gray-700">{new Date(selectedPedido.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</div>
-                </div>
-                {selectedPedido.embarqueId && (
-                  <div className="bg-white border rounded-lg p-2.5">
-                    <div className="text-xs text-gray-400 mb-0.5">Embarque</div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-gray-700">#{embarques.find(e => e.id === selectedPedido.embarqueId)?.numeroDia || selectedPedido.embarqueId}</span>
-                      <Link
-                        href={`/embarques/${selectedPedido.embarqueId}`}
-                        className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                      >
-                        Ver →
-                      </Link>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">Productos</h3>
-                <div className="space-y-2">
-                  {(() => {
-                    const ITEM_BG: Record<string, string> = {
-                      PACA_AGUA: 'bg-blue-50',
-                      PACA_HIELO: 'bg-cyan-50',
-                      BOTELLON: 'bg-indigo-50',
-                      BOLSA_AGUA: 'bg-sky-50',
-                      BOLSA_HIELO: 'bg-teal-50',
-                    }
-                    const legacyMap: Record<string, { cant: number; precio: number }> = {
-                      PACA_AGUA: { cant: selectedPedido.cPacaAguaPed, precio: Number(selectedPedido.precioPacaAgua) },
-                      PACA_HIELO: { cant: selectedPedido.cPacaHieloPed, precio: Number(selectedPedido.precioPacaHielo) },
-                      BOTELLON: { cant: (selectedPedido.cBotellonFabPed || 0) + (selectedPedido.cBotellonDomPed || 0), precio: Number(selectedPedido.precioBotellonFab) || Number(selectedPedido.precioBotellonDom) || 0 },
-                      BOLSA_AGUA: { cant: selectedPedido.cBolsaAguaPed, precio: Number(selectedPedido.precioBolsaAgua) },
-                      BOLSA_HIELO: { cant: selectedPedido.cBolsaHieloPed, precio: Number(selectedPedido.precioBolsaHielo) },
-                    }
-                    const items = selectedPedido.items && selectedPedido.items.length > 0
-                      ? selectedPedido.items
-                      : Object.entries(legacyMap)
-                          .filter(([, v]) => v.cant > 0)
-                          .map(([producto, v]) => ({ producto, cantPedido: v.cant, precio: v.precio }))
-                    if (items.length === 0) {
-                      return <div className="text-sm text-gray-400 text-center py-2">Sin productos</div>
-                    }
-                    return items.map((item) => {
-                      const meta = getProductoIconConfig(item.producto)
-                      const Icon = meta.Icon
-                      const bg = ITEM_BG[item.producto] || 'bg-gray-50'
-                      const snapshotPrice = Number(item.precio)
-                      const currentData = preciosActuales[item.producto]
-                      const currentPrice = currentData?.precio ?? 0
-                      const diff = currentPrice > 0 && snapshotPrice > 0
-                        ? ((currentPrice - snapshotPrice) / snapshotPrice) * 100
-                        : 0
-                      const showDiff = Math.abs(diff) > 5 && currentPrice > 0
-
-                      return (
-                        <div key={item.producto} className={`flex justify-between items-center ${bg} rounded-lg px-3 py-2`}>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Icon size={20} />
-                            <span className="text-sm font-medium">{meta.label}</span>
-                            {(item as { precioOrigen?: string }).precioOrigen === 'manual' && (
-                              <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">manual</span>
-                            )}
-                            {showDiff && (
-                              <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${diff > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                {diff > 0 ? '↑' : '↓'} {Math.abs(diff).toFixed(0)}%
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-right">
-                            <div className="text-sm font-semibold">{item.cantPedido} und</div>
-                            <div className="text-xs text-gray-500">${formatCurrency(snapshotPrice)} c/u</div>
-                            {showDiff && (
-                              <div className="text-[10px] text-gray-400">Actual: ${formatCurrency(currentPrice)}</div>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })
-                  })()}
-                </div>
-              </div>
-
-              {/* Stepper Visual de Estado */}
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Estado de Entrega</h3>
-                <div className="relative">
-                  {/* Línea de progreso */}
-                  <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-200">
-                    <div
-                      className={`h-full transition-all duration-500 ${
-                        selectedPedido.estadoEntrega === 'PENDIENTE' ? 'w-0' :
-                        selectedPedido.estadoEntrega === 'EN_RUTA' ? 'w-1/2' :
-                        selectedPedido.estadoEntrega === 'ENTREGADO' ? 'w-full' :
-                        selectedPedido.estadoEntrega === 'CANCELADO' ? 'w-full bg-gray-400' :
-                        'w-full bg-red-400'
-                      }`}
-                      style={{
-                        backgroundColor: selectedPedido.estadoEntrega === 'CANCELADO' ? '#9ca3af' :
-                                         selectedPedido.estadoEntrega === 'ANULADO' ? '#f87171' : undefined
-                      }}
-                    />
-                  </div>
-                  {/* Pasos */}
-                  <div className="relative flex justify-between">
-                    {[
-                      { key: 'PENDIENTE', label: 'Pendiente', icon: '📋' },
-                      { key: 'EN_RUTA', label: 'En Ruta', icon: '🚚' },
-                      { key: 'ENTREGADO', label: 'Entregado', icon: '✅' },
-                    ].map((step, idx) => {
-                      const isActive = selectedPedido.estadoEntrega === step.key
-                      const isPast = ['PENDIENTE', 'EN_RUTA', 'ENTREGADO'].indexOf(selectedPedido.estadoEntrega) > idx
-                      const isCurrent = isActive
-                      const isCancelled = selectedPedido.estadoEntrega === 'CANCELADO'
-                      const isAnulled = selectedPedido.estadoEntrega === 'ANULADO'
-
-                      let circleClass = 'bg-gray-200 text-gray-400 border-gray-300'
-                      if (isCancelled || isAnulled) {
-                        circleClass = 'bg-gray-300 text-gray-500 border-gray-400'
-                      } else if (isCurrent) {
-                        circleClass = step.key === 'PENDIENTE' ? 'bg-yellow-500 text-white border-yellow-500' :
-                                      step.key === 'EN_RUTA' ? 'bg-blue-500 text-white border-blue-500' :
-                                      'bg-green-500 text-white border-green-500'
-                      } else if (isPast) {
-                        circleClass = 'bg-green-100 text-green-700 border-green-300'
-                      }
-
-                      return (
-                        <div key={step.key} className="flex flex-col items-center">
-                          <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm z-10 transition-all ${circleClass}`}>
-                            {isPast && !isCancelled && !isAnulled ? '✓' : isCancelled && idx === 0 ? '✕' : isAnulled && idx === 2 ? '✕' : step.icon}
-                          </div>
-                          <span className={`text-[10px] mt-1 font-medium ${isCurrent ? 'text-gray-800' : 'text-gray-400'}`}>
-                            {step.label}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Acciones según estado */}
-                <div className="mt-4 flex gap-2">
-                  {selectedPedido.estadoEntrega === 'PENDIENTE' && (
-                    <>
-                      <button
-                        onClick={() => {
-                          setPedidoEditando(selectedPedido)
-                          setShowDetailModal(false)
-                        }}
-                        className="flex-1 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition"
-                      >
-                        ✏️ Editar
-                      </button>
-                      <button
-                        onClick={() => cambiarEstado(selectedPedido.id, 'EN_RUTA')}
-                        disabled={updatingId === selectedPedido.id}
-                        className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50"
-                      >
-                        {updatingId === selectedPedido.id ? 'Enviando...' : '🚚 Enviar'}
-                      </button>
-                      <button
-                        onClick={() => cambiarEstado(selectedPedido.id, 'CANCELADO')}
-                        disabled={updatingId === selectedPedido.id}
-                        className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50 transition disabled:opacity-50"
-                      >
-                        Cancelar
-                      </button>
-                    </>
-                  )}
-                  {selectedPedido.estadoEntrega === 'EN_RUTA' && (
-                    <>
-                      <button
-                        onClick={() => iniciarEntrega(selectedPedido)}
-                        disabled={updatingId === selectedPedido.id}
-                        className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50"
-                      >
-                        {updatingId === selectedPedido.id ? 'Entregando...' : '✅ Marcar Entregado'}
-                      </button>
-                      <button
-                        onClick={() => cambiarEstado(selectedPedido.id, 'PENDIENTE')}
-                        disabled={updatingId === selectedPedido.id}
-                        className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50 transition disabled:opacity-50"
-                      >
-                        Volver a Pendiente
-                      </button>
-                    </>
-                  )}
-                  {selectedPedido.estadoEntrega === 'ENTREGADO' && (
-                    <button
-                      onClick={() => cambiarEstado(selectedPedido.id, 'ANULADO')}
-                      disabled={updatingId === selectedPedido.id}
-                      className="w-full py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition disabled:opacity-50"
-                    >
-                      {updatingId === selectedPedido.id ? 'Anulando...' : 'Anular Pedido'}
-                    </button>
-                  )}
-                  {(selectedPedido.estadoEntrega === 'CANCELADO' || selectedPedido.estadoEntrega === 'ANULADO') && (
-                    <div className="w-full py-2 bg-gray-100 text-gray-500 rounded-lg text-sm text-center">
-                      Pedido {selectedPedido.estadoEntrega === 'CANCELADO' ? 'cancelado' : 'anulado'} — Sin acciones disponibles
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Factura y Abonos */}
-              {selectedPedido.factura && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-gray-700">Factura</h3>
-                    <a
-                      href={`/facturas?openFactura=${selectedPedido.factura.id}`}
-                      className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                      → Ver factura #{selectedPedido.factura.numero}
-                    </a>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm text-gray-500">#{selectedPedido.factura.numero}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        selectedPedido.factura.estado === 'PAGADA' ? 'bg-green-100 text-green-700' :
-                        selectedPedido.factura.estado === 'ANULADA' ? 'bg-gray-100 text-gray-700' :
-                        'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {selectedPedido.factura.estado}
-                      </span>
-                    </div>
-                    {selectedPedido.factura.abonos && selectedPedido.factura.abonos.length > 0 && (
-                      <div className="border-t pt-2 mt-2">
-                        <p className="text-xs font-medium text-gray-500 mb-1">Abonos ({selectedPedido.factura.abonos.length}):</p>
-                        <div className="space-y-1">
-                          {selectedPedido.factura.abonos.map((abono) => (
-                            <div key={abono.id} className="flex justify-between items-center text-sm">
-                              <div>
-                                <a
-                                  href={`/facturas?openFactura=${selectedPedido.factura!.id}`}
-                                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                                >
-                                  #{selectedPedido.factura!.numero}
-                                </a>
-                                <span className="text-gray-600 ml-2">{abono.metodoPago}</span>
-                                <span className="text-gray-400 text-xs ml-2">{new Date(abono.fecha).toLocaleDateString('es-CO')}</span>
-                              </div>
-                              <span className="font-medium text-green-600">{formatCurrency(Number(abono.monto))}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
+          <PedidoDetalle
+            pedido={selectedPedido}
+            embarqueNumeroDia={embarques.find(e => e.id === selectedPedido.embarqueId)?.numeroDia}
+            preciosActuales={preciosActuales}
+            updatingId={updatingId}
+            userRole={userRole}
+            estadoBadge={getEstadoEntregaBadge(selectedPedido.estadoEntrega)}
+            canalBadge={getCanalBadge(selectedPedido.canal)}
+            onClose={() => setShowDetailModal(false)}
+            onAccion={(key) => {
+              switch (key) {
+                case 'editar':
+                  setPedidoEditando(selectedPedido)
+                  setShowDetailModal(false)
+                  break
+                case 'enviar': void cambiarEstado(selectedPedido.id, 'EN_RUTA'); break
+                case 'cancelar': void cambiarEstado(selectedPedido.id, 'CANCELADO'); break
+                case 'entregar': void iniciarEntrega(selectedPedido); break
+                case 'volver-pendiente': void cambiarEstado(selectedPedido.id, 'PENDIENTE'); break
+                case 'anular': void cambiarEstado(selectedPedido.id, 'ANULADO'); break
+              }
+            }}
+          />
         )}
       </Modal>
 
