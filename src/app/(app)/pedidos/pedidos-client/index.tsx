@@ -46,6 +46,9 @@ import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { GpsCaptureModal } from '@/components/gps-capture-modal'
+import { useExcepcionesPendientes } from '@/components/excepcion-credito/use-excepciones-pendientes'
+import { ExcepcionesPendientesBanner } from '@/components/excepcion-credito/excepciones-pendientes-banner'
+import { ExcepcionCreditoModal } from '@/components/excepcion-credito/excepcion-credito-modal'
 import { loadClienteDetail } from '@/lib/cliente-detail-cache'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
@@ -294,6 +297,9 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const search = shallowParams.get('search') || ''
   const clienteIdFromUrl = shallowParams.get('clienteId')
   const openPedidoParam = shallowParams.get('openPedido')
+  // P0-3 PR 2: la notificación EXCEPCION_CREDITO_SOLICITADA y el aviso abren la
+  // ventana de decisión con este param (la URL es la fuente de verdad).
+  const openExcepcionParam = shallowParams.get('openExcepcionCredito')
   const allFromUrl = shallowParams.get('all') === 'true'
   // Vistas autocontenidas (mismo patrón que scope=fiados/alertas): ignoran
   // desde/hasta/estadoEntrega y cualquier otro filtro persistente. Se activan
@@ -643,6 +649,10 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   useRealtimeListener(['pedido.*'], () => {
     refreshPedidos()
   })
+
+  // Solicitudes de excepción de crédito pendientes: solo las recibe quien tiene
+  // el permiso por usuario (el servidor responde vacío al resto).
+  const { excepciones: excepcionesPendientes, refetch: refetchExcepciones } = useExcepcionesPendientes()
 
   // Auto-open pedido from URL param
   useEffect(() => {
@@ -1752,6 +1762,17 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       )}
       {/* Header con tabs */}
       <div className="mb-6">
+        <ExcepcionesPendientesBanner
+          excepciones={excepcionesPendientes}
+          onRevisar={(id) => shallowParams.set({ openExcepcionCredito: id }, { history: 'push' })}
+        />
+        {openExcepcionParam && (
+          <ExcepcionCreditoModal
+            excepcionId={openExcepcionParam}
+            onClose={() => syncUrl({ openExcepcionCredito: undefined })}
+            onResuelta={() => { void refetchExcepciones() }}
+          />
+        )}
         {/* Pedidos pendientes de días anteriores sin asignar a un viaje —
             ver src/lib/pedidos-sin-asignar.ts. Visible sin importar el tab
             activo: es una advertencia operativa, no un filtro de la vista. */}
