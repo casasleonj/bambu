@@ -5,7 +5,7 @@ async function createPedidoEntregado(page: Page, clienteId: string) {
   return apiPost(page, '/api/pedidos', {
     clienteId,
     canal: 'DOMICILIO',
-    ventaRapida: true,
+    entregado: true,
     items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
     pagos: [],
   })

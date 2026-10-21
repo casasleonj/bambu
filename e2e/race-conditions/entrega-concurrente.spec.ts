@@ -26,7 +26,7 @@ test.describe('Race Condition: Entrega Concurrente del Mismo Pedido', () => {
       const pedidoRes = await apiPost(page1, '/api/pedidos', {
         clienteId: cliente.cliente.id,
         canal: 'PUNTO',
-        ventaRapida: true,
+        entregado: true,
         items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 10000 }],
       })
@@ -131,7 +131,7 @@ test.describe('Race Condition: Entrega Concurrente del Mismo Pedido', () => {
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
     })

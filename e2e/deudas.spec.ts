@@ -510,7 +510,7 @@ test.describe('Deudas + Nomina Integration', () => {
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 5 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 25000 }]})
     const pedidoId = (await pedidoRes.json()).pedido.id
@@ -681,7 +681,7 @@ test.describe('Embarque Cash Reconciliation', () => {
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 15000 }]})
     const pedidoId = (await pedidoRes.json()).pedido.id
@@ -740,7 +740,7 @@ test.describe('Embarque Cash Reconciliation', () => {
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 10000 }]})
     const pedidoId = (await pedidoRes.json()).pedido.id

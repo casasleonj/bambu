@@ -660,7 +660,7 @@ export async function setupClienteWithPedidos(page: Page, count: number = 3) {
     await apiPost(page, '/api/pedidos', {
       clienteId: c.cliente.id,
       canal: 'DOMICILIO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: i + 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 5000 * (i + 1) }],
     })
@@ -690,7 +690,7 @@ export async function createTrabajador(page: Page, data?: Partial<{
 }
 
 export async function createPedido(page: Page, data?: Partial<{
-  clienteId: string; canal: string; ventaRapida: boolean
+  clienteId: string; canal: string; entregado: boolean
   pacaAgua: number; pacaHielo: number
   pagoMetodo: string; pagoMonto: number
 }>) {
@@ -710,7 +710,7 @@ export async function createPedido(page: Page, data?: Partial<{
   const res = await apiPost(page, '/api/pedidos', {
     clienteId,
     canal: data?.canal || 'PUNTO',
-    ventaRapida: data?.ventaRapida ?? true,
+    entregado: data?.entregado ?? true,
     items,
     pagos,
   })

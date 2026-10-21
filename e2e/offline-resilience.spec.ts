@@ -25,7 +25,7 @@ test.describe('Offline resilience — dedup por offlineId', () => {
     const payload = {
       clienteId,
       canal: 'PUNTO' as const,
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA' as const, cantidad: 1 }],
       offlineId,
     }
@@ -58,7 +58,7 @@ test.describe('Offline resilience — dedup por offlineId', () => {
     const r = await apiPost(page, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO' as const,
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA' as const, cantidad: 1 }],
     })
     const d = await r.json()
@@ -76,7 +76,7 @@ test.describe('Offline resilience — dedup por offlineId', () => {
     const r = await apiPost(page, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO' as const,
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA' as const, cantidad: 1 }],
       offlineId,
     })

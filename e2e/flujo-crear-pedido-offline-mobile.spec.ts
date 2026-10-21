@@ -62,7 +62,7 @@ test.describe('H3-1: Pedido offline → reconectar → sync (iPhone 13)', () => 
           body: {
             clienteId,
             canal: 'PUNTO',
-            ventaRapida: true,
+            entregado: true,
             items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
             offlineId,
           },
@@ -135,7 +135,7 @@ test.describe('H3-1: Pedido offline → reconectar → sync (iPhone 13)', () => 
         return await window.__bambu!.fetchResilient(url, {
           method: 'POST',
           body: {
-            clienteId, canal: 'PUNTO', ventaRapida: true,
+            clienteId, canal: 'PUNTO', entregado: true,
             items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
             offlineId,
           },
@@ -149,7 +149,7 @@ test.describe('H3-1: Pedido offline → reconectar → sync (iPhone 13)', () => 
         return await window.__bambu!.fetchResilient(url, {
           method: 'POST',
           body: {
-            clienteId, canal: 'PUNTO', ventaRapida: true,
+            clienteId, canal: 'PUNTO', entregado: true,
             items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
             offlineId,
           },

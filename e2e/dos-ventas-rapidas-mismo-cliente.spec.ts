@@ -18,7 +18,7 @@ test.describe('Dos ventas rapidas mismo cliente', () => {
     await apiPost(page, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [],
     })
@@ -27,7 +27,7 @@ test.describe('Dos ventas rapidas mismo cliente', () => {
     await apiPost(page, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [],
     })

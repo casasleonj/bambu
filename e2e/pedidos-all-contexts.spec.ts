@@ -296,7 +296,7 @@ test.describe('Pedidos — Tab Pedidos (Hoy)', () => {
       await apiPost(p, '/api/pedidos', {
         clienteId,
         canal: 'PUNTO',
-        ventaRapida: true,
+        entregado: true,
         items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
       })
@@ -457,7 +457,7 @@ test.describe('Pedidos — Tab Fiados', () => {
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 2000 }], // Partial - leaves balance
     })
@@ -482,7 +482,7 @@ test.describe('Pedidos — Tab Fiados', () => {
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
     })
@@ -508,7 +508,7 @@ test.describe('Pedidos — Tab Fiados', () => {
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
     })
@@ -573,14 +573,14 @@ test.describe('Pedidos — Tab Fiados', () => {
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
     })
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_HIELO', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 500 }],
     })
@@ -664,14 +664,14 @@ test.describe('Pedidos — Tab Alertas', () => {
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_HIELO', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
@@ -694,21 +694,21 @@ test.describe('Pedidos — Tab Alertas', () => {
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
@@ -751,14 +751,14 @@ test.describe('Pedidos — Tab Alertas', () => {
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
@@ -783,14 +783,14 @@ test.describe('Pedidos — Tab Alertas', () => {
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
@@ -815,14 +815,14 @@ test.describe('Pedidos — Tab Alertas', () => {
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
@@ -989,14 +989,14 @@ test.describe('Pedidos — Edge Cases', () => {
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
@@ -1022,7 +1022,7 @@ test.describe('Pedidos — Edge Cases', () => {
     await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
     })

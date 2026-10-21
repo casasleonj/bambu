@@ -22,7 +22,7 @@ test.describe('Offline-First: Crear Pedido con Hook Real (dedup vía offlineId)'
     const pedidoPayload = {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
       offlineId, // El hook DEBE enviar esto (F1.1 fix)
@@ -57,7 +57,7 @@ test.describe('Offline-First: Crear Pedido con Hook Real (dedup vía offlineId)'
     const pedidoPayload = {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
       // NO offlineId

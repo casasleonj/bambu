@@ -5,7 +5,7 @@ async function createPedidoFiado(page: Page, clienteId: string, ventaRapida = fa
   return apiPost(page, '/api/pedidos', {
     clienteId,
     canal: 'DOMICILIO',
-    ventaRapida,
+    entregado: ventaRapida,
     items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
     pagos: [],
   })

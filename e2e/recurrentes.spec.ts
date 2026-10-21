@@ -218,13 +218,13 @@ test.describe('Recurrentes', () => {
     expect(cliente.id).toBeDefined()
 
     // 2. Crear pedido extra de 4 pacas con pago COMPLETO (debe pagar todo para que saldo = 0).
-    // Se crea como PENDIENTE (ventaRapida: false) para cumplir el criterio
+    // Se crea como PENDIENTE (entregado: false) para cumplir el criterio
     // pedidosPagados (estadoEntrega=PENDIENTE, saldo=0, totalPagado>0).
     // ENTREGADO -> PENDIENTE es una transición inválida; no se puede degradar.
     const pedidoExtraData = await createPedido(page, {
       clienteId: cliente.id,
       canal: 'DOMICILIO',
-      ventaRapida: false,
+      entregado: false,
       pacaAgua: 4,
       pagoMetodo: 'EFECTIVO',
       pagoMonto: 11200, // Pago completo: 4 pacas × $2,800

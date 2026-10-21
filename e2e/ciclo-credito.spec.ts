@@ -19,7 +19,7 @@ test.describe('Ciclo de Crédito', () => {
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
     })
@@ -106,12 +106,12 @@ test.describe('Ciclo de Crédito', () => {
 
     const [p1, p2] = await Promise.all([
       apiPost(page, '/api/pedidos', {
-        clienteId: cliente.cliente.id, canal: 'PUNTO', ventaRapida: true,
+        clienteId: cliente.cliente.id, canal: 'PUNTO', entregado: true,
         items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 500 }],
       }),
       apiPost(page, '/api/pedidos', {
-        clienteId: cliente.cliente.id, canal: 'PUNTO', ventaRapida: true,
+        clienteId: cliente.cliente.id, canal: 'PUNTO', entregado: true,
         items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 500 }],
       }),
@@ -149,7 +149,7 @@ test.describe('Ciclo de Crédito', () => {
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 0 }],
     })
@@ -179,7 +179,7 @@ test.describe('Ciclo de Crédito', () => {
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 50000 }],
     })
@@ -216,7 +216,7 @@ test.describe('Ciclo de Crédito', () => {
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
     })

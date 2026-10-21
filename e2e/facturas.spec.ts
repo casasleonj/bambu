@@ -60,7 +60,7 @@ test.describe('Facturas', () => {
 
   test('crear factura via API', async ({ page }) => {
     await loginAs(page, 'admin')
-    const p = await createPedido(page, { ventaRapida: true })
+    const p = await createPedido(page, { entregado: true })
     const pedidoId = p.pedido?.id || p.data?.id
     if (!pedidoId) { test.skip(); return }
     const c = await createCliente(page)
@@ -78,7 +78,7 @@ test.describe('Facturas', () => {
     const p = await apiPost(page, '/api/pedidos', {
       clienteId: 'CLI_VERIFICADO',
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
     })
