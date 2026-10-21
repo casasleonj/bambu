@@ -2395,6 +2395,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             embarqueNumeroDia={embarques.find(e => e.id === selectedPedido.embarqueId)?.numeroDia}
             preciosActuales={preciosActuales}
             updatingId={updatingId}
+            userRole={userRole}
             estadoBadge={getEstadoEntregaBadge(selectedPedido.estadoEntrega)}
             canalBadge={getCanalBadge(selectedPedido.canal)}
             onClose={() => setShowDetailModal(false)}

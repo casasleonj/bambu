@@ -21,6 +21,7 @@ interface Props {
   embarqueNumeroDia?: number
   preciosActuales: Record<string, { precio: number; origen: string }>
   updatingId: string | null
+  userRole?: string | null
   estadoBadge: React.ReactNode
   canalBadge: React.ReactNode
   onClose: () => void
@@ -76,7 +77,7 @@ const TONO_BOTON: Record<AccionDetalle['tone'], string> = {
 }
 
 export function PedidoDetalle({
-  pedido, embarqueNumeroDia, preciosActuales, updatingId, estadoBadge, canalBadge, onClose, onAccion,
+  pedido, embarqueNumeroDia, preciosActuales, updatingId, userRole, estadoBadge, canalBadge, onClose, onAccion,
 }: Props) {
   const [relacionadoAbierto, setRelacionadoAbierto] = useState(false)
   const total = Number(pedido.total)
@@ -235,10 +236,10 @@ export function PedidoDetalle({
                         <Icon size={20} />
                         <span className="text-sm font-medium">{meta.label}</span>
                         {(() => {
-                          const origen = origenPrecio(item)
+                          const origen = origenPrecio(item, userRole)
                           if (!origen) return null
-                          const tono = origen.tone === 'ok' ? 'bg-green-100 text-green-700' : origen.tone === 'warn' ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'
-                          return <span data-testid="detalle-origen-precio" className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${tono}`}>{origen.label}</span>
+                          const tono = origen.tone === 'ok' ? 'bg-green-100 text-green-800' : origen.tone === 'warn' ? 'bg-amber-100 text-amber-800' : origen.tone === 'neutral' ? 'bg-gray-100 text-gray-700' : 'bg-sky-100 text-sky-800'
+                          return <span data-testid="detalle-origen-precio" title={origen.ayuda} aria-label={`${origen.label}. ${origen.ayuda}`} className={`text-xs px-2 py-0.5 rounded-full font-medium ${tono}`}>{origen.label}</span>
                         })()}
                         {showDiff && (
                           <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${diff > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>

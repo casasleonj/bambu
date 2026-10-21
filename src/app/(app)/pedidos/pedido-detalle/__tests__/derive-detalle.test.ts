@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { accionesDetalle, lineaDeTiempo, linksContacto, origenPrecio, porcentajePagado, telefonoWhatsapp } from '../derive-detalle'
+import { accionesDetalle, lineaDeTiempo, linksContacto, origenPrecio, porcentajePagado, puedeVerAlertaPrecioManual, telefonoWhatsapp } from '../derive-detalle'
 import type { Pedido } from '../../pedidos-client/types'
 
 const base = (o: Partial<Pedido>) => ({ fecha: '2026-10-20T14:00:00.000Z', estadoEntrega: 'PENDIENTE', ...o }) as Pedido
@@ -86,22 +86,42 @@ describe('utilidades', () => {
   })
 })
 
+describe('puedeVerAlertaPrecioManual', () => {
+  it('solo ADMIN y CONTADOR', () => {
+    expect(puedeVerAlertaPrecioManual('ADMIN')).toBe(true)
+    expect(puedeVerAlertaPrecioManual('CONTADOR')).toBe(true)
+    expect(puedeVerAlertaPrecioManual('ASISTENTE')).toBe(false)
+    expect(puedeVerAlertaPrecioManual(undefined)).toBe(false)
+  })
+})
+
 describe('origenPrecio', () => {
   it('base y desconocido no llevan insignia', () => {
     expect(origenPrecio({ precioOrigen: 'base' })).toBeNull()
     expect(origenPrecio({})).toBeNull()
   })
   it('volumen y especial (cliente/negocio)', () => {
-    expect(origenPrecio({ precioOrigen: 'volumen' })).toEqual({ label: 'volumen', tone: 'info' })
-    expect(origenPrecio({ precioOrigen: 'cliente' })).toEqual({ label: 'especial', tone: 'info' })
+    expect(origenPrecio({ precioOrigen: 'volumen' })).toMatchObject({ label: 'volumen', tone: 'info' })
+    expect(origenPrecio({ precioOrigen: 'cliente' })).toMatchObject({ label: 'especial', tone: 'info' })
   })
   it('volumen con tramo confirmado lo muestra', () => {
     expect(origenPrecio({ precioOrigen: 'volumen', tramoVolumen: { cantMin: 4, cantMax: 9 } })?.label).toBe('volumen 4–9 und')
     expect(origenPrecio({ precioOrigen: 'volumen', tramoVolumen: { cantMin: 10, cantMax: null } })?.label).toBe('volumen 10 o más und')
   })
-  it('manual distingue autorizado de sin autorizar', () => {
-    expect(origenPrecio({ precioOrigen: 'manual', autorizadoPorAdmin: true })?.tone).toBe('ok')
-    expect(origenPrecio({ precioOrigen: 'manual', autorizadoPorAdmin: false })).toEqual({ label: 'manual · sin autorizar', tone: 'warn' })
-    expect(origenPrecio({ precioOrigen: 'manual' })?.label).toBe('manual · sin autorizar')
+  it('manual autorizado se ve verde para todos', () => {
+    for (const rol of ['ADMIN', 'ASISTENTE', 'REPARTIDOR', null]) {
+      expect(origenPrecio({ precioOrigen: 'manual', autorizadoPorAdmin: true }, rol)).toMatchObject({ label: 'manual ✓ autorizado', tone: 'ok' })
+    }
+  })
+  it('manual sin autorizar: advertencia solo para ADMIN y CONTADOR; el resto lo ve neutro', () => {
+    for (const rol of ['ADMIN', 'CONTADOR']) {
+      expect(origenPrecio({ precioOrigen: 'manual', autorizadoPorAdmin: false }, rol)).toMatchObject({ label: 'manual · sin autorizar', tone: 'warn' })
+    }
+    for (const rol of ['ASISTENTE', 'REPARTIDOR', null, undefined]) {
+      expect(origenPrecio({ precioOrigen: 'manual' }, rol)).toMatchObject({ label: 'manual', tone: 'neutral' })
+    }
+  })
+  it('toda insignia trae una explicación', () => {
+    for (const origen of ['volumen', 'cliente', 'manual']) expect(origenPrecio({ precioOrigen: origen }, 'ADMIN')?.ayuda.length).toBeGreaterThan(10)
   })
 })

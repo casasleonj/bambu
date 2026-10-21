@@ -124,24 +124,43 @@ export function porcentajePagado(total: number, pagado: number): number {
 
 export interface OrigenPrecio {
   label: string
-  tone: 'ok' | 'warn' | 'info'
+  tone: 'ok' | 'warn' | 'info' | 'neutral'
+  /** Explicación corta (tooltip / lector de pantalla). */
+  ayuda: string
 }
 
-/** Insignia del origen del precio guardado en la línea; `base` no lleva insignia. */
-export function origenPrecio(item: {
-  precioOrigen?: string
-  autorizadoPorAdmin?: boolean
-  tramoVolumen?: { cantMin: number; cantMax: number | null } | null
-}): OrigenPrecio | null {
+/** Roles que pueden revisar un precio manual sin autorizar (ven la advertencia ámbar). */
+export function puedeVerAlertaPrecioManual(rol: string | null | undefined): boolean {
+  return rol === 'ADMIN' || rol === 'CONTADOR'
+}
+
+/**
+ * Insignia del origen del precio guardado en la línea; `base` no lleva insignia.
+ * El precio manual es una operación normal: se ve neutro para todos y solo
+ * ADMIN/CONTADOR ven la advertencia "sin autorizar" (son quienes pueden revisarla).
+ */
+export function origenPrecio(
+  item: {
+    precioOrigen?: string
+    autorizadoPorAdmin?: boolean
+    tramoVolumen?: { cantMin: number; cantMax: number | null } | null
+  },
+  rol?: string | null,
+): OrigenPrecio | null {
   switch (item.precioOrigen) {
     case 'manual':
-      return item.autorizadoPorAdmin
-        ? { label: 'manual · autorizado', tone: 'ok' }
-        : { label: 'manual · sin autorizar', tone: 'warn' }
+      if (item.autorizadoPorAdmin) {
+        return { label: 'manual ✓ autorizado', tone: 'ok', ayuda: 'Precio escrito a mano; un administrador lo autorizó.' }
+      }
+      return puedeVerAlertaPrecioManual(rol)
+        ? { label: 'manual · sin autorizar', tone: 'warn', ayuda: 'Precio escrito a mano que ningún administrador ha autorizado. Conviene revisarlo.' }
+        : { label: 'manual', tone: 'neutral', ayuda: 'Precio escrito a mano al crear el pedido.' }
     case 'volumen':
-      return { label: item.tramoVolumen ? `volumen ${formatoTramo(item.tramoVolumen)}` : 'volumen', tone: 'info' }
+      return item.tramoVolumen
+        ? { label: `volumen ${formatoTramo(item.tramoVolumen)}`, tone: 'info', ayuda: `Precio por volumen: tramo de ${formatoTramo(item.tramoVolumen)}.` }
+        : { label: 'volumen', tone: 'info', ayuda: 'Precio por volumen según la cantidad pedida.' }
     case 'cliente':
-      return { label: 'especial', tone: 'info' }
+      return { label: 'especial', tone: 'info', ayuda: 'Precio especial acordado con el cliente o su negocio.' }
     default:
       return null
   }

@@ -83,6 +83,7 @@ test.describe('Pantalla de detalle del pedido (P1-1 PR B)', () => {
   })
 
   test('cada línea muestra el origen del precio guardado en la base de datos', async ({ browser }) => {
+    test.setTimeout(90_000) // cinco aperturas del detalle en un mismo test
     const page = await sharedLoginAs(browser, 'admin')
     const ped = await crearPedido(page, `Detalle origen ${Date.now()}`, false)
     const item = await prisma.pedidoItem.findFirstOrThrow({ where: { pedidoId: ped.id } })
@@ -114,7 +115,7 @@ test.describe('Pantalla de detalle del pedido (P1-1 PR B)', () => {
 
     await fijar({ precioOrigen: 'manual', autorizadoPorAdmin: true })
     await abrir()
-    await expect(origen).toHaveText('manual · autorizado')
+    await expect(origen).toHaveText('manual ✓ autorizado')
   })
 
   test('un precio manual creado por la API nace "manual · sin autorizar"', async ({ browser }) => {
@@ -131,7 +132,7 @@ test.describe('Pantalla de detalle del pedido (P1-1 PR B)', () => {
     expect(item.precioOrigen).toBe('manual')
     await page.goto(`${BASE}/pedidos?openPedido=${id}`)
     await expect(appMain(page).getByTestId('detalle-origen-precio')).toHaveText(
-      item.autorizadoPorAdmin ? 'manual · autorizado' : 'manual · sin autorizar',
+      item.autorizadoPorAdmin ? 'manual ✓ autorizado' : 'manual · sin autorizar',
     )
   })
 
@@ -155,5 +156,23 @@ test.describe('Pantalla de detalle del pedido (P1-1 PR B)', () => {
     const rango = tramo!.cantMax === null ? `${tramo!.cantMin} o más und` : `${tramo!.cantMin}–${tramo!.cantMax} und`
     await page.goto(`${BASE}/pedidos?openPedido=${id}`)
     await expect(appMain(page).getByTestId('detalle-origen-precio')).toHaveText(`volumen ${rango}`)
+  })
+
+  test('el precio manual sin autorizar se ve neutro para la asistente y con advertencia para el admin; la insignia explica al pasar el cursor', async ({ browser }) => {
+    const admin = await sharedLoginAs(browser, 'admin')
+    const ped = await crearPedido(admin, `Detalle rol ${Date.now()}`, false)
+    const item = await prisma.pedidoItem.findFirstOrThrow({ where: { pedidoId: ped.id } })
+    await prisma.pedidoItem.update({ where: { id: item.id }, data: { precioOrigen: 'manual', autorizadoPorAdmin: false } })
+
+    await admin.goto(`${BASE}/pedidos?openPedido=${ped.id}`)
+    const insigniaAdmin = appMain(admin).getByTestId('detalle-origen-precio')
+    await expect(insigniaAdmin).toHaveText('manual · sin autorizar', { timeout: 20000 })
+    await expect(insigniaAdmin).toHaveAttribute('title', /ningún administrador/)
+
+    const asistente = await sharedLoginAs(browser, 'asistente')
+    await asistente.goto(`${BASE}/pedidos?openPedido=${ped.id}`)
+    const insigniaAsistente = appMain(asistente).getByTestId('detalle-origen-precio')
+    await expect(insigniaAsistente).toHaveText('manual', { timeout: 20000 })
+    await expect(insigniaAsistente).toHaveAttribute('title', /escrito a mano/)
   })
 })
