@@ -57,8 +57,8 @@ describe('useClienteSearch (#376)', () => {
     expect(url.searchParams.get('pageSize')).toBe(String(LIMITE_RESULTADOS))
     expect(url.searchParams.has('all')).toBe(false)
 
-    // el servidor manda: reemplaza lo local
-    expect(result.current.resultados.map((c) => c.id)).toEqual(['9'])
+    // unión: lo local se conserva y el servidor aporta lo que faltaba
+    expect(result.current.resultados.map((c) => c.id).sort()).toEqual(['1', '9'])
     expect(result.current.buscando).toBe(false)
     expect(result.current.error).toBe(false)
   })
@@ -124,6 +124,24 @@ describe('useClienteSearch (#376)', () => {
     await avanzar(DEBOUNCE_MS + 10)
     expect(b.result.current.error).toBe(false)
     expect(b.result.current.buscando).toBe(false)
+  })
+
+  it('el servidor nunca reemplaza lo que la lista local ya encuentra (búsqueda por relación del contacto)', async () => {
+    const conContacto = { ...cli('5', 'Juan Pérez'), contactos: [{ nombre: 'María', telefono: '3119876543', relacion: 'esposa' }] } as Cliente
+    // el servidor hoy no busca la relación: devuelve otro cliente irrelevante
+    fetchMock.mockResolvedValue(respuesta([cli('8', 'Alguien Más')]))
+    const { result } = renderHook(() => useClienteSearch('esposa', [conContacto]))
+    await avanzar(DEBOUNCE_MS + 10)
+    expect(result.current.resultados.map((c) => c.id)).toContain('5')
+  })
+
+  it('ordena por relevancia (nombre antes que coincidencia en notas)', async () => {
+    const enNotas = { ...cli('20', 'Otro'), notas: 'amigo de zulma' } as Cliente
+    const enNombre = cli('21', 'Zulma Carmen')
+    fetchMock.mockResolvedValue(respuesta([enNotas, enNombre]))
+    const { result } = renderHook(() => useClienteSearch('zulma', []))
+    await avanzar(DEBOUNCE_MS + 10)
+    expect(result.current.resultados.map((c) => c.id)).toEqual(['21', '20'])
   })
 
   it('si el servidor responde vacío pero la lista local sí coincide, no vacía el listado', async () => {

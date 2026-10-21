@@ -8,13 +8,13 @@
  *
  * Ahora la búsqueda va al servidor (`/api/clientes?search=`, con `pg_trgm`),
  * paginada a `LIMITE_RESULTADOS` (~10 KB), con debounce y cancelación de la
- * petición anterior. Mientras responde, o si falla, se muestran las
- * coincidencias de la lista local ya cargada, para que no se pierda el
- * comportamiento instantáneo ni la búsqueda con la lista precargada.
+ * petición anterior. El resultado es la UNIÓN de las coincidencias de la lista
+ * local ya cargada y las del servidor, ordenadas por relevancia: el servidor
+ * completa lo que la lista no tiene, nunca reemplaza lo que la lista encuentra.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { matchCliente, meetsMinSearchLength } from '@/lib/cliente-search'
+import { matchCliente, meetsMinSearchLength, scoreCliente } from '@/lib/cliente-search'
 import type { Cliente } from '@/components/pedido-form-unified/types'
 
 export const LIMITE_RESULTADOS = 8
@@ -91,9 +91,23 @@ export function useClienteSearch(searchTerm: string, clientes: Cliente[]): UseCl
 
   const vigente = valido && remoto !== null && remoto.term === term
   const respondio = vigente && !remoto.error
-  // El servidor respondió sin coincidencias pero la lista local sí tiene (criterios de
-  // coincidencia distintos, o 401/403): no se vacía el listado.
-  const servidorVacioConLocales = respondio && remoto.items.length === 0 && locales.length > 0
+
+  // Local ∪ servidor, ordenado por relevancia con el mismo criterio que la lista:
+  // el servidor NUNCA reemplaza a lo local. Motivo (medido): la búsqueda del
+  // servidor hoy no normaliza celulares con espacios ni acentos, no busca la
+  // relación del contacto y devuelve los primeros N por id, no los más
+  // relevantes. Unir garantiza no perder nada de lo que ya encontraba la lista
+  // y, si la lista no cargó, el servidor aporta lo que pueda.
+  const resultados = useMemo(() => {
+    if (!respondio || !remoto) return locales
+    const porId = new Map<string, Cliente>()
+    for (const c of locales) porId.set(c.id, c)
+    for (const c of remoto.items) porId.set(c.id, c)
+    return [...porId.values()]
+      .map((c, i) => ({ c, i, score: scoreCliente(c, term) }))
+      .sort((a, b) => b.score - a.score || a.i - b.i)
+      .map((x) => x.c)
+  }, [respondio, locales, remoto, term])
 
   const reintentar = useCallback(() => {
     setRemoto(null)
@@ -101,7 +115,7 @@ export function useClienteSearch(searchTerm: string, clientes: Cliente[]): UseCl
   }, [])
 
   return {
-    resultados: respondio && !servidorVacioConLocales ? remoto.items : locales,
+    resultados,
     buscando: valido && !vigente,
     error: vigente && remoto.error,
     reintentar,
