@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { loginAs, createCliente, apiPost, apiPut, resetDatabase, BASE } from './fixtures'
+import { loginAs, createCliente, apiPost, apiPut, resetDatabase, BASE, appMain } from './fixtures'
 
 async function createPedidoEntregado(page: Page, clienteId: string) {
   return apiPost(page, '/api/pedidos', {
@@ -20,8 +20,10 @@ async function openNuevoPedidoModal(page: Page) {
   await page.goto(`${BASE}/pedidos`)
   await page.waitForLoadState('domcontentloaded')
 
-  await page.getByTestId('fab-main').click()
-  await page.getByTestId('fab-pedido-envio').click()
+  // El árbol de /pedidos existe dos veces en el DOM (copia oculta del streaming):
+  // acotar a <main> evita el strict mode violation (#363, ver `appMain`).
+  await appMain(page).getByTestId('fab-main').click()
+  await appMain(page).getByTestId('fab-pedido-envio').click()
 }
 
 test.describe.configure({ mode: 'serial' })

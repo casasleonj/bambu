@@ -81,7 +81,9 @@ test.describe('Drawer (menu lateral) mobile', () => {
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)
 
-    const hamburger = page.getByRole('button', { name: /men[uú]/i })
+    // Solo el botón de la cabecera ("Abrir menú"): con el drawer abierto el sidebar
+    // suma otro botón "Opciones del menú" y /men[uú]/ resolvía a 2 (strict mode, #363).
+    const hamburger = page.getByRole('button', { name: /abrir men[uú]/i })
     const aside = page.getByRole('complementary', { name: /navegaci[oó]n principal/i })
 
     // Inicial: cerrado.
