@@ -14,7 +14,7 @@ test.describe('Pedidos: campo Tipo', () => {
     const create = await apiPost(page, '/api/pedidos', {
       clienteId: c.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
     })

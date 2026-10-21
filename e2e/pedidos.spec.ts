@@ -58,7 +58,7 @@ test.describe('Pedidos', () => {
     const res = await apiPost(page, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
@@ -139,7 +139,7 @@ test.describe('Pedidos', () => {
 
   test('asignar pedido a embarque via API', async ({ page }) => {
     await loginAs(page, 'admin')
-    const p = await createPedido(page, { ventaRapida: false, pagoMonto: 0 })
+    const p = await createPedido(page, { entregado: false, pagoMonto: 0 })
     const t = await createTrabajador(page)
     const pid = p.pedido?.id || p.data?.id
     const tid = t.trabajador?.id || t.data?.id
@@ -163,7 +163,7 @@ test.describe('Pedidos', () => {
     const p = await apiPost(page, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 2000 }],
     })
@@ -189,7 +189,7 @@ test.describe('Pedidos', () => {
     const res = await apiPost(page, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
@@ -256,7 +256,7 @@ test.describe('Pedidos', () => {
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     expect(clienteId).toBeTruthy()
-    const creado = await createPedido(page, { clienteId, canal: 'DOMICILIO', ventaRapida: false })
+    const creado = await createPedido(page, { clienteId, canal: 'DOMICILIO', entregado: false })
     const pedidoId = creado.data?.pedido?.id ?? creado.pedido?.id ?? creado.data?.id
     expect(pedidoId).toBeTruthy()
     // La API no acepta fecha custom: se backdatea directo en la DB (mismo
@@ -292,7 +292,7 @@ test.describe('Pedidos', () => {
     const pedido = await createPedido(page, {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       pacaAgua: 1,
       pagoMonto: 5000,
     })

@@ -51,7 +51,7 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
           body: {
             clienteId,
             canal: 'PUNTO',
-            ventaRapida: true,
+            entregado: true,
             items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
             offlineId,
           },
@@ -131,7 +131,7 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
             body: {
               clienteId,
               canal: 'PUNTO',
-              ventaRapida: true,
+              entregado: true,
               items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
               offlineId,
             },
@@ -199,7 +199,7 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
           body: {
             clienteId,
             canal: 'PUNTO',
-            ventaRapida: true,
+            entregado: true,
             items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
             offlineId,
           },

@@ -106,7 +106,7 @@ test.describe('Mobile Offline Comprehensive', () => {
         body: {
           clienteId,
           canal: 'PUNTO',
-          ventaRapida: true,
+          entregado: true,
           items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
           offlineId,
         },
@@ -401,7 +401,7 @@ test.describe('Mobile Offline Comprehensive', () => {
           body: {
             clienteId,
             canal: 'PUNTO',
-            ventaRapida: true,
+            entregado: true,
             items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
             offlineId: pedidoOfflineId,
           },
@@ -455,7 +455,7 @@ test.describe('Mobile Offline Comprehensive', () => {
         body: {
           clienteId,
           canal: 'PUNTO',
-          ventaRapida: true,
+          entregado: true,
           items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
           offlineId,
         },

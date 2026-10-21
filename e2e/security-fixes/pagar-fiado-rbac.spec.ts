@@ -74,7 +74,7 @@ test.describe('Security Fix: Pagar Fiado requiere rol ADMIN/ASISTENTE', () => {
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [],
     })

@@ -274,7 +274,7 @@ test.describe('Negocios CRUD UI - admin', () => {
       clienteId: cliente.id,
       negocioId: negocio.id,
       canal: 'DOMICILIO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
     })

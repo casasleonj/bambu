@@ -197,7 +197,7 @@ test.describe('3. ASISTENTE — acceso limitado', () => {
     const cliente = await createCliente(page, { nombre: 'Asistente Pedido Test' })
     const pedido = await createPedido(page, {
       clienteId: cliente.cliente.id,
-      ventaRapida: true,
+      entregado: true,
       canal: 'PUNTO',
       pacaAgua: 1,
       pagoMetodo: 'EFECTIVO',
@@ -479,14 +479,14 @@ test.describe('6. Concurrencia', () => {
       apiPost(p1, '/api/pedidos', {
         clienteId: 'CONSUMIDOR_FINAL',
         canal: 'PUNTO',
-        ventaRapida: true,
+        entregado: true,
         items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 2800 }],
       }),
       apiPost(p2, '/api/pedidos', {
         clienteId: 'CONSUMIDOR_FINAL',
         canal: 'PUNTO',
-        ventaRapida: true,
+        entregado: true,
         items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 2800 }],
       }),
@@ -512,7 +512,7 @@ test.describe('7. Flujo completo: ASISTENTE', () => {
 
     const pedido = await createPedido(page, {
       clienteId: cliente.cliente.id,
-      ventaRapida: true,
+      entregado: true,
       canal: 'PUNTO',
       pacaAgua: 2,
       pacaHielo: 1,
@@ -583,7 +583,7 @@ test.describe('7. Flujo completo: ADMIN', () => {
     const cliente = await createCliente(page, { nombre: `Cliente Admin Flow ${Date.now()}` })
     const pedido = await createPedido(page, {
       clienteId: cliente.cliente.id,
-      ventaRapida: false,
+      entregado: false,
       canal: 'DOMICILIO',
       pacaAgua: 2,
       pagoMetodo: 'EFECTIVO',

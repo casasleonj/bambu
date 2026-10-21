@@ -17,7 +17,7 @@ test.describe('Pedidos - detalle muestra nombre', () => {
     const pedido = await apiPost(page, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
     })

@@ -377,7 +377,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await apiPut(page, `/api/clientes/${cliente.id}`, { limitePedidosFiados: 1 })
     // un fiado abierto: el cliente queda al límite
     const fiado = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.id, canal: 'DOMICILIO', ventaRapida: true,
+      clienteId: cliente.id, canal: 'DOMICILIO', entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }], pagos: [],
     })
     expect(fiado.status()).toBe(201)

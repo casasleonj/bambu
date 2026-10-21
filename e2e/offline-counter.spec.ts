@@ -34,7 +34,7 @@ test.describe('ConnectivityIndicator — pending sync counter', () => {
             body: {
               clienteId,
               canal: 'PUNTO',
-              ventaRapida: true,
+              entregado: true,
               items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
               offlineId,
             },
@@ -109,7 +109,7 @@ test.describe('ConnectivityIndicator — pending sync counter', () => {
           body: {
             clienteId,
             canal: 'PUNTO',
-            ventaRapida: true,
+            entregado: true,
             items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
             offlineId,
           },

@@ -425,7 +425,7 @@ test.describe('Casos', () => {
     const pedidoRes = await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
     })
     const pedidoData = await pedidoRes.json()
@@ -456,7 +456,7 @@ test.describe('Casos', () => {
     const pedidoRes = await apiPost(p, '/api/pedidos', {
       clienteId: cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
     })
     const pedidoData = await pedidoRes.json()
