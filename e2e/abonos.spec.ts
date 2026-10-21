@@ -36,7 +36,7 @@ test.describe('Abonos', () => {
 
     // Search and select client
     const searchInput = page.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]')
-    await searchInput.fill('a')
+    await searchInput.fill('ca')
     await page.waitForTimeout(600)
 
     const clientBtn = page.getByTestId('cliente-search-result').first()

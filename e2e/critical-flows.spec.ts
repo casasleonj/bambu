@@ -8,6 +8,9 @@ async function login(page: Page) {
   await loginAs(page, 'admin')
 }
 
+// El buscador exige MIN_SEARCH_CHARS (2) caracteres (src/lib/cliente-search.ts):
+// con 1 letra no devuelve nada, por eso el término es 'ca' y no 'a'.
+//
 // pedidos-client fetches the full clientes list in the background with an
 // 8s AbortSignal timeout (src/app/(app)/pedidos/pedidos-client/index.tsx).
 // Under heavy CI load that fetch can abort before the list ever populates,
@@ -20,7 +23,7 @@ async function searchAndSelectCliente(page: Page) {
   const clientBtn = page.getByTestId('cliente-search-result').first()
   const maxAttempts = 3
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('a')
+    await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('ca')
     if (await clientBtn.isVisible({ timeout: 15000 }).catch(() => false)) {
       await clientBtn.click()
       return modal
