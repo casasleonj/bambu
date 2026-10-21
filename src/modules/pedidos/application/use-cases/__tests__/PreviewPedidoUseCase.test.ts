@@ -455,3 +455,71 @@ describe('PreviewPedidoUseCase — cliente nuevo sin persistir (B-19, #346)', ()
     ).rejects.toThrow(ClienteNotFoundError)
   })
 })
+
+describe('PreviewPedidoUseCase — bloque de crédito y excepción (P0-3, #357)', () => {
+  const items = [{ producto: 'PACA_AGUA' as const, cantidad: 10 }]
+
+  it('cliente en el límite: emite `credito` con los números de la autoridad y bloquea', async () => {
+    const deps = makeDeps()
+    ;(deps.getFiadoStatusUseCase.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 4, limite: 4, nivel: 'limite', pedidos: [], outstandingAmount: 86000, operationOutstanding: 27000,
+      projectedOpenCount: 5, projectedOutstandingAmount: 113000, status: 'AT_LIMIT', errorDeuda: 'Límite alcanzado',
+    })
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', items, actorId: 'u1' })
+    expect(r.credito).toEqual({
+      limite: 4, abiertos: 4, saldoAbierto: 86000, saldoOperacion: 27000,
+      abiertosDespues: 5, saldoDespues: 113000, bloqueado: true, causa: 'LIMITE',
+    })
+    expect(r.allowedActions).not.toContain('crear')
+  })
+
+  it('cliente bloqueado por deuda vencida: la causa lo distingue del límite', async () => {
+    const deps = makeDeps()
+    ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1', nombre: 'X', telefono: '3001112233', direccion: 'Calle 1', barrio: 'Centro', bloqueado: true, verificado: true,
+      creadoPorRol: 'ADMIN', limitePedidosFiados: null, preciosEspeciales: null,
+    })
+    ;(deps.getFiadoStatusUseCase.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1, limite: 4, nivel: 'ok', pedidos: [], outstandingAmount: 1000, status: 'OK', errorDeuda: 'Cliente bloqueado',
+    })
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', items, actorId: 'u1' })
+    expect(r.credito?.causa).toBe('CLIENTE_BLOQUEADO')
+  })
+
+  it('excepción autorizada que cubre: el bloqueo se levanta y `credito.bloqueado` es false', async () => {
+    const deps = makeDeps()
+    ;(deps.getFiadoStatusUseCase.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 4, limite: 4, nivel: 'limite', pedidos: [], outstandingAmount: 86000, operationOutstanding: 27000,
+      projectedOpenCount: 5, projectedOutstandingAmount: 113000, status: 'AT_LIMIT', errorDeuda: null,
+      excepcionAplicada: { id: 'e1', motivoSolicitud: 'm', autorizadoPorId: 'u2' },
+    })
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', items, excepcionId: 'e1', actorId: 'u1' })
+    expect(r.credito?.bloqueado).toBe(false)
+    expect(r.excepcionAplicada?.id).toBe('e1')
+    expect(r.allowedActions).toContain('crear')
+  })
+
+  it('excepción que ya no cubre: sigue bloqueado, lo informa y agrega un aviso con el motivo', async () => {
+    const deps = makeDeps()
+    ;(deps.getFiadoStatusUseCase.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 4, limite: 4, nivel: 'limite', pedidos: [], outstandingAmount: 86000, operationOutstanding: 27000,
+      projectedOpenCount: 5, projectedOutstandingAmount: 113000, status: 'AT_LIMIT', errorDeuda: 'Límite alcanzado',
+      excepcionNoAplica: { id: 'e1', motivo: 'SALDO_EXCEDE_AUTORIZADO', saldoAutorizado: 5000 },
+    })
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', items, excepcionId: 'e1', actorId: 'u1' })
+    expect(r.credito?.bloqueado).toBe(true)
+    expect(r.excepcionNoAplica).toMatchObject({ id: 'e1', motivo: 'SALDO_EXCEDE_AUTORIZADO' })
+    expect(r.warnings.map((w) => w.code)).toContain('EXCEPCION_NO_APLICA')
+    expect(r.allowedActions).not.toContain('crear')
+  })
+
+  it('anónimo, cliente nuevo y edición NO emiten `credito`', async () => {
+    const deps = makeDeps()
+    const anon = await new PreviewPedidoUseCase(deps).execute({ clienteId: CANONICAL_CONSUMIDOR_FINAL_ID, items, actorId: 'u1' })
+    expect(anon.credito).toBeUndefined()
+    const nuevoDeps = makeDeps()
+    ;(nuevoDeps.clienteRepo as unknown as { findByTelefono: ReturnType<typeof vi.fn> }).findByTelefono = vi.fn().mockResolvedValue(null)
+    const nuevo = await new PreviewPedidoUseCase(nuevoDeps).execute({ clienteNuevo: { nombre: 'Z', telefono: '573015550000' }, items, actorId: 'u1' })
+    expect(nuevo.credito).toBeUndefined()
+  })
+})

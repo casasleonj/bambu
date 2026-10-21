@@ -186,6 +186,8 @@ export class PreviewPedidoUseCase {
     const warnings: PreviewPedidoResult['warnings'] = []
     let canCreate = true
     let excepcionAplicada: PreviewPedidoResult['excepcionAplicada']
+    let excepcionNoAplica: PreviewPedidoResult['excepcionNoAplica']
+    let credito: PreviewPedidoResult['credito']
 
     // El límite de fiados es un guard de ALTA — editar un pedido existente no
     // crea un nuevo fiado, así que no aplica en modo edición. El bloqueo por
@@ -228,6 +230,26 @@ export class PreviewPedidoUseCase {
       } else if (fiado.excepcionAplicada) {
         // F2: no se reinterpreta — se repropaga tal cual lo resolvió la autoridad.
         excepcionAplicada = fiado.excepcionAplicada
+      }
+      if (fiado.excepcionNoAplica) {
+        excepcionNoAplica = fiado.excepcionNoAplica
+        warnings.push({
+          code: 'EXCEPCION_NO_APLICA',
+          message: fiado.excepcionNoAplica.motivo === 'VENCIDA'
+            ? 'La excepción autorizada ya venció (vale solo el día en que se autorizó). Pide una nueva.'
+            : `La excepción autorizada cubre un saldo de hasta $${Math.round(fiado.excepcionNoAplica.saldoAutorizado).toLocaleString('es-CO')}; esta venta deja más. Pide una nueva.`,
+        })
+      }
+      // P0-3 (#357): números de la Autoridad de Crédito para el panel del Hub.
+      credito = {
+        limite: fiado.limite,
+        abiertos: fiado.count,
+        saldoAbierto: fiado.outstandingAmount,
+        saldoOperacion: fiado.operationOutstanding ?? 0,
+        abiertosDespues: fiado.projectedOpenCount ?? fiado.count,
+        saldoDespues: fiado.projectedOutstandingAmount ?? fiado.outstandingAmount,
+        bloqueado: Boolean(fiado.errorDeuda),
+        causa: fiado.errorDeuda ? (cliente.bloqueado ? 'CLIENTE_BLOQUEADO' : 'LIMITE') : undefined,
       }
     }
 
@@ -399,6 +421,8 @@ export class PreviewPedidoUseCase {
       warnings,
       riskSignals,
       excepcionAplicada,
+      excepcionNoAplica,
+      credito,
       entrega,
       requiresAuthorization: false,
       auditPreview: {

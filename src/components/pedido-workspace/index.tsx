@@ -6,6 +6,8 @@ import { PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
 import { matchCliente } from '@/lib/cliente-search'
 import { PedidoPricingSummary } from '@/components/pedido-form-unified/pedido-pricing-summary'
 import { PedidoRiskSignals } from './pedido-risk-signals'
+import { PedidoCreditoPanel } from './pedido-credito-panel'
+import { useExcepcionCredito } from './use-excepcion-credito'
 import { PedidoProposal } from './pedido-proposal'
 import { PedidoReview } from './pedido-review'
 import { PedidoCommitBar } from './pedido-commit-bar'
@@ -186,6 +188,10 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
   const { tabla, configs, loading: pricingLoading, precioBaseFor } = useItemPricing()
   const { fiadoStatus, patron, patronLoading, loadPatron } = useClienteContext(state.draft.clienteId)
   const propuesta = usePedidoPropuesta()
+  // P0-3 (#357): excepción de crédito del cliente seleccionado (solo clientes reales).
+  const excepcionCredito = useExcepcionCredito(state.draft.clienteId, {
+    onAutorizada: (excepcionId) => dispatch({ type: 'SET_EXCEPCION', excepcionId }),
+  })
 
   const esVentaRapida = state.draft.origen === 'VENTA_RAPIDA'
 
@@ -368,6 +374,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
         ? `[Revisión: ${state.reviewMotivo}]${state.draft.obs ? ` ${state.draft.obs}` : ''}`
         : state.draft.obs,
       entregado: state.draft.entregado,
+      excepcionId: state.draft.excepcionId,
       clienteNuevo: clienteNuevo ? { ...clienteNuevo, direccion: clienteNuevo.direccion ?? '' } : undefined,
       actualizarCliente,
       direccionEntrega: state.draft.canal === 'DOMICILIO' ? (state.draft.direccionEntrega || undefined) : undefined,
@@ -555,9 +562,31 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
         </p>
       )}
 
+      {/* ── Zona: Límite de crédito (P0-3, maqueta 1) — solo al crear, con cliente real ── */}
+      {!modoEdicion && (
+        <PedidoCreditoPanel
+          credito={state.preview?.credito}
+          excepcionAplicada={Boolean(state.preview?.excepcionAplicada)}
+          excepcionNoAplica={state.preview?.excepcionNoAplica}
+          vista={excepcionCredito.excepcion}
+          solicitando={excepcionCredito.solicitando}
+          error={excepcionCredito.error}
+          total={calc?.total ?? 0}
+          onSolicitar={(motivo, nota) => void excepcionCredito.solicitar({
+            motivo, nota, total: calc?.total ?? 0, totalPagado: calc?.totalPagado ?? 0,
+          })}
+          onReiniciar={() => {
+            excepcionCredito.reiniciar()
+            dispatch({ type: 'SET_EXCEPCION', excepcionId: undefined })
+          }}
+          onCobrarAhora={() => document.querySelector('[data-testid="workspace-dinero"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+        />
+      )}
+
       {/* ── Zona: Señales de riesgo (blueprint §5.3) ── */}
       <PedidoRiskSignals
-        warnings={state.preview?.warnings ?? []}
+        // el panel de crédito ya explica el límite; no se repite el aviso rojo
+        warnings={(state.preview?.warnings ?? []).filter((w) => !(w.code === 'FIADO_SOBRE_LIMITE' && state.preview?.credito))}
         riskSignals={state.preview?.riskSignals ?? []}
       />
 

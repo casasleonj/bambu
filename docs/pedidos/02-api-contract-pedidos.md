@@ -222,6 +222,12 @@ Pagos (proyección virtual, sin efecto):
   allowedActions: Array<'crear' | 'crear-y-enviar-a-ruta' | 'actualizar'>  // 'actualizar' en modo edición
   warnings: Array<{ code: string; message: string; field?: string }>
     // FIADO_SOBRE_LIMITE, CLIENTE_BLOQUEADO, DIRECCION_FALTANTE (DOMICILIO sin dirección), PRECIO_MANUAL_APLICADO
+  credito?: { limite: number; abiertos: number; saldoAbierto: number; saldoOperacion: number
+              abiertosDespues: number; saldoDespues: number; bloqueado: boolean
+              causa?: 'LIMITE' | 'CLIENTE_BLOQUEADO' }
+    // P0-3 (#357): bloque que pinta el panel de crédito del Hub. Ausente para CONSUMIDOR_FINAL, edición y cliente nuevo.
+  excepcionNoAplica?: { id: string; motivo: 'VENCIDA' | 'SALDO_EXCEDE_AUTORIZADO'; saldoAutorizado: number }
+    // la excepción enviada (`excepcionId`) ya no sirve: solo vale el día en que se autorizó (Bogotá) y hasta el saldo autorizado. Se acompaña del warning EXCEPCION_NO_APLICA.
   riskSignals: Array<{ tipo: string; severidad: 'BAJA' | 'MEDIA' | 'ALTA'; detalle: string }>
     // de calcularAlertasCliente. Vacío para CONSUMIDOR_FINAL (el detector lo excluye).
   requiresAuthorization: boolean             // SIEMPRE false hoy — se activa cuando exista política de umbral (PENDIENTE §8.2)
