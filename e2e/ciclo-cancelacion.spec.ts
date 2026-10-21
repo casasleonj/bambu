@@ -1,5 +1,6 @@
 // @tests api/factura, api/pedido
 import { test, expect, loginAs, apiPost, apiGet, createCliente, resetTestDatabase } from './fixtures'
+import { prisma } from '../src/lib/prisma'
 
 test.describe('Ciclo de Cancelación', () => {
   test.describe.configure({ mode: 'serial' })
@@ -19,7 +20,7 @@ test.describe('Ciclo de Cancelación', () => {
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 50000 }],
     })
@@ -39,18 +40,14 @@ test.describe('Ciclo de Cancelación', () => {
       devolverStock: false,
     })
 
-    if (anularRes.status() === 400) {
-      const errBody = await anularRes.json().catch(() => ({}))
-      if (errBody.error?.includes('ENTREGADOS') || errBody.error?.includes('ENTREGADO')) {
-        test.skip(true, 'Pedido not in ENTREGADO state via API (venta rapida flow differs)')
-        return
-      }
-    }
-
     expect(anularRes.status()).toBe(200)
     const anularBody = await anularRes.json()
-    expect(anularBody).toHaveProperty('notaCredito')
     expect(anularBody.pedido.estado).toBe('ANULADO')
+    // La API no devuelve la nota de crédito en el cuerpo (responde `{ pedido }`);
+    // el hecho observable es la fila NotaCredito, creada por el pago cobrado (#362).
+    const notaCredito = await prisma.notaCredito.findFirst({ where: { pedidoId } })
+    expect(notaCredito).not.toBeNull()
+    expect(Number(notaCredito?.monto)).toBeGreaterThan(0)
 
     if (facturaId) {
       const facturaCheck = await apiGet(page, `/api/facturas/${facturaId}`)
@@ -98,7 +95,7 @@ test.describe('Ciclo de Cancelación', () => {
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 50000 }],
     })
@@ -110,20 +107,20 @@ test.describe('Ciclo de Cancelación', () => {
       devolverStock: false,
     })
 
-    if (anular1.status() !== 200) {
-      test.skip()
-      return
-    }
+    expect(anular1.status()).toBe(200)
 
     const anular2 = await apiPost(page, `/api/pedidos/${pedidoId}/anular`, {
       motivo: 'Segunda anulación',
       devolverStock: false,
     })
 
-    expect(anular2.status()).toBe(400)
-    const errBody = await anular2.json()
-    const errorMsg = typeof errBody.error === 'string' ? errBody.error : (errBody.error?.message || errBody.message || '')
-    expect(errorMsg).toMatch(/YA_ANULADO|anulado/i)
+    // F-N21 (AnularPedidoUseCase): anular un pedido ya ANULADO es idempotente:
+    // 200 con `deduped: true`, no un 400 YA_ANULADO, y no genera otra nota de crédito.
+    expect(anular2.status()).toBe(200)
+    const anular2Body = await anular2.json()
+    expect(anular2Body.deduped).toBe(true)
+    expect(anular2Body.pedido.estado).toBe('ANULADO')
+    expect(await prisma.notaCredito.count({ where: { pedidoId } })).toBe(1)
   })
 
   // ─── 4. Pedido con hijos ────────────────────────────────────────────────────
@@ -136,7 +133,7 @@ test.describe('Ciclo de Cancelación', () => {
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 50000 }],
     })
