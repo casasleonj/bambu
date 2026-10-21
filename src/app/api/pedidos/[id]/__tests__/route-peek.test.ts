@@ -31,7 +31,7 @@ describe('GET /api/pedidos/[id] — peek (Fase 4b)', () => {
   it('entregaResumen (Fase 7-ii) es null salvo estadoEntrega ENTREGADO, y no hace queries nuevas', () => {
     expect(getBlock).toMatch(/estadoEntrega === 'ENTREGADO'/)
     // los campos vienen del selfRow existente, no de un findUnique nuevo
-    expect(getBlock).toMatch(/select:\s*\{\s*pedidoOrigenId:\s*true,\s*estadoEntrega:\s*true,\s*fechaEntrega:\s*true,\s*fotoEntrega:\s*true,\s*gpsLat:\s*true,\s*gpsLng:\s*true\s*\}/)
+    expect(getBlock).toMatch(/select:\s*\{\s*pedidoOrigenId:\s*true,\s*estadoEntrega:\s*true,\s*fechaEntrega:\s*true,\s*fotoEntrega:\s*true,\s*gpsLat:\s*true,\s*gpsLng:\s*true,\s*createdBy:/)
   })
 
   it('sigue exigiendo requireOwnership (no baja el guard)', () => {

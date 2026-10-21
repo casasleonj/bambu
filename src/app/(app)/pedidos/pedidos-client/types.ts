@@ -7,6 +7,14 @@ export interface PedidoItem {
   precioOrigen?: string
 }
 
+export interface PagoDetalle {
+  id: string
+  metodo: string
+  monto: number
+  fecha: string
+  confirmacion: string | null
+}
+
 export interface Pedido {
   id: string
   numero: number
@@ -72,6 +80,24 @@ export interface Pedido {
    *  (ej. límite de fiado excedido) — no se reintentará más. */
   _pendingFailed?: boolean
   _pendingFailReason?: string
+  // P1-1 PR B (#379) — extras que solo trae GET /api/pedidos/[id].
+  direccionEntrega?: string | null
+  fechaEntrega?: string | null
+  entregadoAt?: string | null
+  creadoPor?: string | null
+  pagosDetalle?: PagoDetalle[]
+  embarqueResumen?: {
+    id: string
+    numeroDia: number
+    estado: string
+    repartidor: string | null
+    horaSalida?: string | null
+  } | null
+  entregaResumen?: { fecha: string | null; gpsLat: number | null; gpsLng: number | null; fotoUrl: string | null } | null
+  pendienteN2?: { id: string; producto: string; remanente: number; estado: string } | null
+  pedidosVinculados?: Array<{ id: string; numero: number; rol: 'demanda' | 'origen'; total: number; estadoEntrega: string }>
+  casosAbiertos?: Array<{ id: string; alertaTipo: string; severidad: string; status: string }>
+  recurrencia?: { id: string; cadaNDias: number; canal: string; activo: boolean; proximaFecha: string | null } | null
   factura?: {
     id: string
     numero: string

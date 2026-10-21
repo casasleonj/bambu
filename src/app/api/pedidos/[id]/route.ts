@@ -66,8 +66,25 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // Fase 4b — datos de la capa 2 del peek (blueprint §9.2). Solo lectura.
     const selfRow = await prisma.pedido.findUnique({
       where: { id },
-      select: { pedidoOrigenId: true, estadoEntrega: true, fechaEntrega: true, fotoEntrega: true, gpsLat: true, gpsLng: true },
+      select: {
+        pedidoOrigenId: true, estadoEntrega: true, fechaEntrega: true, fotoEntrega: true, gpsLat: true, gpsLng: true,
+        createdBy: { select: { nombre: true } },
+      },
     })
+    // P1-1 PR B (#379): detalle de pagos (hora y estado de confirmación) para la
+    // pantalla de detalle. Solo lectura; el resumen `pagos` del DTO no cambia.
+    const pagosDetalleRows = await prisma.pago.findMany({
+      where: { pedidoId: id },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, metodo: true, monto: true, createdAt: true, confirmacion: true },
+    })
+    const pagosDetalle = pagosDetalleRows.map((p) => ({
+      id: p.id,
+      metodo: p.metodo,
+      monto: Number(p.monto),
+      fecha: p.createdAt.toISOString(),
+      confirmacion: p.confirmacion,
+    }))
     const pedidoOrigenId = selfRow?.pedidoOrigenId ?? null
     // Fase 8 F8-0 — "pedido habitual" del contexto (Q4: negocio si hay
     // negocioId, si no cliente). Solo lectura.
@@ -112,13 +129,19 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         }
       : null
 
-    let embarqueResumen: { id: string; numeroDia: number; estado: string; repartidor: string | null } | null = null
+    let embarqueResumen: { id: string; numeroDia: number; estado: string; repartidor: string | null; horaSalida: string | null } | null = null
     if (found.pedido.embarqueId) {
       const e = await prisma.embarque.findUnique({
         where: { id: found.pedido.embarqueId },
-        select: { id: true, numeroDia: true, estado: true, trabajador: { select: { nombre: true } } },
+        select: { id: true, numeroDia: true, estado: true, horaSalida: true, trabajador: { select: { nombre: true } } },
       })
-      if (e) embarqueResumen = { id: e.id, numeroDia: e.numeroDia, estado: e.estado, repartidor: e.trabajador?.nombre ?? null }
+      if (e) {
+        embarqueResumen = {
+          id: e.id, numeroDia: e.numeroDia, estado: e.estado,
+          repartidor: e.trabajador?.nombre ?? null,
+          horaSalida: e.horaSalida ? e.horaSalida.toISOString() : null,
+        }
+      }
     }
 
     const pedidosVinculados = vinculados
@@ -186,6 +209,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         })),
         entregaResumen,
         recurrencia,
+        // P1-1 PR B (#379)
+        pagosDetalle,
+        creadoPor: selfRow?.createdBy?.nombre ?? null,
       },
     })
   } catch (error) {

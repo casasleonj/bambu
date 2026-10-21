@@ -300,7 +300,9 @@ Aditivo a la respuesta existente (`{ pedido: { ...PedidoResumenDTO, enrichment }
     id: string; producto: string; remanente: number; estado: string
     actividades: Array<{ id, tipo, cantidad, cantidadCumplida, estado, modo, embarqueId }>
   } | null                                 // ObligacionPendiente (@unique pedidoId)
-  embarqueResumen: { id, numeroDia, estado, repartidor } | null
+  embarqueResumen: { id, numeroDia, estado, repartidor, horaSalida } | null
+  pagosDetalle: [{ id, metodo, monto, fecha, confirmacion }]   // P1-1 PR B (#379): hora y confirmación de cada pago
+  creadoPor: string | null                                      // P1-1 PR B (#379): nombre de quien registró el pedido
   pedidosVinculados: Array<{ id, numero, rol: 'demanda' | 'origen', total, estadoEntrega }>  // G11.B
   casosAbiertos: Array<{ id, alertaTipo, severidad, status }>   // Caso status ABIERTO|EN_PROCESO
 }
