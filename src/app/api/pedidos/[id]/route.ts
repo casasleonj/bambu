@@ -178,6 +178,16 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       : null
 
     const dto = PedidoDTOMapper.toResumen(found.pedido, { factura: found.factura })
+    // P1-1 PR B (#379): marca antifraude de precio manual (autorizado por un admin).
+    const autorizacionRows = await prisma.pedidoItem.findMany({
+      where: { pedidoId: id },
+      select: { producto: true, autorizadoPorAdmin: true },
+    })
+    const autorizadoPorProducto = new Map(autorizacionRows.map((r) => [r.producto, r.autorizadoPorAdmin]))
+    const itemsConAutorizacion = dto.items.map((i) => ({
+      ...i,
+      autorizadoPorAdmin: autorizadoPorProducto.get(i.producto) ?? false,
+    }))
     // Dirección de texto efectiva (regla única pickDireccionTexto): el
     // snapshot propio del pedido gana sobre negocio, que gana sobre cliente.
     const direccionEfectiva = pickDireccionTexto({
@@ -189,6 +199,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     return apiSuccess({
       pedido: {
         ...dto,
+        items: itemsConAutorizacion,
         nombreCli: dto.clienteId === 'CONSUMIDOR_FINAL' ? 'Consumidor Final' : (cliente?.nombre || 'Desconocido'),
         apellidoCli: cliente?.apellido || null,
         telefonoCli: cliente?.telefono || '',

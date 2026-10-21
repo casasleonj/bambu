@@ -81,4 +81,57 @@ test.describe('Pantalla de detalle del pedido (P1-1 PR B)', () => {
     await appMain(page).getByTestId('pedido-detalle').getByRole('button', { name: 'Cerrar' }).click()
     await expect(appMain(page).getByTestId('pedido-detalle')).toHaveCount(0)
   })
+
+  test('cada línea muestra el origen del precio guardado en la base de datos', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const ped = await crearPedido(page, `Detalle origen ${Date.now()}`, false)
+    const item = await prisma.pedidoItem.findFirstOrThrow({ where: { pedidoId: ped.id } })
+    const origen = page.getByTestId('detalle-origen-precio')
+
+    const abrir = async () => {
+      await page.goto(`${BASE}/pedidos?openPedido=${ped.id}`)
+      await expect(appMain(page).getByTestId('detalle-productos')).toBeVisible({ timeout: 20000 })
+    }
+    const fijar = (data: { precioOrigen: string; autorizadoPorAdmin?: boolean }) =>
+      prisma.pedidoItem.update({ where: { id: item.id }, data })
+
+    // base: sin insignia
+    await fijar({ precioOrigen: 'base' })
+    await abrir()
+    await expect(origen).toHaveCount(0)
+
+    await fijar({ precioOrigen: 'volumen' })
+    await abrir()
+    await expect(origen).toHaveText('volumen')
+
+    await fijar({ precioOrigen: 'cliente' })
+    await abrir()
+    await expect(origen).toHaveText('especial')
+
+    await fijar({ precioOrigen: 'manual', autorizadoPorAdmin: false })
+    await abrir()
+    await expect(origen).toHaveText('manual · sin autorizar')
+
+    await fijar({ precioOrigen: 'manual', autorizadoPorAdmin: true })
+    await abrir()
+    await expect(origen).toHaveText('manual · autorizado')
+  })
+
+  test('un precio manual creado por la API nace "manual · sin autorizar"', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const { cliente } = await createCliente(page, { nombre: `Detalle manual ${Date.now()}` })
+    const res = await apiPost(page, '/api/pedidos', {
+      clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO',
+      items: [{ producto: 'PACA_AGUA', cantidad: 1, precioManual: 3333 }],
+      offlineId: `detalle-manual-${Date.now()}`,
+    })
+    const body = await res.json()
+    const id = (body.data?.pedido ?? body.pedido).id as string
+    const item = await prisma.pedidoItem.findFirstOrThrow({ where: { pedidoId: id } })
+    expect(item.precioOrigen).toBe('manual')
+    await page.goto(`${BASE}/pedidos?openPedido=${id}`)
+    await expect(appMain(page).getByTestId('detalle-origen-precio')).toHaveText(
+      item.autorizadoPorAdmin ? 'manual · autorizado' : 'manual · sin autorizar',
+    )
+  })
 })

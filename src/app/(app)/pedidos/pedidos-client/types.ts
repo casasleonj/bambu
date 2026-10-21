@@ -5,6 +5,8 @@ export interface PedidoItem {
   precio: number
   subtotal: number
   precioOrigen?: string
+  /** Solo en el detalle (GET /api/pedidos/[id]): un admin autorizó el precio manual. */
+  autorizadoPorAdmin?: boolean
 }
 
 export interface PagoDetalle {

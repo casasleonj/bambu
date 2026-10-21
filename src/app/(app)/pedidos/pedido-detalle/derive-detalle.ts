@@ -120,3 +120,24 @@ export function porcentajePagado(total: number, pagado: number): number {
   if (!(total > 0)) return 0
   return Math.max(0, Math.min(100, Math.round((pagado / total) * 100)))
 }
+
+export interface OrigenPrecio {
+  label: string
+  tone: 'ok' | 'warn' | 'info'
+}
+
+/** Insignia del origen del precio guardado en la línea; `base` no lleva insignia. */
+export function origenPrecio(item: { precioOrigen?: string; autorizadoPorAdmin?: boolean }): OrigenPrecio | null {
+  switch (item.precioOrigen) {
+    case 'manual':
+      return item.autorizadoPorAdmin
+        ? { label: 'manual · autorizado', tone: 'ok' }
+        : { label: 'manual · sin autorizar', tone: 'warn' }
+    case 'volumen':
+      return { label: 'volumen', tone: 'info' }
+    case 'cliente':
+      return { label: 'especial', tone: 'info' }
+    default:
+      return null
+  }
+}

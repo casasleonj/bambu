@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { accionesDetalle, lineaDeTiempo, linksContacto, porcentajePagado, telefonoWhatsapp } from '../derive-detalle'
+import { accionesDetalle, lineaDeTiempo, linksContacto, origenPrecio, porcentajePagado, telefonoWhatsapp } from '../derive-detalle'
 import type { Pedido } from '../../pedidos-client/types'
 
 const base = (o: Partial<Pedido>) => ({ fecha: '2026-10-20T14:00:00.000Z', estadoEntrega: 'PENDIENTE', ...o }) as Pedido
@@ -83,5 +83,21 @@ describe('utilidades', () => {
     expect(porcentajePagado(0, 10)).toBe(0)
     expect(porcentajePagado(100, 50)).toBe(50)
     expect(porcentajePagado(100, 250)).toBe(100)
+  })
+})
+
+describe('origenPrecio', () => {
+  it('base y desconocido no llevan insignia', () => {
+    expect(origenPrecio({ precioOrigen: 'base' })).toBeNull()
+    expect(origenPrecio({})).toBeNull()
+  })
+  it('volumen y especial (cliente/negocio)', () => {
+    expect(origenPrecio({ precioOrigen: 'volumen' })).toEqual({ label: 'volumen', tone: 'info' })
+    expect(origenPrecio({ precioOrigen: 'cliente' })).toEqual({ label: 'especial', tone: 'info' })
+  })
+  it('manual distingue autorizado de sin autorizar', () => {
+    expect(origenPrecio({ precioOrigen: 'manual', autorizadoPorAdmin: true })?.tone).toBe('ok')
+    expect(origenPrecio({ precioOrigen: 'manual', autorizadoPorAdmin: false })).toEqual({ label: 'manual · sin autorizar', tone: 'warn' })
+    expect(origenPrecio({ precioOrigen: 'manual' })?.label).toBe('manual · sin autorizar')
   })
 })

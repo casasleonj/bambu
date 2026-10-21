@@ -10,6 +10,7 @@ import {
   accionesDetalle,
   lineaDeTiempo,
   linksContacto,
+  origenPrecio,
   porcentajePagado,
   type AccionDetalle,
   type AccionDetalleKey,
@@ -55,7 +56,7 @@ function Seccion({ titulo, children, testId }: { titulo: string; children: React
   )
 }
 
-function itemsDe(p: Pedido): Array<{ producto: string; cantPedido: number; precio: number; precioOrigen?: string }> {
+function itemsDe(p: Pedido): Array<{ producto: string; cantPedido: number; precio: number; precioOrigen?: string; autorizadoPorAdmin?: boolean }> {
   if (p.items && p.items.length > 0) return p.items
   const legacy: Array<[string, number, number]> = [
     ['PACA_AGUA', p.cPacaAguaPed, Number(p.precioPacaAgua)],
@@ -233,9 +234,12 @@ export function PedidoDetalle({
                       <div className="flex items-center gap-2 flex-wrap">
                         <Icon size={20} />
                         <span className="text-sm font-medium">{meta.label}</span>
-                        {item.precioOrigen === 'manual' && (
-                          <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">manual</span>
-                        )}
+                        {(() => {
+                          const origen = origenPrecio(item)
+                          if (!origen) return null
+                          const tono = origen.tone === 'ok' ? 'bg-green-100 text-green-700' : origen.tone === 'warn' ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'
+                          return <span data-testid="detalle-origen-precio" className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${tono}`}>{origen.label}</span>
+                        })()}
                         {showDiff && (
                           <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${diff > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                             {diff > 0 ? '↑' : '↓'} {Math.abs(diff).toFixed(0)}%
