@@ -22,6 +22,7 @@ export default async function AdminUsuariosPage() {
       apellido: true,
       rol: true,
       activo: true,
+      puedeAutorizarExcepcionCredito: true,
       createdAt: true,
       trabajador: { select: { nombre: true } },
     },

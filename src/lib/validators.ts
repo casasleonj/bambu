@@ -993,6 +993,7 @@ export const UserUpdateSchema = z.object({
   password: z.string().min(6, 'Contraseña debe tener al menos 6 caracteres').optional(),
   nombre: z.string().min(1, 'Nombre requerido').max(100).optional(),
   apellido: z.string().max(100).optional(),
+  puedeAutorizarExcepcionCredito: z.boolean().optional(),
 })
 
 // ====================

@@ -19,8 +19,8 @@ describe('LOCK_NAMESPACES (contrato §5/§6)', () => {
     expect(LOCK_NAMESPACES).toContain('PLAN')
   })
 
-  it('tiene exactamente 8 namespaces', () => {
-    expect(LOCK_NAMESPACES).toHaveLength(8)
+  it('tiene exactamente 9 namespaces', () => {
+    expect(LOCK_NAMESPACES).toHaveLength(9)
   })
 })
 

@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { EmptyState } from '@/components/empty-state'
 import type { AdminUser } from './types'
+import { rolPuedeAutorizar } from '@/lib/autorizador-credito'
 import { AdminUserCard } from './admin-user-card'
 import { AdminUserFormModal } from './admin-user-form-modal'
 import { PasswordResultModal } from './password-result-modal'
@@ -169,6 +170,13 @@ export default function AdminUsuariosClient({ users: initialUsers }: { users: Ad
         onClose={() => { setShowModal(false); setEditingUser(null) }}
         onSaved={fetchUsers}
         user={editingUser}
+        otrosAutorizadores={users.filter(
+          (u) =>
+            u.id !== editingUser?.id &&
+            u.activo &&
+            u.puedeAutorizarExcepcionCredito &&
+            rolPuedeAutorizar(u.rol),
+        ).length}
       />
       <PasswordResultModal
         open={resetResult.open}

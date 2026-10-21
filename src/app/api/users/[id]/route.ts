@@ -6,6 +6,27 @@ import { UserUpdateSchema } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
+import { acquireAdvisoryLockTx } from '@/lib/locks'
+import {
+  resolverCambioAutorizador,
+  MENSAJES_AUTORIZADOR,
+  type ErrorAutorizador,
+} from '@/lib/autorizador-credito'
+
+/** otras personas activas, con rol válido y con el permiso (para no dejar el sistema sin autorizador). */
+async function contarOtrosAutorizadores(
+  tx: Pick<typeof prisma, 'user'>,
+  excluirId: string,
+): Promise<number> {
+  return tx.user.count({
+    where: {
+      id: { not: excluirId },
+      activo: true,
+      puedeAutorizarExcepcionCredito: true,
+      rol: { in: ['ADMIN', 'ASISTENTE'] },
+    },
+  })
+}
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -24,6 +45,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         apellido: true,
         rol: true,
         activo: true,
+        puedeAutorizarExcepcionCredito: true,
         createdAt: true,
         trabajador: { select: { id: true, nombre: true } },
       },
@@ -51,7 +73,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return apiError('Datos invalidos', 400, { formErrors: [parsed.error.issues.map(e => e.message).join(', ')] })
     }
 
-    const { username, rol, activo, password, nombre, apellido } = parsed.data
+    const { username, rol, activo, password, nombre, apellido, puedeAutorizarExcepcionCredito } = parsed.data
 
     // FIX F-27a/F-27b: read+check+update DENTRO de tx con optimistic lock.
     // Antes: findUnique (línea 58) + update directo. Dos races:
@@ -83,17 +105,37 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (password) data.password = await bcrypt.hash(password, 12)
       if (nombre !== undefined) data.nombre = nombre
       if (apellido !== undefined) data.apellido = apellido
+      if (puedeAutorizarExcepcionCredito !== undefined) {
+        data.puedeAutorizarExcepcionCredito = puedeAutorizarExcepcionCredito
+      }
 
       if (Object.keys(data).length === 0) {
         throw new Error('USER_NO_DATA')
       }
 
-      // Read updatedAt para optimistic lock
+      // Read updatedAt para optimistic lock (+ estado actual para las reglas del autorizador)
       const existingTarget = await tx.user.findUnique({
         where: { id },
-        select: { updatedAt: true },
+        select: { updatedAt: true, rol: true, activo: true, puedeAutorizarExcepcionCredito: true },
       })
       if (!existingTarget) throw new Error('USER_NOT_FOUND')
+
+      // P0-3: reglas del permiso de autorizar excepciones de crédito. El lock
+      // serializa dos cambios simultáneos que podrían dejar el sistema sin autorizador.
+      if (rol !== undefined || activo !== undefined || puedeAutorizarExcepcionCredito !== undefined) {
+        await acquireAdvisoryLockTx(tx, 'AUTORIZADOR_CREDITO', 'global')
+        const otros = await contarOtrosAutorizadores(tx, id)
+        const resultado = resolverCambioAutorizador(
+          existingTarget,
+          { rol, activo, puedeAutorizarExcepcionCredito },
+          otros,
+        )
+        if (resultado.error) throw new Error(`AUTORIZADOR_${resultado.error}`)
+        // cambiar a un rol sin derecho quita el permiso
+        if (resultado.siguiente.puedeAutorizarExcepcionCredito !== existingTarget.puedeAutorizarExcepcionCredito) {
+          data.puedeAutorizarExcepcionCredito = resultado.siguiente.puedeAutorizarExcepcionCredito
+        }
+      }
 
       // Update con condición sobre updatedAt
       const updateResult = await tx.user.updateMany({
@@ -107,7 +149,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       // Re-leer para devolver el estado final
       return tx.user.findUnique({
         where: { id },
-        select: { id: true, username: true, nombre: true, apellido: true, rol: true, activo: true },
+        select: { id: true, username: true, nombre: true, apellido: true, rol: true, activo: true, puedeAutorizarExcepcionCredito: true },
       })
     })
 
@@ -117,7 +159,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       entidad: 'User',
       registroId: user.id,
       accion: 'UPDATE',
-      datos: { cambios: 'user update', resetPassword: !!password },
+      datos: {
+        cambios: 'user update',
+        resetPassword: !!password,
+        puedeAutorizarExcepcionCredito: user.puedeAutorizarExcepcionCredito,
+      },
       usuarioId: adminId,
     }).catch(() => {})
 
@@ -133,6 +179,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
       if (error.message === 'USER_NO_DATA') {
         return apiError('No hay datos para actualizar', 400)
+      }
+      for (const codigo of ['ROL_NO_PUEDE_AUTORIZAR', 'ULTIMO_AUTORIZADOR'] as ErrorAutorizador[]) {
+        if (error.message === `AUTORIZADOR_${codigo}`) return apiError(MENSAJES_AUTORIZADOR[codigo], 409)
       }
       if (error.message === 'USER_MODIFICADO_POR_OTRO_USUARIO') {
         return apiError('El usuario fue modificado por otro admin. Recarga y vuelve a intentar.', 409)
@@ -165,9 +214,13 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     if (!user) return apiError('Usuario no encontrado', 404)
     if (!user.activo) return apiError('El usuario ya esta desactivado', 409)
 
-    await prisma.user.update({
-      where: { id },
-      data: { activo: false },
+    // P0-3: no dejar el sistema sin ninguna persona que autorice excepciones de crédito.
+    await prisma.$transaction(async (tx) => {
+      await acquireAdvisoryLockTx(tx, 'AUTORIZADOR_CREDITO', 'global')
+      const otros = await contarOtrosAutorizadores(tx, id)
+      const resultado = resolverCambioAutorizador(user, { activo: false }, otros)
+      if (resultado.error) throw new Error(`AUTORIZADOR_${resultado.error}`)
+      await tx.user.update({ where: { id }, data: { activo: false } })
     })
 
     logAudit({
@@ -179,7 +232,10 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     }).catch(() => {})
 
     return apiSuccess({})
-  } catch (_error) {
+  } catch (error) {
+    if (error instanceof Error && error.message === 'AUTORIZADOR_ULTIMO_AUTORIZADOR') {
+      return apiError(MENSAJES_AUTORIZADOR.ULTIMO_AUTORIZADOR, 409)
+    }
     return apiError('Error desactivando usuario')
   }
 }
