@@ -5,7 +5,7 @@ import { generateUUID } from '@/lib/uuid'
 import { toast } from 'sonner'
 import { DEFAULT_PRICES, PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
 import { METODOS_PAGO, METODO_PAGO_ICONS } from '@/lib/metodos-pago'
-import { matchCliente } from '@/lib/cliente-search'
+import { useClienteSearch } from '@/hooks/use-cliente-search'
 import { resolveActualizarCliente } from './resolve-actualizar-cliente'
 import { PedidoPricingSummary } from './pedido-pricing-summary'
 import { PedidoContextPanel } from './pedido-context-panel'
@@ -609,9 +609,12 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
   const eliminarPago = (idx: number) => { setPagos(prev => prev.filter((_, i) => i !== idx)) }
   const pagarCompleto = () => { if (total > 0) setPagos([{ metodo: 'EFECTIVO', monto: total }]) }
 
-  const filteredClientes = searchTerm
-    ? clientes.filter((c) => matchCliente(c, searchTerm))
-    : []
+  const {
+    resultados: filteredClientes,
+    buscando: buscandoCliente,
+    error: errorBusquedaCliente,
+    reintentar: reintentarBusquedaCliente,
+  } = useClienteSearch(searchTerm, clientes)
 
   const handleSelectCliente = (cliente: Cliente) => {
     setClienteSeleccionado(cliente)
@@ -895,6 +898,9 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
           onSearchTermChange={setSearchTerm}
           clientesCargando={clientes.length === 0}
           filteredClientes={filteredClientes}
+          buscandoCliente={buscandoCliente}
+          errorBusquedaCliente={errorBusquedaCliente}
+          onReintentarBusqueda={reintentarBusquedaCliente}
           onSelectCliente={handleSelectCliente}
           onCrearNuevo={handleCrearNuevo}
           mostrarNuevo={mostrarNuevo}

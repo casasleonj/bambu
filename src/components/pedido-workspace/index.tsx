@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useReducer, useState } from 'react'
 import { generateUUID } from '@/lib/uuid'
 import { PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
-import { matchCliente } from '@/lib/cliente-search'
+import { useClienteSearch } from '@/hooks/use-cliente-search'
 import { PedidoPricingSummary } from '@/components/pedido-form-unified/pedido-pricing-summary'
 import { PedidoRiskSignals } from './pedido-risk-signals'
 import { PedidoCreditoPanel } from './pedido-credito-panel'
@@ -174,6 +174,9 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
   )
 
   const [searchTerm, setSearchTerm] = useState('')
+  // Clientes elegidos de la búsqueda al servidor (#376) que pueden no estar en la
+  // lista precargada `clientes`; `clienteSeleccionado` los necesita para resolverse.
+  const [clientesEncontrados, setClientesEncontrados] = useState<Cliente[]>([])
   const [mostrarNuevo, setMostrarNuevo] = useState(false)
   const [nuevoCliente, setNuevoCliente] = useState<NuevoClienteForm>(EMPTY_NUEVO_CLIENTE)
   const [sugerenciaAplicada, setSugerenciaAplicada] = useState(false)
@@ -198,7 +201,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
   const clienteSeleccionado: Cliente | null = useMemo(() => {
     const id = state.draft.clienteId
     if (!id || id === 'CONSUMIDOR_FINAL') return null
-    const enLista = clientes.find((c) => c.id === id)
+    const enLista = clientes.find((c) => c.id === id) ?? clientesEncontrados.find((c) => c.id === id)
     if (enLista) return enLista
     // modo edición: si el cliente no está en la lista, sintetizarlo del pedido.
     if (pedidoInicial && pedidoInicial.clienteId === id) {
@@ -211,12 +214,14 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
       }
     }
     return null
-  }, [state.draft.clienteId, clientes, pedidoInicial])
+  }, [state.draft.clienteId, clientes, clientesEncontrados, pedidoInicial])
 
-  const filteredClientes = useMemo(
-    () => (searchTerm ? clientes.filter((c) => matchCliente(c, searchTerm)) : []),
-    [searchTerm, clientes],
-  )
+  const {
+    resultados: filteredClientes,
+    buscando: buscandoCliente,
+    error: errorBusquedaCliente,
+    reintentar: reintentarBusquedaCliente,
+  } = useClienteSearch(searchTerm, clientes)
 
   const calc = state.preview?.calculation
 
@@ -265,6 +270,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
   )
 
   const handleSelectCliente = (c: Cliente) => {
+    setClientesEncontrados((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c]))
     dispatch({ type: 'SET_CLIENTE', clienteId: c.id })
     dispatch({ type: 'SET_DIRECCION', direccion: c.direccion ?? '', barrio: c.barrio ?? '' })
     setSearchTerm('')
@@ -445,6 +451,9 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
             onSearchTermChange={setSearchTerm}
             clientesCargando={false}
             filteredClientes={filteredClientes}
+            buscandoCliente={buscandoCliente}
+            errorBusquedaCliente={errorBusquedaCliente}
+            onReintentarBusqueda={reintentarBusquedaCliente}
             onSelectCliente={handleSelectCliente}
             onCrearNuevo={() => setMostrarNuevo(true)}
             mostrarNuevo={mostrarNuevo}

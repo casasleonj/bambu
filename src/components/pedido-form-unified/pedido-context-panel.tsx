@@ -51,6 +51,11 @@ export interface PedidoContextPanelProps {
   onSearchTermChange: (value: string) => void
   clientesCargando: boolean
   filteredClientes: Cliente[]
+  /** Búsqueda al servidor en curso (#376). */
+  buscandoCliente?: boolean
+  /** La búsqueda al servidor falló por red/timeout (#376). */
+  errorBusquedaCliente?: boolean
+  onReintentarBusqueda?: () => void
   onSelectCliente: (cliente: Cliente) => void
   onCrearNuevo: () => void
 
@@ -118,6 +123,9 @@ export function PedidoContextPanel({
   onSearchTermChange,
   clientesCargando,
   filteredClientes,
+  buscandoCliente = false,
+  errorBusquedaCliente = false,
+  onReintentarBusqueda,
   onSelectCliente,
   onCrearNuevo,
   mostrarNuevo,
@@ -297,6 +305,19 @@ export function PedidoContextPanel({
             // usuario busca a OTRO cliente antes de que termine, se
             // avisa en vez de mostrar una lista vacía sin explicación.
             <p className="text-xs text-gray-400">Cargando lista completa de clientes…</p>
+          )}
+          {searchTerm && buscandoCliente && filteredClientes.length === 0 && (
+            <p className="text-xs text-gray-400" data-testid="cliente-search-buscando">Buscando…</p>
+          )}
+          {searchTerm && errorBusquedaCliente && filteredClientes.length === 0 && (
+            <p className="text-xs text-red-600" data-testid="cliente-search-error">
+              No se pudo buscar el cliente (sin conexión o muy lenta).{' '}
+              {onReintentarBusqueda && (
+                <button type="button" data-testid="cliente-search-retry" onClick={onReintentarBusqueda} className="underline font-medium">
+                  Reintentar
+                </button>
+              )}
+            </p>
           )}
           {searchTerm && filteredClientes.length > 0 && (
             <div className="border rounded-lg max-h-40 overflow-y-auto">
