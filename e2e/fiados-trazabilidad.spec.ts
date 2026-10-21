@@ -29,7 +29,10 @@ test.describe('Trazabilidad de pagos de fiados', () => {
         clienteId: cliente.id,
         canal: 'DOMICILIO',
         estadoEntrega: 'ENTREGADO',
-        estadoPago: 'PARCIAL',
+        // Un fiado entregado y sin ningún pago es PENDIENTE: el CHECK
+        // chk_pedido_estadopago_proyectado deriva el estado de pago de
+        // totalPagado/total/estadoEntrega y rechaza cualquier otro valor (#361).
+        estadoPago: 'PENDIENTE',
         total: 21000,
         totalPagado: 0,
         saldo: 21000,
