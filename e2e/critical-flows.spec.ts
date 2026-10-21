@@ -1,6 +1,6 @@
 // @tests api/cliente, api/pedido
 import { test, expect, type Page } from '@playwright/test'
-import { handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile, loginAs } from './fixtures'
+import { handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile, loginAs, createCliente } from './fixtures'
 
 const BASE_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
@@ -8,8 +8,11 @@ async function login(page: Page) {
   await loginAs(page, 'admin')
 }
 
-// El buscador exige MIN_SEARCH_CHARS (2) caracteres (src/lib/cliente-search.ts):
-// con 1 letra no devuelve nada, por eso el término es 'ca' y no 'a'.
+// El test crea su propio cliente y lo busca por su nombre único: tras
+// resetTestDatabase() de los specs anteriores la base no tiene clientes
+// sembrados, así que depender de uno preexistente falla según el orden de
+// ejecución. Además el buscador exige MIN_SEARCH_CHARS (2) caracteres
+// (src/lib/cliente-search.ts): con 1 letra no devuelve nada.
 //
 // pedidos-client fetches the full clientes list in the background with an
 // 8s AbortSignal timeout (src/app/(app)/pedidos/pedidos-client/index.tsx).
@@ -18,12 +21,12 @@ async function login(page: Page) {
 // the only way to give it a fresh 8s budget is to reload and reopen the
 // modal. DOMICILIO pedidos require a client (handleSubmit validation), so
 // unlike abonos.spec.ts this can't just be skipped when empty.
-async function searchAndSelectCliente(page: Page) {
+async function searchAndSelectCliente(page: Page, nombre: string) {
   const modal = page.locator('form').filter({ hasText: 'Cliente' })
   const clientBtn = page.getByTestId('cliente-search-result').first()
   const maxAttempts = 3
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('ca')
+    await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill(nombre)
     if (await clientBtn.isVisible({ timeout: 15000 }).catch(() => false)) {
       await clientBtn.click()
       return modal
@@ -93,6 +96,8 @@ test.describe('Flujos críticos de negocio', () => {
   test('Crear un pedido con pago via items array', async ({ page }) => {
     await login(page)
     await handleBaseCaja(page)
+    const nombreCliente = `CritFlow ${Date.now() % 1000000}`
+    await createCliente(page, { nombre: nombreCliente })
 
     await page.goto(`${BASE_URL}/pedidos`)
     await page.waitForLoadState('networkidle')
@@ -112,7 +117,7 @@ test.describe('Flujos críticos de negocio', () => {
     await page.waitForTimeout(800)
 
     // Search and select first client
-    const modal = await searchAndSelectCliente(page)
+    const modal = await searchAndSelectCliente(page, nombreCliente)
 
     // Add product
     const aguaInput = modal.locator('input[type="number"]').first()
@@ -177,6 +182,8 @@ test.describe('Flujos críticos de negocio', () => {
   test('Pedido agendado sin pago es permitido via items array', async ({ page }) => {
     await login(page)
     await handleBaseCaja(page)
+    const nombreCliente = `CritAgenda ${Date.now() % 1000000}`
+    await createCliente(page, { nombre: nombreCliente })
 
     await page.goto(`${BASE_URL}/pedidos`)
     await page.waitForLoadState('networkidle')
@@ -195,7 +202,7 @@ test.describe('Flujos críticos de negocio', () => {
     await page.waitForTimeout(800)
 
     // Select client
-    const modal = await searchAndSelectCliente(page)
+    const modal = await searchAndSelectCliente(page, nombreCliente)
 
     // Add product
     await modal.locator('input[type="number"]').first().fill('1')
