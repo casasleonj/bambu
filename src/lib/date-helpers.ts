@@ -22,10 +22,15 @@ export function endOfDayInBogota(fechaStr: string): Date {
  * Obtiene el string YYYY-MM-DD de hoy en Bogotá.
  */
 export function todayInBogota(): string {
-  const now = new Date()
+  return dayInBogota(new Date())
+}
+
+/**
+ * Día calendario (YYYY-MM-DD) que le corresponde a un instante en Bogotá (UTC-5, sin DST).
+ */
+export function dayInBogota(instante: Date): string {
   const bogotaOffset = -5 * 60 * 60 * 1000
-  const bogotaTime = new Date(now.getTime() + bogotaOffset)
-  return bogotaTime.toISOString().split('T')[0]
+  return new Date(instante.getTime() + bogotaOffset).toISOString().split('T')[0]
 }
 
 /**

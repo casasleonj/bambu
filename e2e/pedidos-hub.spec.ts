@@ -17,7 +17,7 @@
 // interacción (workspace, peek, command-menu, toasts) NO necesitan scope: para
 // entonces la hidratación ya terminó.
 
-import { test, expect, apiPost, apiGet, createCliente, BASE, sharedLoginAs, appMain } from './fixtures'
+import { test, expect, apiPost, apiGet, apiPut, apiPatch, createCliente, BASE, sharedLoginAs, appMain } from './fixtures'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
@@ -367,6 +367,60 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     expect(enBD.estadoPago).toBe('PAGADO')
     expect(enBD.pagos.map((p) => p.metodo).sort()).toEqual(['EFECTIVO', 'NEQUI'])
     expect(enBD.pagos.reduce((s, p) => s + Number(p.monto), 0)).toBe(Number(enBD.total))
+  })
+
+  test('workspace (P0-3): cliente sobre el límite pide excepción, se autoriza y el pedido la consume', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    const nombre = `Credito Hub ${Date.now()}`
+    const { cliente } = await createCliente(page, { nombre })
+    await apiPut(page, `/api/clientes/${cliente.id}`, { limitePedidosFiados: 1 })
+    // un fiado abierto: el cliente queda al límite
+    const fiado = await apiPost(page, '/api/pedidos', {
+      clienteId: cliente.id, canal: 'DOMICILIO', ventaRapida: true,
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }], pagos: [],
+    })
+    expect(fiado.status()).toBe(201)
+    const fiadoBody = await fiado.json()
+    const fiadoId = (fiadoBody.data?.pedido ?? fiadoBody.pedido).id as string
+    // solo cuentan para el límite los pedidos ENTREGADOS con saldo
+    await prisma.pedido.update({ where: { id: fiadoId }, data: { estadoEntrega: 'ENTREGADO' } })
+    // el admin de prueba puede autorizar (permiso por usuario)
+    await prisma.user.updateMany({ where: { username: 'admin' }, data: { puedeAutorizarExcepcionCredito: true } })
+
+    await page.goto(`${BASE}/pedidos`)
+    await app.getByTestId('fab-main').click()
+    await page.getByTestId('fab-pedido-envio').click()
+    await page.getByTestId('cliente-search-input').fill(nombre)
+    await page.getByTestId('cliente-search-result').first().click()
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+
+    await expect(page.getByTestId('credito-panel')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('credito-tabla')).toBeVisible()
+    await expect(page.getByTestId('workspace-commit')).toBeDisabled()
+
+    await page.getByTestId('credito-pedir-excepcion').click()
+    await page.getByTestId('credito-motivo').fill('Cliente de confianza, paga el viernes')
+    await page.getByTestId('credito-enviar').click()
+    await expect(page.getByTestId('credito-estado-pendiente')).toBeVisible({ timeout: 10000 })
+
+    const sol = await prisma.pedidoExcepcionCredito.findFirstOrThrow({ where: { clienteId: cliente.id } })
+    expect(sol.estado).toBe('PENDIENTE')
+    const res = await apiPatch(page, `/api/pedidos/excepciones-credito/${sol.id}`, { resolucion: 'AUTORIZAR' })
+    expect(res.status()).toBeLessThan(300)
+
+    // la pantalla detecta la autorización sola (polling de 10 s)
+    await expect(page.getByTestId('credito-estado-autorizada')).toBeVisible({ timeout: 25000 })
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+
+    const creado = page.waitForResponse((r) => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST')
+    await page.getByTestId('workspace-commit').click()
+    const body = await (await creado).json()
+    const pedidoId = (body.data?.pedido ?? body.pedido).id as string
+
+    const enBD = await prisma.pedidoExcepcionCredito.findUniqueOrThrow({ where: { id: sol.id } })
+    expect(enBD.pedidoId).toBe(pedidoId)
+    expect(await prisma.pedido.count({ where: { clienteId: cliente.id } })).toBe(2)
   })
 
   test('workspace (F10-2 / C4): editar un PEDIDO — "Guardar cambios" hace PUT y persiste la cantidad', async ({ browser }) => {

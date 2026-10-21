@@ -36,6 +36,7 @@ function toRequestBody(draft: DraftPedido, pedidoId?: string) {
     entregaLat: draft.canal === 'DOMICILIO' ? (draft.entregaLat ?? undefined) : undefined,
     entregaLng: draft.canal === 'DOMICILIO' ? (draft.entregaLng ?? undefined) : undefined,
     pedidoOrigenId: draft.pedidoOrigenId,
+    excepcionId: draft.excepcionId,
     pedidoId,
   }
 }

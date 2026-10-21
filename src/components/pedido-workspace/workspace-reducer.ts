@@ -76,6 +76,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       const draft = {
         ...state.draft,
         clienteNuevo: undefined,
+        excepcionId: undefined, // la excepción es de UN cliente
         clienteId: action.clienteId,
         negocioId: action.negocioId ?? null,
         // CONSUMIDOR_FINAL ⇒ origen VENTA_RAPIDA (ventaRapida→origen, PO 2026-09-06)
@@ -84,13 +85,15 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return afterDraftChange(state, draft)
     }
     case 'CLEAR_CLIENTE':
-      return afterDraftChange(state, { ...state.draft, clienteId: null, clienteNuevo: undefined, negocioId: null })
+      return afterDraftChange(state, { ...state.draft, clienteId: null, clienteNuevo: undefined, excepcionId: undefined, negocioId: null })
+    case 'SET_EXCEPCION':
+      return afterDraftChange(state, { ...state.draft, excepcionId: action.excepcionId })
     case 'SET_CLIENTE_NUEVO': {
       // un cliente nuevo es siempre un cliente real: origen PEDIDO (D-OC4) y
       // sin cliente existente seleccionado ni negocio.
       if (action.clienteNuevo) {
         return afterDraftChange(state, {
-          ...state.draft, clienteId: null, negocioId: null, origen: 'PEDIDO', clienteNuevo: action.clienteNuevo,
+          ...state.draft, clienteId: null, negocioId: null, origen: 'PEDIDO', clienteNuevo: action.clienteNuevo, excepcionId: undefined,
         })
       }
       return afterDraftChange(state, { ...state.draft, clienteNuevo: undefined })
