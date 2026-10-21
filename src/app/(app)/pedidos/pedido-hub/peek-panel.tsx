@@ -161,6 +161,13 @@ export function PeekPanel({
         {/* Capa 3 / detalle completo */}
         <Link
           href={`/pedidos/${pedido.id}`}
+          // Clic normal: abre el detalle encima de la lista sin recargar.
+          // Con modificadores / botón del medio queda el href (otra pestaña).
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+            e.preventDefault()
+            onAccion(pedido, 'ver-detalle')
+          }}
           className="block text-center text-xs text-blue-600 hover:underline"
           data-testid="peek-ver-detalle-completo"
         >

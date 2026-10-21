@@ -252,6 +252,42 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await expect(page).toHaveURL(/\/rutas/)
   })
 
+  test('P1-1: "Abrir detalle completo" del peek abre el detalle sin recargar ni ir a un 404', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    const nombreCli = `Peek detalle ${Date.now()}`
+    const { cliente } = await createCliente(page, { nombre: nombreCli })
+    await apiPost(page, '/api/pedidos', {
+      clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO',
+      items: [{ producto: 'PACA_AGUA', cantidad: 3 }], offlineId: `hub-detalle-${Date.now()}`,
+    })
+    await page.goto(`${BASE}/pedidos?all=true`)
+    await app.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCli }).first().click()
+    await expect(page.getByTestId('peek-ver-detalle-completo')).toBeVisible()
+    const urlAntes = page.url()
+    await page.getByTestId('peek-ver-detalle-completo').click()
+    await expect(app.getByText('Total Pedido', { exact: true })).toBeVisible({ timeout: 10000 })
+    expect(page.url()).toBe(urlAntes) // no navegó
+  })
+
+  test('P1-1: el menú de comandos abre el detalle del pedido seleccionado', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    const nombreCli = `Menu detalle ${Date.now()}`
+    const { cliente } = await createCliente(page, { nombre: nombreCli })
+    await apiPost(page, '/api/pedidos', {
+      clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO',
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }], offlineId: `hub-menu-${Date.now()}`,
+    })
+    await page.goto(`${BASE}/pedidos?all=true`)
+    await app.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCli }).first().click()
+    await expect(page.getByTestId('peek-ver-detalle-completo')).toBeVisible()
+    await page.keyboard.press('Control+k')
+    await expect(page.getByTestId('command-menu')).toBeVisible()
+    await page.getByTestId('command-ver-detalle').click()
+    await expect(app.getByText('Total Pedido', { exact: true })).toBeVisible({ timeout: 10000 })
+  })
+
   test('workspace (Composición C1): crear un pedido — el total viene del preview, el commit crea', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
     const app = appMain(page)

@@ -357,7 +357,7 @@ La clienta tiene un pedido de julio con `totalPagado > 0` y **sin fila `Pago`**,
 | P0-2 | Hub: zona Dinero (`workspace-dinero.tsx`) | ✅ #287 |
 | P0-3 | Hub: excepción de crédito (`excepcionId`) — B-04 | 🟡 PR 1/3 (solicitante) ✅ #358 en `main`; PR 2/3 (quien autoriza: aviso + ventana de decisión + listado de pendientes) ✅ #365 en `main`; PR 3/3 (permiso por usuario en Administración > Usuarios, solo ADMIN) en curso. Detalle PR 1: panel de crédito, pedir excepción, detectar autorización y crear con `excepcionId`. Faltan PR 2 (quien autoriza) y PR 3 (permiso por usuario). Regla: vale hasta el saldo autorizado y vence al cierre del día (Bogotá). Issue #357 |
 | P0-4 | Conciliación de las 57 ventas | depende del negocio (§10) |
-| P1-1 | `/pedidos/[id]` y `?openPedido=` por id — B-07, B-08 | ❌ abierto. `peek-panel.tsx:163` y `command-menu.tsx:90` enlazan a `/pedidos/${id}`; no existe `src/app/(app)/pedidos/[id]/` |
+| P1-1 | `/pedidos/[id]` y `?openPedido=` por id — B-07, B-08 | 🟡 PR A (#377) en curso: ruta `/pedidos/[id]` (redirige y abre el detalle), `?openPedido=` por id, peek y menú de comandos abren el detalle sin recargar. PR B: nueva pantalla de detalle (maqueta aprobada 2026-10-21) |
 | P1-2 | Venta rápida + `DOMICILIO` — B-10 | ❌ abierto (`{!esVentaRapida && <WorkspaceEntrega>}`) |
 | P1-3 | Comprador identificable en venta rápida — B-05 (D1: se mantiene D-OC4) | ❌ abierto |
 | P2-1…P2-5 | Búsqueda con entidad, entregar después, embarque en lista, CONTADOR, E2E precio especial | ❌ abiertos |
