@@ -35,7 +35,14 @@ export async function GET(
   })
   if (!excepcion) return apiError('Excepción de crédito no encontrada', 404)
 
+  // P0-3 PR 2: la UI muestra u oculta Autorizar/Rechazar según el permiso
+  // por usuario; el PATCH igual lo vuelve a exigir (esto no es la autoridad).
+  const actor = auth.user?.id
+    ? await prisma.user.findUnique({ where: { id: auth.user.id }, select: { puedeAutorizarExcepcionCredito: true } })
+    : null
+
   return apiSuccess({
+    puedeResolver: actor?.puedeAutorizarExcepcionCredito === true,
     excepcion: {
       ...excepcion,
       saldoFiadoSnapshot: Number(excepcion.saldoFiadoSnapshot),

@@ -423,6 +423,77 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     expect(await prisma.pedido.count({ where: { clienteId: cliente.id } })).toBe(2)
   })
 
+  // P0-3 PR 2: quien autoriza. La solicitud se siembra directo en BD (el flujo del
+  // solicitante ya lo cubre el test anterior) y se verifica la decisión en BD.
+  async function sembrarSolicitud(nombre: string) {
+    const admin = await prisma.user.findFirstOrThrow({ where: { username: 'admin' } })
+    await prisma.user.update({ where: { id: admin.id }, data: { puedeAutorizarExcepcionCredito: true } })
+    const cliente = await prisma.cliente.create({ data: { nombre, telefono: `57${Date.now()}`.slice(0, 12) } })
+    const sol = await prisma.pedidoExcepcionCredito.create({
+      data: {
+        clienteId: cliente.id, motivoSolicitud: 'Cliente de confianza, paga el viernes', solicitadoPorId: admin.id,
+        limiteSnapshot: 1, fiadosAbiertosSnapshot: 1, saldoFiadoSnapshot: 18000,
+        operacionSaldoSnapshot: 12000, fiadosDespuesSnapshot: 2, saldoDespuesSnapshot: 30000,
+      },
+    })
+    return { sol, admin }
+  }
+
+  test('workspace (P0-3 PR2): quien autoriza ve el aviso, abre la ventana y autoriza', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    const nombre = `Autoriza Hub ${Date.now()}`
+    const { sol, admin } = await sembrarSolicitud(nombre)
+
+    await page.goto(`${BASE}/pedidos`)
+    await expect(app.getByTestId('excepciones-pendientes')).toBeVisible({ timeout: 15000 })
+    await app.getByTestId(`excepcion-fila-${sol.id}`).click()
+    await expect(app.getByTestId('excepcion-modal')).toBeVisible()
+    await expect(app.getByTestId('excepcion-datos')).toContainText('18.000')
+    await expect(app.getByTestId('excepcion-motivo')).toContainText('paga el viernes')
+    await app.getByTestId('excepcion-nota').fill('solo hoy')
+    await app.getByTestId('excepcion-autorizar').click()
+    await expect(app.getByTestId('excepcion-estado')).toHaveText('Autorizada', { timeout: 10000 })
+
+    const enBD = await prisma.pedidoExcepcionCredito.findUniqueOrThrow({ where: { id: sol.id } })
+    expect(enBD.estado).toBe('AUTORIZADA')
+    expect(enBD.autorizadoPorId).toBe(admin.id)
+    expect(enBD.notaAutorizacion).toBe('solo hoy')
+    // el aviso ya no la lista
+    await app.getByTestId('excepcion-cerrar').click()
+    await expect(app.getByTestId(`excepcion-fila-${sol.id}`)).toHaveCount(0, { timeout: 10000 })
+  })
+
+  test('workspace (P0-3 PR2): el enlace de la notificación abre la ventana y permite rechazar', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    const { sol } = await sembrarSolicitud(`Rechaza Hub ${Date.now()}`)
+    await page.goto(`${BASE}/pedidos?openExcepcionCredito=${sol.id}`)
+    await expect(app.getByTestId('excepcion-modal')).toBeVisible({ timeout: 15000 })
+    await app.getByTestId('excepcion-rechazar').click()
+    await expect(app.getByTestId('excepcion-estado')).toHaveText('Rechazada', { timeout: 10000 })
+    const enBD = await prisma.pedidoExcepcionCredito.findUniqueOrThrow({ where: { id: sol.id } })
+    expect(enBD.estado).toBe('RECHAZADA')
+    expect(enBD.rechazadoPorId).toBeTruthy()
+  })
+
+  test('workspace (P0-3 PR2): quien no tiene el permiso no ve el aviso ni los botones', async ({ browser }) => {
+    const { sol } = await sembrarSolicitud(`SinPermiso Hub ${Date.now()}`)
+    const asistente = await prisma.user.findFirstOrThrow({ where: { username: 'asistente' } })
+    await prisma.user.update({ where: { id: asistente.id }, data: { puedeAutorizarExcepcionCredito: false } })
+    const page = await sharedLoginAs(browser, 'asistente')
+    const app = appMain(page)
+    await page.goto(`${BASE}/pedidos`)
+    await expect(app.getByTestId('fab-main')).toBeVisible({ timeout: 15000 })
+    await expect(app.getByTestId('excepciones-pendientes')).toHaveCount(0)
+    await page.goto(`${BASE}/pedidos?openExcepcionCredito=${sol.id}`)
+    await expect(app.getByTestId('excepcion-sin-permiso')).toBeVisible({ timeout: 15000 })
+    await expect(app.getByTestId('excepcion-autorizar')).toHaveCount(0)
+    const res = await apiPatch(page, `/api/pedidos/excepciones-credito/${sol.id}`, { resolucion: 'AUTORIZAR' })
+    expect(res.status()).toBe(403)
+    expect((await prisma.pedidoExcepcionCredito.findUniqueOrThrow({ where: { id: sol.id } })).estado).toBe('PENDIENTE')
+  })
+
   test('workspace (F10-2 / C4): editar un PEDIDO — "Guardar cambios" hace PUT y persiste la cantidad', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
     const nombreCli = `WS C4 ${Date.now()}`

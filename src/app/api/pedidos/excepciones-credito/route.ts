@@ -5,6 +5,7 @@ import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { formatZodError } from '@/lib/utils'
 import { logger } from '@/lib/logger'
+import { prisma } from '@/lib/prisma'
 import { solicitarExcepcionCreditoUseCase } from '@/modules/pedidos'
 import { ExcepcionNoNecesariaError } from '@/modules/pedidos/application/use-cases/SolicitarExcepcionCreditoUseCase'
 import { ClienteNotFoundError } from '@/modules/pedidos/application/use-cases/GetFiadoStatusUseCase'
@@ -57,5 +58,53 @@ export async function POST(request: NextRequest) {
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error solicitando excepción de crédito')
     return apiError('Error solicitando la excepción de crédito', 500)
+  }
+}
+
+/**
+ * GET /api/pedidos/excepciones-credito — solicitudes PENDIENTES (P0-3, PR 2).
+ *
+ * Solo las ve quien tiene `User.puedeAutorizarExcepcionCredito`; para el resto
+ * responde 200 con lista vacía y `puedeResolver: false` (el aviso del Hub
+ * simplemente no aparece, sin error en pantalla).
+ */
+export async function GET() {
+  const auth = await requireAuth()
+  if (auth instanceof Response) return auth
+  const role = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.REPARTIDOR], auth)
+  if (role instanceof Response) return role
+  const actorId = role.user?.id
+  if (!actorId) return apiError('No autorizado', 401)
+
+  try {
+    const actor = await prisma.user.findUnique({
+      where: { id: actorId },
+      select: { puedeAutorizarExcepcionCredito: true },
+    })
+    if (!actor?.puedeAutorizarExcepcionCredito) {
+      return apiSuccess({ puedeResolver: false, excepciones: [] })
+    }
+
+    const filas = await prisma.pedidoExcepcionCredito.findMany({
+      where: { estado: 'PENDIENTE' },
+      orderBy: { solicitadoAt: 'asc' },
+      take: 50,
+      select: {
+        id: true,
+        motivoSolicitud: true,
+        solicitadoAt: true,
+        operacionSaldoSnapshot: true,
+        cliente: { select: { id: true, nombre: true } },
+        solicitadoPor: { select: { id: true, nombre: true } },
+      },
+    })
+
+    return apiSuccess({
+      puedeResolver: true,
+      excepciones: filas.map((f) => ({ ...f, operacionSaldoSnapshot: Number(f.operacionSaldoSnapshot) })),
+    })
+  } catch (error) {
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error listando excepciones de crédito pendientes')
+    return apiError('Error listando las excepciones de crédito', 500)
   }
 }

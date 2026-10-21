@@ -307,3 +307,18 @@ Aditivo a la respuesta existente (`{ pedido: { ...PedidoResumenDTO, enrichment }
 ```
 
 Tipo: `PedidoPeekExtras` en `src/modules/pedidos/application/dto/index.ts`.
+
+## Excepciones de crédito — quien autoriza (P0-3 PR 2, #357)
+
+Permiso **por usuario** (`User.puedeAutorizarExcepcionCredito`), no por rol. El servidor es la autoridad: la UI solo muestra u oculta botones.
+
+### `GET /api/pedidos/excepciones-credito`
+Solicitudes `PENDIENTE` (máx. 50, las más antiguas primero). Roles ADMIN/ASISTENTE/REPARTIDOR.
+- Con permiso: `{ puedeResolver: true, excepciones: [{ id, motivoSolicitud, solicitadoAt, operacionSaldoSnapshot, cliente: {id, nombre}, solicitadoPor: {id, nombre} }] }`.
+- Sin permiso: `200 { puedeResolver: false, excepciones: [] }` (el aviso del Hub no aparece; no es un error).
+
+### `GET /api/pedidos/excepciones-credito/[id]` — extendido
+Se agrega `puedeResolver: boolean` junto a `excepcion`. Es informativo: `PATCH` vuelve a exigir el permiso (403 sin él).
+
+### UI
+`/pedidos?openExcepcionCredito=<id>` (enlace de la notificación `EXCEPCION_CREDITO_SOLICITADA`) abre la ventana de decisión; el aviso de `/pedidos` lista las pendientes (refresco cada 30 s con la pestaña visible). Autorizar vale hasta el saldo autorizado y vence al cierre del día (Bogotá).
