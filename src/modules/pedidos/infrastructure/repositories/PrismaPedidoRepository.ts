@@ -260,6 +260,7 @@ export class PrismaPedidoRepository implements IPedidoRepository {
     const where: Record<string, unknown> = {}
     if (filter?.id && filter.id.length > 0) where.id = { in: filter.id }
     if (filter?.clienteId) where.clienteId = filter.clienteId
+    if (filter?.pedidoOrigenId) where.pedidoOrigenId = filter.pedidoOrigenId
     if (filter?.embarqueId !== undefined) where.embarqueId = filter.embarqueId
     if (filter?.estadoEntrega && filter.estadoEntrega.length > 0) where.estadoEntrega = { in: filter.estadoEntrega }
     if (filter?.estadoPago && filter.estadoPago.length > 0) where.estadoPago = { in: filter.estadoPago }

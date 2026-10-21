@@ -140,22 +140,32 @@ test.describe('Ciclo de Cancelación', () => {
     const pedidoJson = await pedidoRes.json()
     const pedidoId = pedidoJson.pedido?.id || pedidoJson.id
 
+    // Pedido hijo real (nueva demanda con `pedidoOrigenId`), sin cobrar: queda PENDIENTE.
+    const hijoRes = await apiPost(page, '/api/pedidos', {
+      clienteId: cliente.cliente.id,
+      canal: 'DOMICILIO',
+      pedidoOrigenId: pedidoId,
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
+      pagos: [],
+    })
+    expect(hijoRes.status()).toBe(201)
+    const hijoJson = await hijoRes.json()
+    const hijoId = hijoJson.pedido?.id || hijoJson.id
+
     const anularRes = await apiPost(page, `/api/pedidos/${pedidoId}/anular`, {
       motivo: 'Test cascade',
       devolverStock: false,
     })
 
-    if (anularRes.status() === 400) {
-      const errBody = await anularRes.json().catch(() => ({}))
-      if (errBody.error?.includes('ENTREGADOS')) {
-        test.skip(true, 'Pedido not ENTREGADO; cascade test for VENTA_RAPIDA path not appliable')
-        return
-      }
-    }
-
+    // Decisión PO (#367): anular un pedido anula también sus hijos.
     expect(anularRes.status()).toBe(200)
     const anularBody = await anularRes.json()
-    expect(anularBody).toHaveProperty('hijosAnulados')
-    expect(typeof anularBody.hijosAnulados).toBe('number')
+    expect(anularBody.hijosAnulados).toBe(1)
+
+    const padre = await prisma.pedido.findUnique({ where: { id: pedidoId } })
+    const hijo = await prisma.pedido.findUnique({ where: { id: hijoId } })
+    expect(padre?.estadoEntrega).toBe('ANULADO')
+    // El hijo no estaba entregado: el dominio lo cancela (solo se anulan ENTREGADOS).
+    expect(hijo?.estadoEntrega).toBe('CANCELADO')
   })
 })

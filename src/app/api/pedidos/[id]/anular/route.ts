@@ -51,11 +51,14 @@ export async function POST(
       entidad: 'Pedido',
       registroId: id,
       accion: 'UPDATE',
-      datos: { motivo, estado: result.pedido.estadoEntrega },
+      datos: { motivo, estado: result.pedido.estadoEntrega, hijosAnulados: result.hijosAnulados },
       usuarioId: (authResult as { user?: { id?: string } }).user?.id,
     })
 
     publishRealtimeEvent('pedido.updated', id).catch(() => {})
+    for (const hijoId of result.hijosIds) {
+      publishRealtimeEvent('pedido.updated', hijoId).catch(() => {})
+    }
 
     return apiSuccess(result)
   } catch (error) {

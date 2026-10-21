@@ -28,7 +28,7 @@ export function useAnularPedido(options?: UseAnularPedidoOptions) {
   const anular = useCallback(async (payload: AnularPedidoPayload): Promise<boolean> => {
     setSubmitting(true)
     try {
-      const result = await fetchResilient<{ success: boolean; error?: { message?: string } }>(
+      const result = await fetchResilient<{ success: boolean; hijosAnulados?: number; error?: { message?: string } }>(
         `/api/pedidos/${payload.pedidoId}/anular`,
         {
           method: 'POST',
@@ -39,7 +39,12 @@ export function useAnularPedido(options?: UseAnularPedidoOptions) {
 
       if (result.status === 'ok') {
         options?.onSuccess?.()
-        toast.success('Pedido anulado correctamente')
+        const hijos = result.data?.hijosAnulados ?? 0
+        toast.success(
+          hijos > 0
+            ? `Pedido anulado junto con ${hijos} pedido${hijos === 1 ? '' : 's'} hijo${hijos === 1 ? '' : 's'}`
+            : 'Pedido anulado correctamente',
+        )
         return true
       }
 
