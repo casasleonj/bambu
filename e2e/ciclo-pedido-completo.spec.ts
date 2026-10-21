@@ -120,17 +120,17 @@ test.describe('Ciclo Completo Pedido', () => {
       apiPost(page, '/api/pedidos', {
         clienteId: cliente1.cliente.id, canal: 'DOMICILIO', ventaRapida: false,
         items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
-        pagos: [{ metodo: 'EFECTIVO', monto: 2600 }],
+        pagos: [],
       }),
       apiPost(page, '/api/pedidos', {
         clienteId: cliente2.cliente.id, canal: 'DOMICILIO', ventaRapida: false,
         items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
-        pagos: [{ metodo: 'EFECTIVO', monto: 2600 }],
+        pagos: [],
       }),
       apiPost(page, '/api/pedidos', {
         clienteId: cliente3.cliente.id, canal: 'DOMICILIO', ventaRapida: false,
         items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
-        pagos: [{ metodo: 'EFECTIVO', monto: 2600 }],
+        pagos: [],
       }),
     ])
 
@@ -140,6 +140,12 @@ test.describe('Ciclo Completo Pedido', () => {
     const pid1 = j1.pedido?.id || j1.id
     const pid2 = j2.pedido?.id || j2.id
     const pid3 = j3.pedido?.id || j3.id
+    // El cierre cobra el saldo pendiente: el monto sale del total real del pedido
+    // (el precio depende de la configuración), no de un valor fijo (#349).
+    const total1 = Number(j1.pedido?.total)
+    const total2 = Number(j2.pedido?.total)
+    const total3 = Number(j3.pedido?.total)
+    expect(total1).toBeGreaterThan(0)
 
     const trabajador = await createTrabajador(page)
     const embarqueRes = await apiPost(page, '/api/embarques', {
@@ -162,9 +168,9 @@ test.describe('Ciclo Completo Pedido', () => {
 
     const cerrarRes = await cerrarEmbarqueTest(page, embarqueId, cierrePayload({
       pedidos: [
-        { pedidoId: pid1, entregado: 'COMPLETO', productosEntregados: { cPacaAguaEnt: 1, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }, pagado: 'COMPLETO', pagos: [{ metodo: 'EFECTIVO', monto: 2600 }] },
-        { pedidoId: pid2, entregado: 'COMPLETO', productosEntregados: { cPacaAguaEnt: 1, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }, pagado: 'COMPLETO', pagos: [{ metodo: 'EFECTIVO', monto: 2600 }] },
-        { pedidoId: pid3, entregado: 'COMPLETO', productosEntregados: { cPacaAguaEnt: 1, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }, pagado: 'COMPLETO', pagos: [{ metodo: 'EFECTIVO', monto: 2600 }] },
+        { pedidoId: pid1, entregado: 'COMPLETO', productosEntregados: { cPacaAguaEnt: 1, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }, pagado: 'COMPLETO', pagos: [{ metodo: 'EFECTIVO', monto: total1 }] },
+        { pedidoId: pid2, entregado: 'COMPLETO', productosEntregados: { cPacaAguaEnt: 1, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }, pagado: 'COMPLETO', pagos: [{ metodo: 'EFECTIVO', monto: total2 }] },
+        { pedidoId: pid3, entregado: 'COMPLETO', productosEntregados: { cPacaAguaEnt: 1, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }, pagado: 'COMPLETO', pagos: [{ metodo: 'EFECTIVO', monto: total3 }] },
       ],
     }))
     expect(cerrarRes.status()).toBe(200)
@@ -189,7 +195,9 @@ test.describe('Ciclo Completo Pedido', () => {
       canal: 'DOMICILIO',
       ventaRapida: false,
       items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
+      // Sin prepago: el pago parcial se cobra en el cierre. Con prepago de 5000 el cierre
+      // cobraba 5000 más y el servidor lo rechaza (el cobro excede el saldo pendiente) (#349).
+      pagos: [],
     })
     const pedidoJson = await pedidoRes.json()
     const pedidoId = pedidoJson.pedido?.id || pedidoJson.id
@@ -232,11 +240,10 @@ test.describe('Ciclo Completo Pedido', () => {
     const facturasRes = await apiGet(page, `/api/facturas?pedidoId=${pedidoId}`)
     const facturasBody = await facturasRes.json()
     const facturas = facturasBody.facturas || facturasBody.data || []
-    const factura = (facturas as Array<{ id: string; pedidoId: string; saldo: number | string }>).find((f) => f.pedidoId === pedidoId)
-    if (!factura) {
-      test.skip(true, 'No se generó factura para pago parcial; flujo de abono no aplica')
-      return
-    }
+    // GET /api/facturas devuelve `pedido: { id }` por factura (no `pedidoId`) y no filtra por ?pedidoId (#349).
+    const factura = (facturas as Array<{ id: string; pedido?: { id: string }; saldo: number | string }>).find((f) => f.pedido?.id === pedidoId)
+    expect(factura, 'el pedido con pago parcial debe tener factura').toBeDefined()
+    if (!factura) return
     const saldoFactura = Number(factura.saldo)
     expect(saldoFactura).toBeGreaterThan(0)
 
