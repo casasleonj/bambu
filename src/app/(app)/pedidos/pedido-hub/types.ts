@@ -22,6 +22,7 @@ export type AccionKey =
   | 'confirmar-pago'
   | 'resolver-excepcion'
   | 'ver-cartera'
+  | 'ver-detalle'
 
 export interface AccionDestacada {
   key: AccionKey

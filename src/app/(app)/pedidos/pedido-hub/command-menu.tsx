@@ -87,7 +87,7 @@ export function PedidoCommandMenu({
         run: () => onAccion(selected, d.accionDestacada!.key),
       })
     }
-    contextual.push({ id: 'ver-detalle', label: `Abrir detalle de #${selected.numero}`, href: `/pedidos/${selected.id}` })
+    contextual.push({ id: 'ver-detalle', label: `Abrir detalle de #${selected.numero}`, run: () => onAccion(selected, 'ver-detalle') })
     contextual.push({ id: 'corregir', label: `Corregir #${selected.numero}`, hint: 'abre el flujo de corrección', run: () => onAccion(selected, 'resolver-excepcion') })
     return [...contextual, ...global]
   }, [selected, hoyBogota, onNuevaOperacion, onBuscarCliente, onAccion])

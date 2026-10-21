@@ -654,15 +654,26 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // el permiso por usuario (el servidor responde vacío al resto).
   const { excepciones: excepcionesPendientes, refetch: refetchExcepciones } = useExcepcionesPendientes()
 
-  // Auto-open pedido from URL param
+  // Auto-open pedido from URL param. Si está en la lista cargada se abre al
+  // instante; si no (pedido de otra fecha, cache truncado) se busca por id
+  // (P1-1 PR A, #377) y se avisa cuando no existe / no hay acceso / no hay red.
+  const openPedidoBuscandoRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!openPedidoParam || pedidos.length === 0) return
+    if (!openPedidoParam) return
     const pedido = pedidos.find(p => p.id === openPedidoParam || p.numero.toString() === openPedidoParam)
     if (pedido) {
       handleDetail(pedido)
       syncUrl({ openPedido: undefined })
+      return
     }
-  }, [openPedidoParam, pedidos, syncUrl])
+    if (!hasLoadedOnce || openPedidoBuscandoRef.current === openPedidoParam) return
+    openPedidoBuscandoRef.current = openPedidoParam
+    void abrirPedidoPorId(openPedidoParam).finally(() => {
+      openPedidoBuscandoRef.current = null
+      syncUrl({ openPedido: undefined })
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- abrirPedidoPorId/handleDetail son funciones del componente (recreadas por render); la guarda es openPedidoBuscandoRef
+  }, [openPedidoParam, pedidos, hasLoadedOnce, syncUrl])
 
   const updateFilter = useCallback((key: string, value: string) => {
     const current = shallowParams.getAll(key)
@@ -1573,7 +1584,38 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     }
   }
 
-  async function handleDetail(pedido: Pedido) {
+  /** Abre el detalle de un pedido que no está en la lista cargada (GET /api/pedidos/[id]). */
+  async function abrirPedidoPorId(id: string) {
+    const toastId = toast.loading('Abriendo pedido…')
+    try {
+      const res = await fetch(`/api/pedidos/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(8_000) })
+      if (res.status === 404) {
+        toast.error('Ese pedido no existe o ya no está disponible.', { id: toastId })
+        return
+      }
+      if (res.status === 403) {
+        toast.error('No tienes acceso a ese pedido.', { id: toastId })
+        return
+      }
+      if (!res.ok) {
+        toast.error('No se pudo abrir el pedido. Intenta de nuevo.', { id: toastId })
+        return
+      }
+      const data = await res.json()
+      const pedido = data.pedido as Pedido | undefined
+      if (!pedido || !Array.isArray(pedido.items)) {
+        toast.error('No se pudo abrir el pedido. Intenta de nuevo.', { id: toastId })
+        return
+      }
+      toast.dismiss(toastId)
+      // el detalle ya viene completo: handleDetail no lo vuelve a pedir
+      await handleDetail(pedido, { yaCompleto: true })
+    } catch {
+      toast.error('Sin conexión. No se pudo abrir el pedido.', { id: toastId })
+    }
+  }
+
+  async function handleDetail(pedido: Pedido, opts?: { yaCompleto?: boolean }) {
     const seq = ++detailSeqRef.current
     setSelectedPedido(pedido)
     setShowDetailModal(true)
@@ -1581,9 +1623,9 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     // Lazy-load factura for the detail modal (issue 3). The list does not
     // eagerly fetch it, so we fetch it when the user opens a pedido.
     try {
-      const res = await fetch(`/api/pedidos/${pedido.id}`, { signal: AbortSignal.timeout(8_000) })
+      const res = opts?.yaCompleto ? null : await fetch(`/api/pedidos/${pedido.id}`, { signal: AbortSignal.timeout(8_000) })
       if (seq !== detailSeqRef.current) return // stale, discard
-      if (res.ok) {
+      if (res?.ok) {
         const data = await res.json()
         const pedidoConFactura = data.pedido as Pedido | undefined
         if (pedidoConFactura && Array.isArray(pedidoConFactura.items)) {
@@ -1782,6 +1824,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
               <span>
                 ⚠️ {atrasadosCount} pedido{atrasadosCount === 1 ? '' : 's'} de días anteriores sin
                 asignar o sin entregar — riesgo de incumplir la entrega.{' '}
+                {/* <a> a propósito (AGENTS.md #27): navegar con <Link> a la misma ruta no avisa a useShallowSearchParams */}
+                {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
                 <a
                   href="/pedidos?atrasados=true"
                   onClick={(e) => abrirVistaAutocontenida(e, 'atrasados')}
@@ -1804,6 +1848,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
               <span>
                 🟠 {enRiesgoCount} pedido{enRiesgoCount === 1 ? '' : 's'} lleva
                 {enRiesgoCount === 1 ? '' : 'n'} demasiado tiempo sin gestionar — riesgo de olvido o de quedar sin entregar.{' '}
+                {/* <a> a propósito (AGENTS.md #27): navegar con <Link> a la misma ruta no avisa a useShallowSearchParams */}
+                {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
                 <a
                   href="/pedidos?enRiesgo=true"
                   onClick={(e) => abrirVistaAutocontenida(e, 'enRiesgo')}
