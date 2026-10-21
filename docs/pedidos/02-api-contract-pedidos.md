@@ -322,3 +322,10 @@ Se agrega `puedeResolver: boolean` junto a `excepcion`. Es informativo: `PATCH` 
 
 ### UI
 `/pedidos?openExcepcionCredito=<id>` (enlace de la notificación `EXCEPCION_CREDITO_SOLICITADA`) abre la ventana de decisión; el aviso de `/pedidos` lista las pendientes (refresco cada 30 s con la pestaña visible). Autorizar vale hasta el saldo autorizado y vence al cierre del día (Bogotá).
+
+### Quién tiene el permiso de autorizar (P0-3 PR 3, #357)
+Se administra en Administración > Usuarios y **solo lo cambia un ADMIN** (`PUT /api/users/[id]` con `puedeAutorizarExcepcionCredito`; el endpoint y la pantalla ya exigen rol ADMIN). Reglas en el servidor (`src/lib/autorizador-credito.ts`), serializadas con el lock `AUTORIZADOR_CREDITO`:
+- Solo ADMIN o ASISTENTE pueden recibirlo (otro rol → 409). Cambiar a un rol sin derecho lo quita.
+- No se puede quitar el permiso, cambiar de rol ni desactivar (`PUT` activo=false o `DELETE`) a la última persona activa que lo tiene → 409 con mensaje.
+- Cada cambio queda en la auditoría (`User`, `UPDATE`).
+- Al desplegar no hay migración: la columna ya existe y por defecto nadie tiene el permiso. Un ADMIN debe asignarlo (a sí mismo o a otra persona) para que las solicitudes tengan quién las resuelva.

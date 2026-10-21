@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
         apellido: true,
         rol: true,
         activo: true,
+        puedeAutorizarExcepcionCredito: true,
         createdAt: true,
         trabajador: { select: { nombre: true } },
       },

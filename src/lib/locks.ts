@@ -38,6 +38,9 @@ export const LOCK_NAMESPACES = [
   // Planificador de distribución (ADR-PLANIFICADOR-001 §6 / -005 §4):
   // lock por fecha operativa en generar/replanificar/confirmar/override.
   'PLAN',
+  // Permiso de autorizar excepciones de crédito (P0-3): serializa los cambios
+  // que pueden dejar al sistema sin ninguna persona autorizadora.
+  'AUTORIZADOR_CREDITO',
 ] as const
 
 export type LockNamespace = (typeof LOCK_NAMESPACES)[number]

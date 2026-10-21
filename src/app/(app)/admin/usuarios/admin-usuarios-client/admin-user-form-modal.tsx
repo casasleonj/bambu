@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Modal } from '@/components/modal'
 import type { AdminUser } from './types'
+import { rolPuedeAutorizar, MENSAJES_AUTORIZADOR } from '@/lib/autorizador-credito'
 
 const ROL_OPTIONS = ['ADMIN', 'ASISTENTE', 'CONTADOR', 'REPARTIDOR', 'SELLADOR']
 const ROL_LABELS: Record<string, string> = {
@@ -16,11 +17,14 @@ export function AdminUserFormModal({
   onClose,
   onSaved,
   user,
+  otrosAutorizadores,
 }: {
   open: boolean
   onClose: () => void
   onSaved: () => void
   user: AdminUser | null
+  /** otras personas activas con el permiso de autorizar excepciones de crédito (sin contar a esta). */
+  otrosAutorizadores: number
 }) {
   const [isCreate, setIsCreate] = useState(false)
   const [nombre, setNombre] = useState('')
@@ -28,6 +32,7 @@ export function AdminUserFormModal({
   const [username, setUsername] = useState('')
   const [rol, setRol] = useState('ASISTENTE')
   const [activo, setActivo] = useState(true)
+  const [puedeAutorizar, setPuedeAutorizar] = useState(false)
   const [password, setPassword] = useState('')
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -47,6 +52,7 @@ export function AdminUserFormModal({
       setUsername('')
       setRol('ASISTENTE')
       setActivo(true)
+      setPuedeAutorizar(false)
       setPassword('')
     } else {
       setIsCreate(false)
@@ -55,10 +61,18 @@ export function AdminUserFormModal({
       setUsername(user.username)
       setRol(user.rol)
       setActivo(user.activo)
+      setPuedeAutorizar(user.puedeAutorizarExcepcionCredito === true)
       setPassword('')
     }
     setFormError('')
   }
+
+  const esUltimoAutorizador =
+    !!user &&
+    user.activo &&
+    user.puedeAutorizarExcepcionCredito === true &&
+    rolPuedeAutorizar(user.rol) &&
+    otrosAutorizadores === 0
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -91,6 +105,10 @@ export function AdminUserFormModal({
         if (username !== user!.username) body.username = username
         if (rol !== user!.rol) body.rol = rol
         if (activo !== user!.activo) body.activo = activo
+        const puedeFinal = rolPuedeAutorizar(rol) && puedeAutorizar
+        if (puedeFinal !== (user!.puedeAutorizarExcepcionCredito === true) && rolPuedeAutorizar(rol)) {
+          body.puedeAutorizarExcepcionCredito = puedeFinal
+        }
         if (password) body.password = password
 
         if (Object.keys(body).length === 0) {
@@ -178,6 +196,38 @@ export function AdminUserFormModal({
             ))}
           </select>
         </div>
+
+        {!isCreate && rolPuedeAutorizar(rol) && (
+          <div data-testid="bloque-autoriza-credito" className="space-y-1">
+            <div className="flex items-center gap-2">
+              <input
+                id="user-autoriza-credito"
+                data-testid="check-autoriza-credito"
+                type="checkbox"
+                checked={puedeAutorizar}
+                disabled={esUltimoAutorizador}
+                onChange={(e) => setPuedeAutorizar(e.target.checked)}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+              />
+              <label htmlFor="user-autoriza-credito" className="text-sm font-medium text-gray-700">
+                Puede autorizar excepciones de crédito
+              </label>
+            </div>
+            <p className="text-xs text-gray-500">
+              Podrá aprobar o rechazar solicitudes de clientes sobre el límite de fiados.
+            </p>
+            {esUltimoAutorizador && (
+              <p data-testid="aviso-ultimo-autorizador" className="text-xs text-amber-700">
+                {MENSAJES_AUTORIZADOR.ULTIMO_AUTORIZADOR}
+              </p>
+            )}
+          </div>
+        )}
+        {!isCreate && !rolPuedeAutorizar(rol) && user?.puedeAutorizarExcepcionCredito && (
+          <p data-testid="aviso-quita-permiso" className="text-xs text-amber-700">
+            Con este rol se quita el permiso de autorizar excepciones de crédito.
+          </p>
+        )}
 
         {!isCreate && (
           <div className="flex items-center gap-2">

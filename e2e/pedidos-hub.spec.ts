@@ -494,6 +494,71 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     expect((await prisma.pedidoExcepcionCredito.findUniqueOrThrow({ where: { id: sol.id } })).estado).toBe('PENDIENTE')
   })
 
+  // P0-3 PR 3: el permiso de autorizar se da desde Administración > Usuarios (solo ADMIN).
+  test.describe('permiso de autorizar excepciones de crédito (admin de usuarios)', () => {
+    test.beforeEach(async () => {
+      await prisma.user.updateMany({ data: { puedeAutorizarExcepcionCredito: false } })
+    })
+
+    test('un ADMIN da el permiso a un asistente desde la pantalla y queda en BD', async ({ browser }) => {
+      const page = await sharedLoginAs(browser, 'admin')
+      const app = appMain(page)
+      await page.goto(`${BASE}/admin/usuarios`)
+      const card = app.locator('div.rounded-2xl', { hasText: '@asistente' }).first()
+      await card.getByRole('button', { name: 'Editar' }).click()
+      await page.getByTestId('check-autoriza-credito').check()
+      await page.getByRole('button', { name: 'Guardar', exact: true }).click()
+      await expect(async () => {
+        const u = await prisma.user.findFirstOrThrow({ where: { username: 'asistente' } })
+        expect(u.puedeAutorizarExcepcionCredito).toBe(true)
+      }).toPass({ timeout: 10000 })
+      await expect(app.locator('div.rounded-2xl', { hasText: '@asistente' }).getByTestId('badge-autoriza-credito')).toBeVisible({ timeout: 10000 })
+    })
+
+    test('no se puede quitar el permiso a la última persona autorizadora (409) ni dárselo a un rol sin derecho', async ({ browser }) => {
+      const page = await sharedLoginAs(browser, 'admin')
+      const asistente = await prisma.user.findFirstOrThrow({ where: { username: 'asistente' } })
+      await prisma.user.update({ where: { id: asistente.id }, data: { puedeAutorizarExcepcionCredito: true } })
+
+      const quitar = await apiPut(page, `/api/users/${asistente.id}`, { puedeAutorizarExcepcionCredito: false })
+      expect(quitar.status()).toBe(409)
+      const desactivar = await apiPut(page, `/api/users/${asistente.id}`, { activo: false })
+      expect(desactivar.status()).toBe(409)
+      const rol = await apiPut(page, `/api/users/${asistente.id}`, { rol: 'CONTADOR' })
+      expect(rol.status()).toBe(409)
+      const intacto = await prisma.user.findUniqueOrThrow({ where: { id: asistente.id } })
+      expect(intacto.puedeAutorizarExcepcionCredito).toBe(true)
+      expect(intacto.activo).toBe(true)
+      expect(intacto.rol).toBe('ASISTENTE')
+
+      const repartidor = await prisma.user.findFirstOrThrow({ where: { username: 'repartidor' } })
+      const aRol = await apiPut(page, `/api/users/${repartidor.id}`, { puedeAutorizarExcepcionCredito: true })
+      expect(aRol.status()).toBe(409)
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: repartidor.id } })).puedeAutorizarExcepcionCredito).toBe(false)
+
+      // con otra persona autorizadora ya sí se puede quitar
+      const admin = await prisma.user.findFirstOrThrow({ where: { username: 'admin' } })
+      const darAdmin = await apiPut(page, `/api/users/${admin.id}`, { puedeAutorizarExcepcionCredito: true })
+      expect(darAdmin.status()).toBe(200)
+      const ahoraSi = await apiPut(page, `/api/users/${asistente.id}`, { puedeAutorizarExcepcionCredito: false })
+      expect(ahoraSi.status()).toBe(200)
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: asistente.id } })).puedeAutorizarExcepcionCredito).toBe(false)
+    })
+
+    test('un ASISTENTE no puede cambiar permisos (403) aunque tenga el de autorizar', async ({ browser }) => {
+      const asistente = await prisma.user.findFirstOrThrow({ where: { username: 'asistente' } })
+      await prisma.user.update({ where: { id: asistente.id }, data: { puedeAutorizarExcepcionCredito: true } })
+      const repartidor = await prisma.user.findFirstOrThrow({ where: { username: 'admin' } })
+      const page = await sharedLoginAs(browser, 'asistente')
+      const res = await apiPut(page, `/api/users/${repartidor.id}`, { puedeAutorizarExcepcionCredito: true })
+      expect(res.status()).toBe(403)
+      const propio = await apiPut(page, `/api/users/${asistente.id}`, { puedeAutorizarExcepcionCredito: false })
+      expect(propio.status()).toBe(403)
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: repartidor.id } })).puedeAutorizarExcepcionCredito).toBe(false)
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: asistente.id } })).puedeAutorizarExcepcionCredito).toBe(true)
+    })
+  })
+
   test('workspace (F10-2 / C4): editar un PEDIDO — "Guardar cambios" hace PUT y persiste la cantidad', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
     const nombreCli = `WS C4 ${Date.now()}`

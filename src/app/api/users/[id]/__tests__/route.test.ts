@@ -74,11 +74,18 @@ describe('F-27: el logAudit sigue funcionando', () => {
   })
 })
 
-describe('F-27: el DELETE sigue intacto (no se refactorizó)', () => {
-  it('FIX: el DELETE no se tocó', () => {
-    const deleteStart = source.indexOf('export async function DELETE')
-    const deleteSource = source.substring(deleteStart)
+describe('DELETE: desactivar usuario', () => {
+  const deleteStart = source.indexOf('export async function DELETE')
+  const deleteSource = source.substring(deleteStart)
+
+  it('sigue leyendo al usuario y desactivándolo (soft delete)', () => {
     expect(deleteSource).toMatch(/prisma\.user\.findUnique/)
-    expect(deleteSource).toMatch(/prisma\.user\.update/)
+    expect(deleteSource).toMatch(/tx\.user\.update\(\{ where: \{ id \}, data: \{ activo: false \} \}\)/)
+  })
+
+  it('P0-3: no desactiva a la última persona que autoriza excepciones de crédito (409)', () => {
+    expect(deleteSource).toMatch(/acquireAdvisoryLockTx\(tx, 'AUTORIZADOR_CREDITO'/)
+    expect(deleteSource).toMatch(/resolverCambioAutorizador\(user, \{ activo: false \}/)
+    expect(deleteSource).toMatch(/AUTORIZADOR_ULTIMO_AUTORIZADOR[\s\S]+409/)
   })
 })

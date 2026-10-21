@@ -43,6 +43,14 @@ export function AdminUserCard({
             <Badge variant={user.activo ? 'default' : 'destructive'}>
               {user.activo ? 'Activo' : 'Inactivo'}
             </Badge>
+            {user.puedeAutorizarExcepcionCredito && (
+              <span
+                data-testid="badge-autoriza-credito"
+                className="text-xs font-semibold px-2.5 py-1 rounded-full bg-sky-100 text-sky-800"
+              >
+                Autoriza crédito
+              </span>
+            )}
           </div>
         </div>
       </div>

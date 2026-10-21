@@ -5,6 +5,7 @@ export interface AdminUser {
   apellido: string
   rol: string
   activo: boolean
+  puedeAutorizarExcepcionCredito?: boolean
   createdAt: string
   trabajador?: { nombre: string } | null
 }
