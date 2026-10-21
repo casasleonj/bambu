@@ -361,8 +361,8 @@ test.describe('Pedidos — Tab Pedidos (Hoy)', () => {
     if (await firstRow.isVisible({ timeout: 3000 }).catch(() => false)) {
       await firstRow.click()
       await p.waitForTimeout(800)
-      // Stepper steps - scoped to the detail modal area
-      const modalContent = p.locator('.max-w-md .space-y-4, .max-w-md .relative')
+      // Línea de tiempo de entrega - dentro de la pantalla de detalle (P1-1 PR B)
+      const modalContent = p.getByTestId('detalle-entrega')
       expect(await modalContent.first().isVisible({ timeout: 3000 }).catch(() => false)).toBe(true)
       // Check for stepper text within modal
       const bodyText = await p.locator('body').textContent()

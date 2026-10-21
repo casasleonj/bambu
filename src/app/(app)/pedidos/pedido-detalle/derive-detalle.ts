@@ -71,7 +71,7 @@ export function lineaDeTiempo(p: Pedido): PasoTiempo[] {
     },
     {
       key: 'en-ruta',
-      label: 'En ruta',
+      label: 'En Ruta',
       estado: cerrado ? 'cerrado' : e === 'EN_RUTA' ? 'actual' : enRutaAlcanzado ? 'hecho' : 'pendiente',
       fecha: enRutaAlcanzado ? (embarque?.horaSalida ?? null) : null,
       detalle: enRutaAlcanzado ? rutaDetalle : null,
