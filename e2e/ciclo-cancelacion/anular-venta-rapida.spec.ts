@@ -2,7 +2,7 @@
 // Reemplaza el `test.skip(true, 'venta rapida flow differs')` en ciclo-cancelacion.spec.ts:45
 import { test, expect, fullLogin, apiPost, createCliente, resetTestDatabase } from '../fixtures'
 
-test.describe('Anulación: Venta Rápida (PUNTO + ventaRapida:true)', () => {
+test.describe('Anulación: Venta Rápida (PUNTO + entregado:true)', () => {
   test.describe.configure({ mode: 'serial' })
   test.beforeAll(() => {
     resetTestDatabase()
@@ -17,7 +17,7 @@ test.describe('Anulación: Venta Rápida (PUNTO + ventaRapida:true)', () => {
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
       canal: 'PUNTO',
-      ventaRapida: true,
+      entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
     })
