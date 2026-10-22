@@ -1,4 +1,4 @@
-import { normalizarTelefono } from './telefono'
+import { normalizarTelefono, extraerDigitos } from './telefono'
 
 export interface ClienteSearchable {
   nombre: string
@@ -42,6 +42,11 @@ export interface ClienteSearchable {
  *   "frente iglesia" → "frente" y "iglesia" en negocio.referencia → ✅
  *   "camilo torres"  → "camilo" y "torres" en barrio o direccion → ✅
  */
+
+/** Palabra con forma de teléfono: dígitos con +, paréntesis, puntos o guiones. */
+export function esPalabraTelefono(palabra: string): boolean {
+  return /^\+?[\d()\-.]+$/.test(palabra) && /\d/.test(palabra)
+}
 
 /** Minimum characters required for search to activate */
 export const MIN_SEARCH_CHARS = 2
@@ -137,8 +142,9 @@ export function scoreCliente(cliente: ClienteSearchable, query: string): number 
       score += 1
       wordMatched = true
     }
-    // Check teléfonos solo si la palabra contiene dígitos
-    else if (/\d/.test(palabra) && telefonosTerciarios.some(campo => campo.includes(palabra))) {
+    // Check teléfonos solo si la palabra contiene dígitos. Una palabra con forma de
+    // teléfono ("+57", "(300)", "123-456") se compara por sus dígitos.
+    else if (/\d/.test(palabra) && telefonosTerciarios.some(campo => campo.includes(esPalabraTelefono(palabra) ? extraerDigitos(palabra) : palabra))) {
       score += 1
       wordMatched = true
     }
