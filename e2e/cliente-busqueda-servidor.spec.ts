@@ -1,0 +1,63 @@
+// @tests #376 — el buscador de cliente del modal de pedido consulta el servidor
+// (`/api/clientes?search=...&pageSize=8`) y NO depende de que la lista completa
+// (`/api/clientes?all=true`, 8 s de timeout) haya cargado. Formulario clásico
+// (el Hub comparte el hook y el panel; su spec de integración vive en pedidos-hub).
+import { test, expect, loginAs, createCliente, handleBaseCaja, openFabPedidoEnvio, goto } from './fixtures'
+import type { Page } from '@playwright/test'
+
+const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
+
+const esListaCompleta = (url: URL) =>
+  url.pathname === '/api/clientes' && url.searchParams.get('all') === 'true' && !url.searchParams.has('search')
+const esBusqueda = (url: URL) => url.pathname === '/api/clientes' && url.searchParams.has('search')
+
+async function abrirModal(page: Page) {
+  await goto(page, '/pedidos')
+  await handleBaseCaja(page)
+  await openFabPedidoEnvio(page)
+  return page.locator('input[placeholder^="Buscar cliente"]').first()
+}
+
+test.describe('Búsqueda de cliente en el servidor (#376)', () => {
+  test.skip(HUB_ON, 'formulario clásico (Hub apagado, como producción)')
+  test.describe.configure({ mode: 'serial' })
+
+  test('encuentra al cliente aunque la lista completa nunca cargue', async ({ page }) => {
+    test.setTimeout(90000)
+    await loginAs(page, 'admin')
+    const nombre = `Buscable ${Date.now() % 1000000}`
+    await createCliente(page, { nombre })
+
+    // La lista completa falla (red lenta/aborto): antes el buscador quedaba vacío.
+    await page.route((url) => esListaCompleta(url), (route) => route.abort())
+    const input = await abrirModal(page)
+    const busqueda = page.waitForResponse((r) => esBusqueda(new URL(r.url())) && r.ok())
+    await input.fill(nombre)
+
+    await expect(page.getByTestId('cliente-search-result').filter({ hasText: nombre }).first()).toBeVisible({ timeout: 15000 })
+    const url = new URL((await busqueda).url())
+    expect(url.searchParams.get('pageSize')).toBe('8')
+    expect(url.searchParams.has('all')).toBe(false)
+  })
+
+  test('si la búsqueda falla muestra el error y "Reintentar" la recupera', async ({ page }) => {
+    test.setTimeout(90000)
+    await loginAs(page, 'admin')
+    const nombre = `Reintento ${Date.now() % 1000000}`
+    await createCliente(page, { nombre })
+
+    await page.route((url) => esListaCompleta(url), (route) => route.abort())
+    let bloquear = true
+    await page.route((url) => esBusqueda(url), (route) => (bloquear ? route.abort() : route.continue()))
+
+    const input = await abrirModal(page)
+    await input.fill(nombre)
+    await expect(page.getByTestId('cliente-search-error')).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId('cliente-search-result')).toHaveCount(0)
+
+    bloquear = false
+    await page.getByTestId('cliente-search-retry').click()
+    await expect(page.getByTestId('cliente-search-result').filter({ hasText: nombre }).first()).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId('cliente-search-error')).toHaveCount(0)
+  })
+})
