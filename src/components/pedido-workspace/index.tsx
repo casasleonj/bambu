@@ -4,6 +4,7 @@ import { useCallback, useMemo, useReducer, useState } from 'react'
 import { generateUUID } from '@/lib/uuid'
 import { PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
 import { useClienteSearch } from '@/hooks/use-cliente-search'
+import type { NegocioPreseleccionado } from '@/lib/cliente-coincidencia'
 import { PedidoPricingSummary } from '@/components/pedido-form-unified/pedido-pricing-summary'
 import { PedidoRiskSignals } from './pedido-risk-signals'
 import { PedidoCreditoPanel } from './pedido-credito-panel'
@@ -271,10 +272,13 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
     [state.draft.items, calc],
   )
 
-  const handleSelectCliente = (c: Cliente) => {
+  const handleSelectCliente = (c: Cliente, negocio?: NegocioPreseleccionado | null) => {
     setClientesEncontrados((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c]))
     dispatch({ type: 'SET_CLIENTE', clienteId: c.id })
     dispatch({ type: 'SET_DIRECCION', direccion: c.direccion ?? '', barrio: c.barrio ?? '' })
+    if (negocio) {
+      dispatch({ type: 'SET_NEGOCIO', negocioId: negocio.id, direccion: negocio.direccion ?? c.direccion ?? '', barrio: negocio.barrio ?? c.barrio ?? '' })
+    }
     setSearchTerm('')
     setMostrarNuevo(false)
     setNuevoCliente(EMPTY_NUEVO_CLIENTE)

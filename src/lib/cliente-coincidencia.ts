@@ -96,6 +96,31 @@ export function explicarCoincidencia(cliente: ClienteSearchable, query: string):
   return motivos.slice(0, MAX_MOTIVOS)
 }
 
+export interface NegocioPreseleccionado {
+  id: string
+  direccion: string | null
+  barrio: string | null
+}
+
+/**
+ * Negocio que se preselecciona al elegir el resultado (#392): solo si la búsqueda
+ * apunta a UN negocio del cliente. Las palabras que explica el titular no cuentan;
+ * si coinciden negocios distintos es ambiguo y no se preselecciona nada.
+ */
+export function negocioAPreseleccionar(cliente: ClienteSearchable, query: string): NegocioPreseleccionado | null {
+  const encontrados = new Map<string, NegocioPreseleccionado>()
+  for (const palabra of palabrasDe(query)) {
+    if (contiene(cliente.nombre, palabra) || contiene(cliente.apellido, palabra)) continue
+    if (coincideTelefono(cliente.telefono, palabra)) continue
+    const negocio = cliente.negocios?.find((n) =>
+      [n.nombre, n.tipoNegocio, n.direccion, n.barrio, n.referencia].some((campo) => contiene(campo, palabra)))
+    if (negocio?.id) {
+      encontrados.set(negocio.id, { id: negocio.id, direccion: negocio.direccion ?? null, barrio: negocio.barrio ?? null })
+    }
+  }
+  return encontrados.size === 1 ? [...encontrados.values()][0] : null
+}
+
 export interface Segmento {
   texto: string
   coincide: boolean

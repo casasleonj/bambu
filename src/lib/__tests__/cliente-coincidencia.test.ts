@@ -1,6 +1,6 @@
 // @tests #385 — por qué coincidió un cliente y qué fragmentos resaltar.
 import { describe, it, expect } from 'vitest'
-import { explicarCoincidencia, segmentarCoincidencias, celularLegible } from '@/lib/cliente-coincidencia'
+import { explicarCoincidencia, segmentarCoincidencias, celularLegible, negocioAPreseleccionar } from '@/lib/cliente-coincidencia'
 
 const juan = {
   nombre: 'Juan',
@@ -105,5 +105,38 @@ describe('celularLegible', () => {
     expect(celularLegible('3001234567')).toBe('300 123 4567')
     expect(celularLegible('+573001234567')).toBe('300 123 4567')
     expect(celularLegible(null)).toBe('')
+  })
+})
+
+describe('negocioAPreseleccionar (#392)', () => {
+  const base = {
+    nombre: 'Luis',
+    apellido: 'Pérez',
+    telefono: '3001234567',
+    negocios: [
+      { id: 'n1', nombre: 'Panadería La Esperanza', tipoNegocio: 'Panadería', direccion: 'Calle 1', barrio: 'Centro' },
+      { id: 'n2', nombre: 'Tienda El Sol', tipoNegocio: 'Tienda', direccion: null, barrio: null },
+    ],
+  }
+
+  it('devuelve el negocio cuando la búsqueda apunta a uno solo', () => {
+    expect(negocioAPreseleccionar(base, 'esperanza')).toEqual({ id: 'n1', direccion: 'Calle 1', barrio: 'Centro' })
+  })
+
+  it('ignora las palabras que explica el titular', () => {
+    expect(negocioAPreseleccionar(base, 'luis sol')).toEqual({ id: 'n2', direccion: null, barrio: null })
+  })
+
+  it('no preselecciona si coinciden negocios distintos', () => {
+    expect(negocioAPreseleccionar(base, 'esperanza sol')).toBeNull()
+  })
+
+  it('no preselecciona si la coincidencia es del titular o del celular', () => {
+    expect(negocioAPreseleccionar(base, 'luis')).toBeNull()
+    expect(negocioAPreseleccionar(base, '300 123')).toBeNull()
+  })
+
+  it('no preselecciona negocios sin id', () => {
+    expect(negocioAPreseleccionar({ ...base, negocios: [{ nombre: 'Panadería La Esperanza' }] }, 'esperanza')).toBeNull()
   })
 })
