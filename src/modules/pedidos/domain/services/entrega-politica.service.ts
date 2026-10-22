@@ -45,16 +45,23 @@ export function dejaEntregaPendiente(estadoEntrega: string): boolean {
 }
 
 /**
- * ¿Debe validarse la suficiencia de la información de entrega? Solo para un
- * pedido DOMICILIO que deja mercancía pendiente. PUNTO es retiro en
- * mostrador; un pedido ya entregado (venta física) o cerrado no necesita un
- * destino futuro.
+ * ¿Debe validarse la suficiencia de la información de entrega?
+ *
+ * - Un pedido DOMICILIO que deja mercancía pendiente (PUNTO es retiro en
+ *   mostrador; un pedido ya entregado o cerrado no necesita un destino futuro).
+ * - Decisión del PO (2026-10-22, P1-2 / B-10): una VENTA RÁPIDA a DOMICILIO
+ *   exige destino aunque ya esté entregada. El destino es el registro de la
+ *   venta: sin él, queda una venta a domicilio que nadie sabe adónde fue.
+ *   Aplica a la creación y a la edición del destino, no a otros orígenes.
  */
 export function requiereEntregaSuficiente(input: {
   canal: 'PUNTO' | 'DOMICILIO' | string
   estadoEntrega: string
+  origen?: OrigenCreacion | null
 }): boolean {
-  return input.canal === 'DOMICILIO' && dejaEntregaPendiente(input.estadoEntrega)
+  if (input.canal !== 'DOMICILIO') return false
+  if (input.origen === 'VENTA_RAPIDA') return true
+  return dejaEntregaPendiente(input.estadoEntrega)
 }
 
 /**

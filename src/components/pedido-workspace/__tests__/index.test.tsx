@@ -177,6 +177,35 @@ describe('PedidosWorkspace (Composición)', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ origen: 'VENTA_RAPIDA', clienteId: 'CONSUMIDOR_FINAL' }))
   })
 
+  it('P1-2: la venta rápida nace en PUNTO (sin zona de entrega); DOMICILIO es una elección explícita', () => {
+    render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={vi.fn()} />)
+    expect(screen.queryByTestId('workspace-entrega')).not.toBeInTheDocument()
+  })
+
+  it('P1-2: venta rápida a DOMICILIO muestra la zona Entrega con la dirección obligatoria; con PUNTO desaparece', async () => {
+    render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={vi.fn()} />)
+    fireEvent.click(screen.getByTestId('workspace-canal-DOMICILIO'))
+    expect(screen.getByTestId('workspace-entrega')).toHaveTextContent('dirección obligatoria')
+    expect(screen.getByTestId('workspace-entrega-direccion')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-entrega-barrio')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('workspace-canal-PUNTO'))
+    expect(screen.queryByTestId('workspace-entrega')).not.toBeInTheDocument()
+  })
+
+  it('P1-2: la dirección escrita en la venta rápida viaja en el payload (DOMICILIO) y no con PUNTO', async () => {
+    const onSubmit = vi.fn()
+    render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByTestId('workspace-canal-DOMICILIO'))
+    fireEvent.change(screen.getByTestId('workspace-entrega-direccion'), { target: { value: 'Calle 5 # 3-2' } })
+    fireEvent.change(screen.getByTestId('workspace-entrega-barrio'), { target: { value: 'Centro' } })
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      origen: 'VENTA_RAPIDA', canal: 'DOMICILIO', direccionEntrega: 'Calle 5 # 3-2', barrioEntrega: 'Centro',
+    }))
+  })
+
   it('modo nueva-demanda (G11.B): cliente y canal fijos, sin panel de cliente ni toggle de canal', async () => {
     render(
       <PedidosWorkspace

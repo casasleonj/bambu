@@ -36,6 +36,7 @@ export function WorkspaceEntrega({
   entregaLng,
   onUbicacionChange,
   previewPending,
+  ventaRapida = false,
 }: {
   entrega: EntregaResuelta | null | undefined
   canal: 'PUNTO' | 'DOMICILIO'
@@ -47,22 +48,10 @@ export function WorkspaceEntrega({
   entregaLng: number | null
   onUbicacionChange: (lat: number | null, lng: number | null) => void
   previewPending: boolean
+  /** venta rápida (sin cliente real): no hay datos de cliente que resolver; la dirección se escribe aquí. */
+  ventaRapida?: boolean
 }) {
   if (canal !== 'DOMICILIO') return null
-
-  if (!entrega) {
-    return (
-      <section data-testid="workspace-entrega" className="rounded-lg border border-gray-200 px-3 py-2 text-sm">
-        <div className="text-xs font-semibold uppercase text-gray-400">Entrega</div>
-        <p className="text-xs text-gray-400" data-testid="workspace-entrega-resolviendo">
-          {previewPending ? 'Resolviendo información de entrega…' : 'Elegí un cliente para resolver la entrega.'}
-        </p>
-      </section>
-    )
-  }
-
-  const { estado, direccion, barrio, coords, faltaComplementario, faltaBloqueante } = entrega
-  const resumenTexto = [direccion, barrio].filter(Boolean).join(' · ')
 
   const AddressInputs = (
     <div className="mt-2 grid grid-cols-2 gap-2">
@@ -90,6 +79,35 @@ export function WorkspaceEntrega({
       />
     </div>
   )
+
+  if (!entrega && ventaRapida) {
+    // Venta rápida a domicilio: la dirección es obligatoria (decisión del PO,
+    // P1-2). Aún sin vista previa se ofrecen los campos para escribirla.
+    return (
+      <section data-testid="workspace-entrega" data-estado="PENDIENTE_DE_ESCRIBIR" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
+        <div className="text-xs font-semibold uppercase text-gray-400">Entrega · dirección obligatoria</div>
+        <p className="mt-0.5 text-[11px] text-amber-800" data-testid="workspace-entrega-venta-rapida">
+          Escribe la dirección de entrega: queda como destino de la venta.
+        </p>
+        {AddressInputs}
+      </section>
+    )
+  }
+
+  if (!entrega) {
+    return (
+      <section data-testid="workspace-entrega" className="rounded-lg border border-gray-200 px-3 py-2 text-sm">
+        <div className="text-xs font-semibold uppercase text-gray-400">Entrega</div>
+        <p className="text-xs text-gray-400" data-testid="workspace-entrega-resolviendo">
+          {previewPending ? 'Resolviendo información de entrega…' : 'Elegí un cliente para resolver la entrega.'}
+        </p>
+      </section>
+    )
+  }
+
+  const { estado, direccion, barrio, coords, faltaComplementario, faltaBloqueante } = entrega
+  const resumenTexto = [direccion, barrio].filter(Boolean).join(' · ')
+
 
   return (
     <section
