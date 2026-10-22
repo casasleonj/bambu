@@ -12,6 +12,8 @@ export interface PedidoFilter {
    *  findPedidosHoyEnRiesgoIds en src/lib/pedidos-sin-asignar.ts). */
   id?: string[]
   clienteId?: string
+  /** Hijos directos de un pedido (`pedidoOrigenId`): entrega parcial / nueva demanda. */
+  pedidoOrigenId?: string
   desde?: Date
   hasta?: Date
   estadoEntrega?: string[]
