@@ -149,11 +149,11 @@ Convención de clasificación usada en todo el documento:
 | **B-01** | El Hub no captura pagos: `pagos` siempre `[]` | `pedido-workspace/index.tsx:313`; `workspace-reducer.ts:26,121`; ningún dispatch de `SET_PAGOS` | **P0** |
 | **B-02** | El servidor acepta saldo sobre `CONSUMIDOR_FINAL` | `GetFiadoStatusUseCase.ts:92`; producción: 57 ventas, $621.900 | **P0** |
 | **B-03** | Ningún test verifica `Pago` persistido + `estadoPago` desde el Hub | inventario de `e2e/pedidos-hub.spec.ts` y `src/components/pedido-workspace/__tests__` | **P0** |
-| **B-04** | El Hub no envía `excepcionId`: un cliente en límite con saldo no tiene camino de excepción desde el Hub | `DraftPedido` sin `excepcionId` (`pedido-workspace/types.ts`) | P0 (crédito) |
+| **B-04** ✅ #357 | El Hub no envía `excepcionId`: un cliente en límite con saldo no tiene camino de excepción desde el Hub | `DraftPedido` sin `excepcionId` (`pedido-workspace/types.ts`) | P0 (crédito) |
 | **B-05** | Venta rápida forzada a `CONSUMIDOR_FINAL` sin opción de identificar al comprador | `pedido-workspace/index.tsx` (`intent === 'venta-rapida'` → `clienteId: 'CONSUMIDOR_FINAL'`; panel fijo "Venta rápida — Consumidor Final") | P1 (depende de §7 D1) |
 | **B-06** | El origen se deriva en el commit de `tieneClienteReal`, no de la intención. Elegir "Tomar un pedido" sin cliente produce `VENTA_RAPIDA` | `pedido-workspace/index.tsx:305` | P1 (consistente con D-OC4; choca con la solicitud del 08/10) |
-| **B-07** | El detalle da 404: el peek y el command menu enlazan a `/pedidos/${id}`, que no existe | `peek-panel.tsx:163`, `command-menu.tsx:90`; no existe `src/app/(app)/pedidos/[id]/` | **P1** |
-| **B-08** | `?openPedido=` solo abre si el pedido está en la lista cargada (hoy) | `pedidos-client/index.tsx:609-616` | P1 |
+| **B-07** ✅ #377 | El detalle da 404: el peek y el command menu enlazan a `/pedidos/${id}`, que no existe | `peek-panel.tsx:163`, `command-menu.tsx:90`; no existe `src/app/(app)/pedidos/[id]/` | **P1** |
+| **B-08** ✅ #377 | `?openPedido=` solo abre si el pedido está en la lista cargada (hoy) | `pedidos-client/index.tsx:609-616` | P1 |
 | **B-09** | Venta rápida sin "Entregar después" en el Hub. El legacy lo tiene, gated por flag OFF en producción | `SET_ENTREGADO` sin dispatch; legacy `entrega-ahora`/`entrega-despues` | P2 (flag OFF) |
 | **B-10** | La venta rápida oculta la zona de entrega: no puede ser `DOMICILIO` con datos | `pedido-workspace/index.tsx` (`!esVentaRapida && <WorkspaceEntrega>`) | P1 (D-OC2 exige `VENTA_RAPIDA + DOMICILIO`) |
 | **B-11** | La búsqueda cubre nombre, teléfono, contactos, negocios, barrio, dirección y referencia, pero el resultado no indica **qué entidad** coincidió ni preselecciona el negocio | `src/lib/cliente-search.ts`; `PedidoContextPanel` | P2 |
@@ -174,7 +174,7 @@ Convención de clasificación usada en todo el documento:
 | Pago al crear (chips de método + monto, pago combinado, "pagar completo") | ✅ | ❌ | B-01 | P0 |
 | Saldo > 0 exige cliente | ✅ solo UI | ❌ | B-02 (mover a backend) | P0 |
 | Bloqueo por límite de fiados con saldo | ✅ (backend F1) | ✅ (backend F1) | — | — |
-| Excepción de crédito | ⚠️ revisar | ❌ | B-04 | P0 |
+| Excepción de crédito | ⚠️ revisar | ✅ (2026-10-21, #358 #365 #371) | B-04 | P0 |
 | Venta rápida con comprador identificado | ⚠️ derivado (con cliente pasa a `PEDIDO`) | ❌ forzado CF | B-05, §7 D1 | P1 |
 | Venta rápida + domicilio | ✅ (con D-OC4) | ❌ | B-10 | P1 |
 | Entregar ahora / después (venta rápida) | ✅ (flag) | ❌ | B-09 | P2 |
@@ -183,7 +183,7 @@ Convención de clasificación usada en todo el documento:
 | Búsqueda multi-campo | ✅ | ✅ | identificar entidad (B-11) | P2 |
 | Cliente nuevo rápido sin salir | ✅ | ❌ el panel existe, pero el botón de crear nunca se habilita (v1.2, antes ✅) | B-19 (#346) | P1 |
 | Crear pedido sin conexión (cola Dexie, offline-first) | ✅ | ❌ el botón depende del preview del servidor (v1.2, fila nueva) | B-20 (#347) | P1 |
-| Detalle completo / deep-link | ✅ modal | ❌ 404 | B-07, B-08 | P1 |
+| Detalle completo / deep-link | ✅ modal | ✅ pantalla nueva + enlace por id (2026-10-21, #378 #380) | B-07, B-08 | P1 |
 | Repetir / patrón de consumo | parcial | ✅ | — | — |
 | Corrección vs nueva demanda (G11) | ❌ | ✅ | — | — |
 | Pendiente N2 (remanente, diferencial) | ❌ | ✅ | — | — |
@@ -355,9 +355,9 @@ La clienta tiene un pedido de julio con `totalPagado > 0` y **sin fila `Pago`**,
 | P0-0 | Rollback operativo (flag OFF) | ✅ ejecutado (§1.1) |
 | P0-1 | Backend: saldo > 0 exige deudor (`DEUDOR_REQUERIDO`); CF sin saldo a favor | ✅ #287 |
 | P0-2 | Hub: zona Dinero (`workspace-dinero.tsx`) | ✅ #287 |
-| P0-3 | Hub: excepción de crédito (`excepcionId`) — B-04 | 🟡 PR 1/3 (solicitante) ✅ #358 en `main`; PR 2/3 (quien autoriza: aviso + ventana de decisión + listado de pendientes) ✅ #365 en `main`; PR 3/3 (permiso por usuario en Administración > Usuarios, solo ADMIN) en curso. Detalle PR 1: panel de crédito, pedir excepción, detectar autorización y crear con `excepcionId`. Faltan PR 2 (quien autoriza) y PR 3 (permiso por usuario). Regla: vale hasta el saldo autorizado y vence al cierre del día (Bogotá). Issue #357 |
+| P0-3 | Hub: excepción de crédito (`excepcionId`) — B-04 | ✅ completo en `main` (2026-10-21): PR 1/3 (solicitante) #358; PR 2/3 (quien autoriza: aviso + ventana de decisión + listado de pendientes) #365; PR 3/3 (permiso por usuario en Administración > Usuarios, solo ADMIN) #371. Detalle PR 1: panel de crédito, pedir excepción, detectar autorización y crear con `excepcionId`. Regla: vale hasta el saldo autorizado y vence al cierre del día (Bogotá). Issue #357 |
 | P0-4 | Conciliación de las 57 ventas | depende del negocio (§10) |
-| P1-1 | `/pedidos/[id]` y `?openPedido=` por id — B-07, B-08 | 🟡 PR A (#377) en curso: ruta `/pedidos/[id]` (redirige y abre el detalle), `?openPedido=` por id, peek y menú de comandos abren el detalle sin recargar. PR B (#379) en curso: nueva pantalla de detalle (maqueta aprobada 2026-10-21): cajón lateral en escritorio y pantalla completa en móvil, con dinero, línea de tiempo de entrega, pagos con hora y confirmación, contacto (llamar/WhatsApp/cómo llegar) y acciones fijas abajo; el GET de detalle suma `pagosDetalle`, `creadoPor` y `embarqueResumen.horaSalida`; cada producto muestra el origen de su precio (volumen con su tramo, especial, manual); la advertencia «manual · sin autorizar» solo la ven ADMIN y CONTADOR |
+| P1-1 | `/pedidos/[id]` y `?openPedido=` por id — B-07, B-08 | ✅ completo en `main` (2026-10-21). PR A (#378, issue #377): ruta `/pedidos/[id]` (redirige y abre el detalle), `?openPedido=` por id, peek y menú de comandos abren el detalle sin recargar. PR B (#380, issue #379): nueva pantalla de detalle (maqueta aprobada 2026-10-21): cajón lateral en escritorio y pantalla completa en móvil, con dinero, línea de tiempo de entrega, pagos con hora y confirmación, contacto (llamar/WhatsApp/cómo llegar) y acciones fijas abajo; el GET de detalle suma `pagosDetalle`, `creadoPor` y `embarqueResumen.horaSalida`; cada producto muestra el origen de su precio (volumen con su tramo, especial, manual); la advertencia «manual · sin autorizar» solo la ven ADMIN y CONTADOR |
 | P1-2 | Venta rápida + `DOMICILIO` — B-10 | ❌ abierto (`{!esVentaRapida && <WorkspaceEntrega>}`) |
 | P1-3 | Comprador identificable en venta rápida — B-05 (D1: se mantiene D-OC4) | ❌ abierto |
 | P2-1…P2-5 | Búsqueda con entidad, entregar después, embarque en lista, CONTADOR, E2E precio especial | ❌ abiertos |
