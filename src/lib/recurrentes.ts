@@ -9,6 +9,8 @@ import { registrarReversionPedido } from "@/lib/receivable-entry";
 import { resolverEntrega } from "@/modules/pedidos/domain/services/entrega-suficiencia.service";
 import { resolverCoordsDeLink } from "@/lib/geo/resolver-coords-de-link";
 import { logger } from "@/lib/logger";
+import { logAudit } from "@/lib/audit";
+import type { Prisma } from "@prisma/client";
 
 type ProductosMap = {
   PACA_AGUA: number
@@ -409,11 +411,51 @@ export interface DecisionGeneracion {
   decision: 'NORMAL' | 'CON_PENDIENTES' | 'SOLO_PENDIENTES' | 'APLICAR_CREDITO' | 'SALTAR'
 }
 
+/**
+ * Quién dispara la generación (plan de integridad v1.2 §5.E). El cron usa el
+ * usuario técnico `system@bambu.local`; el Hub, el usuario de la sesión. Una
+ * acción del cron nunca se atribuye a una persona.
+ */
+export interface ActorGeneracion {
+  usuarioId: string
+  proceso: 'cron' | 'hub'
+}
+
+type ResultadoGeneracion = 'GENERADO' | `SALTADO:${string}` | 'ERROR'
+
+async function auditarGeneracion(
+  client: { historial: Prisma.HistorialDelegate },
+  actor: ActorGeneracion,
+  datos: {
+    plantillaId: string
+    prox: Date | null
+    decision: DecisionGeneracion['decision']
+    resultado: ResultadoGeneracion
+    recurrenteBatchId: string | null
+    pedidoId?: string
+    numero?: number
+    error?: string
+  },
+) {
+  await logAudit(
+    {
+      entidad: 'PlantillaRecurrente',
+      registroId: datos.plantillaId,
+      accion: 'GENERACION',
+      datos: { ...datos, prox: datos.prox ? formatDateISO(datos.prox) : null, proceso: actor.proceso },
+      usuarioId: actor.usuarioId,
+    },
+    client,
+  )
+}
+
 export async function generarPedidosRecurrentes(
   decisiones: DecisionGeneracion[],
   _fechaReferencia: Date = new Date(),
-  options?: { recurrenteBatchId?: string }
+  options: { recurrenteBatchId?: string; actor: ActorGeneracion },
 ) {
+  const { actor } = options
+  const recurrenteBatchId = options.recurrenteBatchId ?? null
   // FIX F-N14 (hallazgo 6): dedup por recurrenteBatchId AL INICIO
   // de la función, NO en la route.
   //
@@ -472,9 +514,23 @@ export async function generarPedidosRecurrentes(
     //   - Race en getNextNumero (Pedido.numero unique constraint, SSI valida)
     // El inner $transaction legacy fue removido; ahora la outer tx es la única
     // necesaria.
-    const result = await executeSerializableWithRetry<
-      { skipped: true; motivo?: typeof MOTIVO_ENTREGA_INSUFICIENTE } | { skipped: false; creado: { id: string; numero: number } }
-    >(async (tx) => {
+    type ResultadoTx =
+      | { skipped: true; motivo?: typeof MOTIVO_ENTREGA_INSUFICIENTE }
+      | { skipped: false; creado: { id: string; numero: number } }
+    let result: ResultadoTx
+    try {
+    result = await executeSerializableWithRetry<ResultadoTx>(async (tx) => {
+      // Auditoría de un salto (§5.E): misma transacción que el cambio de calendario.
+      const saltar = async (motivo: string, prox: Date | null) => {
+        await auditarGeneracion(tx, actor, {
+          plantillaId: decision.recurrenteId,
+          prox,
+          decision: decision.decision,
+          resultado: `SALTADO:${motivo}`,
+          recurrenteBatchId,
+        })
+        return { skipped: true as const }
+      }
       // 1. findUnique plantilla
       const pt = await tx.plantillaRecurrente.findUnique({
         where: { id: decision.recurrenteId },
@@ -504,11 +560,11 @@ export async function generarPedidosRecurrentes(
         }
       }
       // Support negocio-only templates (migrated from clienteId)
-      if (!pt.clienteId && !pt.negocioId) return { skipped: true }
+      if (!pt.clienteId && !pt.negocioId) return saltar('SIN_CLIENTE', pt.proxGeneracion)
       const effectiveClienteId: string = pt.clienteId ?? pt.negocio?.clienteId ?? ''
-      if (!effectiveClienteId) return { skipped: true }
+      if (!effectiveClienteId) return saltar('SIN_CLIENTE', pt.proxGeneracion)
       const clienteForCheck = pt.cliente ?? pt.negocio?.cliente
-      if (!clienteForCheck) return { skipped: true }
+      if (!clienteForCheck) return saltar('SIN_CLIENTE', pt.proxGeneracion)
 
       // 2. Auto-fix Sunday: if proxGeneracion lands on Sunday, shift to Monday
       const prox = pt.proxGeneracion!
@@ -518,7 +574,7 @@ export async function generarPedidosRecurrentes(
           where: { id: pt.id },
           data: { proxGeneracion: lunes },
         })
-        return { skipped: true }
+        return saltar('DOMINGO_REPROGRAMADO', prox)
       }
 
       // 3. Cliente bloqueado o inactivo
@@ -530,7 +586,7 @@ export async function generarPedidosRecurrentes(
             proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
           },
         })
-        return { skipped: true }
+        return saltar('CLIENTE_BLOQUEADO_O_INACTIVO', prox)
       }
 
       // 4. Verificar limite de fiados.
@@ -562,7 +618,7 @@ export async function generarPedidosRecurrentes(
             proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
           },
         })
-        return { skipped: true }
+        return saltar('LIMITE_FIADOS', prox)
       }
 
       // 5. SALTAR: añadir fecha a saltos y avanzar
@@ -579,7 +635,7 @@ export async function generarPedidosRecurrentes(
             proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
           },
         })
-        return { skipped: true }
+        return saltar('DECISION_SALTAR', prox)
       }
 
       // 6. Productos y validaciones
@@ -620,7 +676,7 @@ export async function generarPedidosRecurrentes(
             proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
           },
         })
-        return { skipped: true }
+        return saltar('PENDIENTES_CON_DEUDA', prox)
       }
 
       // Block APLICAR_CREDITO if there is debt or no paid orders
@@ -632,7 +688,7 @@ export async function generarPedidosRecurrentes(
             proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
           },
         })
-        return { skipped: true }
+        return saltar('CREDITO_NO_APLICABLE', prox)
       }
 
       if (decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES') {
@@ -668,13 +724,16 @@ export async function generarPedidosRecurrentes(
             proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
           },
         })
-        return { skipped: true }
+        return saltar('MINIMO_PACAS', prox)
       }
 
       // Suficiencia del destino — ANTES de cualquier efecto (cancelación de
       // pedidos prepagados, crédito, pedido, factura). Si no hay destino
       // localizable no se genera NADA y no se toca el calendario.
       if (!plantillaTieneDestinoSuficiente(pt, coordsDeLink)) {
+        // Se audita en cada intento: el calendario no avanza y la plantilla se
+        // reintenta hasta que se corrija el destino.
+        await saltar(MOTIVO_ENTREGA_INSUFICIENTE, prox)
         return { skipped: true as const, motivo: MOTIVO_ENTREGA_INSUFICIENTE }
       }
 
@@ -803,7 +862,8 @@ export async function generarPedidosRecurrentes(
           // G5.1: proyección desde el estado real. Con crédito aplicado y
           // entrega pendiente → ANTICIPADO (pagado completo) o PARCIAL.
           estadoPago: calcularEstadoPago(total, totalCredito, 'PENDIENTE'),
-          recurrenteBatchId: options?.recurrenteBatchId ?? null,
+          recurrenteBatchId,
+          createdById: actor.usuarioId,
           cPacaAguaPed: cantidades.cPacaAgua,
           cPacaHieloPed: cantidades.cPacaHielo,
           cBotellonFabPed: cantidades.cBotellonFab,
@@ -902,8 +962,50 @@ export async function generarPedidosRecurrentes(
       // pedido nuevo — cancelar prepagos + NC + saldoFavor. Ya no se marca
       // ENTREGADO ningún pedido acá.
 
+      // 11. Auditoría (§5.E) en la misma transacción: la generación y el
+      // CREATE del pedido, con el mismo actor.
+      await auditarGeneracion(tx, actor, {
+        plantillaId: pt.id,
+        prox,
+        decision: decision.decision,
+        resultado: 'GENERADO',
+        recurrenteBatchId,
+        pedidoId: creado.id,
+        numero: creado.numero,
+      })
+      await logAudit(
+        {
+          entidad: 'Pedido',
+          registroId: creado.id,
+          accion: 'CREATE',
+          datos: { numero: creado.numero, origen: 'RECURRENTE', plantillaId: pt.id, total, proceso: actor.proceso },
+          usuarioId: actor.usuarioId,
+        },
+        tx,
+      )
+
       return { skipped: false as const, creado }
     }, `generarPedidosRecurrentes:${decision.recurrenteId}`)
+    } catch (error) {
+      // La transacción ya se revirtió: el ERROR se audita aparte (§5.E).
+      try {
+        const pt = await prisma.plantillaRecurrente.findUnique({
+          where: { id: decision.recurrenteId },
+          select: { proxGeneracion: true },
+        })
+        await auditarGeneracion(prisma, actor, {
+          plantillaId: decision.recurrenteId,
+          prox: pt?.proxGeneracion ?? null,
+          decision: decision.decision,
+          resultado: 'ERROR',
+          recurrenteBatchId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      } catch (auditError) {
+        logger.error({ err: auditError instanceof Error ? auditError.message : 'Unknown' }, '[recurrentes] no se pudo auditar el ERROR de generación')
+      }
+      throw error
+    }
 
     if (result.skipped) {
       saltados.push(decision.recurrenteId)

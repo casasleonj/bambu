@@ -11,7 +11,7 @@
 // número nuevo, mayor que el último pedido creado, y que nunca colisione.
 // También fija que la generación avanza el calendario de la plantilla.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { testPrisma, resetAndSeed, disconnect } from './setup'
+import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { generarPedidosRecurrentes } from '@/lib/recurrentes'
 import { getNextNumero } from '@/lib/sequence'
 
@@ -66,7 +66,9 @@ describe('Recurrentes — Pedido.numero usa la secuencia de la app', () => {
     })
     plantillaId = pl.id
 
-    const r = await generarPedidosRecurrentes([{ recurrenteId: plantillaId, decision: 'NORMAL' }], prox)
+    const r = await generarPedidosRecurrentes([{ recurrenteId: plantillaId, decision: 'NORMAL' }], prox, {
+      actor: { usuarioId: (await getAdminUser()).id, proceso: 'hub' },
+    })
     expect(r.generados).toHaveLength(1)
   })
 

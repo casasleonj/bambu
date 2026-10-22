@@ -284,6 +284,7 @@ describe('Fase 2 — suficiencia de domicilio (Postgres real)', () => {
       const r = await generarPedidosRecurrentes(
         [{ recurrenteId: pSin.id, decision: 'NORMAL' }, { recurrenteId: pCon.id, decision: 'NORMAL' }],
         hoy,
+        { actor: { usuarioId: (await getAdminUser()).id, proceso: 'hub' } },
       )
 
       expect(await testPrisma.pedido.count({ where: { clienteId: sin.id } })).toBe(0)

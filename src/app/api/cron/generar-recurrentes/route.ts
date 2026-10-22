@@ -3,6 +3,11 @@ import { previewGeneracionRecurrentes, generarPedidosRecurrentes } from '@/lib/r
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { requireCronSecret } from '@/lib/cron-auth'
+import { prisma } from '@/lib/prisma'
+
+// Actor técnico del cron (plan de integridad v1.2 §5.E): la generación
+// automática nunca se atribuye a una persona.
+const SISTEMA_USERNAME = 'system@bambu.local'
 
 /**
  * POST /api/cron/generar-recurrentes
@@ -15,6 +20,15 @@ export async function POST(request: NextRequest) {
   if (authError) return authError
 
   try {
+    const systemUser = await prisma.user.findUnique({
+      where: { username: SISTEMA_USERNAME },
+      select: { id: true },
+    })
+    if (!systemUser) {
+      logger.error('[cron generar-recurrentes] SYSTEM user no existe. Corre el seed.')
+      return apiError('SYSTEM user no existe. Ejecutar seed primero.', 500)
+    }
+
     const preview = await previewGeneracionRecurrentes()
 
     const decisiones = preview
@@ -27,7 +41,9 @@ export async function POST(request: NextRequest) {
       return apiSuccess({ message: 'Nada que generar', generados: 0, saltados: 0 })
     }
 
-    const resultado = await generarPedidosRecurrentes(decisiones)
+    const resultado = await generarPedidosRecurrentes(decisiones, new Date(), {
+      actor: { usuarioId: systemUser.id, proceso: 'cron' },
+    })
 
     logger.info({
       generados: resultado.generados.length,
