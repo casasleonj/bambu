@@ -13,6 +13,7 @@ import { PedidoProposal } from './pedido-proposal'
 import { PedidoReview } from './pedido-review'
 import { PedidoCommitBar } from './pedido-commit-bar'
 import { WorkspaceEntrega } from './workspace-entrega'
+import { WorkspaceComprador } from './workspace-comprador'
 import { WorkspaceDinero } from './workspace-dinero'
 import { PedidoItemEditor, type PedidoItemEditorItem } from '@/components/pedido-form-unified/pedido-item-editor'
 import { PedidoContextPanel, type NuevoClienteForm } from '@/components/pedido-form-unified/pedido-context-panel'
@@ -29,6 +30,7 @@ import type { DraftClienteNuevo, DraftPedido, ProductoCodigo, WorkspaceErrorKind
 import type { PreviewPedidoResult } from '@/modules/pedidos/application/dto'
 import type { PedidoUnifiedData } from '@/components/pedido-form-unified'
 import type { Cliente } from '@/components/pedido-form-unified/types'
+import type { NegocioComprador } from '@/lib/comprador-opciones'
 
 const CODIGO_TO_PRODID: Record<string, string> = Object.fromEntries(
   Object.entries(PRODUCTO_INFO).map(([prodId, info]) => [info.codigo, prodId]),
@@ -286,6 +288,33 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
     propuesta.clear()
   }
 
+  // P1-3 (#394): el comprador se elige de una vez (tienda o persona); nada queda preseleccionado.
+  const handleSeleccionarComprador = (c: Cliente, negocio: NegocioComprador | null) => {
+    setClientesEncontrados((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c]))
+    dispatch({ type: 'SET_CLIENTE', clienteId: c.id })
+    if (negocio) {
+      dispatch({ type: 'SET_NEGOCIO', negocioId: negocio.id, direccion: negocio.direccion ?? '', barrio: negocio.barrio ?? '' })
+    } else {
+      dispatch({ type: 'SET_DIRECCION', direccion: c.direccion ?? '', barrio: c.barrio ?? '' })
+    }
+    setSearchTerm('')
+    setMostrarNuevo(false)
+    setNuevoCliente(EMPTY_NUEVO_CLIENTE)
+    setSugerenciaAplicada(false)
+    propuesta.clear()
+  }
+
+  // venta rápida: quitar al comprador devuelve la venta a «Sin identificar» (CONSUMIDOR_FINAL).
+  const handleVolverASinIdentificar = () => {
+    dispatch({ type: 'SET_CLIENTE', clienteId: 'CONSUMIDOR_FINAL' })
+    dispatch({ type: 'SET_DIRECCION', direccion: '', barrio: '' })
+    setSearchTerm('')
+    setMostrarNuevo(false)
+    setNuevoCliente(EMPTY_NUEVO_CLIENTE)
+    setSugerenciaAplicada(false)
+    propuesta.clear()
+  }
+
   const handleNuevoClienteChange = (updater: (prev: NuevoClienteForm) => NuevoClienteForm) => {
     const next = updater(nuevoCliente)
     setNuevoCliente(next)
@@ -420,11 +449,11 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
               Cliente y canal ({state.draft.canal === 'DOMICILIO' ? 'Domicilio' : 'Punto'}) vienen del pedido original y no se cambian acá. Es un pedido nuevo e independiente.
             </div>
           </div>
-        ) : esVentaRapida ? (
+        ) : modoEdicion && esVentaRapida ? (
           <div className="rounded-lg bg-gray-50 border px-3 py-2 text-sm text-gray-600" data-testid="workspace-venta-rapida">
-            Venta rápida — Consumidor Final
+            Venta rápida — sin identificar
           </div>
-        ) : (
+        ) : modoEdicion ? (
           <PedidoContextPanel
             readOnly={modoEdicion}
             ocultarInputsEntrega
@@ -464,6 +493,32 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
             onCrearNuevo={() => setMostrarNuevo(true)}
             mostrarNuevo={mostrarNuevo}
             onCerrarNuevo={handleCerrarNuevo}
+            nuevoCliente={nuevoCliente}
+            onNuevoClienteChange={handleNuevoClienteChange}
+          />
+        ) : (
+          <WorkspaceComprador
+            capturaRapida={intent === 'venta-rapida'}
+            canal={state.draft.canal}
+            clienteSeleccionado={clienteSeleccionado}
+            negocioId={state.draft.negocioId ?? null}
+            searchTerm={searchTerm}
+            onSearchTermChange={setSearchTerm}
+            resultados={filteredClientes}
+            buscando={buscandoCliente}
+            errorBusqueda={errorBusquedaCliente}
+            onReintentar={reintentarBusquedaCliente}
+            onSeleccionar={handleSeleccionarComprador}
+            onQuitar={intent === 'venta-rapida' ? handleVolverASinIdentificar : handleQuitarCliente}
+            fiadosStatus={fiadoStatus}
+            patron={patron}
+            patronLoading={patronLoading}
+            patronAplicado={sugerenciaAplicada}
+            onAplicarPatron={handleAplicarSugerencia}
+            onVerPatron={loadPatron}
+            onCrearNuevo={() => setMostrarNuevo(true)}
+            mostrarNuevo={mostrarNuevo}
+            onCerrarNuevo={intent === 'venta-rapida' ? handleVolverASinIdentificar : handleCerrarNuevo}
             nuevoCliente={nuevoCliente}
             onNuevoClienteChange={handleNuevoClienteChange}
           />

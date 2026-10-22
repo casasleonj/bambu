@@ -206,6 +206,90 @@ describe('PedidosWorkspace (Composición)', () => {
     }))
   })
 
+  describe('P1-3 (#394): un solo bloque «Comprador»', () => {
+    const conTiendas = [
+      {
+        id: 'c1', nombre: 'Marcos', apellido: 'Ruiz', telefono: '3001234567', barrio: 'Centro', direccion: 'Calle 1',
+        negocios: [
+          { id: 'n1', nombre: 'Tienda La Esperanza', tipoNegocio: 'Tienda', barrio: 'Centro', direccion: 'Cra 7 # 10-20' },
+          { id: 'n2', nombre: 'Sucursal Norte', tipoNegocio: 'Tienda', barrio: 'Norte', direccion: 'Cll 80' },
+        ],
+      },
+      { id: 'c2', nombre: 'Ana', apellido: 'Torres', telefono: '3109998888' },
+    ]
+    const buscar = (valor: string) => fireEvent.change(screen.getByTestId('cliente-search-input'), { target: { value: valor } })
+
+    it('la venta rápida nace «Sin identificar» y «Identificar» abre el buscador', () => {
+      render(<PedidosWorkspace clientes={conTiendas} intent="venta-rapida" onSubmit={vi.fn()} />)
+      expect(screen.getByTestId('workspace-venta-rapida')).toHaveTextContent('Sin identificar')
+      expect(screen.queryByTestId('cliente-search-input')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByTestId('workspace-identificar'))
+      expect(screen.getByTestId('cliente-search-input')).toBeInTheDocument()
+    })
+
+    it('buscar una tienda: solo sale la tienda (con el dueño como dato secundario) y un toque la elige', async () => {
+      const onSubmit = vi.fn()
+      render(<PedidosWorkspace clientes={conTiendas} intent="venta-rapida" onSubmit={onSubmit} />)
+      fireEvent.click(screen.getByTestId('workspace-identificar'))
+      buscar('esperanza')
+      const filas = await screen.findAllByTestId('cliente-search-result')
+      expect(filas).toHaveLength(1)
+      expect(filas[0]).toHaveAttribute('data-tipo', 'negocio')
+      expect(filas[0]).toHaveTextContent('de Marcos Ruiz')
+      fireEvent.click(filas[0])
+
+      // un solo bloque: tienda elegida, sin «Persona», sin «domicilio principal», sin segundo selector
+      expect(screen.getByTestId('comprador-nombre')).toHaveTextContent('Tienda La Esperanza')
+      expect(screen.getByTestId('comprador-detalle')).toHaveTextContent('de Marcos Ruiz')
+      expect(screen.queryByText(/domicilio principal/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Negocio \/ Sucursal/)).not.toBeInTheDocument()
+      expect(screen.queryByTestId('negocio-selector-resumen')).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+      await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+      fireEvent.click(screen.getByTestId('workspace-commit'))
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        clienteId: 'c1', negocioId: 'n1', origen: 'PEDIDO',
+      }))
+    })
+
+    it('buscar a la persona: salen la persona y TODAS sus tiendas, y ninguna queda elegida', async () => {
+      render(<PedidosWorkspace clientes={conTiendas} onSubmit={vi.fn()} />)
+      buscar('marcos')
+      const filas = await screen.findAllByTestId('cliente-search-result')
+      expect(filas.map((f) => f.getAttribute('data-tipo'))).toEqual(['persona', 'negocio', 'negocio'])
+      expect(screen.queryByTestId('comprador-elegido')).not.toBeInTheDocument()
+      fireEvent.click(filas[0])
+      expect(screen.getByTestId('comprador-nombre')).toHaveTextContent('Marcos Ruiz')
+      expect(screen.getByTestId('comprador-nombre')).not.toHaveTextContent('🏪')
+    })
+
+    it('«Cambiar» vuelve al buscador y «Dejar sin identificar» devuelve la venta a Consumidor Final', async () => {
+      const onSubmit = vi.fn()
+      render(<PedidosWorkspace clientes={conTiendas} intent="venta-rapida" onSubmit={onSubmit} />)
+      fireEvent.click(screen.getByTestId('workspace-identificar'))
+      buscar('ana')
+      fireEvent.click(await screen.findByTestId('cliente-search-result'))
+      expect(screen.getByTestId('comprador-nombre')).toHaveTextContent('Ana Torres')
+      fireEvent.click(screen.getByTestId('comprador-cambiar'))
+      expect(screen.getByTestId('cliente-search-input')).toBeInTheDocument()
+      fireEvent.click(screen.getByTestId('workspace-identificar-cancelar'))
+      expect(screen.getByTestId('workspace-venta-rapida')).toHaveTextContent('Sin identificar')
+
+      fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+      await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+      fireEvent.click(screen.getByTestId('workspace-commit'))
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ clienteId: 'CONSUMIDOR_FINAL', origen: 'VENTA_RAPIDA' }))
+    })
+
+    it('el aviso de deuda aparece una sola vez por cliente', async () => {
+      render(<PedidosWorkspace clientes={[{ ...conTiendas[0], saldoPendiente: 18000 }]} onSubmit={vi.fn()} />)
+      buscar('marcos')
+      await screen.findAllByTestId('cliente-search-result')
+      expect(screen.getAllByTestId('cliente-search-deuda')).toHaveLength(1)
+    })
+  })
+
   it('modo nueva-demanda (G11.B): cliente y canal fijos, sin panel de cliente ni toggle de canal', async () => {
     render(
       <PedidosWorkspace
