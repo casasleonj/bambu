@@ -3,6 +3,7 @@ import { UbicacionEntregaInput } from '@/components/pedido-workspace/ubicacion-e
 import { NegocioSelector } from '@/components/negocio-selector'
 import type { FiadoStatus } from '@/modules/pedidos/domain/types'
 import type { Cliente } from './types'
+import { ClienteResultado } from './cliente-resultado'
 import type { PatronConsumo } from './index'
 
 const FUENTES: string[] = [
@@ -322,15 +323,7 @@ export function PedidoContextPanel({
           {searchTerm && filteredClientes.length > 0 && (
             <div className="border rounded-lg max-h-40 overflow-y-auto">
               {filteredClientes.map(c => (
-                <button key={c.id} type="button" data-testid="cliente-search-result" onClick={() => onSelectCliente(c)} className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0 text-sm">
-                  <span className="font-medium">
-                    {c.negocios?.[0]?.nombre || `${c.nombre}${c.apellido ? ` ${c.apellido}` : ''}`}
-                  </span>
-                  {c.negocios?.[0] && (
-                    <span className="text-gray-400 ml-2 text-xs">de {c.nombre}{c.apellido ? ` ${c.apellido}` : ''}</span>
-                  )}
-                  <span className="text-gray-400 ml-2">{c.telefono}</span>
-                </button>
+                <ClienteResultado key={c.id} cliente={c} term={searchTerm} onSelect={onSelectCliente} />
               ))}
             </div>
           )}

@@ -2,7 +2,7 @@
 // (`/api/clientes?search=...&pageSize=8`) y NO depende de que la lista completa
 // (`/api/clientes?all=true`, 8 s de timeout) haya cargado. Formulario clásico
 // (el Hub comparte el hook y el panel; su spec de integración vive en pedidos-hub).
-import { test, expect, loginAs, createCliente, handleBaseCaja, openFabPedidoEnvio, goto } from './fixtures'
+import { test, expect, loginAs, createCliente, createNegocio, apiPost, handleBaseCaja, openFabPedidoEnvio, goto } from './fixtures'
 import type { Page } from '@playwright/test'
 
 const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
@@ -59,5 +59,44 @@ test.describe('Búsqueda de cliente en el servidor (#376)', () => {
     await page.getByTestId('cliente-search-retry').click()
     await expect(page.getByTestId('cliente-search-result').filter({ hasText: nombre }).first()).toBeVisible({ timeout: 15000 })
     await expect(page.getByTestId('cliente-search-error')).toHaveCount(0)
+  })
+  test('la fila explica por qué coincidió: negocio, contacto con su relación y deuda (#385)', async ({ page }) => {
+    test.setTimeout(120000)
+    await loginAs(page, 'admin')
+    const n = Date.now() % 1000000
+    const nombre = `Titular${n}`
+    const negocio = `Panadería Zafiro${n}`
+    const contacto = `Mireya${n}`
+    const { cliente } = await createCliente(page, { nombre })
+    await createNegocio(page, { clienteId: cliente.id, nombre: negocio, tipoNegocio: 'Panadería' })
+    const rc = await apiPost(page, `/api/clientes/${cliente.id}/contactos`, { nombre: contacto, telefono: `3188${String(n).padStart(6, '0')}`, relacion: 'hermana' })
+    expect(rc.status()).toBe(201)
+    // deuda: venta en punto entregada sin cobrar a un cliente real queda como fiado
+    const rp = await apiPost(page, '/api/pedidos', {
+      clienteId: cliente.id, canal: 'PUNTO', entregado: true, items: [{ producto: 'PACA_AGUA', cantidad: 1 }], pagos: [],
+    })
+    expect(rp.status()).toBe(201)
+
+    const input = await abrirModal(page)
+
+    // por el negocio: la fila nombra el negocio y al titular
+    await input.fill(`Zafiro${n}`)
+    const porNegocio = page.getByTestId('cliente-search-result').filter({ hasText: nombre }).first()
+    await expect(porNegocio).toBeVisible({ timeout: 15000 })
+    await expect(porNegocio.getByTestId('cliente-search-motivo')).toContainText(negocio)
+    await expect(porNegocio.getByTestId('cliente-search-deuda')).toContainText('Debe')
+
+    // por el contacto: nombre y relación
+    await input.fill(contacto)
+    const porContacto = page.getByTestId('cliente-search-result').filter({ hasText: nombre }).first()
+    await expect(porContacto).toBeVisible({ timeout: 15000 })
+    await expect(porContacto.getByTestId('cliente-search-motivo')).toContainText(contacto)
+    await expect(porContacto.getByTestId('cliente-search-motivo')).toContainText('(hermana)')
+
+    // por el nombre del titular no hay línea de motivo
+    await input.fill(nombre)
+    const porNombre = page.getByTestId('cliente-search-result').filter({ hasText: nombre }).first()
+    await expect(porNombre).toBeVisible({ timeout: 15000 })
+    await expect(porNombre.getByTestId('cliente-search-motivo')).toHaveCount(0)
   })
 })

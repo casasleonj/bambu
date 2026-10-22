@@ -8,7 +8,7 @@ export interface ClienteSearchable {
   barrio?: string | null
   notas?: string | null
   fuente?: string | null
-  contactos?: Array<{ nombre: string; telefono: string; relacion?: string }>
+  contactos?: Array<{ nombre: string; telefono: string; relacion?: string | null }>
   negocios?: Array<{
     nombre: string
     tipoNegocio?: string | null
@@ -60,6 +60,11 @@ function normalize(str: string): string {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+}
+
+/** Misma normalización (minúsculas, sin acentos) para quien arma coincidencias fuera de este archivo. */
+export function normalizarTexto(str: string): string {
+  return normalize(str)
 }
 
 /**
