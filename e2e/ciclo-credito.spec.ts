@@ -33,7 +33,9 @@ test.describe('Ciclo de Crédito', () => {
     const saldoInicial = Number(pedido.saldo)
     expect(saldoInicial).toBeGreaterThan(0)
 
-    // ventaRapida=true ya crea factura automáticamente, intentar crear o usar existente
+    // Un pedido entregado ya crea su factura automáticamente: intentar crear o usar la existente.
+    // GET /api/facturas devuelve `pedido: { id }` por factura (no `pedidoId`) y hoy ignora el
+    // filtro ?pedidoId, así que se busca por `pedido.id` (#349).
     const facturaRes = await apiPost(page, '/api/facturas', {
       pedidoId,
       clienteId: cliente.cliente.id,
@@ -44,7 +46,7 @@ test.describe('Ciclo de Crédito', () => {
       const facturasGet = await apiGet(page, `/api/facturas?pedidoId=${pedidoId}`)
       const facturasBody = await facturasGet.json()
       const facturas = facturasBody.facturas || facturasBody.data || []
-      const facturaExistente = (facturas as Array<{ id: string; pedidoId: string; estado: string; saldo: number | string }>).find((f) => f.pedidoId === pedidoId)
+      const facturaExistente = (facturas as Array<{ id: string; pedido?: { id: string }; estado: string; saldo: number | string }>).find((f) => f.pedido?.id === pedidoId)
       if (!facturaExistente) {
         throw new Error('No se encontró factura para el pedido')
       }
@@ -53,7 +55,7 @@ test.describe('Ciclo de Crédito', () => {
     const facturasGet = await apiGet(page, `/api/facturas?pedidoId=${pedidoId}`)
     const facturasBody = await facturasGet.json()
     const facturas = facturasBody.facturas || facturasBody.data || []
-    const factura = (facturas as Array<{ id: string; pedidoId: string; estado: string; saldo: number | string }>).find((f) => f.pedidoId === pedidoId)
+    const factura = (facturas as Array<{ id: string; pedido?: { id: string }; estado: string; saldo: number | string }>).find((f) => f.pedido?.id === pedidoId)
 
     if (!factura) {
       test.skip()
@@ -231,7 +233,7 @@ test.describe('Ciclo de Crédito', () => {
     const facturasGet = await apiGet(page, `/api/facturas?pedidoId=${pedidoId}`)
     const facturasBody = await facturasGet.json()
     const facturas = facturasBody.facturas || facturasBody.data || []
-    const factura = (facturas as Array<{ id: string; pedidoId: string; estado: string; saldo: number | string }>).find((f) => f.pedidoId === pedidoId)
+    const factura = (facturas as Array<{ id: string; pedido?: { id: string }; estado: string; saldo: number | string }>).find((f) => f.pedido?.id === pedidoId)
 
     if (!factura || saldoPedido <= 0) {
       test.skip()
