@@ -126,6 +126,7 @@ export interface EntregaResuelta {
 ### Consumidores (MISMA autoridad — revisión §16)
 
 - **`PreviewPedidoUseCase`** → reemplaza el chequeo `!cliente.direccion` por `resolverEntrega(...)`. `estado === 'INSUFICIENTE'` → warning **bloqueante** `ENTREGA_INSUFICIENTE` que quita `'crear'` de `allowedActions` (o el mecanismo equivalente). `SUFICIENTE_COMPLEMENTARIA_FALTANTE` → warning informativo `ENTREGA_COMPLEMENTARIA` (no bloquea). Preview **proyecta**.
+- **Excepción de política (P1-2, #389, decisión del PO 2026-10-22):** `requiereEntregaSuficiente` también exige destino en una **venta rápida (`origen = VENTA_RAPIDA`) a DOMICILIO aunque ya esté entregada**; el destino es el registro de la venta. Los demás orígenes entregados siguen exentos. Preview, Crear y Actualizar la aplican con la misma función.
 - **`CrearPedidoUseCase` / `ActualizarPedidoUseCase`** → **re-resuelven** con `resolverEntrega(...)` dentro de su transacción; `INSUFICIENTE` → rechazo (`ENTREGA_INSUFICIENTE`, 4xx). El commit no confía en el preview (puede estar obsoleto — revisión §16).
 - **Workspace** → consume el `EntregaResuelta` del preview para la UI adaptativa (§4). No re-implementa la lógica (G7).
 - **Generación recurrente** (Fase 8 F8-iv) → al preparar cada pedido, `resolverEntrega(...)` con la info **actual** de Cliente/Negocio (la plantilla no es autoridad de la dirección — revisión §15).

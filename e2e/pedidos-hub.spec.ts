@@ -374,6 +374,46 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     expect(Number(cf.saldoFavor)).toBe(cfAntes)
   })
 
+  // P1-2 (#389, B-10): la venta rápida nace en PUNTO; a DOMICILIO exige dirección.
+  test('workspace (P1-2): venta rápida a domicilio — sin dirección no se cobra; con dirección queda guardada', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    await page.goto(`${BASE}/pedidos`)
+    await app.getByTestId('fab-main').click()
+    await page.getByTestId('fab-venta-rapida').click()
+    await expect(page.getByTestId('workspace-venta-rapida')).toBeVisible()
+
+    // nace en PUNTO: sin zona de entrega
+    await expect(page.getByTestId('workspace-entrega')).toHaveCount(0)
+
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await page.getByTestId('workspace-canal-DOMICILIO').click()
+    await expect(page.getByTestId('workspace-entrega')).toBeVisible()
+    await page.getByTestId('dinero-pagar-completo-EFECTIVO').click()
+    // sin dirección el commit queda bloqueado y dice qué falta
+    await expect(page.getByTestId('workspace-commit')).toBeDisabled({ timeout: 10000 })
+    await expect(page.getByTestId('workspace-commit-hint')).toContainText('Falta la dirección de entrega')
+
+    const direccion = `Calle ${Date.now() % 100} # 3-2`
+    await page.getByTestId('workspace-entrega-direccion').fill(direccion)
+    await page.getByTestId('workspace-entrega-barrio').fill('Centro')
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+
+    const creado = page.waitForResponse((r) => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST')
+    await page.getByTestId('workspace-commit').click()
+    const res = await creado
+    expect(res.status()).toBeLessThan(300)
+    const body = await res.json()
+    const pedidoId = (body.data?.pedido ?? body.pedido).id as string
+
+    const enBD = await prisma.pedido.findUniqueOrThrow({ where: { id: pedidoId } })
+    expect(enBD.origen).toBe('VENTA_RAPIDA')
+    expect(enBD.canal).toBe('DOMICILIO')
+    expect(enBD.estadoEntrega).toBe('ENTREGADO')
+    expect(enBD.direccionEntrega).toBe(direccion)
+    expect(enBD.barrioEntrega).toBe('Centro')
+  })
+
   test('workspace (P0): venta rápida con pago combinado — un Pago por método', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
     const app = appMain(page)

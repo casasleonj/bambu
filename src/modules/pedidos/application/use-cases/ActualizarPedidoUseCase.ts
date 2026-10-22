@@ -291,7 +291,7 @@ export class ActualizarPedidoUseCase {
             },
             { direccion: dirNueva ?? '', barrio: barrioNuevo ?? '', lat: coordsNuevas?.lat ?? null, lng: coordsNuevas?.lng ?? null },
           )
-          if (cambiaDestino && requiereEntregaSuficiente({ canal: pedido.canal.get(), estadoEntrega: estadoActual })) {
+          if (cambiaDestino && requiereEntregaSuficiente({ canal: pedido.canal.get(), estadoEntrega: estadoActual, origen: pedido.origen.get() })) {
             const entrega = resolverEntrega({
               canal: 'DOMICILIO',
               pedidoCoords: coordsNuevas,

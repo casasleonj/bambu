@@ -126,7 +126,7 @@ describe('Fase 2 — suficiencia de domicilio (Postgres real)', () => {
     const casos: Array<[string, { cliente: 'cf' | 'real'; origen: 'PEDIDO' | 'VENTA_RAPIDA'; canal: 'PUNTO' | 'DOMICILIO'; entregado?: boolean }, boolean]> = [
       ['anónimo, venta rápida, PUNTO', { cliente: 'cf', origen: 'VENTA_RAPIDA', canal: 'PUNTO' }, true],
       ['anónimo, venta rápida, PUNTO, entregar después', { cliente: 'cf', origen: 'VENTA_RAPIDA', canal: 'PUNTO', entregado: false }, true],
-      ['anónimo, venta rápida del Hub (canal DOMICILIO por defecto, entregado)', { cliente: 'cf', origen: 'VENTA_RAPIDA', canal: 'DOMICILIO', entregado: true }, true],
+      ['anónimo, venta rápida a DOMICILIO, entregado, sin dirección (P1-2: la dirección es obligatoria)', { cliente: 'cf', origen: 'VENTA_RAPIDA', canal: 'DOMICILIO', entregado: true }, false],
       ['cliente real sin dirección, PUNTO', { cliente: 'real', origen: 'PEDIDO', canal: 'PUNTO' }, true],
       ['cliente real sin dirección, PUNTO, entregar después', { cliente: 'real', origen: 'PEDIDO', canal: 'PUNTO', entregado: false }, true],
       ['cliente real sin dirección, DOMICILIO (la regla sí aplica)', { cliente: 'real', origen: 'PEDIDO', canal: 'DOMICILIO' }, false],
@@ -146,16 +146,44 @@ describe('Fase 2 — suficiencia de domicilio (Postgres real)', () => {
     })
   })
 
-  it('CF con entrega AHORA (mostrador): NO exige destino futuro y no persiste ubicación', async () => {
+  it('venta rápida a DOMICILIO ya entregada (P1-2): exige dirección y la persiste', async () => {
     const total = await totalDe('CONSUMIDOR_FINAL', {}, 'VENTA_RAPIDA')
     const { pedido } = await crear().execute({
       clienteId: 'CONSUMIDOR_FINAL', canal: 'DOMICILIO', origen: 'VENTA_RAPIDA', items: ITEMS,
       pagos: PAGO_COMPLETO(total || 1), entregado: true,
+      direccionEntrega: 'Calle 5 # 3-2', barrioEntrega: 'Centro',
       createdById: adminId, createdByRole: 'ADMIN', offlineId: uniqueId('f2-ahora'),
     })
     const row = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
     expect(row.estadoEntrega).toBe('ENTREGADO')
+    expect(row.origen).toBe('VENTA_RAPIDA')
+    expect(row.direccionEntrega).toBe('Calle 5 # 3-2')
+    expect(row.barrioEntrega).toBe('Centro')
     expect(row.entregaLat).toBeNull()
+  })
+
+  it('venta rápida a DOMICILIO ya entregada, sin dirección: se rechaza y no deja Pedido ni Pago', async () => {
+    const total = await totalDe('CONSUMIDOR_FINAL', {}, 'VENTA_RAPIDA')
+    const offlineId = uniqueId('f2-ahora-sin-dir')
+    await expect(crear().execute({
+      clienteId: 'CONSUMIDOR_FINAL', canal: 'DOMICILIO', origen: 'VENTA_RAPIDA', items: ITEMS,
+      pagos: PAGO_COMPLETO(total || 1), entregado: true,
+      createdById: adminId, createdByRole: 'ADMIN', offlineId,
+    })).rejects.toThrow('ENTREGA_INSUFICIENTE')
+    expect(await testPrisma.pedido.findFirst({ where: { offlineId } })).toBeNull()
+    expect(await testPrisma.pago.findFirst({ where: { offlineId } })).toBeNull()
+  })
+
+  it('una venta de PUNTO entregada nunca exige dirección', async () => {
+    const total = await totalDe('CONSUMIDOR_FINAL', {}, 'VENTA_RAPIDA')
+    const { pedido } = await crear().execute({
+      clienteId: 'CONSUMIDOR_FINAL', canal: 'PUNTO', origen: 'VENTA_RAPIDA', items: ITEMS,
+      pagos: PAGO_COMPLETO(total || 1), entregado: true,
+      createdById: adminId, createdByRole: 'ADMIN', offlineId: uniqueId('f2-punto-ahora'),
+    })
+    const row = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+    expect(row.estadoEntrega).toBe('ENTREGADO')
+    expect(row.direccionEntrega).toBeNull()
   })
 
   it('ubicación inválida ((0,0) o a medias) se rechaza y no persiste', async () => {

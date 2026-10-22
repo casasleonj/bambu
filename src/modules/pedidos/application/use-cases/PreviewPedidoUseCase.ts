@@ -312,7 +312,7 @@ export class PreviewPedidoUseCase {
     // ¿Se exige la suficiencia? MISMA decisión que Crear/Actualizar (D3): hay
     // mercancía pendiente en un DOMICILIO — el carácter anónimo del cliente NO
     // es una excepción. En edición solo si CAMBIA el destino efectivo (D2).
-    let gateaSuficiencia = requiereEntregaSuficiente({ canal, estadoEntrega: estadoEntregaProyectado })
+    let gateaSuficiencia = requiereEntregaSuficiente({ canal, estadoEntrega: estadoEntregaProyectado, origen })
     if (gateaSuficiencia && esEdicion && destinoExistente) {
       const actualTexto = pickDireccionTexto({ cliente, negocio })
       const dirActual = destinoExistente.direccion ?? actualTexto.direccion
@@ -332,7 +332,9 @@ export class PreviewPedidoUseCase {
       canCreate = false
       warnings.push({
         code: 'ENTREGA_INSUFICIENTE',
-        message: 'Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.',
+        message: origen === 'VENTA_RAPIDA'
+          ? 'Falta la dirección de entrega: escríbela o agrega una ubicación.'
+          : 'Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.',
         field: 'direccion',
       })
     } else if (gateaSuficiencia && entrega.estado === 'SUFICIENTE_COMPLEMENTARIA_FALTANTE') {

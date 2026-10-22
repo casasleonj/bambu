@@ -168,7 +168,9 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
       : intent === 'venta-rapida'
         // venta rápida = entrega inmediata: el preview proyecta lo mismo que el
         // commit (ENTREGADO), así el estado de pago mostrado coincide.
-        ? { ...EMPTY_DRAFT, origen: 'VENTA_RAPIDA' as const, clienteId: 'CONSUMIDOR_FINAL', entregado: true, ...initialDraft }
+        // venta rápida: nace en PUNTO (mostrador), como el formulario antiguo; DOMICILIO
+        // es una elección explícita y exige dirección (P1-2).
+        ? { ...EMPTY_DRAFT, origen: 'VENTA_RAPIDA' as const, canal: 'PUNTO' as const, clienteId: 'CONSUMIDOR_FINAL', entregado: true, ...initialDraft }
         : { ...EMPTY_DRAFT, origen: 'PEDIDO' as const, ...initialDraft },
     initWorkspace,
   )
@@ -486,7 +488,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
       </section>
 
       {/* ── Zona: Entrega (adaptativa por suficiencia — F-ENTREGA-i) ── */}
-      {!esVentaRapida && (
+      {(!esVentaRapida || state.draft.canal === 'DOMICILIO') && (
         <WorkspaceEntrega
           entrega={state.preview?.entrega}
           canal={state.draft.canal}
@@ -498,6 +500,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
           entregaLng={state.draft.entregaLng ?? null}
           onUbicacionChange={(lat, lng) => dispatch({ type: 'SET_UBICACION', lat, lng })}
           previewPending={state.previewPending}
+          ventaRapida={esVentaRapida}
         />
       )}
 

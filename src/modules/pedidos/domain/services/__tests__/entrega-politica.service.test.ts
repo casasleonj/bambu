@@ -59,6 +59,20 @@ describe('requiereEntregaSuficiente — el carácter anónimo NO es excepción',
   })
 })
 
+describe('requiereEntregaSuficiente — venta rápida a domicilio (P1-2, decisión del PO)', () => {
+  it('VENTA_RAPIDA + DOMICILIO la exige aunque ya esté entregada', () => {
+    expect(requiereEntregaSuficiente({ canal: 'DOMICILIO', estadoEntrega: 'ENTREGADO', origen: 'VENTA_RAPIDA' })).toBe(true)
+  })
+  it('VENTA_RAPIDA + PUNTO no la exige', () => {
+    expect(requiereEntregaSuficiente({ canal: 'PUNTO', estadoEntrega: 'ENTREGADO', origen: 'VENTA_RAPIDA' })).toBe(false)
+  })
+  it('otros orígenes entregados no la exigen (la regla es solo de venta rápida)', () => {
+    for (const origen of ['PEDIDO', 'RECURRENTE', 'VENTA_LIBRE', null, undefined]) {
+      expect(requiereEntregaSuficiente({ canal: 'DOMICILIO', estadoEntrega: 'ENTREGADO', origen })).toBe(false)
+    }
+  })
+})
+
 describe('ubicacionEntregaValida — nunca se persiste un destino que resolverEntrega rechazaría', () => {
   it('acepta un par finito, en rango y distinto de (0,0)', () => {
     expect(ubicacionEntregaValida(4.711, -74.0721)).toEqual({ lat: 4.711, lng: -74.0721 })

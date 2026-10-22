@@ -119,6 +119,9 @@ describe('CrearPedidoUseCase — origen y canal son independientes (G6/ventaRapi
       origen: 'VENTA_RAPIDA',
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 9000 }],
+      // P1-2 (decisión del PO): la venta rápida a domicilio exige destino.
+      direccionEntrega: 'Calle 5 # 3-2',
+      barrioEntrega: 'Centro',
       createdById: adminId,
       createdByRole: 'ADMIN',
       offlineId: uniqueId('oc-ventarapida-domicilio'),
@@ -126,6 +129,19 @@ describe('CrearPedidoUseCase — origen y canal son independientes (G6/ventaRapi
     expect(pedido.origen).toBe('VENTA_RAPIDA')
     expect(pedido.canal).toBe('DOMICILIO')
     expect(pedido.clienteId).toBe('CONSUMIDOR_FINAL')
+  })
+
+  it('VENTA_RAPIDA + DOMICILIO sin dirección se rechaza (P1-2)', async () => {
+    await expect(useCase.execute({
+      clienteId: 'CONSUMIDOR_FINAL',
+      canal: 'DOMICILIO',
+      origen: 'VENTA_RAPIDA',
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
+      pagos: [{ metodo: 'EFECTIVO', monto: 9000 }],
+      createdById: adminId,
+      createdByRole: 'ADMIN',
+      offlineId: uniqueId('oc-ventarapida-domicilio-sin-dir'),
+    })).rejects.toThrow('ENTREGA_INSUFICIENTE')
   })
 
   it('sin origen explícito, default a PEDIDO (nunca infiere VENTA_RAPIDA de canal)', async () => {

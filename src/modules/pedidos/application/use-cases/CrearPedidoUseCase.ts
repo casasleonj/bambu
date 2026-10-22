@@ -216,7 +216,7 @@ export class CrearPedidoUseCase {
         if (!ubicacionPropia) throw new UbicacionEntregaInvalidaError()
         if (input.canal !== 'DOMICILIO') throw new UbicacionSoloDomicilioError()
       }
-      if (requiereEntregaSuficiente({ canal: input.canal, estadoEntrega: estadoEntregaCreacion })) {
+      if (requiereEntregaSuficiente({ canal: input.canal, estadoEntrega: estadoEntregaCreacion, origen: origenCreacion })) {
         const negocioEntrega = input.negocioId
           ? await this.clienteRepo.findNegocioById(input.negocioId, tx)
           : null
