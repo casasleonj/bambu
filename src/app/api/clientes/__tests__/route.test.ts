@@ -99,20 +99,24 @@ describe('Issue cliente limitePedidosFiados', () => {
 })
 
 describe('Regresión búsqueda /clientes (2026-07-29): teléfono y negocio en pg_trgm', () => {
-  it('GET incluye c.telefono ILIKE en searchConditions', () => {
-    // La lógica SQL se movió a clientes-repo.ts (refactor page.tsx anti-patrón).
-    const getSection = repoSrc.split('async function fetchSearchRaw')[1] || ''
-    expect(getSection).toMatch(/c\.telefono\s*ILIKE\s*\$\{searchLike\}/)
+  it('GET busca el teléfono del cliente (por dígitos) en la condición por palabra', () => {
+    // La lógica SQL vive en clientes-repo.ts: #384 la normaliza a dígitos (celular con espacios / +57).
+    const seccion = repoSrc.split('export function condicionPalabra')[1] || ''
+    expect(seccion).toMatch(/digitosSql\('c\.telefono'\)/)
+    expect(seccion).toMatch(/digitosSql\('cc\.telefono'\)/)
   })
 
-  it('GET incluye subquery Negocio en searchConditions', () => {
-    const getSection = repoSrc.split('async function fetchSearchRaw')[1] || ''
-    expect(getSection).toMatch(/SELECT\s+1\s+FROM\s+"Negocio"\s+n\s+WHERE\s+n\."clienteId"\s*=\s*c\.id/)
-    expect(getSection).toMatch(/n\.nombre\s*ILIKE\s*\$\{searchLike\}/)
-    expect(getSection).toMatch(/n\."tipoNegocio".*?ILIKE\s*\$\{searchLike\}/)
-    expect(getSection).toMatch(/n\.direccion.*?ILIKE\s*\$\{searchLike\}/)
-    expect(getSection).toMatch(/n\.barrio.*?ILIKE\s*\$\{searchLike\}/)
-    expect(getSection).toMatch(/n\.referencia.*?ILIKE\s*\$\{searchLike\}/)
+  it('GET incluye subquery Negocio con todos sus campos en la condición por palabra', () => {
+    const seccion = repoSrc.split('export function condicionPalabra')[1] || ''
+    expect(seccion).toMatch(/SELECT\s+1\s+FROM\s+"Negocio"\s+n\s+WHERE\s+n\."clienteId"\s*=\s*c\.id/)
+    for (const campo of ["n.nombre", 'n."tipoNegocio"', 'n.direccion', 'n.barrio', 'n.referencia']) {
+      expect(seccion, campo).toContain(`texto('${campo}', patron)`)
+    }
+  })
+
+  it('GET busca también la relación del contacto (#384)', () => {
+    const seccion = repoSrc.split('export function condicionPalabra')[1] || ''
+    expect(seccion).toContain("texto('cc.relacion', patron)")
   })
 
   it('Migración search_clientes() incluye c.telefono ILIKE', () => {

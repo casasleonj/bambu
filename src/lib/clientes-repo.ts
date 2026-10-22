@@ -13,6 +13,8 @@ import {
 } from '@/lib/cliente-filters'
 import { getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
+import { extraerDigitos } from '@/lib/telefono'
+import { scoreCliente, esPalabraTelefono, type ClienteSearchable } from '@/lib/cliente-search'
 
 export type ClienteListParams = {
   page?: number
@@ -121,6 +123,25 @@ export async function fetchClientesList(params: ClienteListParams): Promise<Clie
 
 // ─── Internal helpers ─────────────────────────────────────────────────────
 
+/** Relaciones que acompañan a cada cliente en la lista y en la búsqueda. */
+const INCLUDE_LISTA = {
+  _count: { select: { pedidos: true } },
+  pedidos: {
+    where: { saldo: { gt: 0 }, estadoEntrega: 'ENTREGADO' },
+    select: { saldo: true },
+  },
+  negocios: {
+    where: { activo: true },
+    orderBy: { nombre: 'asc' },
+    select: {
+      id: true, nombre: true, tipoNegocio: true, direccion: true,
+      barrio: true, barrioId: true, referencia: true, linkUbicacion: true,
+    },
+  },
+  plantillaRecurrente: true,
+  contactos: true,
+} satisfies Prisma.ClienteInclude
+
 type PaginationInfo = { page: number; pageSize: number; all: boolean }
 
 async function fetchPrismaList({ where, pagination }: { where: Record<string, unknown>; pagination: PaginationInfo }) {
@@ -129,23 +150,7 @@ async function fetchPrismaList({ where, pagination }: { where: Record<string, un
     prisma.cliente.findMany({
       where,
       orderBy: { nombre: 'asc' },
-      include: {
-        _count: { select: { pedidos: true } },
-        pedidos: {
-          where: { saldo: { gt: 0 }, estadoEntrega: 'ENTREGADO' },
-          select: { saldo: true },
-        },
-        negocios: {
-          where: { activo: true },
-          orderBy: { nombre: 'asc' },
-          select: {
-            id: true, nombre: true, tipoNegocio: true, direccion: true,
-            barrio: true, barrioId: true, referencia: true, linkUbicacion: true,
-          },
-        },
-        plantillaRecurrente: true,
-        contactos: true,
-      },
+      include: INCLUDE_LISTA,
       ...prismaPagination,
     }),
     prisma.cliente.count({ where }),
@@ -167,59 +172,93 @@ async function fetchPrismaList({ where, pagination }: { where: Record<string, un
   return { clientes: paged.data, total: paged.total, totalPages: paged.totalPages, page: paged.page }
 }
 
-// Shape de la fila devuelta por el SELECT crudo de fetchSearchRaw. Los tipos
-// de columna reflejan lo que retorna el driver pg para cada tipo de Postgres
-// (numeric -> string, timestamptz -> Date, boolean -> boolean); el resultado
-// completo se JSON.stringify en el mapeo final, nunca se accede campo por
-// campo salvo `id`.
-interface ClienteSearchRawRow {
-  id: string
-  nombre: string
-  apellido: string | null
-  telefono: string
-  direccion: string | null
-  barrio: string | null
-  // F1-BARRIO-CANONICO: null si el registro es legacy (sin vincular).
-  barrioId: string | null
-  notas: string | null
-  fuente: string | null
-  frecuencia: string
-  cadaNDias: number | null
-  ultEntrega: Date | null
-  proxEntrega: Date | null
-  habAgua: boolean
-  habHielo: boolean
-  habBotellon: boolean
-  habBolsaAgua: boolean
-  habBolsaHielo: boolean
-  verificado: boolean
-  verificadoEn: Date | null
-  creadoPorRol: string
-  bloqueado: boolean
-  reclamaciones: number
-  limitePedidosFiados: number | null
-  negocioDefaultId: string | null
-  activo: boolean
-  createdAt: Date
-  updatedAt: Date
-  createdById: string | null
-  rutaId: string | null
-  referencia: string | null
-  linkUbicacion: string | null
-  preciosEspeciales: string | null
-  lat: string | null
-  lng: string | null
-  geocodeOrigen: string | null
-  geocodeAt: Date | null
-  contactos: Array<{ nombre: string; telefono: string; relacion: string | null }>
-  similarity_score: number
+// ─── Búsqueda ─────────────────────────────────────────────────────────────
+//
+// Paridad con la búsqueda local (src/lib/cliente-search.ts, `scoreCliente`):
+// - varias palabras: TODAS deben coincidir, cada una en ALGÚN campo;
+// - sin acentos ni mayúsculas, en cliente, contactos y negocios;
+// - celular comparado por dígitos ("300 123 4567", "+57 300 123 4567");
+// - incluye la relación del contacto ("esposa"), el tipo de negocio, notas y fuente;
+// - orden por relevancia ANTES de paginar.
+//
+// Cómo: el SQL trae un conjunto amplio de candidatos (alguna palabra coincide en
+// algún campo, o hay parecido por trigramas = tolerancia a erratas) y el orden y
+// el criterio final los decide `scoreCliente`, el mismo de la lista local. Las
+// coincidencias solo difusas (score 0) van después, por parecido.
+
+/** Tope de candidatos que se puntúan en memoria (la base ronda los cientos). */
+export const MAX_CANDIDATOS_BUSQUEDA = 500
+
+const ACENTOS_ORIGEN = 'áàäâãéèëêíìïîóòöôõúùüûñçÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ'
+const ACENTOS_DESTINO = 'aaaaaeeeeiiiiooooouuuuncaaaaaeeeeiiiiooooouuuunc'
+
+/** Misma normalización que `cliente-search.ts`: minúsculas y sin diacríticos. */
+function normalizarPalabra(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
+export function palabrasDeBusqueda(search: string): string[] {
+  return normalizarPalabra(search.trim()).split(/\s+/).filter(Boolean)
+}
+
+function escaparLike(p: string): string {
+  return p.replace(/[\\%_]/g, '\\$&')
+}
+
+/** `translate` quita acentos y `lower` pasa a minúsculas; `expr` es un identificador fijo, nunca entrada del usuario. */
+function texto(expr: string, patron: string): Prisma.Sql {
+  return Prisma.sql`lower(translate(coalesce(${Prisma.raw(expr)}, ''), ${ACENTOS_ORIGEN}, ${ACENTOS_DESTINO})) LIKE ${patron}`
+}
+
+function digitosSql(expr: string): Prisma.Sql {
+  return Prisma.sql`regexp_replace(coalesce(${Prisma.raw(expr)}, ''), '[^0-9]', '', 'g')`
+}
+
+/** ¿La palabra aparece en algún campo buscable del cliente, de sus contactos o de sus negocios activos? */
+export function condicionPalabra(palabra: string): Prisma.Sql {
+  const patron = `%${escaparLike(palabra)}%`
+  const partes: Prisma.Sql[] = [
+    texto('c.nombre', patron),
+    texto('c.apellido', patron),
+    texto('c.barrio', patron),
+    texto('c.direccion', patron),
+    texto('c.notas', patron),
+    texto('c.fuente', patron),
+    Prisma.sql`EXISTS (
+      SELECT 1 FROM "ContactoCliente" cc
+      WHERE cc."clienteId" = c.id
+        AND (${texto('cc.nombre', patron)} OR ${texto('cc.relacion', patron)})
+    )`,
+    Prisma.sql`EXISTS (
+      SELECT 1 FROM "Negocio" n
+      WHERE n."clienteId" = c.id AND n.activo = true
+        AND (${Prisma.join([
+          texto('n.nombre', patron), texto('n."tipoNegocio"', patron), texto('n.direccion', patron),
+          texto('n.barrio', patron), texto('n.referencia', patron),
+        ], ' OR ')})
+    )`,
+  ]
+  if (esPalabraTelefono(palabra)) {
+    const patronDigitos = `%${extraerDigitos(palabra)}%`
+    // `normalizarTelefono` antepone el indicativo 57 a los números locales: se acepta con y sin él.
+    partes.push(
+      Prisma.sql`${digitosSql('c.telefono')} LIKE ${patronDigitos}`,
+      Prisma.sql`('57' || ${digitosSql('c.telefono')}) LIKE ${patronDigitos}`,
+      Prisma.sql`EXISTS (
+        SELECT 1 FROM "ContactoCliente" cc
+        WHERE cc."clienteId" = c.id
+          AND (${digitosSql('cc.telefono')} LIKE ${patronDigitos} OR ('57' || ${digitosSql('cc.telefono')}) LIKE ${patronDigitos})
+      )`,
+    )
+  }
+  return Prisma.sql`(${Prisma.join(partes, ' OR ')})`
 }
 
 async function fetchSearchRaw({
-  search, where: _where, mostrarNegocio, ubicacionMaps, todosNegociosConLink, clienteConLink, pagination,
+  search, mostrarNegocio, ubicacionMaps, todosNegociosConLink, clienteConLink, pagination,
 }: {
   search: string
-  where: Record<string, unknown>
+  where?: Record<string, unknown>
   mostrarNegocio?: string
   ubicacionMaps?: string
   todosNegociosConLink?: string
@@ -236,123 +275,89 @@ async function fetchSearchRaw({
     })
   )
 
-  const searchLike = `%${search}%`
-  const skip = pagination.all ? 0 : ((pagination.page || 1) - 1) * (pagination.pageSize || 20)
-  const take = pagination.all ? 1000 : (pagination.pageSize || 20)
+  const palabras = palabrasDeBusqueda(search)
+  const algunaPalabra = Prisma.join(palabras.map(condicionPalabra), ' OR ')
 
-  const searchConditions = Prisma.sql`
-    (
-      c.nombre <% ${search} OR
-      COALESCE(c.apellido, '') <% ${search} OR
-      COALESCE(c.barrio, '') <% ${search} OR
-      COALESCE(c.direccion, '') <% ${search} OR
-      c.nombre ILIKE ${searchLike} OR
-      COALESCE(c.apellido, '') ILIKE ${searchLike} OR
-      COALESCE(c.barrio, '') ILIKE ${searchLike} OR
-      COALESCE(c.direccion, '') ILIKE ${searchLike} OR
-      c.telefono ILIKE ${searchLike} OR
-      EXISTS (
-        SELECT 1 FROM "ContactoCliente" cc
-        WHERE cc."clienteId" = c.id
-          AND (cc.nombre ILIKE ${searchLike} OR cc.telefono ILIKE ${searchLike})
-      ) OR
-      EXISTS (
-        SELECT 1 FROM "Negocio" n
-        WHERE n."clienteId" = c.id
-          AND n.activo = true
-          AND (
-            n.nombre ILIKE ${searchLike} OR
-            COALESCE(n."tipoNegocio", '') ILIKE ${searchLike} OR
-            COALESCE(n.direccion, '') ILIKE ${searchLike} OR
-            COALESCE(n.barrio, '') ILIKE ${searchLike} OR
-            COALESCE(n.referencia, '') ILIKE ${searchLike}
-          )
+  // 1) Candidatos: coincidencia por palabra en cualquier campo, o parecido por trigramas.
+  const candidatos = await prisma.$queryRaw<Array<{ id: string; sim: number; difuso: boolean }>>`
+    SELECT c.id,
+      (
+        c.nombre <% ${search}
+        OR COALESCE(c.apellido, '') <% ${search}
+        OR COALESCE(c.barrio, '') <% ${search}
+        OR COALESCE(c.direccion, '') <% ${search}
+      ) AS difuso,
+      GREATEST(
+        word_similarity(${search}, c.nombre),
+        word_similarity(${search}, COALESCE(c.apellido, '')),
+        word_similarity(${search}, COALESCE(c.barrio, '')),
+        word_similarity(${search}, COALESCE(c.direccion, ''))
+      )::float AS sim
+    FROM "Cliente" c
+    WHERE c.activo = true
+      ${adminFilter}
+      ${filtrosNegocioRaw}
+      AND (
+        ${algunaPalabra}
+        OR c.nombre <% ${search}
+        OR COALESCE(c.apellido, '') <% ${search}
+        OR COALESCE(c.barrio, '') <% ${search}
+        OR COALESCE(c.direccion, '') <% ${search}
       )
-    )
+    ORDER BY sim DESC, c.nombre ASC
+    LIMIT ${MAX_CANDIDATOS_BUSQUEDA}
   `
 
-  const [clientesRaw, totalRaw] = await Promise.all([
-    prisma.$queryRaw<ClienteSearchRawRow[]>`
-      SELECT DISTINCT ON (c.id)
-        c.id, c.nombre, c.apellido, c.telefono, c.direccion, c.barrio, c."barrioId",
-        c.notas, c.fuente, c.frecuencia,
-        c."cadaNDias", c."ultEntrega", c."proxEntrega", c."habAgua", c."habHielo",
-        c."habBotellon", c."habBolsaAgua", c."habBolsaHielo", c.verificado,
-        c."verificadoEn", c."creadoPorRol", c.bloqueado, c.reclamaciones,
-        c."limitePedidosFiados", c."negocioDefaultId", c.notas, c.activo,
-        c."createdAt", c."updatedAt", c."createdById", c."rutaId", c.referencia,
-        c."linkUbicacion", c."preciosEspeciales",
-        c.lat, c.lng, c."geocodeOrigen", c."geocodeAt",
-        COALESCE(
-          (SELECT json_agg(json_build_object('nombre', cc.nombre, 'telefono', cc.telefono, 'relacion', cc.relacion))
-           FROM "ContactoCliente" cc WHERE cc."clienteId" = c.id),
-          '[]'::json
-        ) AS contactos,
-        GREATEST(
-          word_similarity(${search}, c.nombre),
-          word_similarity(${search}, COALESCE(c.apellido, '')),
-          word_similarity(${search}, COALESCE(c.barrio, '')),
-          word_similarity(${search}, COALESCE(c.direccion, ''))
-        ) as similarity_score
-      FROM "Cliente" c
-      WHERE c.activo = true
-        ${adminFilter}
-        ${filtrosNegocioRaw}
-        AND ${searchConditions}
-      ORDER BY c.id, similarity_score DESC
-      LIMIT ${take}
-      OFFSET ${skip}
-    `,
-    prisma.$queryRaw<Array<{ total: bigint | number | string }>>`
-      SELECT COUNT(DISTINCT c.id) as total
-      FROM "Cliente" c
-      WHERE c.activo = true
-        ${adminFilter}
-        ${filtrosNegocioRaw}
-        AND ${searchConditions}
-    `,
-  ])
+  const simPorId = new Map(candidatos.map((r) => [r.id, r.sim]))
+  const difusoPorId = new Map(candidatos.map((r) => [r.id, r.difuso]))
+  const ordenSql = new Map(candidatos.map((r, i) => [r.id, i]))
 
-  const clienteIds = clientesRaw.map((c) => c.id)
-  const [negociosMap, countsMap] = await Promise.all([
-    prisma.negocio.findMany({
-      where: { clienteId: { in: clienteIds }, activo: true },
-      select: { id: true, nombre: true, tipoNegocio: true, direccion: true, barrio: true, barrioId: true, referencia: true, linkUbicacion: true, clienteId: true },
-    }).then(negs => {
-      const map = new Map<string, (typeof negs)[number][]>()
-      for (const n of negs) {
-        const existing = map.get(n.clienteId) || []
-        existing.push(n)
-        map.set(n.clienteId, existing)
-      }
-      return map
-    }),
-    prisma.pedido.findMany({
-      where: { clienteId: { in: clienteIds }, saldo: { gt: 0 }, estadoEntrega: 'ENTREGADO' },
-      select: { clienteId: true, saldo: true },
-    }).then(pedidos => {
-      const map = new Map<string, number>()
-      for (const p of pedidos) {
-        map.set(p.clienteId, (map.get(p.clienteId) || 0) + Number(p.saldo))
-      }
-      return map
-    }),
-  ])
+  // 2) Datos completos de los candidatos (misma forma que la lista sin búsqueda).
+  const filas = await prisma.cliente.findMany({
+    where: { id: { in: candidatos.map((r) => r.id) } },
+    include: INCLUDE_LISTA,
+  })
 
-  const total = Number(totalRaw[0]?.total ?? 0)
-  const clientes = JSON.parse(JSON.stringify(
-    clientesRaw.map((c) => ({
-      ...c,
-      clienteId: c.id,
-      saldoPendiente: countsMap.get(c.id) || 0,
-      negocios: negociosMap.get(c.id) || [],
-      _count: { pedidos: 0 },
+  // 3) Relevancia: primero lo que `scoreCliente` reconoce (mayor puntaje primero);
+  //    después lo que solo coincide por parecido (erratas), en el orden de similitud
+  //    del SQL. Un candidato que ni `scoreCliente` reconoce ni es parecido se descarta:
+  //    solo coincidía en una de varias palabras.
+  const puntuados = filas
+    .map((c) => ({
+      c,
+      score: scoreCliente(c as unknown as ClienteSearchable, search),
+      orden: ordenSql.get(c.id) ?? 0,
     }))
-  ))
+  // Los difusos (erratas) solo se muestran si no hay coincidencia exacta: con exactas
+  // son ruido (p. ej. un homónimo de otro negocio al buscar "panaderia juan").
+  const hayExactas = puntuados.some(({ score }) => score > 0)
+  const finales = puntuados.filter(({ c, score }) =>
+    score > 0 || (!hayExactas && difusoPorId.get(c.id) === true))
+  const total = finales.length
+  finales.sort((a, b) => {
+    if ((a.score > 0) !== (b.score > 0)) return a.score > 0 ? -1 : 1
+    if (a.score !== b.score) return b.score - a.score
+    return a.orden - b.orden
+  })
+
+  const completos = finales.map(({ c, score }) => ({
+    ...c,
+    clienteId: c.id,
+    saldoPendiente: c.pedidos.reduce((sum, p) => sum + Number(p.saldo), 0),
+    similarity_score: score > 0 ? score : simPorId.get(c.id) ?? 0,
+  }))
+
+  const pagina = pagination.page || 1
+  const tamano = pagination.pageSize || 20
+  const recorte = pagination.all
+    ? completos.slice(0, 1000)
+    : completos.slice((pagina - 1) * tamano, pagina * tamano)
+
+  const clientes = JSON.parse(JSON.stringify(recorte))
 
   if (pagination.all) {
     return { clientes, total, totalPages: 1, page: 1 }
   }
-  const paged = buildPaginationResponse(clientes, total, pagination.page || 1, pagination.pageSize || 20)
+  const paged = buildPaginationResponse(clientes, total, pagina, tamano)
   return { clientes: paged.data, total: paged.total, totalPages: paged.totalPages, page: paged.page }
 }
