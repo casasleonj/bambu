@@ -162,6 +162,15 @@ export class Pedido {
   }
 
   /**
+   * Suelta el pedido de su embarque SIN tocar el estado de entrega. Lo usa la
+   * entrega por retiro del cliente (PR-1B): el pedido queda ENTREGADO pero ya no
+   * forma parte de la carga que el vehículo debe rendir al cierre.
+   */
+  liberarEmbarque(): void {
+    this.props = { ...this.props, embarqueId: undefined }
+  }
+
+  /**
    * Record delivery of items. Recalculates total based on delivered quantities.
    * Optionally accepts delivery metadata (photo URL, GPS, visit code).
    *

@@ -15,6 +15,19 @@ describe('accionesDetalle', () => {
     expect(a.primaria?.key).toBe('entregar')
     expect(a.secundarias.map((x) => x.key)).toEqual(['volver-pendiente'])
   })
+  it('EN_RUTA con embarque que ya salió: el botón se divide en «Entregó el repartidor» / «Cliente retiró»', () => {
+    const a = accionesDetalle('EN_RUTA', 'EN_RUTA')
+    expect(a.primaria?.key).toBe('entregar')
+    expect(a.primaria?.label).toBe('🚚 Entregó el repartidor')
+    expect(a.secundarias.map((x) => x.key)).toEqual(['entregar-retiro', 'volver-pendiente'])
+  })
+  it('EN_RUTA con embarque ABIERTO o sin embarque: un solo botón «Marcar Entregado»', () => {
+    for (const e of ['ABIERTO', null, undefined]) {
+      const a = accionesDetalle('EN_RUTA', e)
+      expect(a.primaria?.label).toBe('✅ Marcar Entregado')
+      expect(a.secundarias.map((x) => x.key)).toEqual(['volver-pendiente'])
+    }
+  })
   it('ENTREGADO: solo Anular Pedido', () => {
     const a = accionesDetalle('ENTREGADO')
     expect(a.primaria).toBeNull()

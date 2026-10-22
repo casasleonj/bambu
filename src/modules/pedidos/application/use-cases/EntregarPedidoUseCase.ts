@@ -132,6 +132,11 @@ export class EntregarPedidoUseCase {
         },
       )
 
+      // Retiro del cliente: sale del embarque en la misma transacción (si fue una
+      // entrega parcial, `entregar()` ya lo soltó). Sin evento físico del vehículo.
+      const embarqueLiberadoId = input.clienteRetiro ? pedido.embarqueId : undefined
+      if (input.clienteRetiro) pedido.liberarEmbarque()
+
       // Register payments
       if (input.pagos && input.pagos.length > 0) {
         for (const p of input.pagos) {
@@ -205,9 +210,20 @@ export class EntregarPedidoUseCase {
         },
       }, tx)
 
+      if (embarqueLiberadoId) {
+        await logAudit({
+          entidad: 'Embarque',
+          registroId: embarqueLiberadoId,
+          accion: 'UPDATE',
+          datos: { accion: 'ENTREGA_RETIRO_CLIENTE', pedidoId: updated.id.get(), pedidoNumero: updated.numero },
+          usuarioId: input.actorId,
+        }, tx)
+      }
+
       return {
         pedido: PedidoDTOMapper.toResumen(updated),
         hijo: undefined,
+        ...(embarqueLiberadoId ? { embarqueLiberadoId } : {}),
       }
     })
   }

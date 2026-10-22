@@ -49,17 +49,33 @@ Variable de servidor **`EMBARQUE_ENTREGA_VIVA_DESDE`** (ISO-8601; sin definir = 
 ## 4. Lista de activación (NO se activa en este PR)
 
 1. Gate arquitectónico aprobado sobre la divergencia con P1-B (§1).
-2. UI desplegada: `pedidos-client` envía `embarqueEntregaId` (solo si el pedido va en un embarque `EN_RUTA`). Verificar que la cola offline antigua esté vacía: una petición encolada **sin** `embarqueEntregaId` no genera evento y, en un embarque en modo vivo, aparecería como faltante.
+2. UI desplegada: `pedidos-client` resuelve quién entregó (§4bis) y envía `embarqueEntregaId` o `clienteRetiro`. Verificar que la cola offline antigua esté vacía: una petición encolada **sin** ninguno de los dos no genera evento y, en un embarque en modo vivo, aparecería como faltante.
 3. Definir `EMBARQUE_ENTREGA_VIVA_DESDE` = fecha de un día **sin** embarques abiertos (los abiertos ese día seguirían en la lógica anterior).
 4. Verificación post-despliegue con un embarque real de bajo volumen: ΣENTREGA del ledger = unidades entregadas; discrepancia 0; sin `SALIDAS_EXCEDEN_CARGA`.
 5. Monitoreo: `Historial`/`AuditLog` `ENTREGA_POST_CIERRE` y rechazos `SALIDAS_EXCEDEN_CARGA`.
+
+## 4bis. Quién entregó, GPS y foto (decisión del PO, 2026-10-22)
+
+Cierra #390. La oficina marca entregas desde `/pedidos` (el repartidor no tiene acceso a esa pantalla), así que la pantalla resuelve el contexto con el mínimo de pasos:
+
+| Situación del pedido | Interfaz | Efecto en servidor |
+|---|---|---|
+| Sin embarque (mostrador) | 1 botón «Marcar entregado» | Entrega normal, sin salida del vehículo |
+| Embarque `ABIERTO` (aún no sale) | 1 botón; el sistema lo trata como retiro | `clienteRetiro`: entregado y suelto del embarque |
+| Embarque `EN_RUTA` | 2 botones: «Entregó el repartidor» / «Cliente retiró» | `embarqueEntregaId` (salida del vehículo) o `clienteRetiro` |
+
+- **`clienteRetiro`:** `/entrega` marca entregado y suelta el pedido del embarque en la **misma transacción** (repetible con el mismo `offlineId`, funciona en la cola offline), sin evento físico ni exigencia de GPS/foto; audita `ENTREGA_RETIRO_CLIENTE`, refresca el embarque y avisa al repartidor si ya iba en ruta. Es incompatible con `embarqueEntregaId` (400). `embarqueEntregaId` sobre un embarque `ABIERTO` se rechaza (400).
+- **GPS:** la app lo toma sola (sin pantalla ni justificación). Se envía únicamente si el dispositivo está dentro del radio del domicilio: la posición de la oficina **no** se guarda como GPS de entrega porque el backfill de coordenadas de negocios usa la mediana de esos GPS. El servidor lo exige (`requerirGpsParaEntrega`) a REPARTIDOR y trabajadores con moto; ADMIN/ASISTENTE nunca quedan bloqueados.
+- **Foto:** el servidor la exige a REPARTIDOR y trabajadores con moto; ADMIN y ASISTENTE quedan exentos.
+- Las pantallas `FotoEntregaModal` y `GpsCaptureModal` ya no se usan en `/pedidos`; siguen disponibles para la pantalla de entrega del repartidor (#318).
 
 ## 5. Limitaciones conocidas (honestas)
 
 - **Botellón manual vs `/entrega`:** `POST /botellones` no lleva `pedidoId`; si el repartidor registra la misma entrega por las dos vías, no hay identidad común verificable. Mientras la suma no supere la carga, ambas cuentan (sobrante visible, no silencioso); si la supera, el cierre se rechaza para revisión. Solución de fondo: que `/botellones` acepte un `pedidoId`/`eventoEntregaId` verificable (#353).
 - **Disponibilidad en vivo de P1-B:** la futura `calcularDisponibilidadFisica` suma `Pedido.cantEntrega` **más** `ENTREGA`/`VENTA_RUTA` del ledger bajo el supuesto de que son disjuntos antes del cierre. Con el modo vivo ya no lo son para los embarques en ese modo: debe leer solo el ledger en ellos o duplicará. Aún no existe esa función (P1-C no implementado); registrado en #311.
 - **Ventas libres previas** (`POST /pedidos/venta-libre`) siguen sin escribir evento vivo; se cuentan por su `origen = VENTA_LIBRE` y se escriben al cierre como antes (#354).
-- **Pedidos entregados sin contexto físico dentro de una misión en modo vivo** (entrega marcada desde oficina) no cuentan como salida del vehículo, por diseño (§3.2 punto 1).
+- **Pedidos entregados sin contexto físico dentro de una misión en modo vivo** no cuentan como salida del vehículo, por diseño (§3.2 punto 1). Con §4bis el caso habitual queda resuelto sin preguntar; solo `EN_RUTA` exige elegir entre dos botones.
+- **GPS "del repartidor":** hoy no hay seguimiento de su posición (`GpsTrack` y `POST /api/gps-track` existen pero ninguna pantalla los usa). Cuando la oficina marca por el repartidor no se puede conocer su posición; por eso solo se guarda el GPS si el dispositivo que marca está en el domicilio. Tomar la posición desde el usuario del repartidor exige que su app la reporte (issue aparte).
 - No se tocan pagos, inventario, saldos, facturas ni responsabilidades. El caso de los $150.000 y la brecha de precios (#326) siguen abiertos.
 
 ## 6. Pruebas

@@ -23,6 +23,8 @@ export interface EntregarPedidoPayload {
   // al capturar la entrega (también al encolar offline). Ausente = entrega en
   // punto/oficina sin custodia de vehículo → no genera movimiento físico.
   embarqueEntregaId?: string
+  // El cliente retiró el pedido: entregado + suelto del embarque, sin salida física.
+  clienteRetiro?: boolean
   fotoEntrega?: string
   gpsLat?: number
   gpsLng?: number

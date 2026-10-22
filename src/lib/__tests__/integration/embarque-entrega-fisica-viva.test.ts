@@ -338,6 +338,106 @@ describe('PR-1B/1C — evento físico vivo atribuido + cierre por misión', () =
     })
   })
 
+  // ── Retiro del cliente y reglas por rol (decisión del PO, 2026-10-22) ────
+  describe('retiro del cliente y reglas de GPS/foto por rol', () => {
+    const setConfig = (clave: string, valor: string) =>
+      testPrisma.config.upsert({ where: { clave }, create: { clave, valor }, update: { valor } })
+    const clearConfig = () =>
+      testPrisma.config.deleteMany({ where: { clave: { in: ['requerirGpsParaEntrega', 'REQUIERE_FOTO_ENTREGA'] } } })
+
+    afterEach(async () => {
+      authUser.role = 'ADMIN'
+      await clearConfig()
+    })
+
+    it('clienteRetiro: entrega, suelta el pedido del embarque en la misma petición y NO anota salida del vehículo', async () => {
+      const emb = await crearEmbarque({ PACA_AGUA: 5 })
+      const pedido = await crearPedidoPrepago({ embarqueId: emb.id, producto: 'PACA_AGUA', cantPedido: 5 })
+
+      const res = await entregar(pedido.id, {
+        itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 5 }], clienteRetiro: true, offlineId: 'ret-1',
+      })
+
+      expect(res.status).toBe(200)
+      const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id }, include: { items: true } })
+      expect(p.estadoEntrega).toBe('ENTREGADO')
+      expect(p.embarqueId).toBeNull()
+      expect(p.items[0].cantEntrega).toBe(5)
+      expect(await movimientos(emb.id)).toHaveLength(0)
+    })
+
+    it('clienteRetiro es repetible: el mismo offlineId no cambia nada la segunda vez', async () => {
+      const emb = await crearEmbarque({ PACA_AGUA: 5 })
+      const pedido = await crearPedidoPrepago({ embarqueId: emb.id, producto: 'PACA_AGUA', cantPedido: 5 })
+      const body = { itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 5 }], clienteRetiro: true, offlineId: 'ret-2' }
+
+      expect((await entregar(pedido.id, body)).status).toBe(200)
+      const otra = await entregar(pedido.id, body)
+
+      expect(otra.status).toBe(200)
+      expect((await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })).embarqueId).toBeNull()
+    })
+
+    it('clienteRetiro + embarqueEntregaId es contradictorio → 400 y nada cambia', async () => {
+      const emb = await crearEmbarque({ PACA_AGUA: 5 })
+      const pedido = await crearPedidoPrepago({ embarqueId: emb.id, producto: 'PACA_AGUA', cantPedido: 5 })
+
+      const res = await entregar(pedido.id, {
+        itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 5 }], clienteRetiro: true, embarqueEntregaId: emb.id, offlineId: 'ret-3',
+      })
+
+      expect(res.status).toBe(400)
+      const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+      expect(p.embarqueId).toBe(emb.id)
+      expect(p.estadoEntrega).not.toBe('ENTREGADO')
+    })
+
+    it('"lo entregó el vehículo" sobre un embarque ABIERTO (aún no sale) se rechaza', async () => {
+      const emb = await crearEmbarque({ PACA_AGUA: 5 })
+      await testPrisma.embarque.update({ where: { id: emb.id }, data: { estado: 'ABIERTO' } })
+      const pedido = await crearPedidoPrepago({ embarqueId: emb.id, producto: 'PACA_AGUA', cantPedido: 5 })
+
+      const res = await entregar(pedido.id, {
+        itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 5 }], embarqueEntregaId: emb.id, offlineId: 'ab-1',
+      })
+
+      expect(res.status).toBe(400)
+      expect((await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })).cPacaAguaEnt).toBe(0)
+      expect(await movimientos(emb.id)).toHaveLength(0)
+    })
+
+    it('GPS: ADMIN/ASISTENTE no lo llenan (200 sin GPS); REPARTIDOR sí lo necesita (400 sin GPS)', async () => {
+      await setConfig('requerirGpsParaEntrega', 'true')
+      const emb = await crearEmbarque({ PACA_AGUA: 10 })
+      const p1 = await crearPedidoPrepago({ embarqueId: emb.id, producto: 'PACA_AGUA', cantPedido: 5 })
+      const p2 = await crearPedidoPrepago({ embarqueId: emb.id, producto: 'PACA_AGUA', cantPedido: 5 })
+      const items = [{ producto: 'PACA_AGUA', cantidad: 5 }]
+
+      authUser.role = 'ASISTENTE'
+      expect((await entregar(p1.id, { itemsEntregados: items, offlineId: 'gps-of' })).status).toBe(200)
+
+      authUser.role = 'REPARTIDOR'
+      const sinGps = await entregar(p2.id, { itemsEntregados: items, offlineId: 'gps-rep' })
+      expect(sinGps.status).toBe(400)
+      const conGps = await entregar(p2.id, { itemsEntregados: items, gpsLat: 4.7, gpsLng: -74.07, entregadoConGps: true, offlineId: 'gps-rep2' })
+      expect(conGps.status).toBe(200)
+    })
+
+    it('foto: ADMIN/ASISTENTE no la necesitan (200 sin foto); REPARTIDOR sí (400 sin foto)', async () => {
+      await setConfig('REQUIERE_FOTO_ENTREGA', 'true')
+      const emb = await crearEmbarque({ PACA_AGUA: 10 })
+      const p1 = await crearPedidoPrepago({ embarqueId: emb.id, producto: 'PACA_AGUA', cantPedido: 5 })
+      const p2 = await crearPedidoPrepago({ embarqueId: emb.id, producto: 'PACA_AGUA', cantPedido: 5 })
+      const items = [{ producto: 'PACA_AGUA', cantidad: 5 }]
+
+      authUser.role = 'ADMIN'
+      expect((await entregar(p1.id, { itemsEntregados: items, offlineId: 'foto-ad' })).status).toBe(200)
+
+      authUser.role = 'REPARTIDOR'
+      expect((await entregar(p2.id, { itemsEntregados: items, offlineId: 'foto-rep' })).status).toBe(400)
+    })
+  })
+
   // ── B-09: doble movimiento físico ───────────────────────────────────────
   describe('B-09 — un hecho físico = una salida', () => {
     it('ENTREGA manual de botellón (POST /botellones) + pedido ya entregado por /entrega sin evento: el cierre con delta 0 no agrega una segunda salida', async () => {

@@ -8,10 +8,8 @@ import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
-import { fetchRequiereFotoEntrega } from '@/lib/client/config-client'
 import { Modal } from '@/components/modal'
 import { PedidoDetalle } from '../pedido-detalle/pedido-detalle'
-import { FotoEntregaModal } from '@/components/foto-entrega-modal'
 import { ErrorState } from '@/components/error-state'
 import { SkeletonPage, SkeletonCard } from '@/components/skeleton'
 import { Tooltip, InfoBanner } from '@/components/tooltip'
@@ -44,10 +42,12 @@ import { itemsCambiaron } from '@/lib/pedido-edicion-items'
 import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
-import { GpsCaptureModal } from '@/components/gps-capture-modal'
 import { useExcepcionesPendientes } from '@/components/excepcion-credito/use-excepciones-pendientes'
 import { ExcepcionesPendientesBanner } from '@/components/excepcion-credito/excepciones-pendientes-banner'
 import { ExcepcionCreditoModal } from '@/components/excepcion-credito/excepcion-credito-modal'
+import { capturarGpsSilencioso } from '@/lib/gps-silencioso'
+import { resolverEntrega } from '@/lib/entrega-quien'
+import { isWithinDeliveryRadius } from '@/lib/gps'
 import { loadClienteDetail } from '@/lib/cliente-detail-cache'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
@@ -256,12 +256,6 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   >(null)
   const anularMotivoRef = useRef<string>('')
   const anularDevolverStockRef = useRef<boolean>(false)
-  // Foto entrega (admin) — when REQUIERE_FOTO_ENTREGA is on, ENTREGADO flow shows the modal first.
-  const [showFotoEntrega, setShowFotoEntrega] = useState(false)
-  const [showGpsCapture, setShowGpsCapture] = useState(false)
-  const [pedidoParaEntregar, setPedidoParaEntregar] = useState<Pedido | null>(null)
-  const [fotoParaEntregar, setFotoParaEntregar] = useState<string | null>(null)
-  const [requiereFotoEntrega, setRequiereFotoEntrega] = useState(false)
   const [gpsConfig, setGpsConfig] = useState({
     radiusMeters: 30,
     requerirGps: false,
@@ -883,14 +877,6 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   }, [])
 
   useEffect(() => {
-    // Fetch REQUIERE_FOTO_ENTREGA config (best-effort, default false on error).
-    ;(async () => {
-      const required = await fetchRequiereFotoEntrega()
-      setRequiereFotoEntrega(required)
-    })()
-  }, [])
-
-  useEffect(() => {
     // Fetch GPS delivery config (best-effort, defaults applied on error).
     ;(async () => {
       try {
@@ -1013,9 +999,6 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const { entregar } = useEntregarPedido({
     onSuccess: () => {
       setShowDetailModal(false)
-      setShowGpsCapture(false)
-      setPedidoParaEntregar(null)
-      setFotoParaEntregar(null)
       refreshPedidos()
       refetchFiados()
       refetchAlertas()
@@ -1375,16 +1358,61 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const [updatingId, setUpdatingId] = useState<string | null>(null)
 
   /**
-   * Entregar SIEMPRE pasa por POST /api/pedidos/[id]/entrega (cantidades,
-   * pagos, GPS/foto según Config, reconexión N2, factura). El PUT ya no
-   * ejecuta transiciones críticas. Con o sin foto, el flujo converge en la
-   * captura de GPS y luego `handleGpsConfirm`.
+   * Entregar SIEMPRE pasa por POST /api/pedidos/[id]/entrega (cantidades, pagos,
+   * reconexión N2, factura). Sin pantallas intermedias: la oficina no llena foto
+   * ni GPS (la obligatoriedad por rol la aplica el servidor).
+   *
+   * Quién entregó, sin preguntar cuando no hace falta:
+   *  - sin embarque (mostrador)           → entrega normal;
+   *  - embarque que aún no sale (ABIERTO) → es un retiro: el vehículo no pudo entregar;
+   *  - embarque EN_RUTA                   → el botón elegido ("Entregó el repartidor"
+   *                                         o "Cliente retiró").
+   * El GPS se toma solo y se envía únicamente si está en el domicilio del cliente:
+   * la posición de la oficina NO se guarda como GPS de entrega (contaminaría la
+   * geocodificación de negocios, que usa la mediana del GPS de entregas).
    */
-  function iniciarEntrega(pedido: Pedido) {
-    setPedidoParaEntregar(pedido)
-    setFotoParaEntregar(null)
-    if (requiereFotoEntrega) setShowFotoEntrega(true)
-    else setShowGpsCapture(true)
+  async function entregarPedido(pedido: Pedido, quien: 'REPARTIDOR' | 'CLIENTE_RETIRO' = 'REPARTIDOR') {
+    if (updatingId) return
+    // El detalle trae el estado de su embarque; la lista de embarques es el respaldo.
+    const embarqueEstado = pedido.embarqueId
+      ? (pedido.embarqueResumen?.estado ?? embarques.find((e) => e.id === pedido.embarqueId)?.estado)
+      : undefined
+    const decision = resolverEntrega({ embarqueId: pedido.embarqueId, embarqueEstado, quien })
+    setUpdatingId(pedido.id)
+    try {
+      // PR-1: `entregar()` acumula → se envía el RESTO por línea (`cantPedido − cantEntrega`).
+      const itemsEntregados = (pedido.items || []).flatMap((i) => {
+        const resto = i.cantPedido - (i.cantEntrega || 0)
+        return resto > 0 ? [{ producto: i.producto, cantidad: resto }] : []
+      })
+
+      let gps: { lat: number; lng: number; accuracy?: number } | null = null
+      if (decision.tomarGps) {
+        const clienteParaGps = clientes.find((c) => c.id === pedido.clienteId)
+        const targetLat = pedido.lat ?? clienteParaGps?.lat
+        const targetLng = pedido.lng ?? clienteParaGps?.lng
+        const medido = await capturarGpsSilencioso()
+        if (medido && targetLat != null && targetLng != null &&
+            isWithinDeliveryRadius(medido, { lat: Number(targetLat), lng: Number(targetLng) }, gpsConfig.radiusMeters)) {
+          gps = medido
+        }
+      }
+
+      await entregar({
+        pedidoId: pedido.id,
+        itemsEntregados,
+        pagos: [],
+        // Contexto físico: solo si lo entregó el vehículo de un embarque que ya salió.
+        embarqueEntregaId: decision.embarqueEntregaId,
+        clienteRetiro: decision.clienteRetiro ? true : undefined,
+        gpsLat: gps?.lat,
+        gpsLng: gps?.lng,
+        gpsAccuracy: gps?.accuracy,
+        entregadoConGps: gps !== null,
+      })
+    } finally {
+      setUpdatingId(null)
+    }
   }
 
   async function cambiarEstado(id: string, nuevoEstado: string) {
@@ -1392,7 +1420,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
     if (nuevoEstado === 'ENTREGADO') {
       const pedido = (selectedPedido?.id === id ? selectedPedido : null) ?? pedidos.find((p) => p.id === id)
-      if (pedido) iniciarEntrega(pedido)
+      if (pedido) void entregarPedido(pedido)
       return
     }
 
@@ -1677,60 +1705,6 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       } catch {
         setPreciosActuales({})
       }
-    }
-  }
-
-  /**
-   * After the user confirms a delivery photo, proceed to the GPS capture step.
-   */
-  async function handleFotoConfirm(fotoBase64: string) {
-    if (!pedidoParaEntregar) {
-      throw new Error('No hay pedido seleccionado')
-    }
-    setFotoParaEntregar(fotoBase64)
-    setShowFotoEntrega(false)
-    setShowGpsCapture(true)
-  }
-
-  /**
-   * After GPS capture/justification, mark the pedido as ENTREGADO via the hook.
-   */
-  async function handleGpsConfirm(coords: { lat: number; lng: number; accuracy?: number } | null, justificacion?: string) {
-    if (!pedidoParaEntregar || (requiereFotoEntrega && !fotoParaEntregar)) {
-      toast.error('No hay pedido o foto seleccionados')
-      return
-    }
-    const id = pedidoParaEntregar.id
-    setUpdatingId(id)
-    try {
-      // PR-1: `entregar()` acumula → se envía el RESTO por línea
-      // (`cantPedido − cantEntrega`). En un pedido fresco eso es `cantPedido`;
-      // en uno parcialmente entregado completa el faltante.
-      const itemsEntregados = (pedidoParaEntregar.items || []).flatMap((i) => {
-        const resto = i.cantPedido - (i.cantEntrega || 0)
-        return resto > 0 ? [{ producto: i.producto, cantidad: resto }] : []
-      })
-
-      // PR-1B: contexto físico. Solo si el pedido va en un embarque EN_RUTA (el
-      // vehículo ya salió); una entrega marcada desde oficina/punto no lo lleva.
-      const embarqueEntrega = pedidoParaEntregar.embarqueId
-        ? embarques.find((e) => e.id === pedidoParaEntregar.embarqueId && e.estado === 'EN_RUTA')
-        : undefined
-
-      await entregar({
-        pedidoId: id,
-        itemsEntregados,
-        pagos: [],
-        embarqueEntregaId: embarqueEntrega?.id,
-        fotoEntrega: fotoParaEntregar ?? undefined,
-        gpsLat: coords?.lat,
-        gpsLng: coords?.lng,
-        gpsAccuracy: coords?.accuracy,
-        gpsJustificacion: justificacion,
-        entregadoConGps: coords !== null,
-      })
-    } finally {
-      setUpdatingId(null)
     }
   }
 
@@ -2414,7 +2388,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
                   break
                 case 'enviar': void cambiarEstado(selectedPedido.id, 'EN_RUTA'); break
                 case 'cancelar': void cambiarEstado(selectedPedido.id, 'CANCELADO'); break
-                case 'entregar': void iniciarEntrega(selectedPedido); break
+                case 'entregar': void entregarPedido(selectedPedido, 'REPARTIDOR'); break
+                case 'entregar-retiro': void entregarPedido(selectedPedido, 'CLIENTE_RETIRO'); break
                 case 'volver-pendiente': void cambiarEstado(selectedPedido.id, 'PENDIENTE'); break
                 case 'anular': void cambiarEstado(selectedPedido.id, 'ANULADO'); break
               }
@@ -2526,53 +2501,6 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
       {/* Confirm Modal */}
       {confirmModal}
-
-      {/* Foto entrega modal (admin) — only mounted when delivery photo is required */}
-      <FotoEntregaModal
-        open={showFotoEntrega}
-        onClose={() => {
-          if (updatingId) return
-          setShowFotoEntrega(false)
-          setPedidoParaEntregar(null)
-          setFotoParaEntregar(null)
-        }}
-        onConfirm={handleFotoConfirm}
-      />
-
-      {/* GPS capture modal — second step after photo confirmation */}
-      {(() => {
-        // Target de validación: coords EFECTIVAS del pedido (negocio gana,
-        // viene en el payload vía pickCoords). Fallback al cliente de la
-        // lista para payloads legacy sin lat/lng.
-        const clienteParaGps = pedidoParaEntregar
-          ? clientes.find(c => c.id === pedidoParaEntregar.clienteId)
-          : null
-        const targetLat = pedidoParaEntregar?.lat ?? clienteParaGps?.lat
-        const targetLng = pedidoParaEntregar?.lng ?? clienteParaGps?.lng
-        return (
-          <GpsCaptureModal
-            open={showGpsCapture}
-            onClose={() => {
-              if (updatingId) return
-              setShowGpsCapture(false)
-              setPedidoParaEntregar(null)
-              setFotoParaEntregar(null)
-            }}
-            onConfirm={handleGpsConfirm}
-            clienteCoords={
-              targetLat != null && targetLng != null
-                ? { lat: targetLat, lng: targetLng }
-                : undefined
-            }
-            clienteName={
-              pedidoParaEntregar?.nombreNegocioCli ??
-              pedidoParaEntregar?.nombreCli ??
-              undefined
-            }
-            deliveryRadiusMeters={gpsConfig.radiusMeters}
-          />
-        )
-      })()}
 
       {/* FAB Unificado */}
       <div

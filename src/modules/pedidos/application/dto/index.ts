@@ -106,6 +106,13 @@ export interface EntregarPedidoInput {
    * `embarqueId` (captura de dinero). Requiere `offlineId`.
    */
   embarqueEntregaId?: string
+  /**
+   * El cliente retiró el pedido (oficina/mostrador) en vez de recibirlo del
+   * vehículo: se marca entregado y se SUELTA del embarque en la misma
+   * transacción; no se anota salida física ni se exige GPS/foto. Incompatible
+   * con `embarqueEntregaId`.
+   */
+  clienteRetiro?: boolean
   fotoEntrega?: string
   gpsLat?: number
   gpsLng?: number
@@ -301,6 +308,8 @@ export interface EntregarPedidoResult {
   hijo?: PedidoResumenDTO
   // FIX F-N7: indica si la entrega fue dedup'd (pedido ya estaba ENTREGADO)
   deduped?: boolean
+  /** Embarque del que se soltó el pedido por retiro del cliente (para avisar/refrescar). */
+  embarqueLiberadoId?: string
 }
 
 // ─── Preview (Fase 4, prerequisito del blueprint — BRECHA §9.1) ───────────────

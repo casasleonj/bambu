@@ -303,7 +303,7 @@ test.describe('Transiciones críticas: ni el PUT ni la UI las ejecutan por atajo
     expect(fila.embarqueId).toBeNull()
   })
 
-  test('UI: «Marcar Entregado» de un pedido EN_RUTA usa la entrega especializada (cantidades, GPS) y lo deja ENTREGADO', async ({ browser }) => {
+  test('UI: «Marcar Entregado» de un pedido de un embarque que aún no sale lo entrega y lo suelta del embarque, sin pantallas de foto/GPS', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
     const { cliente } = await createCliente(page, { nombre: `UiEntrega ${Date.now()}` })
     const creado = await apiPost(page, '/api/pedidos', {
@@ -315,39 +315,17 @@ test.describe('Transiciones críticas: ni el PUT ni la UI las ejecutan por atajo
     const embarque = await createEmbarque(page, trabajador.trabajador.id)
     expect((await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId: embarque.embarque.id })).status()).toBeLessThan(300)
 
-    // Determinista en cualquier runner: no depende del proveedor de geolocalización
-    // del navegador headless ni de la foto de entrega (Config de la BD de test).
-    // Por la API (no por Prisma): el servidor cachea la Config 60 s y solo la API la invalida.
-    expect((await apiPost(page, '/api/config', { clave: 'REQUIERE_FOTO_ENTREGA', valor: 'false' })).status()).toBeLessThan(300)
-    await page.addInitScript(() => {
-      const posicion = { coords: { latitude: 4.711, longitude: -74.0721, accuracy: 10, altitude: null, altitudeAccuracy: null, heading: null, speed: null }, timestamp: Date.now() }
-      Object.defineProperty(navigator, 'geolocation', {
-        configurable: true,
-        value: {
-          getCurrentPosition: (ok: (p: unknown) => void) => { setTimeout(() => ok(posicion), 0) },
-          watchPosition: () => 0,
-          clearWatch: () => undefined,
-        },
-      })
-    })
-    // El servidor puede seguir viendo REQUIERE_FOTO_ENTREGA=true unos segundos (la Config se cachea y
-    // la invalidación es diferida): se adjunta una foto mínima para que el spec no dependa de eso.
-    await page.route(`**/api/pedidos/${pedidoId}/entrega`, async (route) => {
-      const original = route.request().postDataJSON() as Record<string, unknown>
-      await route.continue({
-        postData: JSON.stringify({ ...original, fotoEntrega: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' }),
-      })
-    })
     await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
     const entregaRes = page.waitForResponse((r) => r.url().endsWith(`/api/pedidos/${pedidoId}/entrega`) && r.request().method() === 'POST')
+    // Un solo clic: ya no hay modal de foto ni de GPS para la oficina.
     await page.getByRole('button', { name: /Marcar Entregado/ }).click()
-    // La captura de GPS es parte de la entrega especializada (antes el PUT la saltaba).
-    await expect(page.getByText('GPS capturado')).toBeVisible({ timeout: 20000 })
-    await page.getByTestId('gps-confirmar').click()
     const respuesta = await entregaRes
     expect(respuesta.status(), `POST /entrega -> ${await respuesta.text()}`).toBeLessThan(300)
     await expect.poll(async () => (await prisma.pedido.findUniqueOrThrow({ where: { id: pedidoId } })).estadoEntrega, { timeout: 15000 }).toBe('ENTREGADO')
     const fila = await prisma.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: { items: true } })
     expect(fila.items[0].cantEntrega).toBe(2)
+    // El embarque aún no salía: el vehículo no pudo entregarlo, así que sale del embarque (retiro).
+    expect(fila.embarqueId).toBeNull()
+    expect(await prisma.embarqueMovimiento.count({ where: { embarqueId: embarque.embarque.id, tipo: 'ENTREGA' } })).toBe(0)
   })
 })

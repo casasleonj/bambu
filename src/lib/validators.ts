@@ -206,6 +206,8 @@ export const EntregaSchema = z.object({
   // DINERO). Ausente = entrega en punto/oficina sin custodia de vehículo: no
   // genera `EmbarqueMovimiento.ENTREGA`. Exige `offlineId` (idempotencia).
   embarqueEntregaId: z.string().min(1).optional(),
+  // El cliente retiró el pedido: entregado + suelto del embarque, sin salida física.
+  clienteRetiro: z.boolean().optional(),
   // fotoEntrega size cap: 15MB covers a 10MB file with ~33% base64 overhead + buffer.
   // DoS protection: prevents a malicious client from sending 100MB+ payloads that
   // would crash JSON parsing or bloat the Postgres TEXT column.
@@ -228,6 +230,13 @@ export const EntregaSchema = z.object({
       code: z.ZodIssueCode.custom,
       message: 'PAGO_MISION_SIN_EMBARQUE: un cobro en la entrega debe declarar el embarque de captura',
       path: ['embarqueId'],
+    })
+  }
+  if (data.clienteRetiro && data.embarqueEntregaId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'ENTREGA_CONTRADICTORIA: un pedido retirado por el cliente no puede declararse entregado por el vehículo',
+      path: ['clienteRetiro'],
     })
   }
   // PR-1B: el evento físico se deduplica por clave estable de comando; sin
