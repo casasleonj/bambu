@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { DEFAULT_PRICES, PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
 import { METODOS_PAGO, METODO_PAGO_ICONS } from '@/lib/metodos-pago'
 import { useClienteSearch } from '@/hooks/use-cliente-search'
+import type { NegocioPreseleccionado } from '@/lib/cliente-coincidencia'
 import { resolveActualizarCliente } from './resolve-actualizar-cliente'
 import { PedidoPricingSummary } from './pedido-pricing-summary'
 import { PedidoContextPanel } from './pedido-context-panel'
@@ -616,9 +617,10 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     reintentar: reintentarBusquedaCliente,
   } = useClienteSearch(searchTerm, clientes)
 
-  const handleSelectCliente = (cliente: Cliente) => {
+  const handleSelectCliente = (cliente: Cliente, negocio?: NegocioPreseleccionado | null) => {
     setClienteSeleccionado(cliente)
-    setNegocioSeleccionado(null)
+    setNegocioSeleccionado(negocio?.id ?? null)
+    setNegocioData(negocio ? { direccion: negocio.direccion, barrio: negocio.barrio } : null)
     setSearchTerm('')
     setMostrarNuevo(false)
     setSoloParaEstePedido(false)

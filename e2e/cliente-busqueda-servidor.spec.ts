@@ -99,4 +99,20 @@ test.describe('Búsqueda de cliente en el servidor (#376)', () => {
     await expect(porNombre).toBeVisible({ timeout: 15000 })
     await expect(porNombre.getByTestId('cliente-search-motivo')).toHaveCount(0)
   })
+
+  test('elegir un resultado que coincidió por su negocio preselecciona ese negocio (#392)', async ({ page }) => {
+    test.setTimeout(90000)
+    await loginAs(page, 'admin')
+    const n = Date.now() % 1000000
+    const nombre = `Dueno${n}`
+    const negocio = `Ferreteria Opalo${n}`
+    const { cliente } = await createCliente(page, { nombre })
+    await createNegocio(page, { clienteId: cliente.id, nombre: negocio, tipoNegocio: 'Ferretería' })
+
+    const input = await abrirModal(page)
+    await input.fill(`Opalo${n}`)
+    await page.getByTestId('cliente-search-result').filter({ hasText: nombre }).first().click()
+
+    await expect(page.getByTestId('negocio-selector-resumen')).toContainText(negocio, { timeout: 15000 })
+  })
 })

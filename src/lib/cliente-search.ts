@@ -10,6 +10,7 @@ export interface ClienteSearchable {
   fuente?: string | null
   contactos?: Array<{ nombre: string; telefono: string; relacion?: string | null }>
   negocios?: Array<{
+    id?: string
     nombre: string
     tipoNegocio?: string | null
     direccion?: string | null

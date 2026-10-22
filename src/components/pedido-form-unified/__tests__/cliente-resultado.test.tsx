@@ -70,7 +70,13 @@ describe('ClienteResultado (#385)', () => {
   it('al tocar la fila selecciona al cliente', () => {
     const onSelect = renderFila(base, 'juan')
     fireEvent.click(screen.getByTestId('cliente-search-result'))
-    expect(onSelect).toHaveBeenCalledWith(base)
+    expect(onSelect).toHaveBeenCalledWith(base, null)
+  })
+
+  it('(#392) si coincidió por un negocio, al tocar la fila lo entrega para preseleccionarlo', () => {
+    const onSelect = renderFila(base, 'esperanza')
+    fireEvent.click(screen.getByTestId('cliente-search-result'))
+    expect(onSelect).toHaveBeenCalledWith(base, { id: 'n1', direccion: 'Cll 9 # 1-2', barrio: 'Sur' })
   })
 
   it('un cliente mínimo (sin celular, barrio, contactos ni negocios) no rompe', () => {

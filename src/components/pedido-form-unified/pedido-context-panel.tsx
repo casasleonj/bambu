@@ -1,4 +1,5 @@
 import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
+import type { NegocioPreseleccionado } from '@/lib/cliente-coincidencia'
 import { UbicacionEntregaInput } from '@/components/pedido-workspace/ubicacion-entrega-input'
 import { NegocioSelector } from '@/components/negocio-selector'
 import type { FiadoStatus } from '@/modules/pedidos/domain/types'
@@ -57,7 +58,7 @@ export interface PedidoContextPanelProps {
   /** La búsqueda al servidor falló por red/timeout (#376). */
   errorBusquedaCliente?: boolean
   onReintentarBusqueda?: () => void
-  onSelectCliente: (cliente: Cliente) => void
+  onSelectCliente: (cliente: Cliente, negocio?: NegocioPreseleccionado | null) => void
   onCrearNuevo: () => void
 
   mostrarNuevo: boolean

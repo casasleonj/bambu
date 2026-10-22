@@ -13,6 +13,8 @@ import {
   explicarCoincidencia,
   segmentarCoincidencias,
   celularLegible,
+  negocioAPreseleccionar,
+  type NegocioPreseleccionado,
   type MotivoCoincidencia,
 } from '@/lib/cliente-coincidencia'
 import type { Cliente } from './types'
@@ -63,7 +65,7 @@ function Motivo({ motivo, term }: { motivo: MotivoCoincidencia; term: string }) 
 interface ClienteResultadoProps {
   cliente: Cliente
   term: string
-  onSelect: (cliente: Cliente) => void
+  onSelect: (cliente: Cliente, negocio?: NegocioPreseleccionado | null) => void
 }
 
 export function ClienteResultado({ cliente, term, onSelect }: ClienteResultadoProps) {
@@ -83,7 +85,7 @@ export function ClienteResultado({ cliente, term, onSelect }: ClienteResultadoPr
     <button
       type="button"
       data-testid="cliente-search-result"
-      onClick={() => onSelect(cliente)}
+      onClick={() => onSelect(cliente, negocioAPreseleccionar(cliente, term))}
       className="w-full text-left px-3 py-2.5 min-h-[44px] hover:bg-gray-50 border-b last:border-b-0 text-sm"
     >
       <div className="flex items-start justify-between gap-2">
