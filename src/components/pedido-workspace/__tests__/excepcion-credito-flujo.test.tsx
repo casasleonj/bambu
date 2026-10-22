@@ -103,8 +103,8 @@ describe('P0-3 — excepción de crédito en el workspace', () => {
     fireEvent.change(screen.getByTestId('credito-motivo'), { target: { value: 'm' } })
     await act(async () => { fireEvent.click(screen.getByTestId('credito-enviar')) })
     await waitFor(() => expect(screen.getByTestId('credito-estado-pendiente')).toBeInTheDocument())
-    // quitar el cliente: ya no hay solicitud pendiente de ese cliente
-    fireEvent.click(screen.getByTitle('Quitar cliente'))
+    // cambiar de comprador: ya no hay solicitud pendiente de ese cliente
+    fireEvent.click(screen.getByTestId('comprador-cambiar'))
     await waitFor(() => expect(screen.queryByTestId('credito-estado-pendiente')).not.toBeInTheDocument())
   })
 })

@@ -150,7 +150,7 @@ Convención de clasificación usada en todo el documento:
 | **B-02** | El servidor acepta saldo sobre `CONSUMIDOR_FINAL` | `GetFiadoStatusUseCase.ts:92`; producción: 57 ventas, $621.900 | **P0** |
 | **B-03** | Ningún test verifica `Pago` persistido + `estadoPago` desde el Hub | inventario de `e2e/pedidos-hub.spec.ts` y `src/components/pedido-workspace/__tests__` | **P0** |
 | **B-04** ✅ #357 | El Hub no envía `excepcionId`: un cliente en límite con saldo no tiene camino de excepción desde el Hub | `DraftPedido` sin `excepcionId` (`pedido-workspace/types.ts`) | P0 (crédito) |
-| **B-05** | Venta rápida forzada a `CONSUMIDOR_FINAL` sin opción de identificar al comprador | `pedido-workspace/index.tsx` (`intent === 'venta-rapida'` → `clienteId: 'CONSUMIDOR_FINAL'`; panel fijo "Venta rápida — Consumidor Final") | P1 (depende de §7 D1) |
+| **B-05** 🟡 #394 | Venta rápida forzada a `CONSUMIDOR_FINAL` sin opción de identificar al comprador | `pedido-workspace/index.tsx` (`intent === 'venta-rapida'` → `clienteId: 'CONSUMIDOR_FINAL'`; panel fijo "Venta rápida — Consumidor Final") | P1 (depende de §7 D1) |
 | **B-06** | El origen se deriva en el commit de `tieneClienteReal`, no de la intención. Elegir "Tomar un pedido" sin cliente produce `VENTA_RAPIDA` | `pedido-workspace/index.tsx:305` | P1 (consistente con D-OC4; choca con la solicitud del 08/10) |
 | **B-07** ✅ #377 | El detalle da 404: el peek y el command menu enlazan a `/pedidos/${id}`, que no existe | `peek-panel.tsx:163`, `command-menu.tsx:90`; no existe `src/app/(app)/pedidos/[id]/` | **P1** |
 | **B-08** ✅ #377 | `?openPedido=` solo abre si el pedido está en la lista cargada (hoy) | `pedidos-client/index.tsx:609-616` | P1 |
@@ -175,7 +175,7 @@ Convención de clasificación usada en todo el documento:
 | Saldo > 0 exige cliente | ✅ solo UI | ❌ | B-02 (mover a backend) | P0 |
 | Bloqueo por límite de fiados con saldo | ✅ (backend F1) | ✅ (backend F1) | — | — |
 | Excepción de crédito | ⚠️ revisar | ✅ (2026-10-21, #358 #365 #371) | B-04 | P0 |
-| Venta rápida con comprador identificado | ⚠️ derivado (con cliente pasa a `PEDIDO`) | ❌ forzado CF | B-05, §7 D1 | P1 |
+| Venta rápida con comprador identificado | ⚠️ derivado (con cliente pasa a `PEDIDO`) | ✅ P1-3 (#394): bloque «Comprador» único | B-05, §7 D1 | P1 |
 | Venta rápida + domicilio | ✅ (con D-OC4) | ✅ (P1-2, #389; dirección obligatoria) | B-10 | P1 |
 | Entregar ahora / después (venta rápida) | ✅ (flag) | ❌ | B-09 | P2 |
 | Precio editable en línea + restaurar | ✅ | ✅ | — | — |
@@ -358,8 +358,8 @@ La clienta tiene un pedido de julio con `totalPagado > 0` y **sin fila `Pago`**,
 | P0-3 | Hub: excepción de crédito (`excepcionId`) — B-04 | ✅ completo en `main` (2026-10-21): PR 1/3 (solicitante) #358; PR 2/3 (quien autoriza: aviso + ventana de decisión + listado de pendientes) #365; PR 3/3 (permiso por usuario en Administración > Usuarios, solo ADMIN) #371. Detalle PR 1: panel de crédito, pedir excepción, detectar autorización y crear con `excepcionId`. Regla: vale hasta el saldo autorizado y vence al cierre del día (Bogotá). Issue #357 |
 | P0-4 | Conciliación de las 57 ventas | depende del negocio (§10) |
 | P1-1 | `/pedidos/[id]` y `?openPedido=` por id — B-07, B-08 | ✅ completo en `main` (2026-10-21). PR A (#378, issue #377): ruta `/pedidos/[id]` (redirige y abre el detalle), `?openPedido=` por id, peek y menú de comandos abren el detalle sin recargar. PR B (#380, issue #379): nueva pantalla de detalle (maqueta aprobada 2026-10-21): cajón lateral en escritorio y pantalla completa en móvil, con dinero, línea de tiempo de entrega, pagos con hora y confirmación, contacto (llamar/WhatsApp/cómo llegar) y acciones fijas abajo; el GET de detalle suma `pagosDetalle`, `creadoPor` y `embarqueResumen.horaSalida`; cada producto muestra el origen de su precio (volumen con su tramo, especial, manual); la advertencia «manual · sin autorizar» solo la ven ADMIN y CONTADOR |
-| P1-2 | Venta rápida + `DOMICILIO` — B-10 | 🟡 en curso (#389). Decisión del PO (2026-10-22): la **dirección es obligatoria** en venta rápida a domicilio, en la pantalla y en el servidor (`requiereEntregaSuficiente` suma `origen = VENTA_RAPIDA`, aunque la venta ya esté entregada; 422 `ENTREGA_INSUFICIENTE`). La venta rápida del Hub nace en `PUNTO` (como el formulario antiguo); `DOMICILIO` es una elección explícita |
-| P1-3 | Comprador identificable en venta rápida — B-05 (D1: se mantiene D-OC4) | ❌ abierto |
+| P1-2 | Venta rápida + `DOMICILIO` — B-10 | ✅ completo en `main` (2026-10-22, #391, issue #389). Decisión del PO (2026-10-22): la **dirección es obligatoria** en venta rápida a domicilio, en la pantalla y en el servidor (`requiereEntregaSuficiente` suma `origen = VENTA_RAPIDA`, aunque la venta ya esté entregada; 422 `ENTREGA_INSUFICIENTE`). La venta rápida del Hub nace en `PUNTO` (como el formulario antiguo); `DOMICILIO` es una elección explícita |
+| P1-3 | Comprador identificable en venta rápida — B-05 (D1: se mantiene D-OC4) | 🟡 en curso (#394). Maqueta v2 aprobada (2026-10-22): un solo bloque «Comprador» (tienda o persona) en toda la pantalla de creación del Hub; se elige de un toque, **nada preseleccionado** (antes quedaba la persona como «domicilio principal»), la búsqueda muestra lo que se buscó (tienda → solo la tienda con el dueño como dato secundario; persona → ella y sus tiendas), «Sin identificar» reemplaza «Consumidor Final» en pantalla. Con comprador real el origen es `PEDIDO` (D1); a domicilio nace por entregar, en el punto nace entregado |
 | P2-1…P2-5 | Búsqueda con entidad, entregar después, embarque en lista, CONTADOR, E2E precio especial | ❌ abiertos |
 
 ### 12.2 Brechas nuevas

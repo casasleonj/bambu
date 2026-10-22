@@ -414,6 +414,98 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     expect(enBD.barrioEntrega).toBe('Centro')
   })
 
+  // P1-3 (#394, B-05): el comprador se identifica DENTRO de la venta rápida, sea una
+  // tienda o una persona, y se verifica en la base de datos.
+  test('workspace (P1-3): venta rápida con comprador identificado — tienda elegida de un toque, pedido de la tienda pagado', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    const t = Date.now()
+    const { cliente } = await createCliente(page, { nombre: `Dueño ${t}` })
+    const nombreTienda = `Tienda Aurora${t}`
+    const rn = await apiPost(page, '/api/negocios', { clienteId: cliente.id, nombre: nombreTienda, tipoNegocio: 'Tienda', direccion: 'Cra 7 # 10-20', barrio: 'Centro' })
+    expect(rn.status()).toBeLessThan(300)
+    const negocioId = (await prisma.negocio.findFirstOrThrow({ where: { clienteId: cliente.id, nombre: nombreTienda } })).id
+    await apiPost(page, '/api/negocios', { clienteId: cliente.id, nombre: `Sucursal Faro ${t}`, tipoNegocio: 'Tienda', direccion: 'Cll 80', barrio: 'Norte' })
+
+    await page.goto(`${BASE}/pedidos`)
+    await app.getByTestId('fab-main').click()
+    await page.getByTestId('fab-venta-rapida').click()
+    await expect(page.getByTestId('workspace-venta-rapida')).toContainText('Sin identificar')
+    await page.getByTestId('workspace-identificar').click()
+
+    // se busca la tienda: sale la tienda (no el dueño) y un toque la elige
+    await page.getByTestId('cliente-search-input').fill(`Aurora${t}`)
+    const fila = page.getByTestId('cliente-search-result')
+    await expect(fila).toHaveCount(1)
+    await expect(fila).toHaveAttribute('data-tipo', 'negocio')
+    await fila.click()
+    await expect(page.getByTestId('comprador-nombre')).toContainText(nombreTienda)
+    await expect(page.getByTestId('comprador-detalle')).toContainText(`Dueño ${t}`)
+    await expect(page.getByText(/domicilio principal/i)).toHaveCount(0)
+
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await page.getByTestId('dinero-pagar-completo-EFECTIVO').click()
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    const creado = page.waitForResponse((r) => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST')
+    await page.getByTestId('workspace-commit').click()
+    const res = await creado
+    expect(res.status()).toBeLessThan(300)
+    const body = await res.json()
+    const pedidoId = (body.data?.pedido ?? body.pedido).id as string
+
+    const enBD = await prisma.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: { pagos: true } })
+    expect(enBD.clienteId).toBe(cliente.id)
+    expect(enBD.negocioId).toBe(negocioId)
+    expect(enBD.origen).toBe('PEDIDO')
+    expect(enBD.canal).toBe('PUNTO')
+    expect(enBD.estadoEntrega).toBe('ENTREGADO')
+    expect(enBD.estadoPago).toBe('PAGADO')
+    expect(Number(enBD.saldo)).toBe(0)
+    expect(enBD.pagos).toHaveLength(1)
+  })
+
+  test('workspace (P1-3): al buscar a la persona salen ella y sus tiendas; fiar a un cliente identificado deja el saldo a su nombre', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    const t = Date.now()
+    const nombre = `Persona Fiada ${t}`
+    const { cliente } = await createCliente(page, { nombre })
+    await apiPost(page, '/api/negocios', { clienteId: cliente.id, nombre: `Kiosco Sol ${t}`, tipoNegocio: 'Kiosco', direccion: 'Cra 1', barrio: 'Centro' })
+
+    await page.goto(`${BASE}/pedidos`)
+    await app.getByTestId('fab-main').click()
+    await page.getByTestId('fab-venta-rapida').click()
+    await page.getByTestId('workspace-identificar').click()
+    await page.getByTestId('cliente-search-input').fill(nombre)
+    const filas = page.getByTestId('cliente-search-result')
+    await expect(filas).toHaveCount(2)
+    await expect(filas.nth(0)).toHaveAttribute('data-tipo', 'persona')
+    await expect(filas.nth(1)).toHaveAttribute('data-tipo', 'negocio')
+    // nada queda elegido hasta tocar una fila
+    await expect(page.getByTestId('comprador-elegido')).toHaveCount(0)
+    await filas.nth(0).click()
+    await expect(page.getByTestId('comprador-nombre')).toContainText(nombre)
+
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    // con comprador identificado el saldo no bloquea: queda fiado a su nombre
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    await expect(page.getByTestId('dinero-deudor-requerido')).toHaveCount(0)
+    const creado = page.waitForResponse((r) => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST')
+    await page.getByTestId('workspace-commit').click()
+    const res = await creado
+    expect(res.status()).toBeLessThan(300)
+    const body = await res.json()
+    const pedidoId = (body.data?.pedido ?? body.pedido).id as string
+
+    const enBD = await prisma.pedido.findUniqueOrThrow({ where: { id: pedidoId } })
+    expect(enBD.clienteId).toBe(cliente.id)
+    expect(enBD.negocioId).toBeNull()
+    expect(enBD.origen).toBe('PEDIDO')
+    expect(enBD.estadoEntrega).toBe('ENTREGADO')
+    expect(Number(enBD.saldo)).toBe(Number(enBD.total))
+    expect(enBD.estadoPago).not.toBe('PAGADO')
+  })
+
   test('workspace (P0): venta rápida con pago combinado — un Pago por método', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
     const app = appMain(page)

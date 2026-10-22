@@ -19,7 +19,7 @@ import {
 } from '@/lib/cliente-coincidencia'
 import type { Cliente } from './types'
 
-function Resaltado({ texto, term }: { texto: string; term: string }) {
+export function Resaltado({ texto, term }: { texto: string; term: string }) {
   return (
     <>
       {segmentarCoincidencias(texto, term).map((s, i) =>
@@ -33,7 +33,7 @@ function Resaltado({ texto, term }: { texto: string; term: string }) {
   )
 }
 
-function Motivo({ motivo, term }: { motivo: MotivoCoincidencia; term: string }) {
+export function Motivo({ motivo, term }: { motivo: MotivoCoincidencia; term: string }) {
   switch (motivo.tipo) {
     case 'negocio':
       return (
