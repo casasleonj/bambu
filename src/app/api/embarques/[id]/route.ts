@@ -467,6 +467,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         const [, fields, estado] = msg.split(':')
         return apiError(`No se pueden editar estos campos en estado ${estado}: ${fields}`, 400)
       }
+      if (msg.startsWith('FORBIDDEN_FIELDS_EN_RUTA:')) {
+        const [, fields] = msg.split(':')
+        return apiError(`No se pueden editar estos campos en estado EN_RUTA: ${fields}`, 400)
+      }
       if (msg.startsWith('PEDIDOS_YA_ASIGNADOS:')) {
         const [, count, ids] = msg.split(':')
         return apiError(
