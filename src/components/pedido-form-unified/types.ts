@@ -9,6 +9,12 @@ export interface Cliente {
   // declararlo acá para poder mostrar el link de Maps de respaldo.
   linkUbicacion?: string | null
   limitePedidosFiados?: number | null
+  notas?: string | null
+  fuente?: string | null
+  /** Deuda pendiente (pedidos entregados con saldo); viene de la lista/búsqueda de clientes. */
+  saldoPendiente?: number
+  bloqueado?: boolean
+  contactos?: Array<{ nombre: string; telefono: string; relacion?: string | null }>
   negocios?: Array<{
     id: string
     nombre: string
