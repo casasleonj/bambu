@@ -40,7 +40,7 @@ describe('WorkspaceEntrega — zona adaptativa (F-ENTREGA-i)', () => {
     expect(screen.queryByTestId('workspace-entrega-direccion')).not.toBeInTheDocument()
   })
 
-  it('COMPLEMENTARIA → "puede continuar" + qué falta (no error) + inputs colapsados', () => {
+  it('COMPLEMENTARIA → "puede continuar" + qué falta (no error) + inputs tras «Agregar información»', () => {
     render(<WorkspaceEntrega {...common} entrega={base({
       estado: 'SUFICIENTE_COMPLEMENTARIA_FALTANTE', via: 'GEO', direccion: null, barrio: 'Centro',
       coords: { lat: 4.65, lng: -74.05, origen: 'MANUAL' }, faltaComplementario: ['direccion'],
@@ -48,9 +48,8 @@ describe('WorkspaceEntrega — zona adaptativa (F-ENTREGA-i)', () => {
     const box = screen.getByTestId('workspace-entrega-complementaria')
     expect(box).toHaveTextContent(/Puedes continuar/i)
     expect(box).toHaveTextContent(/la dirección escrita/i)
-    // los inputs existen pero dentro de un <details> colapsado (no visibles hasta abrir)
-    const det = box.querySelector('details')
-    expect(det).not.toHaveAttribute('open')
+    // los inputs no se ven hasta pedirlos
+    expect(screen.queryByTestId('workspace-entrega-direccion')).not.toBeInTheDocument()
     fireEvent.click(screen.getByText('Agregar información'))
     expect(screen.getByTestId('workspace-entrega-direccion')).toBeInTheDocument()
   })
@@ -104,5 +103,66 @@ describe('WorkspaceEntrega — zona adaptativa (F-ENTREGA-i)', () => {
     const src = raw.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '')
     expect(src).not.toMatch(/resolverEntrega\s*\(|pickCoords\s*\(|Number\.isFinite/)
     expect(src).toMatch(/entrega\.estado|const \{ estado/)
+  })
+
+  describe('P1-4 (#419): cambiar el destino de ESTE pedido', () => {
+    const suficiente = () => base({ estado: 'SUFICIENTE', coords: null })
+    const guardada = { texto: 'Calle 5 # 3-2 · Centro', origen: 'cliente' as const }
+
+    it('SUFICIENTE ofrece «Cambiar el destino de este pedido» y al abrirlo muestra los campos y que lo guardado no cambia', () => {
+      render(<WorkspaceEntrega {...common} direccionEntrega="Calle 5 # 3-2" barrioEntrega="Centro" entrega={suficiente()} guardada={guardada} />)
+      expect(screen.queryByTestId('workspace-entrega-direccion')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByTestId('workspace-entrega-cambiar'))
+      expect(screen.getByTestId('workspace-entrega-direccion')).toBeInTheDocument()
+      expect(screen.getByTestId('workspace-entrega-ubicacion')).toBeInTheDocument()
+      expect(screen.getByTestId('workspace-entrega-guardada')).toHaveTextContent(/solo de este pedido/i)
+      expect(screen.getByTestId('workspace-entrega-guardada')).toHaveTextContent('Calle 5 # 3-2 · Centro')
+    })
+
+    it('con un destino propio marca «Solo este pedido», muestra lo guardado y permite volver', () => {
+      const onVolver = vi.fn()
+      render(<WorkspaceEntrega {...common} direccionEntrega="Cra 9 # 10-20" barrioEntrega="La Paz" entrega={suficiente()} guardada={guardada} destinoPropio onVolverAGuardada={onVolver} />)
+      expect(screen.getByTestId('workspace-entrega-solo-pedido')).toHaveTextContent(/Solo este pedido/)
+      expect(screen.getByTestId('workspace-entrega-solo-pedido')).toHaveTextContent('Calle 5 # 3-2 · Centro')
+      fireEvent.click(screen.getByTestId('workspace-entrega-cambiar'))
+      fireEvent.click(screen.getByTestId('workspace-entrega-volver-guardada'))
+      expect(onVolver).toHaveBeenCalledTimes(1)
+    })
+
+    it('sin cambio de destino no hay «Solo este pedido» ni «Volver»', () => {
+      render(<WorkspaceEntrega {...common} direccionEntrega="Calle 5 # 3-2" barrioEntrega="Centro" entrega={suficiente()} guardada={guardada} />)
+      expect(screen.queryByTestId('workspace-entrega-solo-pedido')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByTestId('workspace-entrega-cambiar'))
+      expect(screen.queryByTestId('workspace-entrega-volver-guardada')).not.toBeInTheDocument()
+    })
+
+    it('la casilla «Guardar también como dirección del cliente» solo aparece si se ofrece y está apagada por defecto', () => {
+      const onGuardar = vi.fn()
+      const { rerender } = render(<WorkspaceEntrega {...common} entrega={suficiente()} guardada={guardada} />)
+      fireEvent.click(screen.getByTestId('workspace-entrega-cambiar'))
+      expect(screen.queryByTestId('workspace-entrega-guardar-en-cliente')).not.toBeInTheDocument()
+      rerender(<WorkspaceEntrega {...common} entrega={suficiente()} guardada={guardada} puedeGuardarEnCliente onGuardarEnClienteChange={onGuardar} />)
+      const casilla = screen.getByTestId('workspace-entrega-guardar-en-cliente') as HTMLInputElement
+      expect(casilla.checked).toBe(false)
+      fireEvent.click(casilla)
+      expect(onGuardar).toHaveBeenCalledWith(true)
+    })
+
+    it('con la dirección de una tienda se dice que la de la tienda no cambia', () => {
+      render(<WorkspaceEntrega {...common} entrega={suficiente()} guardada={{ texto: 'Av 1 # 2', origen: 'negocio' }} />)
+      fireEvent.click(screen.getByTestId('workspace-entrega-cambiar'))
+      expect(screen.getByTestId('workspace-entrega-guardada')).toHaveTextContent(/dirección de la tienda no cambia/i)
+    })
+
+    it('con una ubicación fijada, dirección y barrio se piden como opcionales', () => {
+      render(<WorkspaceEntrega {...common} entregaLat={4.65} entregaLng={-74.05} entrega={base({ estado: 'INSUFICIENTE', faltaBloqueante: ['direccion', 'ubicacion'] })} />)
+      expect(screen.getByTestId('workspace-entrega-direccion')).toHaveAttribute('placeholder', 'Dirección (opcional con ubicación)')
+      expect(screen.getByTestId('workspace-entrega-barrio')).toHaveAttribute('placeholder', 'Barrio (opcional)')
+    })
+
+    it('sin ubicación, la dirección se pide normal', () => {
+      render(<WorkspaceEntrega {...common} entrega={base({ estado: 'INSUFICIENTE', faltaBloqueante: ['direccion', 'ubicacion'] })} />)
+      expect(screen.getByTestId('workspace-entrega-direccion')).toHaveAttribute('placeholder', 'Dirección de entrega')
+    })
   })
 })

@@ -79,13 +79,17 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         excepcionId: undefined, // la excepción es de UN cliente
         clienteId: action.clienteId,
         negocioId: action.negocioId ?? null,
+        // el destino propio y la casilla de guardar son de UN comprador (P1-4)
+        entregaLat: null,
+        entregaLng: null,
+        guardarDireccionEnCliente: false,
         // CONSUMIDOR_FINAL ⇒ origen VENTA_RAPIDA (ventaRapida→origen, PO 2026-09-06)
         origen: action.clienteId === 'CONSUMIDOR_FINAL' ? 'VENTA_RAPIDA' as const : 'PEDIDO' as const,
       }
       return afterDraftChange(state, draft)
     }
     case 'CLEAR_CLIENTE':
-      return afterDraftChange(state, { ...state.draft, clienteId: null, clienteNuevo: undefined, excepcionId: undefined, negocioId: null })
+      return afterDraftChange(state, { ...state.draft, clienteId: null, clienteNuevo: undefined, excepcionId: undefined, negocioId: null, entregaLat: null, entregaLng: null, guardarDireccionEnCliente: false })
     case 'SET_EXCEPCION':
       return afterDraftChange(state, { ...state.draft, excepcionId: action.excepcionId })
     case 'SET_CLIENTE_NUEVO': {
@@ -99,7 +103,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return afterDraftChange(state, { ...state.draft, clienteNuevo: undefined })
     }
     case 'SET_NEGOCIO': {
-      const draft = { ...state.draft, negocioId: action.negocioId }
+      const draft = { ...state.draft, negocioId: action.negocioId, entregaLat: null, entregaLng: null, guardarDireccionEnCliente: false }
       // el selector de negocio resuelve la dirección de entrega efectiva
       if (action.direccion !== undefined) draft.direccionEntrega = action.direccion ?? ''
       if (action.barrio !== undefined) draft.barrioEntrega = action.barrio ?? ''
@@ -109,6 +113,8 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     }
     case 'SET_CANAL':
       return afterDraftChange(state, { ...state.draft, canal: action.canal })
+    case 'SET_GUARDAR_DIRECCION_EN_CLIENTE':
+      return { ...state, draft: { ...state.draft, guardarDireccionEnCliente: action.value } }
     case 'SET_SOLO_PARA_ESTE_PEDIDO':
       return { ...state, draft: { ...state.draft, soloParaEstePedido: action.value } }
     case 'SET_ITEM_CANTIDAD':

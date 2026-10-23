@@ -252,3 +252,39 @@ describe('P0-3 — excepción de crédito en el borrador', () => {
     expect(workspaceReducer(st, { type: 'SET_CLIENTE_NUEVO', clienteNuevo: { nombre: 'Z', telefono: '573015550000' } }).draft.excepcionId).toBeUndefined()
   })
 })
+
+describe('P1-4 (#419) — destino propio del pedido', () => {
+  const conDestino = () => {
+    let s = workspaceReducer(initWorkspace(), { type: 'SET_CLIENTE', clienteId: 'c1' })
+    s = workspaceReducer(s, { type: 'SET_UBICACION', lat: 4.65, lng: -74.05 })
+    return workspaceReducer(s, { type: 'SET_GUARDAR_DIRECCION_EN_CLIENTE', value: true })
+  }
+
+  it('guardar la dirección en el cliente es opt-in: el borrador nuevo no lo tiene marcado', () => {
+    const s = workspaceReducer(initWorkspace(), { type: 'SET_CLIENTE', clienteId: 'c1' })
+    expect(s.draft.guardarDireccionEnCliente).toBeFalsy()
+  })
+
+  it('SET_GUARDAR_DIRECCION_EN_CLIENTE marca la casilla sin invalidar el preview', () => {
+    const base = workspaceReducer(initWorkspace(), { type: 'SET_CLIENTE', clienteId: 'c1' })
+    const s = workspaceReducer(base, { type: 'SET_GUARDAR_DIRECCION_EN_CLIENTE', value: true })
+    expect(s.draft.guardarDireccionEnCliente).toBe(true)
+  })
+
+  it('cambiar de cliente descarta la ubicación propia y la casilla (son de UN comprador)', () => {
+    const s = workspaceReducer(conDestino(), { type: 'SET_CLIENTE', clienteId: 'c2' })
+    expect(s.draft.entregaLat).toBeNull()
+    expect(s.draft.entregaLng).toBeNull()
+    expect(s.draft.guardarDireccionEnCliente).toBe(false)
+  })
+
+  it('quitar el cliente o elegir otra tienda también las descarta', () => {
+    const quitado = workspaceReducer(conDestino(), { type: 'CLEAR_CLIENTE' })
+    expect(quitado.draft.entregaLat).toBeNull()
+    expect(quitado.draft.guardarDireccionEnCliente).toBe(false)
+    const otraTienda = workspaceReducer(conDestino(), { type: 'SET_NEGOCIO', negocioId: 'n1', direccion: 'Cra 7', barrio: 'Centro' })
+    expect(otraTienda.draft.entregaLat).toBeNull()
+    expect(otraTienda.draft.guardarDireccionEnCliente).toBe(false)
+    expect(otraTienda.draft.direccionEntrega).toBe('Cra 7')
+  })
+})

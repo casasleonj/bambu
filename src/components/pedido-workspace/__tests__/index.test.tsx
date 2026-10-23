@@ -136,6 +136,45 @@ describe('PedidosWorkspace (Composición)', () => {
     expect(screen.queryByTestId('workspace-entrega-direccion')).not.toBeInTheDocument()
   })
 
+  describe('P1-4 (#419): el destino de ESTE pedido no pisa la dirección guardada', () => {
+    async function conDestinoDistinto() {
+      const onSubmit = vi.fn()
+      render(<PedidosWorkspace clientes={clientes} onSubmit={onSubmit} />)
+      await elegirCliente()
+      fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+      await waitFor(() => expect(screen.getByTestId('workspace-entrega')).toHaveAttribute('data-estado', 'SUFICIENTE'), { timeout: 3000 })
+      fireEvent.click(screen.getByTestId('workspace-entrega-cambiar'))
+      fireEvent.change(screen.getByTestId('workspace-entrega-direccion'), { target: { value: 'Carrera 9 # 10-20' } })
+      fireEvent.change(screen.getByTestId('workspace-entrega-barrio'), { target: { value: 'La Paz' } })
+      await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+      return onSubmit
+    }
+
+    it('por defecto: viaja el destino del pedido y NO se pide actualizar al cliente', async () => {
+      const onSubmit = await conDestinoDistinto()
+      expect(screen.getByTestId('workspace-entrega-guardada')).toHaveTextContent('Cra 1 · Centro')
+      fireEvent.click(screen.getByTestId('workspace-commit'))
+      const payload = onSubmit.mock.calls[0][0]
+      expect(payload.direccionEntrega).toBe('Carrera 9 # 10-20')
+      expect(payload.barrioEntrega).toBe('La Paz')
+      expect(payload.actualizarCliente).toBeUndefined()
+    })
+
+    it('con «Guardar también como dirección del cliente» sí se pide actualizar al cliente', async () => {
+      const onSubmit = await conDestinoDistinto()
+      fireEvent.click(screen.getByTestId('workspace-entrega-guardar-en-cliente'))
+      fireEvent.click(screen.getByTestId('workspace-commit'))
+      expect(onSubmit.mock.calls[0][0].actualizarCliente).toEqual({ direccion: 'Carrera 9 # 10-20', barrio: 'La Paz' })
+    })
+
+    it('«Volver a la dirección guardada» restaura el destino y deja de ofrecer la casilla', async () => {
+      await conDestinoDistinto()
+      fireEvent.click(screen.getByTestId('workspace-entrega-volver-guardada'))
+      expect(screen.queryByTestId('workspace-entrega-solo-pedido')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('workspace-entrega-guardar-en-cliente')).not.toBeInTheDocument()
+    })
+  })
+
   it('F-ENTREGA-i: preview.entrega INSUFICIENTE → zona con inputs + commit deshabilitado', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url.includes('/api/pedidos/preview')) {
