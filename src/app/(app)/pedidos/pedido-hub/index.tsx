@@ -254,7 +254,7 @@ export function PedidoHub({
       <PedidoCommandMenu
         selected={peek.layer1}
         hoyBogota={hoyBogota}
-        onNuevaOperacion={() => onNuevaOperacion?.()}
+        onNuevaOperacion={onNuevaOperacion}
         onBuscarCliente={() => { window.location.href = '/clientes' }}
         onAccion={onAccion}
       />

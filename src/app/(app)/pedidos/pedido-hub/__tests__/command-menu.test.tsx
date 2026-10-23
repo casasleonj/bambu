@@ -67,4 +67,22 @@ describe('PedidoCommandMenu', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByTestId('command-menu')).not.toBeInTheDocument()
   })
+
+  it('B-17 (#434): sin permiso para crear (sin onNuevaOperacion) no se ofrece «Nueva operación»', () => {
+    const { onNuevaOperacion, ...sinCrear } = common
+    void onNuevaOperacion
+    render(<PedidoCommandMenu selected={null} {...sinCrear} />)
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+    expect(screen.queryByTestId('command-nueva')).not.toBeInTheDocument()
+    // el resto de comandos globales siguen
+    expect(screen.getByTestId('command-planificacion')).toBeInTheDocument()
+  })
+
+  it('con permiso para crear «Nueva operación» está y ejecuta', () => {
+    const onNuevaOperacion = vi.fn()
+    render(<PedidoCommandMenu selected={null} {...common} onNuevaOperacion={onNuevaOperacion} />)
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+    fireEvent.click(screen.getByTestId('command-nueva'))
+    expect(onNuevaOperacion).toHaveBeenCalledTimes(1)
+  })
 })

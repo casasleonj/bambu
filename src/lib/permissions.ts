@@ -77,6 +77,15 @@ export function userCan(role: Role | undefined, permission: Permission): boolean
   return perms.includes(permission)
 }
 
+/**
+ * ¿Puede el rol crear pedidos? Misma regla que `POST /api/pedidos`
+ * (ADMIN o ASISTENTE). La UI la usa para no ofrecer lo que el servidor va a
+ * rechazar con 403 (B-17, #434). El servidor sigue siendo la autoridad.
+ */
+export function canCreatePedidos(role: string | null | undefined): boolean {
+  return role === ROLES.ADMIN || role === ROLES.ASISTENTE
+}
+
 export function getUserPermissions(role: Role | undefined): Permission[] {
   if (!role) return []
   return ROLE_PERMISSIONS[role] || []
