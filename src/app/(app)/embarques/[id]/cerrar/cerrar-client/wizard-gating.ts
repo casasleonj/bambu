@@ -1,4 +1,5 @@
-import { calcularMontoPagado, calcularTotalEntregado, type CuadrePedido } from './types'
+import { calcularMontoPagado, calcularTotalEntregado, type CuadrePedido, type Pedido, type VentaLibre } from './types'
+import { derivarEntrega, lineasEntrega, resumenDineroPedido, validarVentaLibre } from './cierre-logic'
 
 /**
  * Fase 7 — gating del wizard forzado de cierre.
@@ -36,6 +37,44 @@ export function pasoPedidosValido(cuadres: Record<string, CuadrePedido>): PasoVa
 }
 
 /**
+ * Paso 0 (cierre V2) — el estado de entrega se DERIVA de las cantidades, así
+ * que el wizard ya no puede quedar en contradicción (p. ej. «Completo» con 5
+ * de 10). Lo que sí exige es una decisión explícita cuando queda pendiente, y
+ * que el cobro no exceda lo que el cliente debe (regla PAGOS_EXCEDIDOS).
+ */
+export function pasoPedidosValidoV2(pedidos: Pedido[], cuadres: Record<string, CuadrePedido>): PasoValidez {
+  const motivos: string[] = []
+  for (const pedido of pedidos) {
+    const c = cuadres[pedido.id]
+    if (!c) continue
+    const lineas = lineasEntrega(pedido, c.productosEntregados)
+    const r = derivarEntrega(lineas)
+    if (r.hayExceso) {
+      motivos.push(`Pedido #${pedido.numero}: entregas ${r.totalExceso} unidad(es) más de lo pendiente. Si el cliente pidió más, registra una venta libre.`)
+    }
+    if (r.requiereDecision && !c.decisionPendiente) {
+      motivos.push(`Pedido #${pedido.numero}: quedan ${r.totalFalta} unidad(es) sin entregar. Elige qué pasa con lo que falta.`)
+    }
+    if (r.estado !== 'NO_ENTREGADO') {
+      const d = resumenDineroPedido(pedido, c.pagos)
+      if (d.excede) {
+        motivos.push(`Pedido #${pedido.numero}: el cobro (${d.cobrarAhora}) excede lo que el cliente debe (${d.saldoPrevio}).`)
+      }
+    }
+  }
+  return { valido: motivos.length === 0, motivos }
+}
+
+/** Paso 1 (cierre V2) — cada venta libre debe ser consistente antes de avanzar. */
+export function pasoVentasLibresValido(ventas: VentaLibre[], totales: number[]): PasoValidez {
+  const motivos: string[] = []
+  ventas.forEach((v, i) => {
+    for (const m of validarVentaLibre(v, totales[i] ?? 0)) motivos.push(`Venta ${i + 1}: ${m}`)
+  })
+  return { valido: motivos.length === 0, motivos }
+}
+
+/**
  * Paso 2 — Físico/Conciliación: si hay unidades sin conciliar, exigen
  * justificación (o ajustar devueltas/cambios/rotas).
  */
@@ -69,7 +108,16 @@ export function pasoConfirmarValido(
   previewOk: boolean,
   previewLoading: boolean,
   previewError: boolean,
+  /**
+   * Rechazo de negocio del servidor (4xx del preview): a diferencia de una
+   * falla de red, el cierre real fallaría igual, así que bloquea y muestra el
+   * mensaje exacto.
+   */
+  rechazo?: string | null,
 ): PasoValidez {
+  if (rechazo) {
+    return { valido: false, motivos: [rechazo] }
+  }
   if (previewLoading) {
     return { valido: false, motivos: ['Verificando el cuadre con el servidor…'] }
   }

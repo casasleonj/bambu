@@ -12,9 +12,13 @@ import { useProductosDomicilio, getProductoEmoji } from '@/hooks/use-productos-d
 import type { Cliente, PagoItem, Embarque, EmbarqueAbierto, CuadrePedido, VentaLibre, ProductoRetorno, GastoItem } from './types'
 import { calcularMontoPagado, calcularTotalEntregado } from './types'
 import { PedidoCuadre } from './pedido-cuadre'
+import { PedidoCuadreV2 } from './pedido-cuadre-v2'
 import { VentaLibreRow } from './venta-libre-row'
+import { VentaLibreRowV2 } from './venta-libre-row-v2'
+import { cierreV2Enabled } from '@/lib/flags'
+import { clasificarErrorPreview, conciliar, notaReduccionPendiente, totalVentaLibre, type PreciosVentaLibre, type StockPorProducto } from './cierre-logic'
 import { ConfirmModal } from './confirm-modal'
-import { pasoPedidosValido, pasoFisicoValido, pasoConfirmarValido, type PasoValidez } from './wizard-gating'
+import { pasoPedidosValido, pasoPedidosValidoV2, pasoVentasLibresValido, pasoFisicoValido, pasoConfirmarValido, type PasoValidez } from './wizard-gating'
 
 const GASTO_CATEGORIAS = ['Gasolina', 'Alimentación', 'Peajes', 'Parqueadero', 'Mantenimiento', 'Otros']
 
@@ -22,6 +26,7 @@ export default function CerrarEmbarqueClient() {
   const router = useRouter()
   const params = useParams()
   const embarqueId = params.id as string
+  const v2 = cierreV2Enabled()
 
   const { productos: productosDomicilio } = useProductosDomicilio()
   const PRODUCTOS = productosDomicilio.map(p => ({
@@ -54,6 +59,31 @@ export default function CerrarEmbarqueClient() {
   } | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState(false)
+  // 4xx del preview = el servidor rechazó el cierre por una regla de negocio.
+  // No es «sin red»: el cierre real fallaría igual, así que se muestra y bloquea.
+  const [previewRechazo, setPreviewRechazo] = useState<string | null>(null)
+  const [precios, setPrecios] = useState<PreciosVentaLibre>({})
+
+  // V2: precios vigentes (+ sobrecosto de domicilio) para estimar el total de una venta libre.
+  useEffect(() => {
+    if (!v2) return
+    let cancelled = false
+    fetch('/api/precios', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { precios?: Array<{ producto: string; precio: number | string }> } | null) => {
+        if (cancelled || !data?.precios) return
+        const mapa: PreciosVentaLibre = {}
+        for (const p of data.precios) {
+          const sobre = productosDomicilio.find((x) => x.codigo === p.producto)?.sobreCostoDomicilio ?? 0
+          mapa[p.producto as keyof PreciosVentaLibre] = Number(p.precio) + Number(sobre)
+        }
+        setPrecios(mapa)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [v2, productosDomicilio])
 
   useEffect(() => {
     async function fetchData() {
@@ -374,13 +404,11 @@ export default function CerrarEmbarqueClient() {
     const totalCambios = Object.values(cambios).reduce((s, v) => s + v, 0)
     const totalRotas = Object.values(rotas).reduce((s, v) => s + v, 0)
 
-    const discrepancias: Record<string, number> = {}
-    let totalDiscrepancia = 0
-    for (const key of Object.keys(carga) as (keyof StockSnapshot)[]) {
-      const disc = carga[key] - entregado[key] - devueltas[key] - rotas[key]
-      discrepancias[key] = disc
-      if (disc > 0) totalDiscrepancia += disc
-    }
+    // #437: misma definición que el servidor (CierreEmbarqueService): incluye
+    // «cambios» y cuenta faltantes + sobrantes.
+    const conc = conciliar(carga as StockPorProducto, entregado as StockPorProducto, retornos)
+    const discrepancias: Record<string, number> = { ...conc.porProducto }
+    const totalDiscrepancia = conc.total
 
     const totalGastos = gastos.reduce((s, g) => s + g.monto, 0)
     const totalEfectivoRecibido = calcularEfectivoRecibido()
@@ -435,7 +463,7 @@ export default function CerrarEmbarqueClient() {
     }))
 
     return {
-      pedidos: Object.values(cuadres).map((c) => ({
+      pedidos: Object.values(cuadres).map(({ decisionPendiente: _decision, ...c }) => ({
         ...c,
         pagos: c.pagos.filter((p) => p.monto > 0),
       })),
@@ -461,7 +489,9 @@ export default function CerrarEmbarqueClient() {
       dineroEntregado,
       justificacionDiscrepancia: justificacion || undefined,
       justificacionFaltante: justificacionFaltante || undefined,
-      obs: obsGeneral,
+      obs: [obsGeneral, v2 && embarque ? notaReduccionPendiente(embarque.pedidos, cuadres) : '']
+        .filter((t) => t && t.trim())
+        .join('\n'),
     }
   }
 
@@ -488,13 +518,29 @@ export default function CerrarEmbarqueClient() {
           const json = await res.json()
           setPreview({ caja: json.caja, conciliacion: json.conciliacion, responsibilityCases: json.responsibilityCases || [] })
           setPreviewError(false)
+          setPreviewRechazo(null)
         } else {
           setPreview(null)
-          setPreviewError(true)
+          let mensaje: string | undefined
+          try {
+            const body = (await res.json()) as { error?: string | { message?: string } }
+            mensaje = typeof body.error === 'string' ? body.error : body.error?.message
+          } catch {
+            mensaje = undefined
+          }
+          const clase = clasificarErrorPreview(res.status, mensaje)
+          if (clase.tipo === 'rechazo') {
+            setPreviewRechazo(clase.mensaje ?? null)
+            setPreviewError(false)
+          } else {
+            setPreviewRechazo(null)
+            setPreviewError(true)
+          }
         }
       } catch {
         if (!cancelled) {
           setPreview(null)
+          setPreviewRechazo(null)
           setPreviewError(true)
         }
       } finally {
@@ -591,11 +637,13 @@ export default function CerrarEmbarqueClient() {
   // Cómputo inline (5 llamadas puras baratas), no useMemo: vive después de los
   // early-returns de `loading`/`!embarque`, donde un hook violaría rules-of-hooks.
   const pasoValidez: PasoValidez[] = [
-    pasoPedidosValido(cuadres),
-    { valido: true, motivos: [] },
+    v2 ? pasoPedidosValidoV2(embarque.pedidos, cuadres) : pasoPedidosValido(cuadres),
+    v2
+      ? pasoVentasLibresValido(ventasLibres, ventasLibres.map((vl) => totalVentaLibre(vl, precios)))
+      : { valido: true, motivos: [] },
     pasoFisicoValido(calculos.totalDiscrepancia, justificacion),
     { valido: true, motivos: [] },
-    pasoConfirmarValido(!!preview && !previewError, previewLoading, previewError),
+    pasoConfirmarValido(!!preview && !previewError, previewLoading, previewError, previewRechazo),
   ]
 
   const sections = [
@@ -671,6 +719,21 @@ export default function CerrarEmbarqueClient() {
             {embarque.pedidos.map((pedido) => {
               const cuadre = cuadres[pedido.id]
               if (!cuadre) return null
+              if (v2) {
+                return (
+                  <PedidoCuadreV2
+                    key={pedido.id}
+                    pedido={pedido}
+                    cuadre={cuadre}
+                    embarquesAbiertos={embarquesAbiertos}
+                    onUpdateCuadre={updateCuadre}
+                    onUpdateProductoEntregado={updateProductoEntregado}
+                    onAgregarPago={agregarPagoPedido}
+                    onEliminarPago={eliminarPagoPedido}
+                    onUpdatePago={updatePagoPedido}
+                  />
+                )
+              }
               return (
                 <PedidoCuadre
                   key={pedido.id}
@@ -705,7 +768,20 @@ export default function CerrarEmbarqueClient() {
             {ventasLibres.length === 0 && (
               <p className="text-gray-400 text-sm py-4 text-center">No hay ventas libres registradas</p>
             )}
-            {ventasLibres.map((venta, i) => (
+            {ventasLibres.map((venta, i) => v2 ? (
+              <VentaLibreRowV2
+                key={i}
+                venta={venta}
+                index={i}
+                clientes={clientes}
+                precios={precios}
+                onUpdate={updateVentaLibre}
+                onAgregarPago={agregarPagoVentaLibre}
+                onEliminarPago={eliminarPagoVentaLibre}
+                onUpdatePago={updatePagoVentaLibre}
+                onRemove={removeVentaLibre}
+              />
+            ) : (
               <VentaLibreRow
                 key={i}
                 venta={venta}
@@ -865,6 +941,15 @@ export default function CerrarEmbarqueClient() {
         {/* Section 4: Preview */}
         {activeSection === 4 && calculos && (
           <div className="space-y-6">
+            {previewRechazo && (
+              <div className="rounded-lg border-2 border-red-400 bg-red-50 p-4" role="alert" data-testid="preview-rechazo">
+                <p className="text-sm font-bold text-red-900">El servidor no puede cerrar así</p>
+                <p className="mt-1 text-sm text-red-800">{previewRechazo}</p>
+                <button type="button" onClick={() => setActiveSection(0)} className="mt-2 min-h-11 rounded-lg border border-red-300 bg-white px-4 text-sm font-medium text-red-800">
+                  Revisar los pedidos
+                </button>
+              </div>
+            )}
             {/* Ingresos */}
             <div className="bg-white rounded-lg shadow-sm border p-4">
               <h2 className="text-lg font-semibold mb-3">💰 Ingresos</h2>
@@ -911,12 +996,8 @@ export default function CerrarEmbarqueClient() {
               </div>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between py-1">
-                  <span className="text-gray-600">Total vendido (efectivo)</span>
-                  <span className="font-medium">{formatCurrency(calculos.efectivoEsperado + calculos.totalGastos)}</span>
-                </div>
-                <div className="flex justify-between py-1 text-green-600">
-                  <span>(-) Fiado</span>
-                  <span className="font-medium">- {formatCurrency(calculos.totalFiado)}</span>
+                  <span className="text-gray-600">Efectivo cobrado</span>
+                  <span className="font-medium">{formatCurrency(calculos.totalEfectivoRecibido)}</span>
                 </div>
                 <div className="flex justify-between py-1 text-red-600">
                   <span>(-) Gastos del embarque</span>
@@ -930,6 +1011,9 @@ export default function CerrarEmbarqueClient() {
                   <span>Debió entregar en efectivo</span>
                   <span>{formatCurrency(authoritative.debeEntregar)}</span>
                 </div>
+                <p className="text-xs text-gray-500" data-testid="cuadre-fuera-efectivo">
+                  Fuera del efectivo: fiado nuevo {formatCurrency(calculos.totalFiado)} (no es dinero físico) y cobros digitales por verificar.
+                </p>
               </div>
 
               <div className="mt-4 p-3 bg-gray-50 rounded-lg">

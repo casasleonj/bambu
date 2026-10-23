@@ -14,3 +14,12 @@
 export function pedidosV2Enabled(): boolean {
   return process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
 }
+
+/**
+ * `NEXT_PUBLIC_CIERRE_V2` — cierre de embarque con entrega por línea, estado
+ * derivado de las cantidades, panel de dinero y venta libre con buscador.
+ * OFF por defecto: el wizard de cierre actual no cambia (épica #447, Fase A).
+ */
+export function cierreV2Enabled(): boolean {
+  return process.env.NEXT_PUBLIC_CIERRE_V2 === 'true'
+}
