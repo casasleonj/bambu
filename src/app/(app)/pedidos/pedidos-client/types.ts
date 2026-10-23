@@ -42,6 +42,9 @@ export interface Pedido {
   pagoReportadoPendiente?: boolean
   pagoDiscrepante?: boolean
   embarqueId?: string
+  /** P2-3 (#453): número del día y repartidor del embarque, para la fila de la lista. */
+  embarqueNumeroDia?: number | null
+  embarqueRepartidor?: string | null
   items: PedidoItem[]
   // Legacy fields (still present during transition)
   cPacaAguaPed: number

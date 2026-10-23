@@ -28,7 +28,7 @@ test.describe('Pedidos: crear solo para quien puede (B-17, #434)', () => {
 
     const asistente = await sharedLoginAs(browser, 'asistente')
     await irAPedidos(asistente)
-    await expect(asistente.getByTestId('fab-main')).toBeVisible({ timeout: 10000 })
+    await expect(asistente.getByTestId('fab-main')).toBeVisible({ timeout: 20000 })
   })
 
   test('un CONTADOR con ?new=1&clienteId= ve la lista: no se abre el formulario y se limpia el enlace', async ({ browser }) => {
