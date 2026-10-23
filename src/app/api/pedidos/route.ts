@@ -21,6 +21,7 @@ import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
 import { pickCoords } from '@/lib/geo/pedido-coords'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
+import { cargarEmbarquesLista, camposEmbarqueLista } from '@/lib/embarque-lista'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -173,7 +174,7 @@ export async function GET(request: NextRequest) {
     const negocioIds = [
       ...new Set(result.pedidos.map(p => p.negocioId).filter((id): id is string => Boolean(id))),
     ]
-    const [clientes, negocios] = await Promise.all([
+    const [clientes, negocios, embarquesPorId] = await Promise.all([
       prisma.cliente.findMany({
         where: { id: { in: clienteIds } },
         include: { ruta: { select: { nombre: true } } },
@@ -184,6 +185,7 @@ export async function GET(request: NextRequest) {
             include: { ruta: { select: { nombre: true } } },
           })
         : Promise.resolve([]),
+      cargarEmbarquesLista(prisma, result.pedidos.map(p => p.embarqueId)),
     ])
     const clienteById = new Map(clientes.map(c => [c.id, c]))
     const negocioById = new Map(negocios.map(n => [n.id, n]))
@@ -221,6 +223,7 @@ export async function GET(request: NextRequest) {
         entregaLng: p.entregaLng == null ? null : Number(p.entregaLng),
         lat: coordsEfectivas?.lat ?? null,
         lng: coordsEfectivas?.lng ?? null,
+        ...camposEmbarqueLista(p.embarqueId, embarquesPorId),
         fecha: p.fecha,
       }
     })

@@ -162,7 +162,7 @@ Convención de clasificación usada en todo el documento:
 | **B-13** | Precios especiales y por volumen: el preview los aplica (`precioOrigen`). Paridad a confirmar con E2E por cliente con precio especial | `use-preview.ts`, `PreviewPedidoUseCase` | P2 (verificación) |
 | **B-14** | Promoción, regalo y descuento: **no hay captura en ninguna UI de Pedidos** (ni legacy ni Hub). Solo se ve el movimiento `PROMOCION` en el ledger de Embarques | `movimiento-timeline.tsx`; sin coincidencias en `pedidos/`, `pedido-workspace/`, `pedido-form-unified/` | No es regresión; brecha de plan (§7 D4) |
 | **B-15** | Venta originada en ruta (`VENTA_LIBRE`): no está en el Hub, **diferida por decisión** (§8.3). Sigue por `/repartidor` | Blueprint §2.5, §8.3 | No es regresión |
-| **B-16** | Embarque y repartidor: visibles en el peek (`peek-relaciones.tsx:48-50`); en la lista solo "asignado / sin planificar" | `derive-operacion.ts:74` | P2 |
+| **B-16** ✅ #453 | Embarque y repartidor: visibles en el peek (`peek-relaciones.tsx:48-50`); en la lista solo "asignado / sin planificar" | `derive-operacion.ts:74` | P2 |
 | **B-17** ✅ #434 | "Nueva operación" visible para CONTADOR (backend 403) | O-2 del informe F10a | P2 |
 | **B-18** | `PedidoAuditDiff` no existe (F10-5) | informe F10a §F10-5 | Gate F10b |
 
@@ -364,7 +364,8 @@ La clienta tiene un pedido de julio con `totalPagado > 0` y **sin fila `Pago`**,
 | P1-4 | Destino de un solo pedido — B-21 (#419) | ✅ completo en `main` (2026-10-23, #421, issue #419). Maqueta v2 aprobada (2026-10-23). La zona Entrega ofrece siempre «Cambiar el destino de este pedido» (dirección, barrio, link o GPS); **lo escrito es solo del pedido** y nunca cambia al cliente ni a la tienda salvo la casilla explícita «Guardar también como dirección del cliente» (antes, en una persona sin tienda, escribir otra dirección pisaba la guardada sin avisar). **Con una ubicación, dirección y barrio son opcionales**; sin ubicación la dirección sigue obligatoria. Los links acortados de Maps (`maps.app.goo.gl`, los de WhatsApp) ahora se resuelven en el Hub. Sin migración |
 | P2-1 | Búsqueda con entidad que coincidió + preselección del negocio — B-11 | ✅ completo en `main` (2026-10-22, #388 issue #385; #393 issue #392) |
 | P2-4 | Ocultar la creación de pedidos a quien no puede — B-17 | ✅ completo en este PR (issue #434). Solo ADMIN/ASISTENTE (igual que `POST /api/pedidos`) ven el «+» flotante, «Nueva operación» del menú de comandos y el «Crear Pedido» de la lista vacía; `?new=1` no abre el formulario a los demás y limpia el enlace. `canCreatePedidos(role)` en `permissions.ts`. Fuera de alcance: acciones sobre pedidos ya creados |
-| P2-2, P2-3, P2-5 | Entregar después, embarque en lista, E2E precio especial | ❌ abiertos |
+| P2-3 | Embarque y repartidor visibles en la lista — B-16 | ✅ completo en este PR (issue #453). La fila del Hub muestra «Embarque #N · Repartidor» bajo el estado (solo si el pedido tiene embarque). `GET /api/pedidos` y la carga inicial de `/pedidos` comparten `embarque-lista.ts` (una consulta por página, sin N+1) y la lista escucha también `embarque.*`. Sin migración |
+| P2-2, P2-5 | Entregar después, E2E precio especial | ❌ abiertos |
 
 ### 12.2 Brechas nuevas
 

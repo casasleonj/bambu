@@ -2,7 +2,7 @@
 
 import { EmptyState } from '@/components/empty-state'
 import { pedidoItemsResumen } from '../pedido-items'
-import { deriveOperacion, origenLabel } from './derive-operacion'
+import { deriveOperacion, origenLabel, embarqueLinea } from './derive-operacion'
 import type { AccionKey, DeriveContext, Pedido } from './types'
 
 const money = (n: number) => new Intl.NumberFormat('es-CO').format(Number(n) || 0)
@@ -39,6 +39,7 @@ function OperacionRowDesktop({
 }) {
   const d = deriveOperacion(pedido, { ...ctx, hoyBogota })
   const origen = origenLabel(pedido.origen)
+  const embarque = embarqueLinea(pedido)
   const senal = pagoSenal(pedido)
   return (
     <tr
@@ -61,7 +62,12 @@ function OperacionRowDesktop({
         {pedido.canal === 'DOMICILIO' && <span className="mr-1" title="Domicilio">🚚</span>}
         {pedidoItemsResumen(pedido)}
       </td>
-      <td className="px-3 py-2 align-top text-sm text-gray-700">{d.estadoLegible}</td>
+      <td className="px-3 py-2 align-top text-sm text-gray-700">
+        {d.estadoLegible}
+        {embarque && (
+          <span className="block text-xs text-gray-500" data-testid={`operacion-embarque-${pedido.id}`}>{embarque}</span>
+        )}
+      </td>
       <td className="px-3 py-2 align-top text-right">
         <div className="text-sm font-semibold text-gray-800">${money(pedido.total)}</div>
         {senal && <div className="text-[11px] text-gray-500">{senal}</div>}
@@ -92,6 +98,7 @@ function OperacionCardMobile({
 }) {
   const d = deriveOperacion(pedido, { ...ctx, hoyBogota })
   const origen = origenLabel(pedido.origen)
+  const embarque = embarqueLinea(pedido)
   return (
     <div
       data-testid={`operacion-row-${pedido.id}`}
@@ -111,6 +118,9 @@ function OperacionCardMobile({
         <span className="text-sm text-gray-700">{d.estadoLegible}</span>
         <span className="text-sm font-semibold text-gray-800">${money(pedido.total)}</span>
       </div>
+      {embarque && (
+        <div className="text-xs text-gray-500" data-testid={`operacion-embarque-${pedido.id}`}>{embarque}</div>
+      )}
       {d.accionDestacada && (
         <button
           type="button"
