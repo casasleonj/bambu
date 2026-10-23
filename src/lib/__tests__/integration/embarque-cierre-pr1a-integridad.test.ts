@@ -322,15 +322,18 @@ describe('PR-1A — integridad del procesamiento de pedidos en el cierre', () =>
   })
 
   describe('B-11 — prueba 8: cambio autorizado del precio unitario', () => {
-    it('ADMIN cambia el precio de PACA_AGUA de $1.000 a $1.200 → 1 PRECIO_CIERRE con antes/después; el valor entregado va aparte', async () => {
+    // #326 (decisión del PO 2026-10-23, ADR-MONETARIO-001 addendum): esta prueba fijaba que la
+    // obligación NO se tocaba al corregir un precio; ahora la corrección con motivo la recalcula.
+    // La auditoría PRECIO_CIERRE (antes/después, valor entregado aparte) se conserva.
+    it('ADMIN cambia el precio de PACA_AGUA de $1.000 a $1.200 → 1 PRECIO_CIERRE con antes/después y motivo; el valor entregado va aparte y la obligación se recalcula', async () => {
       const emb = await crearEmbarque({ PACA_AGUA: 10 })
-      const { pedido } = await crearPedidoPrepago({ embarqueId: emb.id, producto: 'PACA_AGUA', cantPedido: 10 })
+      const { pedido, factura } = await crearPedidoPrepago({ embarqueId: emb.id, producto: 'PACA_AGUA', cantPedido: 10 })
 
       await buildUseCase().execute({
         id: emb.id,
         pedidos: [{
           pedidoId: pedido.id, entregado: 'COMPLETO', productosEntregados: entregaDe('PACA_AGUA', 10),
-          preciosReales: { pacaAgua: 1_200 }, pagos: [],
+          preciosReales: { pacaAgua: 1_200 }, motivoPrecio: 'Acuerdo con el cliente en la puerta', pagos: [],
         }],
         gastos: [], dineroEntregado: 0,
       })
@@ -340,8 +343,15 @@ describe('PR-1A — integridad del procesamiento de pedidos en el cierre', () =>
       const datos = JSON.parse(String(filas[0].datos))
       expect(datos.cambios).toEqual([{ producto: 'PACA_AGUA', antes: 1_000, despues: 1_200 }])
       expect(datos.valorEntregadoEnCierre).toBe(12_000)
+      expect(datos).toMatchObject({ motivo: 'Acuerdo con el cliente en la puerta', totalAntes: 10_000, totalDespues: 12_000, saldoDespues: 2_000 })
       // el valor entregado NO se presenta como "precio del pedido"
       expect(datos).not.toHaveProperty('precioCierre')
+
+      // Ya pagó $10.000: el total sube a $12.000 y quedan $2.000 por cobrar (pedido y factura).
+      const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+      expect([Number(p.total), Number(p.totalPagado), Number(p.saldo), p.estadoPago]).toEqual([12_000, 10_000, 2_000, 'PARCIAL'])
+      const f = await testPrisma.factura.findUniqueOrThrow({ where: { id: factura.id } })
+      expect([Number(f.total), Number(f.saldo)]).toEqual([12_000, 2_000])
     })
   })
 
@@ -453,7 +463,10 @@ describe('PR-1A — integridad del procesamiento de pedidos en el cierre', () =>
 
   // ── Revisión de PR-1A: auditoría de precio también en PARCIAL ───────────
   describe('B-11 — auditoría de precio unitario en entrega PARCIAL', () => {
-    it('ADMIN cambia $1.000 -> $1.200 en una entrega PARCIAL (4 de 10): 1 PRECIO_CIERRE antes/después; total, saldo y factura NO cambian', async () => {
+    // #326 (decisión del PO 2026-10-23): la corrección de precio con motivo recalcula la obligación
+    // de TODO el pedido también en PARCIAL (antes: «la obligación NO se toca»); sin ella, la entrega
+    // parcial por sí sola sigue sin tocar la obligación (ver «PARCIAL sin cambio de precio»).
+    it('ADMIN cambia $1.000 -> $1.200 en una entrega PARCIAL (4 de 10): 1 PRECIO_CIERRE antes/después y motivo; el total, saldo y factura se recalculan sobre todo el pedido', async () => {
       const emb = await crearEmbarque({ PACA_AGUA: 4 })
       const { pedido, factura } = await crearPedidoPrepago({ embarqueId: emb.id, producto: 'PACA_AGUA', cantPedido: 10 })
 
@@ -461,7 +474,7 @@ describe('PR-1A — integridad del procesamiento de pedidos en el cierre', () =>
         id: emb.id,
         pedidos: [{
           pedidoId: pedido.id, entregado: 'PARCIAL', productosEntregados: entregaDe('PACA_AGUA', 4),
-          preciosReales: { pacaAgua: 1_200 }, pagos: [],
+          preciosReales: { pacaAgua: 1_200 }, motivoPrecio: 'Acuerdo con el cliente en la puerta', pagos: [],
         }],
         gastos: [], dineroEntregado: 0,
       })
@@ -470,16 +483,13 @@ describe('PR-1A — integridad del procesamiento de pedidos en el cierre', () =>
       expect(filas).toHaveLength(1)
       const datos = JSON.parse(String(filas[0].datos))
       expect(datos.cambios).toEqual([{ producto: 'PACA_AGUA', antes: 1_000, despues: 1_200 }])
-      expect(datos.valorEntregadoEnCierre).toBe(4_000)
+      // Valor entregado AHORA con el precio vigente (el corregido), igual que en COMPLETO.
+      expect(datos.valorEntregadoEnCierre).toBe(4 * 1_200)
 
-      // Contrato aprobado: la obligación económica NO se toca por la entrega parcial.
       const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
-      expect(Number(p.total)).toBe(10_000)
-      expect(Number(p.totalPagado)).toBe(10_000)
-      expect(Number(p.saldo)).toBe(0)
+      expect([Number(p.total), Number(p.totalPagado), Number(p.saldo)]).toEqual([12_000, 10_000, 2_000])
       const f = await testPrisma.factura.findUniqueOrThrow({ where: { id: factura.id } })
-      expect(Number(f.total)).toBe(10_000)
-      expect(Number(f.saldo)).toBe(0)
+      expect([Number(f.total), Number(f.saldo)]).toEqual([12_000, 2_000])
     })
 
     it('PARCIAL sin cambio de precio: 0 PRECIO_CIERRE', async () => {
