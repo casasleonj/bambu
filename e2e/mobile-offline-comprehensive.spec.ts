@@ -58,6 +58,32 @@ test.describe('Mobile Offline Comprehensive', () => {
     return page.evaluate(() => window.__bambu!.syncWithServer())
   }
 
+  /**
+   * Sincroniza hasta que la cola de requests quede vacía (#414).
+   *
+   * `syncWithServer()` devuelve `{ synced: 0, alreadyRunning: true }` si ya hay un
+   * sync en curso (el `online`/poll de 30 s del connectivity-indicator arranca uno
+   * en cuanto vuelve la red), así que `synced >= N` es una señal de carrera: el
+   * trabajo lo puede hacer el sync de fondo. La señal estable es el estado
+   * observable: la cola drenada y sin fallos (cada test verifica antes que la
+   * operación quedó encolada). Si no drena, el mensaje trae el
+   * último resultado para poder diagnosticar.
+   */
+  async function syncHastaVaciar(page: import('@playwright/test').Page) {
+    const limite = Date.now() + 30_000
+    let ultimo: Awaited<ReturnType<typeof sync>> | undefined
+    while (Date.now() < limite) {
+      ultimo = await sync(page)
+      if ((await getQueueSize(page)) === 0) break
+      await page.waitForTimeout(500)
+    }
+    expect(
+      await getQueueSize(page),
+      `la cola no drenó en 30 s; último syncResult: ${JSON.stringify(ultimo)}`,
+    ).toBe(0)
+    expect(ultimo?.failed ?? 0, `último syncResult: ${JSON.stringify(ultimo)}`).toBe(0)
+  }
+
   async function countPedidos(page: import('@playwright/test').Page) {
     const res = await page.evaluate(async () => {
       const r = await fetch('/api/pedidos?all=true&pageSize=1', { credentials: 'include' })
@@ -117,9 +143,7 @@ test.describe('Mobile Offline Comprehensive', () => {
     expect(await getQueueSize(page)).toBe(1)
 
     await page.unroute('**/api/pedidos')
-    const syncResult = await sync(page)
-    expect(syncResult.synced).toBeGreaterThanOrEqual(1)
-    expect(syncResult.failed).toBe(0)
+    await syncHastaVaciar(page)
 
     expect(await getQueueSize(page)).toBe(0)
     expect(await countPedidos(page)).toBe(before + 1)
@@ -162,9 +186,7 @@ test.describe('Mobile Offline Comprehensive', () => {
     expect(await getQueueSize(page)).toBe(1)
 
     await page.unroute('**/api/clientes')
-    const syncResult = await sync(page)
-    expect(syncResult.synced).toBeGreaterThanOrEqual(1)
-    expect(syncResult.failed).toBe(0)
+    await syncHastaVaciar(page)
 
     expect(await getQueueSize(page)).toBe(0)
     expect(await countClientes(page)).toBe(before + 1)
@@ -214,9 +236,7 @@ test.describe('Mobile Offline Comprehensive', () => {
     expect(await getQueueSize(page)).toBe(1)
 
     await page.unroute('**/api/pedidos/venta-libre')
-    const syncResult = await sync(page)
-    expect(syncResult.synced).toBeGreaterThanOrEqual(1)
-    expect(syncResult.failed).toBe(0)
+    await syncHastaVaciar(page)
 
     expect(await getQueueSize(page)).toBe(0)
     expect(await countPedidos(page)).toBe(before + 1)
@@ -271,9 +291,7 @@ test.describe('Mobile Offline Comprehensive', () => {
     expect(await getQueueSize(page)).toBe(1)
 
     await page.unroute('**/api/pedidos/pagar-fiado')
-    const syncResult = await sync(page)
-    expect(syncResult.synced).toBeGreaterThanOrEqual(1)
-    expect(syncResult.failed).toBe(0)
+    await syncHastaVaciar(page)
 
     expect(await getQueueSize(page)).toBe(0)
 
@@ -347,9 +365,7 @@ test.describe('Mobile Offline Comprehensive', () => {
     expect(await getQueueSize(page)).toBe(1)
 
     await page.unroute(`**/api/pedidos/${pedidoId}/entrega`)
-    const syncResult = await sync(page)
-    expect(syncResult.synced).toBeGreaterThanOrEqual(1)
-    expect(syncResult.failed).toBe(0)
+    await syncHastaVaciar(page)
 
     expect(await getQueueSize(page)).toBe(0)
 
@@ -418,9 +434,7 @@ test.describe('Mobile Offline Comprehensive', () => {
     await page.unroute('**/api/pedidos')
     await page.unroute('**/api/clientes')
 
-    const syncResult = await sync(page)
-    expect(syncResult.synced).toBeGreaterThanOrEqual(2)
-    expect(syncResult.failed).toBe(0)
+    await syncHastaVaciar(page)
 
     expect(await getQueueSize(page)).toBe(0)
     expect(await countClientes(page)).toBe(clienteBefore + 1)
@@ -470,8 +484,7 @@ test.describe('Mobile Offline Comprehensive', () => {
     expect(await getQueueSize(page)).toBe(1)
 
     await page.unroute('**/api/pedidos')
-    const syncResult = await sync(page)
-    expect(syncResult.synced).toBeGreaterThanOrEqual(1)
+    await syncHastaVaciar(page)
     expect(await getQueueSize(page)).toBe(0)
   })
 
