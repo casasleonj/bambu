@@ -25,11 +25,13 @@ test.describe('Entrega con GPS (repartidor)', () => {
     const trabajadoresRes = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true')
     expect(trabajadoresRes.status()).toBe(200)
     const trabajadoresBody = await trabajadoresRes.json()
-    // El seed vincula el usuario 'repartidor' al trabajador 'Yesid Ramírez'
-    const trabajador = trabajadoresBody.trabajadores?.find((t: { nombre: string }) =>
-      t.nombre.includes('Yesid')
-    ) || trabajadoresBody.trabajadores?.[0]
-    expect(trabajador?.id).toBeTruthy()
+    // /repartidor muestra el embarque del trabajador vinculado al usuario
+    // 'repartidor' (`Trabajador.userId`): 'Yesid Ramírez' en el seed principal,
+    // 'Carlos Andrés Vargas' en el seed de tests. Buscar por nombre o tomar el
+    // primero elegía a veces un repartidor sin usuario y la página mostraba
+    // "Sin embarque abierto" con "Venta Libre" deshabilitado (#413).
+    const trabajador = trabajadoresBody.trabajadores?.find((t: { userId?: string | null }) => t.userId)
+    expect(trabajador?.id, 'no hay un REPARTIDOR vinculado a un usuario').toBeTruthy()
 
     const embarque = await ensureEmbarqueAbierto(page, trabajador.id)
     expect(embarque?.id).toBeTruthy()
@@ -40,7 +42,9 @@ test.describe('Entrega con GPS (repartidor)', () => {
     await page.waitForLoadState('domcontentloaded')
 
     // Abrir modal de venta libre
-    const ventaLibreBtn = page.locator('button:has-text("Venta Libre")')
+    // `visible`: en dev, tras el redirect de login a /repartidor + goto, el DOM
+    // puede traer una copia oculta del árbol (mismo patrón que menu-reorder).
+    const ventaLibreBtn = page.getByTestId('btn-venta-libre').filter({ visible: true }).first()
     await expect(ventaLibreBtn).toBeVisible({ timeout: 10000 })
     await expect(ventaLibreBtn).toBeEnabled({ timeout: 10000 })
     await ventaLibreBtn.click()
