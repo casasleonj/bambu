@@ -1387,9 +1387,24 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   async function entregarPedido(pedido: Pedido, quien: 'REPARTIDOR' | 'CLIENTE_RETIRO' = 'REPARTIDOR') {
     if (updatingId) return
     // El detalle trae el estado de su embarque; la lista de embarques es el respaldo.
-    const embarqueEstado = pedido.embarqueId
+    let embarqueEstado = pedido.embarqueId
       ? (pedido.embarqueResumen?.estado ?? embarques.find((e) => e.id === pedido.embarqueId)?.estado)
       : undefined
+    // Sin el estado no se sabe si el vehículo ya salió (entrega física) o si es un retiro:
+    // adivinar registra la entrega sin atribuirla ni soltar el pedido del embarque.
+    if (pedido.embarqueId && !embarqueEstado) {
+      try {
+        const res = await fetch(`/api/pedidos/${pedido.id}`)
+        const json = res.ok ? await res.json() : null
+        embarqueEstado = (json?.data?.pedido ?? json?.pedido)?.embarqueResumen?.estado
+      } catch {
+        embarqueEstado = undefined
+      }
+      if (!embarqueEstado) {
+        toast.error('No se pudo verificar el embarque del pedido. Intenta de nuevo.')
+        return
+      }
+    }
     const decision = resolverEntrega({ embarqueId: pedido.embarqueId, embarqueEstado, quien })
     setUpdatingId(pedido.id)
     try {

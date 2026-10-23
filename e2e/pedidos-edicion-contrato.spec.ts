@@ -17,6 +17,21 @@ const prisma = new PrismaClient()
 test.setTimeout(120_000)
 const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
 
+/**
+ * Abre el formulario de edición desde el detalle. Con `page.goto` el clic en
+ * «✏️ Editar» puede llegar antes de que React enganche el handler: no abre y no
+ * hay error (el test fallaba 20 s después esperando `submit-pedido`, #418). Se
+ * reintenta solo mientras el formulario siga cerrado.
+ */
+async function abrirEdicion(page: Parameters<typeof apiPost>[0]) {
+  const editar = page.getByRole('button', { name: /✏️ Editar/ })
+  const formulario = page.getByTestId('submit-pedido')
+  await expect(async () => {
+    if (!(await formulario.isVisible())) await editar.click({ timeout: 5000 })
+    await expect(formulario).toBeVisible({ timeout: 3000 })
+  }).toPass({ timeout: 30000 })
+}
+
 /** El formulario recalcula precios al abrir: clicar antes de que el total sea > 0 da «Agrega al menos un producto». */
 async function esperarFormularioListo(page: Parameters<typeof apiPost>[0]) {
   await expect(page.getByTestId('submit-pedido')).toContainText(/\$\s?[1-9]/, { timeout: 20000 })
@@ -74,7 +89,7 @@ test.describe('Edición de pedidos: el canal no se ofrece y nada aparenta guarda
     const { pedidoId } = await crearPedidoPunto(page, 'obs')
 
     await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
-    await page.getByRole('button', { name: /✏️ Editar/ }).click()
+    await abrirEdicion(page)
 
     // El canal es historia: se muestra fijo, no hay forma de pedir "Domicilio".
     await expect(page.getByTestId('canal-fijo-edicion')).toBeVisible()
@@ -100,7 +115,7 @@ test.describe('Edición de pedidos: el canal no se ofrece y nada aparenta guarda
     const { pedidoId } = await crearPedidoPunto(page, 'borrar')
 
     await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
-    await page.getByRole('button', { name: /✏️ Editar/ }).click()
+    await abrirEdicion(page)
     await page.getByPlaceholder('Notas adicionales...').fill('')
 
     expect((await enviarYEsperarPut(page, pedidoId)).status()).toBe(200)
@@ -115,7 +130,7 @@ test.describe('Edición de pedidos: el canal no se ofrece y nada aparenta guarda
     const antes = await prisma.pedido.findUniqueOrThrow({ where: { id: pedidoId } })
 
     await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
-    await page.getByRole('button', { name: /✏️ Editar/ }).click()
+    await abrirEdicion(page)
     let puts = 0
     page.on('request', (r) => { if (r.method() === 'PUT' && r.url().endsWith(`/api/pedidos/${pedidoId}`)) puts += 1 })
     await enviarYEsperarSinCambios(page)
@@ -191,7 +206,7 @@ test.describe('Entrega parcial: editar información no depende de los ítems (Hu
     const page = await sharedLoginAs(browser, 'admin')
     const { pedidoId } = await crearPedidoParcial(page, 'obs')
     await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
-    await page.getByRole('button', { name: /✏️ Editar/ }).click()
+    await abrirEdicion(page)
     await page.getByPlaceholder('Notas adicionales...').fill('nota con entrega parcial')
     const res = await enviarYEsperarPut(page, pedidoId)
     expect(res.status()).toBe(200)
@@ -205,7 +220,7 @@ test.describe('Entrega parcial: editar información no depende de los ítems (Hu
     const page = await sharedLoginAs(browser, 'admin')
     const { pedidoId } = await crearPedidoParcial(page, 'nada')
     await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
-    await page.getByRole('button', { name: /✏️ Editar/ }).click()
+    await abrirEdicion(page)
     let puts = 0
     page.on('request', (r) => { if (r.method() === 'PUT' && r.url().endsWith(`/api/pedidos/${pedidoId}`)) puts += 1 })
     await enviarYEsperarSinCambios(page)
@@ -216,7 +231,7 @@ test.describe('Entrega parcial: editar información no depende de los ítems (Hu
     const page = await sharedLoginAs(browser, 'admin')
     const { pedidoId } = await crearPedidoParcial(page, 'cant')
     await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
-    await page.getByRole('button', { name: /✏️ Editar/ }).click()
+    await abrirEdicion(page)
     await page.locator('[data-testid$="-inc-PACA_AGUA"]').first().click()
     const res = await enviarYEsperarPut(page, pedidoId)
     expect(res.status()).toBe(409)
@@ -234,7 +249,7 @@ test.describe('Entrega parcial: editar cantidades se rechaza con claridad (Hub O
     const page = await sharedLoginAs(browser, 'admin')
     const { pedidoId } = await crearPedidoParcial(page, 'hub')
     await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
-    await page.getByRole('button', { name: /✏️ Editar/ }).click()
+    await abrirEdicion(page)
     await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
     await expect(page.getByTestId('workspace-canal-fijo')).toBeVisible()
     await page.getByTestId('workspace-inc-PACA_AGUA').click()
@@ -258,7 +273,7 @@ test.describe('Entrega parcial: editar cantidades se rechaza con claridad (Hub O
     const cuerpo = await creado.json()
     const pedidoId = (cuerpo.data?.pedido ?? cuerpo.pedido).id as string
     await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
-    await page.getByRole('button', { name: /✏️ Editar/ }).click()
+    await abrirEdicion(page)
     await page.getByTestId('workspace-inc-PACA_AGUA').click()
     await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
     const put = page.waitForResponse((r) => r.url().endsWith(`/api/pedidos/${pedidoId}`) && r.request().method() === 'PUT')

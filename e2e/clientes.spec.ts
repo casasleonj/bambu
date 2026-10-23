@@ -1,5 +1,5 @@
 // @tests api/cliente, api/cliente/quick, api/negocios, api/clientes/stats, api/clientes/historial
-import {test, expect, loginAs, goto, apiPost, apiGet, apiPut, apiPatch, apiDelete, createCliente, createClienteFull, setupClienteWithPedidos, resetDatabase, sharedPageLogin} from './fixtures'
+import {test, expect, loginAs, goto, apiPost, apiGet, apiPut, apiPatch, apiDelete, createCliente, createClienteFull, setupClienteWithPedidos, resetDatabase, sharedPageLogin, appMain} from './fixtures'
 import type { Page } from '@playwright/test'
 
 const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3001'
@@ -50,7 +50,9 @@ test.describe('Clientes UI', () => {
     // Wait for modal to close
     await expect(nameInput).toBeHidden({ timeout: 5000 })
     await p.reload()
-    await expect(p.getByText(name)).toBeVisible()
+    // `appMain`: con streaming React deja una copia oculta del árbol fuera de <main>
+    // y `getByText(name)` resolvía a 2 elementos (strict mode, #396).
+    await expect(appMain(p).getByText(name)).toBeVisible()
   })
 
   test('validacion: nombre vacio mantiene modal abierto', async ({ page: _page }) => {

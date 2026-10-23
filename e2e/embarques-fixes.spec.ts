@@ -1,7 +1,7 @@
 // @tests embarques module - tests for critical fixes applied
 // Covers: Fix #1, #2, #5, #7, #8, #9, #12, #16, #17, #21, #22, #24, #25, #26
 import type { Page } from '@playwright/test'
-import { test, expect, loginAs, apiPost, apiGet, apiDelete, createTrabajador, createCliente, BASE } from './fixtures'
+import { test, expect, loginAs, apiPost, apiGet, apiDelete, createTrabajador, createCliente, BASE, appMain } from './fixtures'
 
 import { PrismaClient } from '@prisma/client'
 
@@ -926,12 +926,15 @@ test.describe('Embarques — Fix #30: Stats no oculta detalle sin cerrados', () 
     await embarquesLogin(page)
     await page.goto(`${BASE}/embarques`)
     await page.waitForLoadState('domcontentloaded')
-    await page.locator('button:has-text("Estadísticas")').click()
+    // `appMain`: con streaming React deja una copia oculta del árbol fuera de <main>
+    // y `button:has-text("Estadísticas")` resolvía a 2 botones (strict mode, #416).
+    const main = appMain(page)
+    await main.locator('button:has-text("Estadísticas")').click()
     await page.waitForTimeout(1000)
 
     // Antes: pantalla vacía pese a haber un embarque en el período.
-    await expect(page.locator('text=No hay embarques en este período')).not.toBeVisible()
-    await expect(page.locator('text=Detalle de Embarques')).toBeVisible()
-    await expect(page.locator('tbody tr', { hasText: nombreUnico })).toHaveCount(1)
+    await expect(main.locator('text=No hay embarques en este período')).not.toBeVisible()
+    await expect(main.locator('text=Detalle de Embarques')).toBeVisible()
+    await expect(main.locator('tbody tr', { hasText: nombreUnico })).toHaveCount(1)
   })
 })
