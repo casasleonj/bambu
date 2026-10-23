@@ -367,6 +367,8 @@ jobs:
           # los tests de `pedido-estadopago-check.test.ts` (y cualquier otro que
           # dependa del CHECK) correrían en CI sin el constraint presente.
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
+          # #401: una sola secuencia para Pedido.numero (DEFAULT + índice único parcial + trigger).
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
 
       - name: Run integration tests
         run: npm run test:integration
@@ -524,6 +526,8 @@ jobs:
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260901_add_correccion_abono/migration.sql
           # G5.5 — CHECK `chk_pedido_estadopago_proyectado`, no expresable en schema.prisma.
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
+          # #401: una sola secuencia para Pedido.numero (DEFAULT + índice único parcial + trigger).
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
 
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts
@@ -722,6 +726,8 @@ jobs:
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260829_receivable_entry_offlineid_not_unique/migration.sql
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260901_add_correccion_abono/migration.sql
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
+          # #401: una sola secuencia para Pedido.numero (DEFAULT + índice único parcial + trigger).
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
 
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts

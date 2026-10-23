@@ -277,8 +277,7 @@ async function commitPedido(
     return sum + item.cantPedido * precio
   }, 0)
 
-  // Incidente 2026-10-08: sin `numero` explícito Prisma usa el DEFAULT legacy
-  // "Pedido_numero_seq" y reutiliza números ya existentes.
+  // Misma secuencia que el resto de writers (desde #401 también es el DEFAULT).
   const numero = await getNextNumero(tx, { model: 'pedido' })
   const pedido = await tx.pedido.create({
     data: {

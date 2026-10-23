@@ -859,7 +859,13 @@ model Nomina {
 
 model Pedido {
   id          String    @id @default(cuid())
+  // El DEFAULT real es nextval('pedido_numero_seq'), la misma secuencia que
+  // usa getNextNumero (#401, migración 20261023). Unicidad: índice UNIQUE
+  // parcial "WHERE NOT numeroColisionHistorica" (no expresable aquí).
   numero      Int       @default(autoincrement())
+  // true solo en las filas que repitieron un número antes de #401; lo asigna
+  // la migración 20261023 y un trigger impide asignarlo después.
+  numeroColisionHistorica Boolean @default(false)
   createdById String?
   createdBy   User?     @relation("PedidoCreador", fields: [createdById], references: [id])
   clienteId   String
