@@ -184,9 +184,24 @@ export async function POST(
       monto: p.monto,
     }))
 
+    // Antifraude (#318): quien reparte (REPARTIDOR / trabajador con moto) no crea
+    // crédito por su cuenta; la oficina sí puede dejar saldo al marcar la entrega.
+    // Si la config oculta los precios al repartidor, el cobro es cosa de la oficina:
+    // él no ve montos ni cobra, así que no se le exige deuda aceptada.
+    let exigirDeudaAceptada = false
+    if (!esOficina && !clienteRetiro) {
+      if (rolActor === 'REPARTIDOR') {
+        exigirDeudaAceptada = !(await getConfigBool('BLOQUEAR_PRECIOS_REPARTIDOR', false))
+      } else if (user?.id) {
+        const trabajador = await prisma.trabajador.findFirst({ where: { userId: user.id }, select: { usaMoto: true } })
+        exigirDeudaAceptada = Boolean(trabajador?.usaMoto)
+      }
+    }
+
     const result = await entregarPedidoUseCase.execute({
       pedidoId: id,
       actorId: user?.id,
+      exigirDeudaAceptada,
       itemsEntregados: entregas,
       pagos: pagosInput,
       embarqueId,
@@ -236,7 +251,15 @@ export async function POST(
       entidad: 'Pedido',
       registroId: id,
       accion: 'UPDATE',
-      datos: { accion: 'ENTREGA', estadoEntrega: result.pedido.estadoEntrega, estadoPago: result.pedido.estadoPago },
+      datos: {
+        accion: 'ENTREGA',
+        estadoEntrega: result.pedido.estadoEntrega,
+        estadoPago: result.pedido.estadoPago,
+        // Señal para revisión (no bloqueo): quien reparte entregó sin coordenadas y dio un motivo.
+        ...(!esOficina && !clienteRetiro && typeof gpsLat !== 'number' && gpsJustificacion
+          ? { sinGps: true, gpsJustificacion }
+          : {}),
+      },
       usuarioId: (authResult as { user?: { id?: string } }).user?.id,
     })
 
@@ -304,6 +327,12 @@ export async function POST(
     }
     if (error instanceof Error && error.message === 'TRANSICION_INVALIDA') {
       return apiError('Transición de estado no permitida', 400)
+    }
+    if (error instanceof Error && error.message.includes('excede el saldo del pedido')) {
+      return apiError('PAGO_EXCEDE_SALDO: el cobro es mayor que lo que se debe', 422)
+    }
+    if (error instanceof Error && error.message === 'FIADO_NO_AUTORIZADO') {
+      return apiError('FIADO_NO_AUTORIZADO: la oficina no autorizó dejar esta deuda. No entregues el pedido; se devuelve al cerrar el embarque.', 422)
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error registrando entrega:')
     return apiError('Error registrando entrega')

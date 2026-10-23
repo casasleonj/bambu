@@ -32,11 +32,17 @@ export interface EntregarPedidoPayload {
   gpsJustificacion?: string
   entregadoConGps?: boolean
   codigoVisita?: string
+  // Clave de idempotencia del envío. Si la pantalla la fija (una por "borrador" de
+  // entrega) el reintento tras un error/timeout la reutiliza y el servidor no cobra
+  // dos veces; si falta se genera una nueva por llamada (comportamiento previo).
+  offlineId?: string
 }
 
 export interface EntregarPedidoResult {
   pedido: unknown
   hijo?: unknown
+  // Otro envío ya había entregado este pedido: el cobro de este NO se registró.
+  pagosNoAplicados?: boolean
 }
 
 export interface UseEntregarPedidoOptions {
@@ -51,17 +57,18 @@ export function useEntregarPedido(options?: UseEntregarPedidoOptions) {
   const entregar = useCallback(async (payload: EntregarPedidoPayload): Promise<EntregarPedidoResult | null> => {
     setSubmitting(true)
     try {
-      const result = await fetchResilient<{ success: boolean; pedido: unknown; hijo?: unknown; error?: { message?: string } }>(
+      const { offlineId, ...resto } = payload
+      const result = await fetchResilient<{ success: boolean; pedido: unknown; hijo?: unknown; pagosNoAplicados?: boolean; error?: { message?: string } }>(
         `/api/pedidos/${payload.pedidoId}/entrega`,
         {
           method: 'POST',
-          body: { ...payload, offlineId: generateUUID() },
+          body: { ...resto, offlineId: offlineId ?? generateUUID() },
           localEndpoint: 'entregar-pedido',
         }
       )
 
       if (result.status === 'ok') {
-        const ok = { pedido: result.data.pedido, hijo: result.data.hijo } as EntregarPedidoResult
+        const ok = { pedido: result.data.pedido, hijo: result.data.hijo, pagosNoAplicados: result.data.pagosNoAplicados } as EntregarPedidoResult
         options?.onSuccess?.(ok)
         return ok
       }

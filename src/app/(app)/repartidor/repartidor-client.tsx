@@ -20,12 +20,14 @@ import { formatGPSError } from '@/lib/gps'
 import { compressImage } from '@/lib/image-compress'
 import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 import { DireccionIndicator } from '@/components/direccion-indicator'
+import { EntregaCobroSheet, type PedidoParaEntregar } from './entrega-cobro-sheet'
 
 interface RepartidorClientProps {
   trabajador: { id: string; nombre: string }
   embarque: {
     id: string
     numero: number
+    estado?: string
     ruta?: { nombre: string } | null
     pacasAgua: number
     pacasHielo: number
@@ -67,6 +69,7 @@ interface RepartidorClientProps {
         estado: string
       estadoEntrega: string
       estadoPago: string
+      promesaPagoFecha?: string | null
       origen: string
       total: number
       saldo: number
@@ -81,11 +84,13 @@ interface RepartidorClientProps {
     }>
   } | null
   userRole?: string
+  /** La config oculta precios al repartidor: no cobra desde su pantalla. */
+  preciosOcultos?: boolean
 }
 
 const METODOS_PAGO = ['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO'] as const
 
-export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRole }: RepartidorClientProps) {
+export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRole, preciosOcultos = false }: RepartidorClientProps) {
   const [showVentaLibre, setShowVentaLibre] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
@@ -139,7 +144,7 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
   const [embarque, setEmbarque] = useState(initialEmbarque)
   const embarqueIdRef = useRef(initialEmbarque?.id)
 
-  usePollingRefetch(async () => {
+  const refrescarEmbarque = useCallback(async () => {
     const id = embarqueIdRef.current
     if (!id) return
     try {
@@ -153,7 +158,14 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
     } catch {
       // Silently retry next cycle
     }
-  }, 30_000)
+  }, [])
+
+  usePollingRefetch(refrescarEmbarque, 30_000)
+
+  // Entrega + cobro en la puerta (#318). `enviadosOffline`: entregas guardadas sin
+  // señal que aún no confirmó el servidor (se muestran como «pendiente de enviar»).
+  const [entregando, setEntregando] = useState<PedidoParaEntregar | null>(null)
+  const [enviadosOffline, setEnviadosOffline] = useState<Set<string>>(new Set())
 
   const handleSync = async () => {
     if (!online) {
@@ -620,12 +632,53 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
                     }`}>
                       {pedido.estadoPago === 'ANTICIPADO' ? 'Anticipado' : pedido.estadoPago}
                     </span>
+                    {enviadosOffline.has(pedido.id) && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-100 text-violet-700" data-testid={`pendiente-envio-${pedido.id}`}>
+                        Pendiente de enviar
+                      </span>
+                    )}
                   </div>
+                  {pedido.estadoEntrega !== 'ENTREGADO' && pedido.estadoEntrega !== 'CANCELADO' && !enviadosOffline.has(pedido.id) && (
+                    embarque.estado === 'EN_RUTA' ? (
+                      <button
+                        type="button"
+                        data-testid={`btn-entregar-${pedido.id}`}
+                        onClick={() => setEntregando({
+                          id: pedido.id,
+                          numero: pedido.numero,
+                          clienteId: pedido.clienteId,
+                          nombre: pedido.nombreNegocioCli || [pedido.nombreCli, pedido.apellidoCli].filter(Boolean).join(' '),
+                          saldo: Number(pedido.saldo),
+                          promesaPagoFecha: pedido.promesaPagoFecha ?? null,
+                          items: pedido.items.map(i => ({ producto: i.producto, cantPedido: i.cantPedido, cantEntrega: i.cantEntrega })),
+                        })}
+                        className="mt-3 w-full py-3 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition"
+                      >
+                        Entregado
+                      </button>
+                    ) : (
+                      <p className="mt-3 text-xs text-gray-500">Marca la salida a ruta para poder entregar.</p>
+                    )
+                  )}
                 </div>
               )
             })}
           </div>
         </div>
+      )}
+
+      {embarque && (
+        <EntregaCobroSheet
+          pedido={entregando}
+          embarque={{ id: embarque.id, estado: embarque.estado ?? '' }}
+          preciosOcultos={preciosOcultos}
+          onClose={() => setEntregando(null)}
+          onDone={({ pedidoId, offline }) => {
+            setEntregando(null)
+            if (offline) setEnviadosOffline(prev => new Set(prev).add(pedidoId))
+            else void refrescarEmbarque()
+          }}
+        />
       )}
 
       {/* Modal Venta Libre */}

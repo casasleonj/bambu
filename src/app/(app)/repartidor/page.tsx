@@ -166,6 +166,7 @@ export default async function RepartidorPage() {
       trabajador={{ id: trabajador.id, nombre: trabajador.nombre }}
       embarque={embarqueData ? JSON.parse(JSON.stringify(embarqueData)) : null}
       userRole={userRole}
+      preciosOcultos={maskPrices}
     />
   )
 }

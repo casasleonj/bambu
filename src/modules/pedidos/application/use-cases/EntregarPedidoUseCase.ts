@@ -11,6 +11,7 @@ import type { ITransactionManager, TransactionClient } from '../../infrastructur
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
 import { leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import { aplicarEntregaConObligacion } from '@/lib/obligacion-guard'
+import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 import {
   CAPTURA_ENTREGA_PEDIDO,
   claveEventoEntrega,
@@ -18,6 +19,8 @@ import {
 } from '@/lib/entrega-fisica-viva'
 import type { EntregarPedidoInput, EntregarPedidoResult } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
+
+const tieneCobro = (input: EntregarPedidoInput): boolean => (input.pagos ?? []).some((p) => p.monto > 0)
 
 export class EntregarPedidoUseCase {
   constructor(
@@ -86,6 +89,9 @@ export class EntregarPedidoUseCase {
         return {
           pedido: PedidoDTOMapper.toResumen(pedido),
           deduped: true,
+          // Otro envío ya entregó este pedido (el mismo offlineId se atendió arriba):
+          // si este traía cobro, no se registra — se avisa en vez de perderlo.
+          ...(tieneCobro(input) ? { pagosNoAplicados: true } : {}),
         }
       }
 
@@ -152,6 +158,25 @@ export class EntregarPedidoUseCase {
         // embarque que declara el payload (validado en el route). Nunca se
         // deriva de `pedido.embarqueId`.
         await this.pagoRepo.createMany(pedido.id.get(), input.pagos, tx, metodosConfirmacion, input.embarqueId ?? null)
+      }
+
+      // Antifraude (#318): quien reparte no crea crédito por su cuenta. Se evalúa con
+      // el saldo ya resultante y ANTES de persistir: si falla, el rollback deja el
+      // pedido sin entregar y sin cobro. Solo aplica a la entrega completa y a
+      // deudores reales (la venta anónima no puede dejar saldo en absoluto).
+      if (
+        input.exigirDeudaAceptada &&
+        !input.clienteRetiro &&
+        pedido.estadoEntrega.get() === 'ENTREGADO' &&
+        pedido.saldo.cents > 0
+      ) {
+        const fila = await tx.pedido.findUnique({
+          where: { id: input.pedidoId },
+          select: { promesaPagoFecha: true },
+        })
+        if (pedido.clienteId === CANONICAL_CONSUMIDOR_FINAL_ID || !fila?.promesaPagoFecha) {
+          throw new Error('FIADO_NO_AUTORIZADO')
+        }
       }
 
       // Persist pedido
