@@ -141,7 +141,10 @@ describe('F-N12: los errores thrown se mapean a HTTP responses (en PUT)', () => 
   })
 
   it('FIX: FORBIDDEN_FIELDS / FORBIDDEN_FIELDS_EN_RUTA → 400 con estado y campos', () => {
-    expect(putCatch).toMatch(/FORBIDDEN_FIELDS/)
+    // 'FORBIDDEN_FIELDS_EN_RUTA:' NO empieza por 'FORBIDDEN_FIELDS:' — cada prefijo
+    // necesita su propio startsWith o cae al 500 genérico (#395).
+    expect(putCatch).toMatch(/startsWith\(['"]FORBIDDEN_FIELDS:['"]\)/)
+    expect(putCatch).toMatch(/startsWith\(['"]FORBIDDEN_FIELDS_EN_RUTA:['"]\)/)
   })
 })
 
