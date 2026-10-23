@@ -40,7 +40,7 @@ import type { EntregaDelCierre } from '../../domain/services/procesar-pedido.ser
 import { SalidasMisionService } from '../../domain/services/salidas-mision.service'
 import { Carga, type ProductCode } from '../../domain/value-objects/Carga'
 import { EstadoEmbarque as EstadoEmbarqueVO } from '../../domain/value-objects/EstadoEmbarque'
-import type { CerrarEmbarqueInput, CierreResultadoDTO } from '../dto'
+import type { CerrarEmbarqueInput, CierreResultadoDTO, PedidoActualizadoDTO } from '../dto'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
 import { coleccionarPagosDeMision, calcularCajaFinal } from './cerrar-embarque-caja.helper'
 
@@ -137,7 +137,7 @@ export class CerrarEmbarqueUseCase {
       const entregasDelCierre: EntregaDelCierre[] = []
 
       const pedidosHijosCreados: Array<{ id: string; numero: number }> = []
-      const pedidosActualizados: Array<{ id: string; estado: string }> = []
+      const pedidosActualizados: PedidoActualizadoDTO[] = []
       let totalVentas = 0
 
       // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: UNA lectura de Config para todo el

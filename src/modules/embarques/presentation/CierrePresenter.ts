@@ -9,7 +9,7 @@
  * `responsibilityCases` (casos pendientes de resolución autorizada).
  */
 
-import type { CierreResultadoDTO } from '../application/dto'
+import type { CierreResultadoDTO, PedidoActualizadoDTO } from '../application/dto'
 
 export interface CierreLegacyResponse {
   embarque: {
@@ -18,7 +18,7 @@ export interface CierreLegacyResponse {
     horaLlegada: string
     dineroEntregado: number
   }
-  pedidosActualizados: Array<{ id: string; estado: string }>
+  pedidosActualizados: PedidoActualizadoDTO[]
   pedidosHijosCreados: Array<{ id: string; numero: number }>
   ventasLibresCreadas: Array<{ id: string; numero: number }>
   pagosRegistrados: Array<{ pedidoId: string; monto: number }>

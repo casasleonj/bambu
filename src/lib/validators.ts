@@ -823,6 +823,8 @@ export const CerrarEmbarqueSchema = z.object({
       bolsaAgua: z.number().min(0).nullish().default(0),
       bolsaHielo: z.number().min(0).nullish().default(0),
     }).nullish(),
+    // #326: motivo de la corrección de precio (obligatorio solo si de verdad hay una).
+    motivoPrecio: z.string().max(500).nullish(),
     pagado: z.enum(['COMPLETO', 'PARCIAL', 'NO_PAGADO']),
     pagos: z.array(z.object({
       metodo: z.string(),

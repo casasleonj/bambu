@@ -29,8 +29,9 @@ import { EstadoEmbarque } from '@prisma/client'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { datosConfirmacionInicial, leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import { aplicarEntregaConObligacion, type EntregaAValidar } from '@/lib/obligacion-guard'
-import type { CerrarEmbarqueInput } from '../../application/dto'
+import type { CerrarEmbarqueInput, CorreccionPrecioDTO, PedidoActualizadoDTO } from '../../application/dto'
 import type { MetodoPago } from '@prisma/client'
+import { resolverCorreccionPrecio, ETIQUETA_PRECIO, type ClavePrecio, type CorreccionPrecio, type PedidoParaCorreccion } from './correccion-precio.service'
 
 // Tipo del cliente (Tx o Prisma global)
 // Reutilizamos la misma técnica que el use case
@@ -113,6 +114,50 @@ export interface ResultadoProcesarPedido {
 function toNumber(value: number | { toNumber: () => number } | null | undefined): number {
   if (value === null || value === undefined) return 0
   return typeof value === 'number' ? value : value.toNumber()
+}
+
+/** Adapta el pedido crudo al shape de la regla pura de corrección de precio (#326). */
+function paraCorreccion(pedido: PedidoRawInput): PedidoParaCorreccion {
+  return {
+    numero: pedido.numero,
+    total: toNumber(pedido.total),
+    totalPagado: toNumber(pedido.totalPagado),
+    precios: {
+      pacaAgua: toNumber(pedido.precioPacaAgua),
+      pacaHielo: toNumber(pedido.precioPacaHielo),
+      botellonFab: toNumber(pedido.precioBotellonFab),
+      botellonDom: toNumber(pedido.precioBotellonDom),
+      bolsaAgua: toNumber(pedido.precioBolsaAgua),
+      bolsaHielo: toNumber(pedido.precioBolsaHielo),
+    },
+    cantidades: {
+      pacaAgua: pedido.cPacaAguaPed || 0,
+      pacaHielo: pedido.cPacaHieloPed || 0,
+      botellonFab: pedido.cBotellonFabPed || 0,
+      botellonDom: pedido.cBotellonDomPed || 0,
+      bolsaAgua: pedido.cBolsaAguaPed || 0,
+      bolsaHielo: pedido.cBolsaHieloPed || 0,
+    },
+  }
+}
+
+/** Efecto de una corrección de precio para el resultado del cierre / preview. */
+function dtoCorreccion(
+  correccion: CorreccionPrecio,
+  totalPagadoPrevio: number,
+  totalPagadoNuevo: number,
+): { correccionPrecio?: CorreccionPrecioDTO } {
+  if (!correccion.hayCorreccion) return {}
+  return {
+    correccionPrecio: {
+      totalAntes: correccion.totalAntes,
+      totalDespues: correccion.totalDespues,
+      saldoAntes: correccion.totalAntes - totalPagadoPrevio,
+      saldoDespues: correccion.totalDespues - totalPagadoNuevo,
+      motivo: correccion.motivo ?? '',
+      cambios: correccion.cambios.map((c) => ({ producto: ETIQUETA_PRECIO[c.clave], antes: c.antes, despues: c.despues })),
+    },
+  }
 }
 
 // N2, guard I-11 (docs/pedidos/AGUA_BAMBU_N2_ALS_v2.0.md §3.4bis): traduce las
@@ -206,7 +251,7 @@ export class ProcesarPedidoService {
     // PR-1: la rama PARCIAL ya no crea pedido hijo. El param se conserva por
     // compatibilidad posicional con el call site; siempre queda vacío.
     _pedidosHijosCreados: Array<{ id: string; numero: number }>,
-    pedidosActualizados: Array<{ id: string; estado: string }>,
+    pedidosActualizados: PedidoActualizadoDTO[],
     // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: lista ya resuelta (el use case la lee
     // una vez, no una por pedido dentro del lock del cierre). Fallback al default.
     metodosRequieren?: string[],
@@ -279,16 +324,16 @@ export class ProcesarPedidoService {
       bolsaHielo: toNumber(pedido.precioBolsaHielo),
     }
 
-    const precios: PreciosPedido = (cuadre.preciosReales && userRole === 'ADMIN')
-      ? {
-          pacaAgua: cuadre.preciosReales['pacaAgua'] ?? preciosOriginales.pacaAgua,
-          pacaHielo: cuadre.preciosReales['pacaHielo'] ?? preciosOriginales.pacaHielo,
-          botellonFab: cuadre.preciosReales['botellonFab'] ?? preciosOriginales.botellonFab,
-          botellonDom: cuadre.preciosReales['botellonDom'] ?? preciosOriginales.botellonDom,
-          bolsaAgua: cuadre.preciosReales['bolsaAgua'] ?? preciosOriginales.bolsaAgua,
-          bolsaHielo: cuadre.preciosReales['bolsaHielo'] ?? preciosOriginales.bolsaHielo,
-        }
-      : preciosOriginales
+    // #326: corrección de precio con recálculo de la obligación (ver
+    // `correccion-precio.service.ts`). Sin corrección real, los precios y el total
+    // del pedido quedan intactos.
+    const correccion = resolverCorreccionPrecio({
+      pedido: paraCorreccion(pedido),
+      preciosReales: cuadre.preciosReales,
+      motivo: cuadre.motivoPrecio,
+      esAdmin: userRole === 'ADMIN',
+    })
+    const precios: PreciosPedido = correccion.precios
 
     // Valor entregado EN ESTE cierre (comisión / totalVentas / auditoría de
     // precio). NO es la obligación económica del pedido — ver más abajo.
@@ -301,8 +346,9 @@ export class ProcesarPedidoService {
       precios.bolsaHielo * (entProd.cBolsaHieloEnt || 0)
 
     // PR-1: la obligación económica del pedido NO se recalcula desde lo
-    // entregado. `total` se conserva; `saldo = total - totalPagado`.
-    const totalObligacion = toNumber(pedido.total)
+    // entregado. `total` se conserva; `saldo = total - totalPagado`. Única
+    // excepción: una corrección de precio autorizada (#326) mueve el total.
+    const totalObligacion = correccion.totalDespues
 
     // PR-2 (ADR-PAGO-EMBARQUE-CAPTURA-001): `cuadre.pagos` = SOLO dinero NUEVO de
     // esta misión (el asistente ya no prellena con los pagos previos). El
@@ -377,12 +423,17 @@ export class ProcesarPedidoService {
 
     // Update PedidoItems (cantidad acumulada)
     await this.updatePedidoItems(client, pedido, entAcum, precios)
+    await this.corregirPreciosItems(client, pedido, correccion)
 
     // B-11: audita SOLO un cambio de precio unitario con autoridad (ADMIN),
     // con antes/después. El valor entregado en el cierre se registra aparte.
-    await this.logPrecioCierre(client, pedido, preciosOriginales, precios, totalReal, userId)
+    await this.logPrecioCierre(client, pedido, preciosOriginales, precios, totalReal, userId, correccion, nuevoTotalPagado)
 
-    pedidosActualizados.push({ id: pedido.id, estado: 'ENTREGADO' })
+    pedidosActualizados.push({
+      id: pedido.id,
+      estado: 'ENTREGADO',
+      ...dtoCorreccion(correccion, totalPagadoPrevio, nuevoTotalPagado),
+    })
 
     // Register payments (PR-2, ADR-PAGO-EMBARQUE-CAPTURA-001 §7): `cuadre.pagos`
     // es SIEMPRE dinero nuevo de esta misión (se retiró el prellenado histórico
@@ -462,7 +513,7 @@ export class ProcesarPedidoService {
     cuadre: CerrarEmbarqueInput['pedidos'][number],
     userRole: string | undefined,
     userId: string | undefined,
-    pedidosActualizados: Array<{ id: string; estado: string }>,
+    pedidosActualizados: PedidoActualizadoDTO[],
     metodosRequieren?: string[],
   ): Promise<number> {
     const tx = client as unknown as {
@@ -502,9 +553,18 @@ export class ProcesarPedidoService {
       acum.cBotellonDomEnt + acum.cBolsaAguaEnt + acum.cBolsaHieloEnt
     const completo = totalEntregadoAcum >= totalPedido && totalPedido > 0
 
+    // #326: la corrección de precio aplica a TODO el pedido (cada línea tiene un
+    // único precio) y recalcula la obligación; sin corrección real, `total` queda intacto (PR-1).
+    const correccion = resolverCorreccionPrecio({
+      pedido: paraCorreccion(pedido),
+      preciosReales: cuadre.preciosReales,
+      motivo: cuadre.motivoPrecio,
+      esAdmin: userRole === 'ADMIN',
+    })
+
     // PR-2 (ADR-PAGO-EMBARQUE-CAPTURA-001 §7 / F9): cobro nuevo de esta misión.
     const montoPagado = cuadre.pagos.reduce((sum, p) => sum + p.monto, 0)
-    const totalObligacionPed = toNumber(pedido.total)
+    const totalObligacionPed = correccion.totalDespues
     const totalPagadoPrevio = toNumber(pedido.totalPagado)
     const saldoPendientePrevio = totalObligacionPed - totalPagadoPrevio
     // Mismo guard F7 exacto que la rama COMPLETO (ver comentario allá).
@@ -515,10 +575,11 @@ export class ProcesarPedidoService {
     // Los campos de dinero (totalPagado/saldo) SOLO se escriben si hubo cobro
     // nuevo en esta misión (F9). Sin cobro, la obligación económica queda
     // intacta byte a byte (PR-1).
-    const camposDinero = montoPagado > 0
+    const camposDinero = montoPagado > 0 || correccion.hayCorreccion
       ? {
           totalPagado: nuevoTotalPagado,
           saldo: totalObligacionPed - nuevoTotalPagado,
+          ...(correccion.hayCorreccion ? { total: totalObligacionPed } : {}),
         }
       : {}
     // G5.5 (bug encontrado al preparar `chk_pedido_estadopago_proyectado`):
@@ -532,16 +593,16 @@ export class ProcesarPedidoService {
     // `chk_pedido_estadopago_proyectado` fue diseñado para atrapar.
     const estadoPago = calcularEstadoPago(totalObligacionPed, nuevoTotalPagado, completo ? 'ENTREGADO' : 'PENDIENTE')
 
-    // ADMIN puede corregir precios congelados también en un cierre parcial;
-    // se persisten para el registro pero NO alteran `total` (PR-1).
-    const precios = (cuadre.preciosReales && userRole === 'ADMIN')
+    // Precios corregidos (solo ADMIN, con motivo): se persisten en las columnas
+    // legacy y, abajo, en `PedidoItem`; sin corrección real no se escribe nada.
+    const precios = correccion.hayCorreccion
       ? {
-          precioPacaAgua: cuadre.preciosReales['pacaAgua'] ?? toNumber(pedido.precioPacaAgua),
-          precioPacaHielo: cuadre.preciosReales['pacaHielo'] ?? toNumber(pedido.precioPacaHielo),
-          precioBotellonFab: cuadre.preciosReales['botellonFab'] ?? toNumber(pedido.precioBotellonFab),
-          precioBotellonDom: cuadre.preciosReales['botellonDom'] ?? toNumber(pedido.precioBotellonDom),
-          precioBolsaAgua: cuadre.preciosReales['bolsaAgua'] ?? toNumber(pedido.precioBolsaAgua),
-          precioBolsaHielo: cuadre.preciosReales['bolsaHielo'] ?? toNumber(pedido.precioBolsaHielo),
+          precioPacaAgua: correccion.precios.pacaAgua,
+          precioPacaHielo: correccion.precios.pacaHielo,
+          precioBotellonFab: correccion.precios.botellonFab,
+          precioBotellonDom: correccion.precios.botellonDom,
+          precioBolsaAgua: correccion.precios.bolsaAgua,
+          precioBolsaHielo: correccion.precios.bolsaHielo,
         }
       : {}
 
@@ -619,6 +680,20 @@ export class ProcesarPedidoService {
       })
     }
 
+    // #326: una corrección de precio mueve total/saldo de la factura aunque el pedido
+    // siga PENDIENTE (si se completó, ya se sincronizó arriba, con fecha).
+    if (correccion.hayCorreccion && !completo && pedido.factura) {
+      await tx.factura.update({
+        where: { id: pedido.factura.id },
+        data: {
+          total: totalObligacionPed,
+          saldo: totalObligacionPed - nuevoTotalPagado,
+          estado: nuevoTotalPagado >= totalObligacionPed ? 'PAGADA' : (nuevoTotalPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
+        },
+      })
+    }
+    await this.corregirPreciosItems(client, pedido, correccion)
+
     await tx.historial.create({
       data: {
         entidad: 'Pedido',
@@ -637,41 +712,26 @@ export class ProcesarPedidoService {
       },
     })
 
-    pedidosActualizados.push({ id: pedido.id, estado: completo ? 'ENTREGADO' : 'PENDIENTE' })
+    pedidosActualizados.push({
+      id: pedido.id,
+      estado: completo ? 'ENTREGADO' : 'PENDIENTE',
+      ...dtoCorreccion(correccion, totalPagadoPrevio, nuevoTotalPagado),
+    })
 
-    // Comisión / totalVentas: solo el valor entregado EN ESTE cierre.
+    // Comisión / totalVentas: solo el valor entregado EN ESTE cierre, con el precio
+    // vigente (el corregido si hubo corrección — igual que en COMPLETO).
     const valorEntregadoEnCierre =
-      toNumber(pedido.precioPacaAgua) * (entProd.cPacaAguaEnt || 0) +
-      toNumber(pedido.precioPacaHielo) * (entProd.cPacaHieloEnt || 0) +
-      toNumber(pedido.precioBotellonFab) * (entProd.cBotellonFabEnt || 0) +
-      toNumber(pedido.precioBotellonDom) * (entProd.cBotellonDomEnt || 0) +
-      toNumber(pedido.precioBolsaAgua) * (entProd.cBolsaAguaEnt || 0) +
-      toNumber(pedido.precioBolsaHielo) * (entProd.cBolsaHieloEnt || 0)
+      correccion.precios.pacaAgua * (entProd.cPacaAguaEnt || 0) +
+      correccion.precios.pacaHielo * (entProd.cPacaHieloEnt || 0) +
+      correccion.precios.botellonFab * (entProd.cBotellonFabEnt || 0) +
+      correccion.precios.botellonDom * (entProd.cBotellonDomEnt || 0) +
+      correccion.precios.bolsaAgua * (entProd.cBolsaAguaEnt || 0) +
+      correccion.precios.bolsaHielo * (entProd.cBolsaHieloEnt || 0)
 
-    // B-11 (revisión de PR-1A): un cambio de precio unitario con autoridad se
-    // audita también en la entrega PARCIAL (antes solo la rama COMPLETO lo hacía,
-    // aunque ambas persisten los precios corregidos). Solo antes/después; no se
-    // tocan `total`, saldos ni facturas (obligación económica intacta, PR-1).
-    const hayOverride = !!cuadre.preciosReales && userRole === 'ADMIN'
-    const aplicar = (clave: string, original: number): number =>
-      hayOverride ? (cuadre.preciosReales?.[clave] ?? original) : original
-    const originales: PreciosPedido = {
-      pacaAgua: toNumber(pedido.precioPacaAgua),
-      pacaHielo: toNumber(pedido.precioPacaHielo),
-      botellonFab: toNumber(pedido.precioBotellonFab),
-      botellonDom: toNumber(pedido.precioBotellonDom),
-      bolsaAgua: toNumber(pedido.precioBolsaAgua),
-      bolsaHielo: toNumber(pedido.precioBolsaHielo),
-    }
-    const aplicados: PreciosPedido = {
-      pacaAgua: aplicar('pacaAgua', originales.pacaAgua),
-      pacaHielo: aplicar('pacaHielo', originales.pacaHielo),
-      botellonFab: aplicar('botellonFab', originales.botellonFab),
-      botellonDom: aplicar('botellonDom', originales.botellonDom),
-      bolsaAgua: aplicar('bolsaAgua', originales.bolsaAgua),
-      bolsaHielo: aplicar('bolsaHielo', originales.bolsaHielo),
-    }
-    await this.logPrecioCierre(client, pedido, originales, aplicados, valorEntregadoEnCierre, userId)
+    // B-11: el cambio de precio unitario con autoridad se audita (antes/después, motivo y
+    // efecto en la obligación) también en la entrega PARCIAL.
+    const originales: PreciosPedido = paraCorreccion(pedido).precios
+    await this.logPrecioCierre(client, pedido, originales, correccion.precios, valorEntregadoEnCierre, userId, correccion, nuevoTotalPagado)
 
     return valorEntregadoEnCierre
   }
@@ -684,7 +744,7 @@ export class ProcesarPedidoService {
     client: TxOrPrisma,
     pedido: PedidoRawInput,
     cuadre: CerrarEmbarqueInput['pedidos'][number],
-    pedidosActualizados: Array<{ id: string; estado: string }>,
+    pedidosActualizados: PedidoActualizadoDTO[],
   ): Promise<number> {
     const tx = client as unknown as {
       pedido: { update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown> }
@@ -814,19 +874,14 @@ export class ProcesarPedidoService {
     aplicados: PreciosPedido,
     valorEntregadoEnCierre: number,
     userId: string | undefined,
+    correccion: CorreccionPrecio,
+    totalPagadoNuevo: number,
   ): Promise<void> {
     const tx = client as unknown as {
       historial: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }
     }
 
-    const etiquetas: Record<keyof PreciosPedido, string> = {
-      pacaAgua: 'PACA_AGUA',
-      pacaHielo: 'PACA_HIELO',
-      botellonFab: 'BOTELLON_FAB',
-      botellonDom: 'BOTELLON_DOM',
-      bolsaAgua: 'BOLSA_AGUA',
-      bolsaHielo: 'BOLSA_HIELO',
-    }
+    const etiquetas: Record<keyof PreciosPedido, string> = ETIQUETA_PRECIO
     const cambios = (Object.keys(etiquetas) as Array<keyof PreciosPedido>)
       .filter((k) => Math.abs(aplicados[k] - originales[k]) > 0.001)
       .map((k) => ({ producto: etiquetas[k], antes: originales[k], despues: aplicados[k] }))
@@ -842,11 +897,57 @@ export class ProcesarPedidoService {
           pedidoNumero: pedido.numero,
           cambios,
           valorEntregadoEnCierre,
+          // #326: efecto en la obligación y motivo de quien corrigió.
+          motivo: correccion.motivo ?? null,
+          totalAntes: correccion.totalAntes,
+          totalDespues: correccion.totalDespues,
+          saldoDespues: correccion.totalDespues - totalPagadoNuevo,
+          alcance: 'PEDIDO_COMPLETO',
           usuario: userId || 'unknown',
         }),
         usuarioId: userId,
       },
     })
+  }
+
+  /**
+   * #326: con una corrección de precio, `PedidoItem.precio` y `subtotal` de las líneas
+   * afectadas se alinean con el nuevo precio sobre TODA la cantidad pedida (cada línea
+   * tiene un único precio). Sin corrección real no escribe nada.
+   */
+  private async corregirPreciosItems(
+    client: TxOrPrisma,
+    pedido: PedidoRawInput,
+    correccion: CorreccionPrecio,
+  ): Promise<void> {
+    if (!correccion.hayCorreccion) return
+    const tx = client as unknown as {
+      pedidoItem: { updateMany: (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => Promise<unknown> }
+    }
+    const { precios } = correccion
+    const cantidades = paraCorreccion(pedido).cantidades
+    const productoDe: Record<ClavePrecio, string> = {
+      pacaAgua: 'PACA_AGUA', pacaHielo: 'PACA_HIELO', botellonFab: 'BOTELLON', botellonDom: 'BOTELLON',
+      bolsaAgua: 'BOLSA_AGUA', bolsaHielo: 'BOLSA_HIELO',
+    }
+    const afectados = new Set(correccion.cambios.map((c) => productoDe[c.clave]))
+    const lineas: Record<string, { subtotal: number; precio: number }> = {}
+    for (const clave of Object.keys(productoDe) as ClavePrecio[]) {
+      const producto = productoDe[clave]
+      if (!afectados.has(producto)) continue
+      const linea = (lineas[producto] ??= { subtotal: 0, precio: precios[clave] })
+      linea.subtotal += precios[clave] * cantidades[clave]
+    }
+    // Botellón: el precio del ítem es el del canal pedido (misma regla que `updatePedidoItems`).
+    if (lineas['BOTELLON']) {
+      lineas['BOTELLON'].precio = cantidades.botellonFab > 0 ? precios.botellonFab : precios.botellonDom || precios.botellonFab
+    }
+    for (const [producto, linea] of Object.entries(lineas)) {
+      await tx.pedidoItem.updateMany({
+        where: { pedidoId: pedido.id, producto },
+        data: { precio: linea.precio, subtotal: Math.round(linea.subtotal * 100) / 100 },
+      })
+    }
   }
 
   // PR-1: `crearPedidoHijo` (copia productiva del cierre) se elimina — la rama

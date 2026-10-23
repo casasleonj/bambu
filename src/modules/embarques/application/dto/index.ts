@@ -46,6 +46,8 @@ export interface CerrarEmbarqueInput {
     }
     pagos: Array<{ metodo: string; monto: number }>
     preciosReales?: Record<string, number>
+    /** #326: motivo obligatorio cuando `preciosReales` corrige de verdad algún precio (solo ADMIN). */
+    motivoPrecio?: string
     nuevoEmbarqueId?: string
     obs?: string
   }>
@@ -176,12 +178,28 @@ export interface EmbarqueDetalleDTO extends EmbarqueResumenDTO {
   }>
 }
 
+/** #326: efecto de una corrección de precio en la obligación del pedido (cierre y preview). */
+export interface CorreccionPrecioDTO {
+  totalAntes: number
+  totalDespues: number
+  saldoAntes: number
+  saldoDespues: number
+  motivo: string
+  cambios: Array<{ producto: string; antes: number; despues: number }>
+}
+
+export interface PedidoActualizadoDTO {
+  id: string
+  estado: string
+  correccionPrecio?: CorreccionPrecioDTO
+}
+
 export interface CierreResultadoDTO {
   embarqueId: string
   estado: string
   pedidosProcesados: number
   pedidosHijosCreados: Array<{ id: string; numero: number }>
-  pedidosActualizados: Array<{ id: string; estado: string }>
+  pedidosActualizados: PedidoActualizadoDTO[]
   ventasLibresCreadas: number
   discrepanciaTotal: number
   // FASE 6 (§13): casos de responsabilidad detectados, pendientes de

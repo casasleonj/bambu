@@ -88,6 +88,7 @@ export async function POST(
           bolsaAgua: n(p.preciosReales.bolsaAgua),
           bolsaHielo: n(p.preciosReales.bolsaHielo),
         } : undefined,
+        motivoPrecio: p.motivoPrecio ?? undefined,
         nuevoEmbarqueId: p.nuevoEmbarqueId ?? undefined,
       })),
       ventasLibres: ventasLibres?.map((v) => ({
@@ -157,6 +158,11 @@ export async function POST(
       return apiError(message.replace('PAGOS_EXCEDIDOS: ', ''), 400)
     }
     // B-12: `COMPLETO` exige cantidad acumulada completa; rechazo determinista.
+    // #326: corrección de precio en el cierre rechazada por regla (sin motivo, total inválido o
+    // el cliente ya pagó más que el nuevo total): 422 con el motivo, nunca un 500.
+    if (message.startsWith('PRECIO_SIN_MOTIVO') || message.startsWith('PRECIO_INVALIDO') || message.startsWith('PRECIO_GENERARIA_SOBREPAGO')) {
+      return apiError(message, 422)
+    }
     if (message.startsWith('ENTREGA_INCOMPLETA') || message.startsWith('ENTREGA_EXCEDE_PEDIDO') || message.startsWith('ENTREGA_INCONSISTENTE') || message.startsWith('SALIDAS_EXCEDEN_CARGA')) {
       return apiError(message.replace(/^(?:ENTREGA_(?:INCOMPLETA|EXCEDE_PEDIDO|INCONSISTENTE)|SALIDAS_EXCEDEN_CARGA): /, ''), 400)
     }
