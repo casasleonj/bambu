@@ -113,6 +113,13 @@ export interface EntregarPedidoInput {
    * con `embarqueEntregaId`.
    */
   clienteRetiro?: boolean
+  /**
+   * Antifraude (#318, opción A del PO): quien reparte no crea crédito por su
+   * cuenta. Si la entrega queda con saldo y la oficina no aceptó la deuda de
+   * antemano (`Pedido.promesaPagoFecha`), se rechaza con `FIADO_NO_AUTORIZADO`.
+   * La route lo activa para REPARTIDOR / trabajadores con moto; la oficina no lo usa.
+   */
+  exigirDeudaAceptada?: boolean
   fotoEntrega?: string
   gpsLat?: number
   gpsLng?: number
@@ -310,6 +317,12 @@ export interface EntregarPedidoResult {
   deduped?: boolean
   /** Embarque del que se soltó el pedido por retiro del cliente (para avisar/refrescar). */
   embarqueLiberadoId?: string
+  /**
+   * `deduped` por un pedido que OTRO envío ya había entregado, y este envío traía
+   * cobros que no se registraron: el dinero cobrado en la puerta no puede perderse
+   * en silencio, la pantalla debe avisar para registrarlo por el flujo de cobro.
+   */
+  pagosNoAplicados?: boolean
 }
 
 // ─── Preview (Fase 4, prerequisito del blueprint — BRECHA §9.1) ───────────────
