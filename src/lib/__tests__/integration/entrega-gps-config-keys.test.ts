@@ -21,7 +21,9 @@ vi.mock('next/cache', () => ({
   revalidatePath: () => {},
 }))
 
-const authUser: { id: string; role: string } = { id: 'placeholder', role: 'ADMIN' }
+// El gate de GPS lo exige el servidor a quien reparte (REPARTIDOR); la oficina
+// (ADMIN/ASISTENTE) no lo llena — ver embarque-entrega-fisica-viva.test.ts.
+const authUser: { id: string; role: string } = { id: 'placeholder', role: 'REPARTIDOR' }
 vi.mock('@/lib/auth-check', () => ({
   requireAuth: vi.fn(async () => ({ user: authUser })),
   requireOwnership: vi.fn(async () => true),

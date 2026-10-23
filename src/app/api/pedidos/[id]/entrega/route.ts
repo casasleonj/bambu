@@ -14,6 +14,7 @@ import { publishRealtimeEvent } from '@/lib/realtime'
 import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
 import { uploadBase64Foto, isBase64Image } from '@/lib/storage'
+import { sendPushToUser } from '@/lib/push'
 
 export async function POST(
   request: NextRequest,
@@ -44,6 +45,8 @@ export async function POST(
       itemsEntregados,
       pagos,
       embarqueId,
+      embarqueEntregaId,
+      clienteRetiro,
       fotoEntrega,
       gpsLat,
       gpsLng,
@@ -77,6 +80,28 @@ export async function POST(
       }
     }
 
+    // PR-1B (Adenda v1.2 §3.2): contexto físico de la entrega. Mismas reglas de
+    // autoridad que el embarque de captura de dinero; un sync tardío a un
+    // embarque CERRADO es válido (se registra como evento post-cierre).
+    if (embarqueEntregaId) {
+      const embFisico = await prisma.embarque.findUnique({
+        where: { id: embarqueEntregaId },
+        select: { id: true, estado: true, trabajador: { select: { userId: true } } },
+      })
+      if (!embFisico) return apiError('Embarque de entrega no válido', 400)
+      if (embFisico.estado === 'CANCELADO') {
+        return apiError('El embarque de entrega está cancelado', 400)
+      }
+      // El vehículo no puede haber entregado nada de un embarque que aún no salió.
+      // Un embarque solo avanza de estado, así que esto no rechaza un sync tardío legítimo.
+      if (embFisico.estado === 'ABIERTO') {
+        return apiError('ENTREGA_EMBARQUE_ABIERTO: el embarque aún no sale; si el cliente retiró el pedido, regístralo como retiro', 400)
+      }
+      if (user?.role === 'REPARTIDOR' && embFisico.trabajador?.userId !== user.id) {
+        return apiError('EMBARQUE_NO_PERTENECE: no puede atribuir una entrega a un embarque ajeno', 403)
+      }
+    }
+
     // Rule: requerirGpsParaEntrega
     // If GPS is required, the delivery must include coordinates OR a justification.
     // FIX (hallazgo histórico PR #259): seed y UI usan las claves camelCase
@@ -85,7 +110,12 @@ export async function POST(
     // así que el gate quedaba siempre en `false` sin importar la configuración real.
     const requerirGps = await getConfigBool('requerirGpsParaEntrega', false)
     const permitirSinGpsConJustificacion = await getConfigBool('permitirEntregaSinGpsConJustificacion', false)
-    if (requerirGps) {
+    // GPS y foto los exige el servidor a quien reparte (REPARTIDOR / trabajador con
+    // moto). La oficina (ADMIN/ASISTENTE) no los llena: la app toma el GPS sola y
+    // solo lo envía si está en el domicilio. Un retiro del cliente no los necesita.
+    const rolActor = user?.role
+    const esOficina = rolActor === 'ADMIN' || rolActor === 'ASISTENTE'
+    if (requerirGps && !clienteRetiro && !esOficina) {
       const tieneGps = typeof gpsLat === 'number' && typeof gpsLng === 'number'
       const tieneJustificacion = typeof gpsJustificacion === 'string' && gpsJustificacion.trim().length > 0
       if (!tieneGps && !(permitirSinGpsConJustificacion && tieneJustificacion)) {
@@ -99,10 +129,10 @@ export async function POST(
     //   - Any Trabajador with usaMoto=true (look up by userId)
     //   - ADMIN (any admin user) when the toggle is active
     const requiereFoto = await getConfigBool('REQUIERE_FOTO_ENTREGA', false)
-    if (requiereFoto) {
+    if (requiereFoto && !clienteRetiro && !esOficina) {
       const user = (authResult as { user?: { id?: string; role?: string } }).user
       let requiresForThisUser = false
-      if (user?.role === 'REPARTIDOR' || user?.role === 'ADMIN') {
+      if (user?.role === 'REPARTIDOR') {
         requiresForThisUser = true
       } else {
         // Look up the associated Trabajador by userId
@@ -115,7 +145,7 @@ export async function POST(
         }
       }
       if (requiresForThisUser && !fotoEntrega) {
-        return apiError('La foto de entrega es obligatoria para repartidores, administradores y trabajadores con moto', 400)
+        return apiError('La foto de entrega es obligatoria para repartidores y trabajadores con moto', 400)
       }
     }
 
@@ -160,6 +190,8 @@ export async function POST(
       itemsEntregados: entregas,
       pagos: pagosInput,
       embarqueId,
+      embarqueEntregaId,
+      clienteRetiro,
       fotoEntrega: fotoUrl,
       gpsLat,
       gpsLng,
@@ -211,6 +243,28 @@ export async function POST(
     publishRealtimeEvent('pedido.updated', id).catch(() => {})
     if (result.pedido.embarqueId) {
       publishRealtimeEvent('embarque.updated', result.pedido.embarqueId).catch(() => {})
+    }
+    if (result.embarqueLiberadoId) {
+      // Retiro del cliente: el embarque perdió un pedido. Se refresca y, si ya iba en
+      // ruta, se avisa al repartidor (mismo criterio que quitar un pedido del embarque).
+      publishRealtimeEvent('embarque.updated', result.embarqueLiberadoId).catch(() => {})
+      void (async () => {
+        const emb = await prisma.embarque
+          .findUnique({
+            where: { id: result.embarqueLiberadoId },
+            select: { estado: true, numero: true, trabajador: { select: { userId: true } } },
+          })
+          .catch(() => null)
+        const repartidorUserId = emb?.trabajador?.userId
+        if (emb?.estado === 'EN_RUTA' && repartidorUserId) {
+          void sendPushToUser(repartidorUserId, {
+            title: 'Pedido retirado por el cliente',
+            body: `El pedido #${result.pedido.numero} fue retirado por el cliente; sale del embarque #${emb.numero}.`,
+            url: '/repartidor',
+            tag: `embarque-ruta-modificado-${result.embarqueLiberadoId}`,
+          })
+        }
+      })()
     }
 
     // Push notifications: no reenviar en un replay deduped (el pedido ya

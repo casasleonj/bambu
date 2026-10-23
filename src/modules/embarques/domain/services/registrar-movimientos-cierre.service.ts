@@ -52,6 +52,13 @@ export class RegistrarMovimientosCierre {
       pedidosRaw: PedidoConEntregas[]
       ventasLibres: VentaLibreConCantidades[]
       productosRetorno: ProductoRetorno[]
+      /**
+       * PR-1C (modo entrega viva): cantidades de ENTREGA que escribe ESTE cierre
+       * (deltas propios + ventas libres previas), calculadas por el caso de uso.
+       * Si viene, `pedidosRaw` NO se usa para ENTREGA: el acumulado histórico del
+       * pedido no representa la misión y duplicaría eventos ya vivos.
+       */
+      entregasCierre?: Record<string, number>
     },
   ): Promise<number> {
     let count = 0
@@ -60,12 +67,16 @@ export class RegistrarMovimientosCierre {
     const ventasRuta: Record<string, number> = Object.fromEntries(PRODUCTOS.map((p) => [p, 0]))
     const retornos: Record<string, number> = Object.fromEntries(PRODUCTOS.map((p) => [p, 0]))
 
-    for (const p of input.pedidosRaw) {
-      entregados.PACA_AGUA += p.cPacaAguaEnt || 0
-      entregados.PACA_HIELO += p.cPacaHieloEnt || 0
-      entregados.BOTELLON += (p.cBotellonFabEnt || 0) + (p.cBotellonDomEnt || 0)
-      entregados.BOLSA_AGUA += p.cBolsaAguaEnt || 0
-      entregados.BOLSA_HIELO += p.cBolsaHieloEnt || 0
+    if (input.entregasCierre) {
+      for (const producto of PRODUCTOS) entregados[producto] = input.entregasCierre[producto] ?? 0
+    } else {
+      for (const p of input.pedidosRaw) {
+        entregados.PACA_AGUA += p.cPacaAguaEnt || 0
+        entregados.PACA_HIELO += p.cPacaHieloEnt || 0
+        entregados.BOTELLON += (p.cBotellonFabEnt || 0) + (p.cBotellonDomEnt || 0)
+        entregados.BOLSA_AGUA += p.cBolsaAguaEnt || 0
+        entregados.BOLSA_HIELO += p.cBolsaHieloEnt || 0
+      }
     }
 
     for (const v of input.ventasLibres) {
@@ -92,6 +103,9 @@ export class RegistrarMovimientosCierre {
             cantidad: entregados[producto],
             origen: 'VEHICULO',
             destino: 'CLIENTE',
+            // PR-1C: en modo vivo el movimiento del cierre se identifica como tal
+            // (distinto de los eventos atribuidos de `/entrega`).
+            ...(input.entregasCierre ? { metadata: { captura: 'CIERRE' } } : {}),
           },
         })
         count++

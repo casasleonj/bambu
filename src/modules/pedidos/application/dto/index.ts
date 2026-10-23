@@ -99,6 +99,20 @@ export interface EntregarPedidoInput {
   // ADR-PAGO-EMBARQUE-CAPTURA-001: embarque de captura del cobro. Obligatorio
   // si `pagos` trae montos; nunca se deriva de `Pedido.embarqueId`.
   embarqueId?: string
+  /**
+   * PR-1B (Adenda v1.2 §3.2): misión cuyo vehículo sacó el producto. Si viene y
+   * el embarque usa el modo de entrega viva, la entrega escribe un
+   * `EmbarqueMovimiento.ENTREGA` atribuido en la misma transacción. Distinto de
+   * `embarqueId` (captura de dinero). Requiere `offlineId`.
+   */
+  embarqueEntregaId?: string
+  /**
+   * El cliente retiró el pedido (oficina/mostrador) en vez de recibirlo del
+   * vehículo: se marca entregado y se SUELTA del embarque en la misma
+   * transacción; no se anota salida física ni se exige GPS/foto. Incompatible
+   * con `embarqueEntregaId`.
+   */
+  clienteRetiro?: boolean
   fotoEntrega?: string
   gpsLat?: number
   gpsLng?: number
@@ -294,6 +308,8 @@ export interface EntregarPedidoResult {
   hijo?: PedidoResumenDTO
   // FIX F-N7: indica si la entrega fue dedup'd (pedido ya estaba ENTREGADO)
   deduped?: boolean
+  /** Embarque del que se soltó el pedido por retiro del cliente (para avisar/refrescar). */
+  embarqueLiberadoId?: string
 }
 
 // ─── Preview (Fase 4, prerequisito del blueprint — BRECHA §9.1) ───────────────

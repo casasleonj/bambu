@@ -1,7 +1,7 @@
 import type { Pedido } from '../pedidos-client/types'
 import { formatoTramo } from '@/lib/tramo-volumen'
 
-export type AccionDetalleKey = 'editar' | 'enviar' | 'cancelar' | 'entregar' | 'volver-pendiente' | 'anular'
+export type AccionDetalleKey = 'editar' | 'enviar' | 'cancelar' | 'entregar' | 'entregar-retiro' | 'volver-pendiente' | 'anular'
 
 export interface AccionDetalle {
   key: AccionDetalleKey
@@ -22,16 +22,27 @@ const EDITAR: AccionDetalle = { key: 'editar', label: '✏️ Editar', tone: 'wa
 const ENVIAR: AccionDetalle = { key: 'enviar', label: '🚚 Enviar', labelBusy: 'Enviando...', tone: 'primary' }
 const CANCELAR: AccionDetalle = { key: 'cancelar', label: 'Cancelar', tone: 'neutral' }
 const ENTREGAR: AccionDetalle = { key: 'entregar', label: '✅ Marcar Entregado', labelBusy: 'Entregando...', tone: 'primary' }
+/** Pedido de un embarque que ya salió: el botón ya trae la respuesta (quién entregó). */
+const ENTREGAR_REPARTIDOR: AccionDetalle = { key: 'entregar', label: '🚚 Entregó el repartidor', labelBusy: 'Entregando...', tone: 'primary' }
+const ENTREGAR_RETIRO: AccionDetalle = { key: 'entregar-retiro', label: '🏢 Cliente retiró', labelBusy: 'Entregando...', tone: 'neutral' }
 const VOLVER: AccionDetalle = { key: 'volver-pendiente', label: 'Volver a Pendiente', tone: 'neutral' }
 const ANULAR: AccionDetalle = { key: 'anular', label: 'Anular Pedido', labelBusy: 'Anulando...', tone: 'danger' }
 
-/** Mismas acciones y rótulos que el modal anterior, ordenadas por estado. */
-export function accionesDetalle(estadoEntrega: string): AccionesDetalle {
+/**
+ * Mismas acciones y rótulos que el modal anterior, ordenadas por estado.
+ * Con el pedido en un embarque EN_RUTA, «Marcar Entregado» se divide en
+ * «Entregó el repartidor» / «Cliente retiró»: el mismo clic de antes, sin pantallas
+ * intermedias. En cualquier otro caso (sin embarque, o embarque que aún no sale)
+ * sigue un solo botón y el sistema decide solo (ver `resolverEntrega`).
+ */
+export function accionesDetalle(estadoEntrega: string, embarqueEstado?: string | null): AccionesDetalle {
   switch (estadoEntrega) {
     case 'PENDIENTE':
       return { primaria: ENVIAR, secundarias: [EDITAR, CANCELAR], sinAcciones: null }
     case 'EN_RUTA':
-      return { primaria: ENTREGAR, secundarias: [VOLVER], sinAcciones: null }
+      return embarqueEstado === 'EN_RUTA'
+        ? { primaria: ENTREGAR_REPARTIDOR, secundarias: [ENTREGAR_RETIRO, VOLVER], sinAcciones: null }
+        : { primaria: ENTREGAR, secundarias: [VOLVER], sinAcciones: null }
     case 'ENTREGADO':
       return { primaria: null, secundarias: [ANULAR], sinAcciones: null }
     case 'CANCELADO':

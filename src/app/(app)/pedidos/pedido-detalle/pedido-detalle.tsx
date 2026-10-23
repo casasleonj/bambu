@@ -86,7 +86,7 @@ export function PedidoDetalle({
   const entregado = pedido.estadoEntrega === 'ENTREGADO'
   const pct = porcentajePagado(total, pagado)
   const links = linksContacto(pedido)
-  const acciones = accionesDetalle(pedido.estadoEntrega)
+  const acciones = accionesDetalle(pedido.estadoEntrega, pedido.embarqueResumen?.estado)
   const busy = updatingId === pedido.id
   const pasos = lineaDeTiempo(pedido)
   const items = itemsDe(pedido)
