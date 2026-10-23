@@ -163,7 +163,7 @@ Convención de clasificación usada en todo el documento:
 | **B-14** | Promoción, regalo y descuento: **no hay captura en ninguna UI de Pedidos** (ni legacy ni Hub). Solo se ve el movimiento `PROMOCION` en el ledger de Embarques | `movimiento-timeline.tsx`; sin coincidencias en `pedidos/`, `pedido-workspace/`, `pedido-form-unified/` | No es regresión; brecha de plan (§7 D4) |
 | **B-15** | Venta originada en ruta (`VENTA_LIBRE`): no está en el Hub, **diferida por decisión** (§8.3). Sigue por `/repartidor` | Blueprint §2.5, §8.3 | No es regresión |
 | **B-16** | Embarque y repartidor: visibles en el peek (`peek-relaciones.tsx:48-50`); en la lista solo "asignado / sin planificar" | `derive-operacion.ts:74` | P2 |
-| **B-17** | "Nueva operación" visible para CONTADOR (backend 403) | O-2 del informe F10a | P2 |
+| **B-17** ✅ #434 | "Nueva operación" visible para CONTADOR (backend 403) | O-2 del informe F10a | P2 |
 | **B-18** | `PedidoAuditDiff` no existe (F10-5) | informe F10a §F10-5 | Gate F10b |
 
 ---
@@ -363,7 +363,8 @@ La clienta tiene un pedido de julio con `totalPagado > 0` y **sin fila `Pago`**,
 | P1-3 | Comprador identificable en venta rápida — B-05 (D1: se mantiene D-OC4) | ✅ completo en `main` (2026-10-22, #399, issue #394). Maqueta v2 aprobada (2026-10-22): un solo bloque «Comprador» (tienda o persona) en toda la pantalla de creación del Hub; se elige de un toque, **nada preseleccionado** (antes quedaba la persona como «domicilio principal»), la búsqueda muestra lo que se buscó (tienda → solo la tienda con el dueño como dato secundario; persona → ella y sus tiendas), «Sin identificar» reemplaza «Consumidor Final» en pantalla. Con comprador real el origen es `PEDIDO` (D1); a domicilio nace por entregar, en el punto nace entregado |
 | P1-4 | Destino de un solo pedido — B-21 (#419) | ✅ completo en `main` (2026-10-23, #421, issue #419). Maqueta v2 aprobada (2026-10-23). La zona Entrega ofrece siempre «Cambiar el destino de este pedido» (dirección, barrio, link o GPS); **lo escrito es solo del pedido** y nunca cambia al cliente ni a la tienda salvo la casilla explícita «Guardar también como dirección del cliente» (antes, en una persona sin tienda, escribir otra dirección pisaba la guardada sin avisar). **Con una ubicación, dirección y barrio son opcionales**; sin ubicación la dirección sigue obligatoria. Los links acortados de Maps (`maps.app.goo.gl`, los de WhatsApp) ahora se resuelven en el Hub. Sin migración |
 | P2-1 | Búsqueda con entidad que coincidió + preselección del negocio — B-11 | ✅ completo en `main` (2026-10-22, #388 issue #385; #393 issue #392) |
-| P2-2…P2-5 | Entregar después, embarque en lista, CONTADOR, E2E precio especial | ❌ abiertos |
+| P2-4 | Ocultar la creación de pedidos a quien no puede — B-17 | ✅ completo en este PR (issue #434). Solo ADMIN/ASISTENTE (igual que `POST /api/pedidos`) ven el «+» flotante, «Nueva operación» del menú de comandos y el «Crear Pedido» de la lista vacía; `?new=1` no abre el formulario a los demás y limpia el enlace. `canCreatePedidos(role)` en `permissions.ts`. Fuera de alcance: acciones sobre pedidos ya creados |
+| P2-2, P2-3, P2-5 | Entregar después, embarque en lista, E2E precio especial | ❌ abiertos |
 
 ### 12.2 Brechas nuevas
 

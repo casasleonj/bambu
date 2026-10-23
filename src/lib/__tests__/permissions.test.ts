@@ -11,6 +11,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   userCan,
+  canCreatePedidos,
   getUserPermissions,
   isRouteAllowed,
   getRedirectForRole,
@@ -159,5 +160,24 @@ describe('Edge cases', () => {
     // Routes like /login, /offline, /api/* don't have a mapped permission,
     // so they should be allowed for any role.
     expect(isRouteAllowed('/some-unmapped-route', ROLES.REPARTIDOR)).toBe(true)
+  })
+})
+
+describe('canCreatePedidos (B-17, #434): misma regla que POST /api/pedidos', () => {
+  it('solo ADMIN y ASISTENTE pueden crear pedidos', () => {
+    expect(canCreatePedidos(ROLES.ADMIN)).toBe(true)
+    expect(canCreatePedidos(ROLES.ASISTENTE)).toBe(true)
+  })
+
+  it('CONTADOR, REPARTIDOR y SELLADOR no', () => {
+    expect(canCreatePedidos(ROLES.CONTADOR)).toBe(false)
+    expect(canCreatePedidos(ROLES.REPARTIDOR)).toBe(false)
+    expect(canCreatePedidos(ROLES.SELLADOR)).toBe(false)
+  })
+
+  it('sin rol (sesión cargando) o rol desconocido: no', () => {
+    expect(canCreatePedidos(null)).toBe(false)
+    expect(canCreatePedidos(undefined)).toBe(false)
+    expect(canCreatePedidos('OTRO')).toBe(false)
   })
 })

@@ -123,7 +123,8 @@ interface PedidoTableProps {
   tieneFiado: (pedido: Pedido) => boolean
   onDetail: (pedido: Pedido) => void
   onCambiarEstado: (id: string, nuevoEstado: string) => void
-  onCreateClick: () => void
+  /** ausente = el rol no puede crear pedidos: la lista vacía no ofrece «Crear Pedido» (B-17, #434). */
+  onCreateClick?: () => void
   /** Descarta un pedido offline que el server rechazó permanentemente
    *  (ej. límite de fiado excedido). Opcional: solo se usa si hay filas
    *  pendientes fallidas en `pedidos`. */
@@ -621,7 +622,7 @@ export function PedidoTable({
                     icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
                     title={hasDateFilter ? "No hay pedidos en este rango de fechas" : hasActiveFilters ? "No hay resultados" : "No hay pedidos"}
                     description={hasDateFilter ? "Prueba con un rango más amplio o presiona \"Limpiar\" para ver todo el histórico" : hasActiveFilters ? "Ajusta los filtros o búsqueda para ver más pedidos" : "Crea tu primer pedido para comenzar"}
-                    actionLabel={hasActiveFilters && !hasDateFilter ? undefined : "+ Crear Pedido"}
+                    actionLabel={(hasActiveFilters && !hasDateFilter) || !onCreateClick ? undefined : "+ Crear Pedido"}
                     onAction={onCreateClick}
                   />
                 </td>
@@ -647,7 +648,7 @@ export function PedidoTable({
             icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
             title={hasDateFilter ? "No hay pedidos en este rango de fechas" : hasActiveFilters ? "No hay resultados" : "No hay pedidos"}
             description={hasDateFilter ? "Prueba con un rango más amplio o presiona \"Limpiar\" para ver todo el histórico" : hasActiveFilters ? "Ajusta los filtros o búsqueda para ver más pedidos" : "Crea tu primer pedido para comenzar"}
-            actionLabel={hasActiveFilters && !hasDateFilter ? undefined : "+ Crear Pedido"}
+            actionLabel={(hasActiveFilters && !hasDateFilter) || !onCreateClick ? undefined : "+ Crear Pedido"}
             onAction={onCreateClick}
           />
         ) : (

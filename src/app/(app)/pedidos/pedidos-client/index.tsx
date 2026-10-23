@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import dynamic from 'next/dynamic'
 import { useSession } from 'next-auth/react'
+import { canCreatePedidos } from '@/lib/permissions'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
@@ -131,9 +132,13 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // sí. Mismo hook que ya usan SmartDateFilter/DateRangeFilter/facturas-client.
   const shallowParams = useShallowSearchParams()
   const { confirm, modal: confirmModal } = useConfirm()
-  const { data: session } = useSession()
+  const { data: session, status: sessionStatus } = useSession()
   const userRole = (session?.user as { role?: string } | undefined)?.role ?? null
+  // B-17 (#434): solo ADMIN/ASISTENTE crean pedidos (igual que POST /api/pedidos).
+  // Mientras la sesión carga el rol es null → no se ofrece nada.
+  const puedeCrear = canCreatePedidos(userRole)
   const router = useRouter()
+  const triggerNuevoAtendidoRef = useRef(false)
 
   const [showModal, setShowModal] = useState(false)
   const [showVentaRapida, setShowVentaRapida] = useState(false)
@@ -818,12 +823,20 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // en vez de esperar la lista completa de arriba — la apertura del modal ya
   // no depende de fetchClientes()/fetchEmbarques().
   useEffect(() => {
+    // B-17 (#434): el rol decide si el enlace puede abrir el formulario; hasta
+    // que la sesión resuelve no se sabe, así que se espera (una sola vez).
+    if (sessionStatus === 'loading' || triggerNuevoAtendidoRef.current) return
+    triggerNuevoAtendidoRef.current = true
     let cancelled = false
     const clienteId = shallowParams.get('clienteId')
     const negocioId = shallowParams.get('negocioId')
     const openNew = shallowParams.get('new') === '1'
 
-    if (openNew && clienteId) {
+    if (openNew && !puedeCrear) {
+      // quien no puede crear no recibe el formulario ni un error: se limpia el
+      // disparador y queda la lista (clienteId, si vino, sigue siendo filtro).
+      syncUrl({ new: undefined, negocioId: undefined })
+    } else if (openNew && clienteId) {
       ;(async () => {
         const result = await loadClienteDetail<{
           id: string
@@ -874,7 +887,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     // el filtro activo.
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [sessionStatus])
 
   useEffect(() => {
     // Fetch GPS delivery config (best-effort, defaults applied on error).
@@ -1910,7 +1923,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           error={fetchError}
           userRole={userRole}
           onAccion={handleHubAccion}
-          onNuevaOperacion={() => setShowModal(true)}
+          onNuevaOperacion={puedeCrear ? () => setShowModal(true) : undefined}
           dateFilterSlot={<SmartDateFilter />}
           onRetry={refreshPedidos}
           onRefetch={() => { refreshPedidos(); refetchCounts() }}
@@ -2067,7 +2080,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
               tieneFiado={tieneFiado}
               onDetail={handleDetail}
               onCambiarEstado={cambiarEstado}
-              onCreateClick={() => setShowModal(true)}
+              onCreateClick={puedeCrear ? () => setShowModal(true) : undefined}
             />
           </>
         )
@@ -2093,7 +2106,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             tieneFiado={tieneFiado}
             onDetail={handleDetail}
             onCambiarEstado={cambiarEstado}
-            onCreateClick={() => setShowModal(true)}
+            onCreateClick={puedeCrear ? () => setShowModal(true) : undefined}
             onDiscardFailed={discardFailedPedido}
             onCorrectFailed={hubMode ? corregirFailedPedido : undefined}
           />
@@ -2502,7 +2515,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       {/* Confirm Modal */}
       {confirmModal}
 
-      {/* FAB Unificado */}
+      {/* FAB Unificado — solo para quien puede crear pedidos (B-17, #434) */}
+      {puedeCrear && (
       <div
         className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2"
         data-testid="fab-container"
@@ -2554,6 +2568,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           </svg>
         </button>
       </div>
+      )}
     </div>
   )
 }

@@ -19,7 +19,8 @@ interface CommandMenuProps {
   /** operación seleccionada — habilita los comandos contextuales. */
   selected: Pedido | null
   hoyBogota: string
-  onNuevaOperacion: () => void
+  /** ausente = el rol no puede crear pedidos: el comando no se ofrece (B-17, #434). */
+  onNuevaOperacion?: () => void
   onBuscarCliente: () => void
   /** dispara la acción destacada / secundaria de la operación seleccionada
    *  (abre el flujo correspondiente; nunca muta directamente). */
@@ -71,7 +72,7 @@ export function PedidoCommandMenu({
 
   const items: CommandItem[] = useMemo(() => {
     const global: CommandItem[] = [
-      { id: 'nueva', label: 'Nueva operación', run: onNuevaOperacion },
+      ...(onNuevaOperacion ? [{ id: 'nueva', label: 'Nueva operación', run: onNuevaOperacion }] : []),
       { id: 'buscar-cliente', label: 'Buscar cliente…', run: onBuscarCliente },
       { id: 'planificacion', label: 'Abrir planificación de hoy', hint: 'navega a Distribución', href: `/rutas?fecha=${hoyBogota}` },
       { id: 'cartera', label: 'Ir a cartera', href: '/cartera' },
