@@ -54,6 +54,12 @@ export interface DraftPedido {
   entregaLng?: number | null
   /** DOMICILIO sin negocio: si true, la dirección puntual NO se persiste al Cliente. */
   soloParaEstePedido?: boolean
+  /**
+   * P1-4 (#419): el usuario pidió explícitamente guardar la dirección/barrio
+   * escritos como los del cliente. Por defecto (ausente/false) lo escrito es
+   * SOLO de este pedido y nunca modifica Cliente/Negocio.
+   */
+  guardarDireccionEnCliente?: boolean
   /** G11.B — trazabilidad cuando el flujo es "nueva demanda". */
   pedidoOrigenId?: string
   /**
@@ -117,6 +123,7 @@ export type WorkspaceAction =
   | { type: 'SET_NEGOCIO'; negocioId: string | null; direccion?: string | null; barrio?: string | null }
   | { type: 'SET_CANAL'; canal: 'PUNTO' | 'DOMICILIO' }
   | { type: 'SET_SOLO_PARA_ESTE_PEDIDO'; value: boolean }
+  | { type: 'SET_GUARDAR_DIRECCION_EN_CLIENTE'; value: boolean }
   | { type: 'SET_ITEM_CANTIDAD'; producto: ProductoCodigo; cantidad: number }
   | { type: 'SET_ITEM_PRECIO_MANUAL'; producto: ProductoCodigo; precioManual: number | undefined }
   | { type: 'CONFIRMAR_PRECIO_BAJO'; producto: ProductoCodigo }

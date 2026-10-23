@@ -376,6 +376,34 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
     dispatch({ type: 'ACKNOWLEDGE_REVIEW', motivo: reviewMotivo })
   }
 
+  // P1-4 (#419): lo guardado del comprador (no cambia al escribir otro destino)
+  // y si el pedido lleva un destino propio (texto distinto o ubicación propia).
+  const destinoGuardado = useMemo(() => {
+    if (!clienteSeleccionado) return null
+    const negocio = state.draft.negocioId
+      ? clienteSeleccionado.negocios?.find((n) => n.id === state.draft.negocioId)
+      : undefined
+    const fuente = negocio ?? clienteSeleccionado
+    const direccion = (negocio ? negocio.direccion ?? clienteSeleccionado.direccion : fuente.direccion) ?? ''
+    const barrio = (negocio ? negocio.barrio ?? clienteSeleccionado.barrio : fuente.barrio) ?? ''
+    return {
+      origen: negocio ? ('negocio' as const) : ('cliente' as const),
+      direccion,
+      barrio,
+      texto: [direccion, barrio].filter(Boolean).join(' · '),
+    }
+  }, [clienteSeleccionado, state.draft.negocioId])
+  const textoDestinoCambiado = destinoGuardado
+    ? (state.draft.direccionEntrega ?? '') !== destinoGuardado.direccion || (state.draft.barrioEntrega ?? '') !== destinoGuardado.barrio
+    : false
+  const destinoPropio = textoDestinoCambiado || state.draft.entregaLat != null
+
+  const handleVolverAGuardada = () => {
+    dispatch({ type: 'SET_DIRECCION', direccion: destinoGuardado?.direccion ?? '', barrio: destinoGuardado?.barrio ?? '' })
+    dispatch({ type: 'SET_UBICACION', lat: null, lng: null })
+    dispatch({ type: 'SET_GUARDAR_DIRECCION_EN_CLIENTE', value: false })
+  }
+
   const handleCommit = async () => {
     dispatch({ type: 'COMMIT_START' })
     const clienteNuevo = clienteSeleccionado ? undefined : state.draft.clienteNuevo
@@ -387,7 +415,8 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
       negocioSeleccionado: state.draft.negocioId,
       editDireccion: state.draft.direccionEntrega ?? '',
       editBarrio: state.draft.barrioEntrega ?? '',
-      soloParaEstePedido: state.draft.soloParaEstePedido ?? false,
+      // P1-4 (#419): lo escrito es SOLO del pedido salvo que el usuario marque la casilla.
+      soloParaEstePedido: !state.draft.guardarDireccionEnCliente,
     })
 
     const guardado = await onSubmit({
@@ -560,6 +589,12 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
           onUbicacionChange={(lat, lng) => dispatch({ type: 'SET_UBICACION', lat, lng })}
           previewPending={state.previewPending}
           ventaRapida={esVentaRapida}
+          guardada={destinoGuardado ? { texto: destinoGuardado.texto, origen: destinoGuardado.origen } : null}
+          destinoPropio={Boolean(destinoGuardado) && destinoPropio}
+          puedeGuardarEnCliente={Boolean(destinoGuardado) && destinoGuardado?.origen === 'cliente' && textoDestinoCambiado}
+          guardarEnCliente={state.draft.guardarDireccionEnCliente ?? false}
+          onGuardarEnClienteChange={(v) => dispatch({ type: 'SET_GUARDAR_DIRECCION_EN_CLIENTE', value: v })}
+          onVolverAGuardada={handleVolverAGuardada}
         />
       )}
 

@@ -17,6 +17,7 @@
 // interacción (workspace, peek, command-menu, toasts) NO necesitan scope: para
 // entonces la hidratación ya terminó.
 
+import type { Page } from '@playwright/test'
 import { test, expect, apiPost, apiGet, apiPut, apiPatch, createCliente, BASE, sharedLoginAs, appMain } from './fixtures'
 import { PrismaClient } from '@prisma/client'
 
@@ -412,6 +413,122 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     expect(enBD.estadoEntrega).toBe('ENTREGADO')
     expect(enBD.direccionEntrega).toBe(direccion)
     expect(enBD.barrioEntrega).toBe('Centro')
+  })
+
+  // P1-4 (#419): el destino de UN pedido no pisa la dirección guardada del cliente, y con
+  // una ubicación (link o GPS) la dirección y el barrio son opcionales. Se verifica en la BD.
+  async function personaADomicilio(page: Page, nombre: string) {
+    const app = appMain(page)
+    await page.goto(`${BASE}/pedidos`)
+    await app.getByTestId('fab-main').click()
+    await page.getByTestId('fab-venta-rapida').click()
+    await page.getByTestId('workspace-identificar').click()
+    await page.getByTestId('cliente-search-input').fill(nombre)
+    await page.getByTestId('cliente-search-result').first().click()
+    await expect(page.getByTestId('comprador-nombre')).toContainText(nombre)
+    await page.getByTestId('workspace-canal-DOMICILIO').click()
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await expect(page.getByTestId('workspace-entrega')).toHaveAttribute('data-estado', 'SUFICIENTE', { timeout: 10000 })
+  }
+
+  async function crearYLeer(page: Page) {
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    const creado = page.waitForResponse((r) => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST')
+    await page.getByTestId('workspace-commit').click()
+    const res = await creado
+    expect(res.status()).toBeLessThan(300)
+    const body = await res.json()
+    const pedidoId = (body.data?.pedido ?? body.pedido).id as string
+    return prisma.pedido.findUniqueOrThrow({ where: { id: pedidoId } })
+  }
+
+  test('workspace (P1-4): otro destino solo para este pedido — el cliente conserva su dirección guardada', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const t = Date.now()
+    const nombre = `Persona Destino ${t}`
+    const { cliente } = await createCliente(page, { nombre, direccion: 'Calle 5 # 3-2', barrio: 'Centro' })
+    await personaADomicilio(page, nombre)
+
+    await page.getByTestId('workspace-entrega-cambiar').click()
+    await expect(page.getByTestId('workspace-entrega-guardada')).toContainText('Calle 5 # 3-2 · Centro')
+    await page.getByTestId('workspace-entrega-direccion').fill('Carrera 9 # 10-20')
+    await page.getByTestId('workspace-entrega-barrio').fill('La Paz')
+    await expect(page.getByTestId('workspace-entrega-guardar-en-cliente')).not.toBeChecked()
+
+    const enBD = await crearYLeer(page)
+    expect(enBD.clienteId).toBe(cliente.id)
+    expect(enBD.direccionEntrega).toBe('Carrera 9 # 10-20')
+    expect(enBD.barrioEntrega).toBe('La Paz')
+    const clienteBD = await prisma.cliente.findUniqueOrThrow({ where: { id: cliente.id } })
+    expect(clienteBD.direccion).toBe('Calle 5 # 3-2')
+    expect(clienteBD.barrio).toBe('Centro')
+  })
+
+  test('workspace (P1-4): «Guardar también como dirección del cliente» sí actualiza la guardada', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const t = Date.now()
+    const nombre = `Persona Mudanza ${t}`
+    const { cliente } = await createCliente(page, { nombre, direccion: 'Calle 5 # 3-2', barrio: 'Centro' })
+    await personaADomicilio(page, nombre)
+
+    await page.getByTestId('workspace-entrega-cambiar').click()
+    await page.getByTestId('workspace-entrega-direccion').fill('Carrera 9 # 10-20')
+    await page.getByTestId('workspace-entrega-barrio').fill('La Paz')
+    await page.getByTestId('workspace-entrega-guardar-en-cliente').check()
+
+    const enBD = await crearYLeer(page)
+    // la dirección guardada ya es la nueva: el pedido la usa sin necesidad de un destino propio
+    expect(enBD.clienteId).toBe(cliente.id)
+    const clienteBD = await prisma.cliente.findUniqueOrThrow({ where: { id: cliente.id } })
+    expect(clienteBD.direccion).toBe('Carrera 9 # 10-20')
+    expect(clienteBD.barrio).toBe('La Paz')
+  })
+
+  test('workspace (P1-4): un link corto de Maps (WhatsApp) fija la ubicación del pedido; sin dirección ni barrio; el cliente no cambia', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const t = Date.now()
+    const nombre = `Persona Link ${t}`
+    const { cliente } = await createCliente(page, { nombre, direccion: 'Calle 5 # 3-2', barrio: 'Centro' })
+    // Google no es alcanzable desde CI: el servicio de expansión se simula con coordenadas conocidas.
+    await page.route('**/api/geo/expand-maps', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, url: 'https://maps.app.goo.gl/AbC123', coords: { lat: 4.652, lng: -74.054 } }) }),
+    )
+    await personaADomicilio(page, nombre)
+
+    await page.getByTestId('workspace-entrega-cambiar').click()
+    await page.getByTestId('workspace-entrega-direccion').fill('')
+    await page.getByTestId('workspace-entrega-barrio').fill('')
+    await page.getByTestId('workspace-entrega-link').fill('https://maps.app.goo.gl/AbC123')
+    await expect(page.getByTestId('workspace-entrega-ubicacion-fijada')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('workspace-entrega-direccion')).toHaveAttribute('placeholder', /opcional/)
+
+    const enBD = await crearYLeer(page)
+    expect(Number(enBD.entregaLat)).toBeCloseTo(4.652, 3)
+    expect(Number(enBD.entregaLng)).toBeCloseTo(-74.054, 3)
+    expect(enBD.direccionEntrega).toBeNull()
+    const clienteBD = await prisma.cliente.findUniqueOrThrow({ where: { id: cliente.id } })
+    expect(clienteBD.direccion).toBe('Calle 5 # 3-2')
+    expect(clienteBD.barrio).toBe('Centro')
+  })
+
+  test('workspace (P1-4): venta rápida a domicilio con solo un link de Maps (sin dirección ni barrio) se cobra', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    await page.goto(`${BASE}/pedidos`)
+    await app.getByTestId('fab-main').click()
+    await page.getByTestId('fab-venta-rapida').click()
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await page.getByTestId('workspace-canal-DOMICILIO').click()
+    await page.getByTestId('dinero-pagar-completo-EFECTIVO').click()
+    await expect(page.getByTestId('workspace-commit')).toBeDisabled({ timeout: 10000 })
+
+    await page.getByTestId('workspace-entrega-link').fill('https://www.google.com/maps?q=4.6520,-74.0540')
+    await expect(page.getByTestId('workspace-entrega-ubicacion-fijada')).toBeVisible()
+    const enBD = await crearYLeer(page)
+    expect(enBD.origen).toBe('VENTA_RAPIDA')
+    expect(enBD.canal).toBe('DOMICILIO')
+    expect(Number(enBD.entregaLat)).toBeCloseTo(4.652, 3)
+    expect(enBD.direccionEntrega).toBeNull()
   })
 
   // P1-3 (#394, B-05): el comprador se identifica DENTRO de la venta rápida, sea una

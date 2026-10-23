@@ -1,7 +1,9 @@
 'use client'
 
-import { useState } from 'react'
-import { parseGoogleMapsLink } from '@/lib/geo/parse-google-maps-link'
+import { useEffect, useRef, useState } from 'react'
+import { parseGoogleMapsLink, isShortMapsUrl } from '@/lib/geo/parse-google-maps-link'
+
+const RESOLVER_LINK_DEBOUNCE_MS = 500
 
 /**
  * Captura la UBICACIÓN PROPIA del pedido (destino de la entrega,
@@ -22,6 +24,49 @@ export function UbicacionEntregaInput({
   const [linkTexto, setLinkTexto] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [buscando, setBuscando] = useState(false)
+  const [resolviendo, setResolviendo] = useState(false)
+  // callback estable: un re-render del padre no debe reiniciar la resolución en curso.
+  const onChangeRef = useRef(onChange)
+  useEffect(() => {
+    onChangeRef.current = onChange
+  })
+
+  // Los links que manda WhatsApp suelen ser acortados (maps.app.goo.gl): no
+  // traen coordenadas y se resuelven en el servidor (allowlist SSRF, ver
+  // /api/geo/expand-maps). Se espera a que termine de pegarse (debounce).
+  useEffect(() => {
+    const texto = linkTexto.trim()
+    if (!texto || !isShortMapsUrl(texto)) return
+    let cancelado = false
+    const timer = setTimeout(() => {
+      setResolviendo(true)
+      fetch('/api/geo/expand-maps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: texto }),
+      })
+        .then(async (r) => {
+          const body = await r.json().catch(() => ({}))
+          if (cancelado) return
+          const coords = body?.data?.coords ?? body?.coords ?? null
+          if (r.ok && coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lng)) {
+            setError(null)
+            setLinkTexto('')
+            onChangeRef.current(coords.lat, coords.lng)
+          } else {
+            setError('No se pudo leer ese link. Pega el link largo de Maps, usa tu ubicación o escribe la dirección.')
+          }
+        })
+        .catch(() => {
+          if (!cancelado) setError('Sin conexión para leer ese link. Escribe la dirección o intenta de nuevo.')
+        })
+        .finally(() => setResolviendo(false))
+    }, RESOLVER_LINK_DEBOUNCE_MS)
+    return () => {
+      cancelado = true
+      clearTimeout(timer)
+    }
+  }, [linkTexto])
 
   const usarMiUbicacion = () => {
     setError(null)
@@ -47,6 +92,8 @@ export function UbicacionEntregaInput({
     setLinkTexto(texto)
     setError(null)
     if (!texto.trim()) return
+    // acortado: lo resuelve el efecto de arriba (con debounce), no es un error.
+    if (isShortMapsUrl(texto.trim())) return
     const parsed = parseGoogleMapsLink(texto)
     if (parsed) {
       onChange(parsed.lat, parsed.lng)
@@ -83,6 +130,7 @@ export function UbicacionEntregaInput({
             />
           </div>
         )}
+        {resolviendo && <p className="text-[11px] text-gray-500" data-testid="workspace-entrega-link-resolviendo">Leyendo el link…</p>}
         {error && <p className="text-[11px] text-red-600" data-testid="workspace-entrega-ubicacion-error">{error}</p>}
       </div>
   )
