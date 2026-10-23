@@ -88,6 +88,8 @@ function centinelasPedido(ctx: { adminId: string; embarqueOrigenId: string; pedi
 /** Columnas que NO se mutan por construcción (identidad / FK / autogeneradas). */
 const PEDIDO_IDENTIDAD = new Set([
   'id', 'numero', 'clienteId', 'negocioId', 'embarqueId', 'tipo', 'canal', 'origen', 'fecha', 'createdAt',
+  // marca de colisión anterior a #401: solo la asigna la migración 20261023
+  'numeroColisionHistorica',
   // dinero ya cobrado: ninguna edición lo toca (solo pagos/abonos)
   'totalPagado',
 ])

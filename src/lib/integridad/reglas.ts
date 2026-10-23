@@ -183,10 +183,13 @@ export const REGLAS: readonly Regla[] = [
     id: 'V8',
     titulo: 'Número de pedido repetido',
     severidad: 'ALTA',
+    // Las colisiones anteriores a #401 quedaron marcadas con
+    // numeroColisionHistorica (migración 20261023) y no se reportan.
     consulta: () => Prisma.sql`
       SELECT MIN(p.id) AS ref, p.numero,
         json_build_object('ids', json_agg(p.id ORDER BY p."createdAt"), 'origenes', json_agg(p.origen ORDER BY p."createdAt")) AS detalle
       FROM "Pedido" p
+      WHERE NOT p."numeroColisionHistorica"
       GROUP BY p.numero HAVING COUNT(*) > 1
       ORDER BY p.numero`,
   },

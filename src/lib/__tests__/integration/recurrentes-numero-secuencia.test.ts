@@ -6,9 +6,10 @@
 // insertaban sin `numero` → tomaban el DEFAULT y reutilizaban números
 // existentes (#1, #2, #85, #86 duplicados).
 //
-// Contra Postgres real: se reproduce el desfase de producción (DEFAULT muy
-// atrás de la secuencia de la app) y se exige que el recurrente reciba un
-// número nuevo, mayor que el último pedido creado, y que nunca colisione.
+// Desde #401 (migración 20261023) el DEFAULT y la app usan la misma
+// secuencia, así que el desfase ya no se puede reproducir. Contra Postgres
+// real se exige que el recurrente reciba un número nuevo, mayor que el último
+// pedido creado, y que nunca colisione.
 // También fija que la generación avanza el calendario de la plantilla.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
@@ -47,10 +48,6 @@ describe('Recurrentes — Pedido.numero usa la secuencia de la app', () => {
         items: { create: [{ producto: 'PACA_AGUA', cantPedido: 1, precio: 2500, subtotal: 2500 }] },
       },
     })
-
-    // Estado de producción: el DEFAULT legacy quedó por detrás y su próximo
-    // valor cae justo sobre un pedido existente (así nacieron #85/#86).
-    await testPrisma.$executeRawUnsafe(`SELECT setval('"Pedido_numero_seq"', ${numeroNormal - 1}, true)`)
 
     const pl = await testPrisma.plantillaRecurrente.create({
       data: {

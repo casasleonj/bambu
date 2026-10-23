@@ -297,9 +297,7 @@ export async function POST(request: NextRequest) {
         canal as Canal,
       )
 
-      // Incidente 2026-10-08: sin `numero` explícito Prisma usa el DEFAULT
-      // legacy "Pedido_numero_seq", distinto de `pedido_numero_seq`, y
-      // reutiliza números ya existentes. Misma secuencia que CrearPedido.
+      // Misma secuencia que CrearPedido (desde #401 también es el DEFAULT).
       const numero = await getNextNumero(tx, { model: 'pedido' })
       const pedido = await tx.pedido.create({
         data: {

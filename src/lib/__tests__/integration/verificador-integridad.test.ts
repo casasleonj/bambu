@@ -84,6 +84,7 @@ describe('verificador de integridad (solo lectura)', () => {
   beforeAll(async () => {
     await resetAndSeed()
     const cliente = await createTestCliente('verif')
+    ids.clienteVerif = cliente.id
     const ahora = Date.now()
 
     // Legítimo: pagar-fiado escribe Pago + Abono espejo por el mismo dinero.
@@ -126,10 +127,20 @@ describe('verificador de integridad (solo lectura)', () => {
     await testPrisma.pago.create({ data: { pedidoId: anulado.pedido.id, metodo: 'EFECTIVO', monto: 4000, confirmacion: 'CONFIRMADO' } })
     ids.anulado = anulado.pedido.id
 
-    // V8 + V15: número repetido y por encima de las secuencias.
+    // V15: número por encima de la secuencia.
     const rep1 = await crearPedido({ clienteId: cliente.id, total: 100, numero: 900001, canal: 'DOMICILIO' })
-    await crearPedido({ clienteId: cliente.id, total: 200, numero: 900001, canal: 'DOMICILIO' })
     ids.repetido = rep1.pedido.id
+
+    // V8: una colisión anterior a #401, marcada por la migración 20261023. El
+    // trigger impide marcarla desde la app, así que se inserta sin triggers
+    // (session_replication_role = replica), como la dejó la migración.
+    await testPrisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL session_replication_role = replica`)
+      await tx.$executeRawUnsafe(
+        `INSERT INTO "Pedido" (id, numero, "numeroColisionHistorica", "clienteId", canal, total, "totalPagado", saldo, "updatedAt")
+         VALUES ('colision-historica', 900001, true, '${cliente.id}', 'DOMICILIO', 200, 0, 200, now())`,
+      )
+    })
 
     // V9: Nequi REPORTADO viejo (alerta) y reciente (no alerta).
     const digital = await crearPedido({ clienteId: cliente.id, total: 6000, totalPagado: 6000, canal: 'DOMICILIO' })
@@ -188,12 +199,16 @@ describe('verificador de integridad (solo lectura)', () => {
     ['V4', 'cfSaldo'],
     ['V5', 'entregaCorta'],
     ['V6', 'anulado'],
-    ['V8', 'repetido'],
     ['V9', 'nequiViejo'],
     ['V11', 'duplicado'],
     ['V13', 'puntoPendiente'],
   ])('%s detecta su caso', (regla, clave) => {
     expect(refs(reporte, regla)).toContain(ids[clave])
+  })
+
+  it('V8 no reporta la colisión histórica marcada y la base rechaza un repetido nuevo', async () => {
+    expect(refs(reporte, 'V8')).toEqual([])
+    await expect(crearPedido({ clienteId: ids.clienteVerif, total: 300, numero: 900001, canal: 'DOMICILIO' })).rejects.toThrow()
   })
 
   it('V9 no marca un pago digital reportado hace menos de 3 días', () => {

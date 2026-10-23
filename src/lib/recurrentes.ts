@@ -847,9 +847,8 @@ export async function generarPedidosRecurrentes(
       }
 
       // 7. Crear pedido (dentro de la tx Serializable).
-      // Misma secuencia atómica que CrearPedidoUseCase y el resto de writers.
-      // Sin numero explícito, Prisma usa el DEFAULT legacy "Pedido_numero_seq"
-      // (distinto de "pedido_numero_seq") y reutiliza números ya existentes.
+      // Misma secuencia atómica que CrearPedidoUseCase y el resto de writers
+      // (desde #401 también es el DEFAULT de la columna).
       const numero = await getNextNumero(tx, { model: 'pedido' })
       const creado = await tx.pedido.create({
         data: {
