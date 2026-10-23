@@ -1,4 +1,4 @@
-import { test, expect, loginAs, goto, apiPost, createClienteFull, resetDatabase } from './fixtures'
+import { test, expect, loginAs, goto, apiPost, createClienteFull, resetDatabase, appMain } from './fixtures'
 
 test.describe('Pedidos - edición sobrevive a refetch del padre', () => {
   test.describe.configure({ mode: 'serial' })
@@ -97,7 +97,8 @@ test.describe('Pedidos - edición sobrevive a refetch del padre', () => {
 
     // Recargar y verificar persistencia
     await page.reload()
-    const rowAfterReload = page.locator(`tr:has-text("#${pedidoNumero}")`)
+    // `appMain`: evita la copia oculta del árbol que deja el streaming (strict mode, #396).
+    const rowAfterReload = appMain(page).locator(`tr:has-text("#${pedidoNumero}")`)
     await expect(rowAfterReload).toBeVisible({ timeout: 10000 })
     await rowAfterReload.locator('button[aria-label="Ver detalle"]').click()
     await expect(page.locator('text=Calle Modificada 123')).toBeVisible({ timeout: 5000 })

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { loginAs, goto, apiPost, createCliente } from './fixtures'
+import { loginAs, goto, apiPost, createCliente, responsiveContainer } from './fixtures'
 
 test.describe('Dos ventas rapidas mismo cliente', () => {
   test.describe.configure({ mode: 'serial' })
@@ -33,12 +33,15 @@ test.describe('Dos ventas rapidas mismo cliente', () => {
     })
 
     await goto(page, '/pedidos')
-    // Wait for the table to render instead of networkidle (SSE keeps connection open)
-    await page.waitForSelector('table tbody tr', { timeout: 10000 })
 
-    // Both pedidos should appear in the list
-    const rows = page.locator('table tbody tr').filter({ hasText: `Dos Ventas ${unique}` })
-    await expect(rows).toHaveCount(2, { timeout: 10000 })
+    // La lista existe dos veces en el DOM: tabla (desktop, `hidden md:block`) y tarjetas
+    // (mobile, `md:hidden`). En mobile la tabla está oculta y `table tbody tr` nunca era
+    // visible (#396): se usa el contenedor de la vista activa. Se espera por el contenido,
+    // no por networkidle (SSE mantiene la conexión abierta).
+    const lista = responsiveContainer(page, 'pedidos-mobile', 'pedidos-desktop')
+
+    // Both pedidos should appear in the list (el nombre aparece una vez por pedido)
+    await expect(lista.getByText(`Dos Ventas ${unique}`)).toHaveCount(2, { timeout: 15000 })
   })
 
   test('filtro default es Turno al entrar a pedidos', async ({ page }) => {
