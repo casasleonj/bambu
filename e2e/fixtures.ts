@@ -349,6 +349,11 @@ export async function sharedPageLogin(browser: { newPage: () => Promise<Page> },
 }
 
 export async function loginAs(page: Page, role: Role) {
+  // El banner PWA "Instalar aplicación" (fixed bottom-0, z-40) queda TAPADO por
+  // modales (`?openCliente=`) y barras inferiores (/cierre) de mayor z-index, y
+  // `dismissInstallBanner` esperaba 30 s a poder pulsar su "X" (#397, #417).
+  // Igual que en sharedLoginAs/sharedPageLogin: el banner nunca aparece.
+  await page.addInitScript(() => localStorage.setItem('pwa-install-banner-dismissed', 'true'))
   await skipBaseCaja(page)
   await applyCachedRoleAuth(page, role)
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
@@ -497,7 +502,8 @@ export async function goto(page: Page, path: string) {
 export async function dismissInstallBanner(page: Page) {
   const closeBtn = page.locator('[aria-label="Cerrar banner de instalación"]').first()
   if (await closeBtn.isVisible().catch(() => false)) {
-    await closeBtn.click()
+    // Mejor esfuerzo: si algo lo tapa, no hay que gastar el timeout del test.
+    await closeBtn.click({ timeout: 3000 }).catch(() => {})
   }
 }
 

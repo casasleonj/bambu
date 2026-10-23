@@ -4,7 +4,7 @@
 // link "Ver pedidos", eliminar, y bloqueo de eliminación con pedidos.
 
 import { test, expect } from '@playwright/test'
-import { loginAs, createCliente, createNegocio, apiPost, goto, waitForToast, resetDatabase } from './fixtures'
+import { loginAs, createCliente, createNegocio, apiPost, goto, waitForToast, resetDatabase, appMain } from './fixtures'
 
 test.describe('Negocios CRUD UI - admin', () => {
   test.describe.configure({ mode: 'serial' })
@@ -207,7 +207,8 @@ test.describe('Negocios CRUD UI - admin', () => {
 
     await page.waitForURL(/\/pedidos\?clienteId=.+/)
     await expect(page).toHaveURL(new RegExp(`/pedidos\\?clienteId=${cliente.id}`))
-    await expect(page.getByRole('heading', { name: 'Pedidos', exact: true })).toBeVisible()
+    // El título del h1 depende del rango de fechas ("Pedidos", "Pedidos del Turno", …).
+    await expect(appMain(page).getByRole('heading', { level: 1, name: /^Pedidos/ })).toBeVisible()
     // Regresión: antes el mismo link abría el formulario de nuevo pedido.
     await expect(page.getByRole('heading', { name: 'Nuevo Pedido' })).toBeHidden()
   })
