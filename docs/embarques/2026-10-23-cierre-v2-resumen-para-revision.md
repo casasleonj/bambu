@@ -103,8 +103,8 @@ Método de pago inventado, cliente inexistente de venta libre, 99.999 unidades y
 ## 4. Ejemplos cotidianos
 
 1. **Parcial («no me cupo todo»).** Marta pidió 10 pacas de hielo; Yesid lleva 6. Hoy se marca «Parcial» a mano y, si queda «Completo», el servidor rechaza al final. Propuesta: escribir 6, ver «faltan 4» y elegir qué pasa con ellas.
-2. **Acepta menos.** Carlos pidió 10 ($23.000); al llegar dice «con 5 me alcanza». Corrección G11 con motivo: 10→5, $23.000→$11.500. Si ya había pagado todo, no se corrige solo (devolución/saldo a favor). Si ya se le entregó algo de ese producto, tampoco.
-3. **Pide más.** La tienda pidió 10 y recibe 15. El campo se detiene en 10; las 5 extra son una venta libre aparte, sin tocar el pedido.
+2. **Acepta menos.** Carlos pidió 10 ($23.000); al llegar dice «con 5 me alcanza». Es una **reducción comercial aceptada**, distinta de un error de captura: **no** se resuelve con la corrección G11 (que es solo para errores). Necesita un comando económico propio (ADR, Fase C). Mientras no exista, la pantalla muestra «Pendiente de autorización en oficina», no cambia el total y el pedido sigue con 5 por entregar. El error de captura verdadero («escribimos 10 y era 5») sí usa la corrección G11 con motivo.
+3. **Pide más.** La tienda pidió 10 y recibe 15. El campo se detiene en 10; las 5 extra son **una única operación nueva** (`origen=VENTA_LIBRE` si nació en la ruta, aunque se entregue después; `origen=PEDIDO` si se pactó fuera de la ruta), vinculada con `pedidoOrigenId`, sin tocar el pedido. Se registra una sola vez: lo capturado en el paso 1 aparece en el paso 2, no se digita dos veces. Si el vehículo no tiene mercancía libre, no se promete la entrega (ver 6.3).
 4. **Dinero.** $23.000, adelanto $3.000, paga $10.000 → «queda por cobrar $10.000 → fiado de Carlos»; el repartidor debe entregar $10.000 en efectivo por este pedido. Con prepago completo y 6 de 10 entregadas: «Pagado completo»; las 4 que faltan siguen pagadas.
 5. **Cambios.** Una paca rota a Marta: se registra con producto, cantidad, **cliente**, motivo y autor; el «1» de conciliación aparece solo.
 6. **Venta libre.** Alguien compra 2 pacas en la calle: buscador por tienda o teléfono, total y saldo a la vista; si no es cliente, «Venta al paso» con pago completo.
@@ -156,8 +156,8 @@ Método: servidor local + Postgres real; `/cerrar/preview` (dry-run con rollback
 | Problema | Pantalla (Fase A) | Servidor (Fase B/C) |
 |---|---|---|
 | 2.1 Entrega ambigua | Estado **derivado** de las cantidades (Pidió · Ya entregado · Entrega ahora · Falta); decisión obligatoria sin opción por defecto si queda pendiente; «Siguiente» deshabilitado con el motivo | — (backend ya correcto) |
-| 2.1 Acepta menos | Opción «El cliente ya no quiere el resto»: motivo + antes/después (reutiliza `correccion-cantidad-form` y `ajustar-cantidad/preview`) | Ya existe `ajustar-cantidad` con guards G11 |
-| 2.1 Pide más | Campo con tope en el pendiente; botón «El cliente pidió más → venta libre» | `pedidoOrigenId` opcional en venta libre (ADR, Fase B) |
+| 2.1 Acepta menos | Opción «El cliente ya no quiere el resto» visible pero **«Pendiente de autorización en oficina»**: guarda el hecho, no cambia total ni cantidad. El error de captura verdadero usa la corrección G11 (`correccion-cantidad-form`) | Comando `AcceptCommercialReduction` (ADR económico, Fase C): consentimiento, antes/después, pagos, factura, devolución o saldo a favor. **No** se reutiliza `ajustar-cantidad` |
+| 2.1 Pide más | Campo con tope en el pendiente; subflujo «¿Cuántas más pidió? ¿Las recibe en esta ruta o después?»; una sola operación visible en pasos 1 y 2 | `pedidoOrigenId` en venta libre (hoy ni la ruta ni el servicio de cierre lo guardan; ADR, Fase B); dedup por `offlineId` |
 | 2.1 Rechazo del preview | 4xx: recuadro con el motivo y «Confirmar» deshabilitado; «estimado local» solo para red/5xx | — |
 | 2.2 Dinero | Panel por pedido: valor · ya pagado · cobrar ahora («cobrar el saldo») · **queda por cobrar → fiado de X** · efectivo a entregar | — |
 | 2.2 Cuadre y conciliación | Líneas que suman; un solo número de diferencia (faltantes + sobrantes, restando cambios); precios precargados (#436) | Añadir `precio*` al `select` del endpoint (aditivo) |
@@ -169,6 +169,14 @@ Método: servidor local + Postgres real; `/cerrar/preview` (dry-run con rollback
 | 2.7 Entradas inválidas | Topes visibles, aviso de gasto idéntico repetido, solo enteros en pesos | Topes y 400 (enum de categorías, longitud de `obs`, máximo de filas, `productos` sin duplicados) |
 
 ---
+
+### 6.3 Escasez: «60 cargadas, 60 comprometidas y Carlos pide 5 más»
+*(Propuesta de los documentos de convergencia del 2026-10-23; requiere ADR. Es la Fase D, no entra en la Fase A.)*
+- **Invariante:** las salidas físicas no pueden superar lo que hay a bordo; nunca se asignan 65 con 60.
+- **Orden:** (1) mercancía realmente libre a bordo; (2) recarga autorizada, sin crear otro embarque; (3) reprogramar las 5 como operación vinculada para otra visita; (4) reasignación excepcional afectando como máximo a **un solo** cliente; (5) si nada es seguro, no prometer la entrega y registrar solo que fueron solicitadas.
+- **Un solo afectado por secuencia:** en pedidos sucesivos se reconsidera primero al ya afectado si sigue elegible; si no, se detiene y decide la administración. El afectado conserva su pedido y su total: queda con un pendiente recuperable (no es «aceptó menos»).
+- **Pendiente de política (ADR):** quién autoriza, elegibilidad, notificación al cliente afectado y prioridad de recuperación. Sin ranking inventado.
+- **Dependencia:** necesita un ledger físico de disponibles y comprometidos que hoy no existe (F5).
 
 ## 7. Propuesta de UI y UX
 
@@ -197,16 +205,19 @@ Pedido de 10 pacas de agua · valor $23.000 · debe $23.000
 
 ### 7.3 Pantalla 2 — Corrección y exceso
 ```
-A. El cliente acepta menos (10 → 5)
-   Motivo (obligatorio): [ El cliente cambió la cantidad ▾ ]   Nota: [ Llamó a las 9:40 ]
-   Antes:   10 pacas · $23.000 · pagado $0
-   Después:  5 pacas · $11.500 · pagado $0 · debe $11.500
-   Autoriza: tú (ADMIN/ASISTENTE). Si ya pagó más que el nuevo total, no se corrige solo:
-   se explica el dinero a devolver o el saldo a favor.            [ Aplicar corrección ]
+A1. Error de captura («escribimos 10 y era 5») → corrección G11
+   Motivo (obligatorio) · Nota · Antes 10 / $23.000 → Después 5 / $11.500
+   Si ya pagó más que el nuevo total o ya se entregó algo, no se corrige solo.   [ Aplicar corrección ]
+
+A2. El cliente decidió no comprar el resto (reducción comercial)
+   «Pendiente de autorización en oficina». Se guarda lo declarado, el total NO cambia,
+   el pedido conserva 5 por entregar y el cierre puede continuar.
+   (La operación económica real —antes/después, pagos, factura— llega con el ADR de la Fase C.)
 
 B. El cliente pide más (10 → 15)
    Paca de agua  10  0  [ − ] 10 [ + deshabilitado ]  0
-   [ El cliente pidió más → venta libre ]   (misma persona/tienda; vinculada al pedido en Fase B)
+   [ El cliente pidió más ]  → ¿cuántas? ¿en esta ruta o después? → consulta disponibilidad
+   Se registra UNA operación vinculada al pedido #; aparece igual en el paso 2.
 ```
 
 ### 7.4 Pantalla 3 — Dinero del pedido
@@ -308,7 +319,8 @@ Para revisar (señales, no acusaciones: no impiden cerrar)
 |---|---|---|
 | **A** (1 rama = 1 PR; flag `NEXT_PUBLIC_CIERRE_V2` OFF) | Entrega derivada y decisión de pendiente; panel de dinero; frescura y borrador; revisión y señales; preview 4xx; venta libre con buscador/total/bloqueos/botellón único; #436 (precios), #437 (cuadre) | No |
 | **B** (ADR addendum de embarques y de ADR-MONETARIO-001) | #448, #449, #444, reglas de #445 (anónimo, crédito con excepción, precios especiales, `negocioId`, `pedidoOrigenId`), umbral de sobrante, recálculo por corrección de precio (#326) | **Sí** |
-| **C** | Corrección «ya no quiere el resto» desde el cierre; `cambios` = Σ sustituciones (#446) | Sí (ADR) |
+| **C** (ADR) | Reducción comercial aceptada (comando propio); `cambios` = Σ sustituciones (#446) | Sí |
+| **D** (ADR, depende de un ledger físico de disponibles y comprometidos) | Escasez: recarga, reprogramar o reasignar a **un solo** cliente, con recuperación (6.3) | Sí |
 
 **Criterios de aceptación**
 - E2E del cierre para: 10→5 (otra visita / ya no quiere el resto), 10→10, 10→0 con motivo, 10→15 (venta libre), prepago + parcial, fiado, venta libre con búsqueda de tienda y venta al paso, cambio atribuido, pedido cancelado/retirado/agregado durante el cierre, rechazo del servidor en el preview, borrador recuperado y cierre sin señal.
@@ -334,7 +346,7 @@ Para revisar (señales, no acusaciones: no impiden cerrar)
 3. Venta libre a `CONSUMIDOR_FINAL`: se permite como «Venta al paso» con pago completo, sin cambiar `canal` ni `origen` (análisis en #445).
 
 ### 10.2 Tomadas en el diseño (revertibles)
-4. «El cliente ya no quiere el resto»: ADMIN y ASISTENTE (como ya permite el endpoint), motivo obligatorio, auditado, con guards G11.
+4. ~~«El cliente ya no quiere el resto» con guards G11~~ **Retirada (2026-10-23, documentos de convergencia):** una reducción comercial no es un error de captura; se tramita con un comando propio (Fase C, ADR). Mientras tanto, «Pendiente de autorización en oficina».
 5. Cambio a un cliente sin pedido en la ruta: permitido con cliente obligatorio.
 
 ### 10.3 Para decidir por el equipo (modifican o refinan algo ya definido)
@@ -346,7 +358,11 @@ Para revisar (señales, no acusaciones: no impiden cerrar)
 | D4 | `pedidoOrigenId` opcional en venta libre | BRECHA-3 / EH-3: «confirmar con producto» | ¿Estaba en el diseño histórico? ¿Se aprueba? |
 | D5 | El cierre rechaza pedidos no entregables y exige cobertura exacta | Dominio congelado sin ADR | ¿ADR nuevo o addendum? ¿`cancelar`/`anular` deben soltar el pedido del embarque? |
 | D6 | Sobrante de caja sobre un umbral exige nota | `UMBRAL_MINIMO_FALTANTE_CAJA` | ¿Mismo umbral u otro? |
-| D7 | Botón «El cliente pidió más → venta libre» en el paso de pedidos | VL-09 / VL-A11 | Confirmar que, al ser declaración de exceso y no de faltante, cumple la regla |
+| D7 | Subflujo «El cliente pidió más» en el paso de pedidos, con una única operación vinculada | VL-09 / VL-A11; G11 + VL-03 | Confirmar que, al ser declaración de exceso y no de faltante, cumple la regla |
+| D9 | Origen de la operación adicional: `VENTA_LIBRE` si nació en la ruta (aunque se entregue después); `PEDIDO` si se pactó fuera de ella | ADR-VENTA-RUTA-ENTREGA-POSTERIOR | Formalizar en ADR; la UI pregunta el contexto, no lo infiere de la fecha |
+| D10 | Escasez (60 cargadas, 60 comprometidas, +5): orden mercancía libre → recarga → reprogramar → reasignar a **un solo** cliente, reutilizando al ya afectado si sigue elegible | Embarques V5–V7 (no descompletar varios) + aclaración 2026-10-23 | ADR: quién autoriza, elegibilidad, notificación y recuperación; no empieza sin ledger físico |
+| D11 | Reducción comercial aceptada con comando económico propio | G11 (solo error de captura) | ADR económico: consentimiento, pagos, factura, devolución o saldo a favor |
+| D12 | Permisos específicos para afectar a un tercero y para excepciones de precio o crédito (no basta el rol ADMIN) | Roles actuales | Definir los permisos |
 | D8 | Señales «Para revisar» registradas para `/casos` | `alertas-detector` ciego a ventas libres (#302) | ¿Se amplía el detector o solo la pantalla en la Fase A? |
 
 ---
