@@ -172,7 +172,9 @@ export function PasoConfirmar({
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pedidoIds: data.selectedIds, offlineId }),
+        // Sin `offlineId`: el POST ya lo guardó en el embarque y el servidor
+        // tomaría este PUT por un reintento (`deduped`) sin asignar nada (#433).
+        body: JSON.stringify({ pedidoIds: data.selectedIds }),
       })
       if (put.status === 409) {
         const j = await put.json().catch(() => ({}))

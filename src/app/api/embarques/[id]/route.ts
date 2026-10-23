@@ -340,7 +340,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           const noAsignados = asignados
             .filter((p: { id: string; embarqueId: string | null }) => p.embarqueId !== id)
             .map((p: { id: string; embarqueId: string | null }) => p.id)
-          throw new Error(`PEDIDOS_YA_ASIGNADOS:${noAsignados.length}:${noAsignados.join(',')}`)
+          // Los que ya estaban en ESTE embarque (reintento de la misma asignación)
+          // no son conflicto: solo falla si alguno está en otro embarque (#433).
+          if (noAsignados.length > 0) {
+            throw new Error(`PEDIDOS_YA_ASIGNADOS:${noAsignados.length}:${noAsignados.join(',')}`)
+          }
         }
 
         // FIX BAMBU-LOG-009: invalidar el orden de visita optimizado —

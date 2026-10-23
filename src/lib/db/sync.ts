@@ -434,7 +434,9 @@ async function procesarEmbarqueConPedidos(req: {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ pedidoIds, offlineId: req.offlineId }),
+      // Sin `offlineId`: el POST ya lo guardó en el embarque y el PUT se tomaría
+      // por un reintento (`deduped`) sin asignar los pedidos (#433).
+      body: JSON.stringify({ pedidoIds }),
     })
   } catch {
     return { outcome: 'synced', reason: 'Embarque creado; asigná los pedidos desde el detalle.' }
