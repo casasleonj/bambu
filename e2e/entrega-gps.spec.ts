@@ -1,18 +1,25 @@
 import { test, expect } from '@playwright/test'
 import { loginAs, createEmbarque, apiGet } from './fixtures'
 
-async function ensureEmbarqueAbierto(page: import('@playwright/test').Page, trabajadorId: string) {
-  const activosRes = await apiGet(page, `/api/embarques?trabajadorId=${trabajadorId}&estado=ABIERTO&all=true`)
-  const activosBody = await activosRes.json()
-  if (activosBody.embarques?.length > 0) {
-    return activosBody.embarques[0]
-  }
-  const res = await createEmbarque(page, trabajadorId)
-  if (res.embarque?.id) return res.embarque
-  // Si falló por embarque existente, reintentar lectura
-  const retryRes = await apiGet(page, `/api/embarques?trabajadorId=${trabajadorId}&estado=ABIERTO&all=true`)
-  const retryBody = await retryRes.json()
-  return retryBody.embarques?.[0]
+/**
+ * Embarque que `/repartidor` va a mostrar: el ABIERTO o EN_RUTA del trabajador.
+ * `GET /api/embarques` NO filtra por `trabajadorId` (solo `desde/hasta/all/estado`):
+ * pedirlo por query devolvía el primer embarque abierto de CUALQUIER trabajador
+ * (los dejan otros specs del shard) y nunca se creaba el del repartidor, así que
+ * la página mostraba "Sin embarque abierto" con "Venta Libre" deshabilitado (#413).
+ * Se filtra del lado del test.
+ */
+async function ensureEmbarqueActivo(page: import('@playwright/test').Page, trabajadorId: string) {
+  const res = await apiGet(page, '/api/embarques?all=true')
+  const body = await res.json()
+  const activo = (body.embarques ?? []).find(
+    (e: { trabajadorId: string; estado: string }) =>
+      e.trabajadorId === trabajadorId && (e.estado === 'ABIERTO' || e.estado === 'EN_RUTA'),
+  )
+  if (activo) return activo
+  const creado = await createEmbarque(page, trabajadorId)
+  expect(creado.embarque?.id, 'no se pudo crear el embarque del repartidor').toBeTruthy()
+  return creado.embarque
 }
 
 test.describe('Entrega con GPS (repartidor)', () => {
@@ -33,7 +40,7 @@ test.describe('Entrega con GPS (repartidor)', () => {
     const trabajador = trabajadoresBody.trabajadores?.find((t: { userId?: string | null }) => t.userId)
     expect(trabajador?.id, 'no hay un REPARTIDOR vinculado a un usuario').toBeTruthy()
 
-    const embarque = await ensureEmbarqueAbierto(page, trabajador.id)
+    const embarque = await ensureEmbarqueActivo(page, trabajador.id)
     expect(embarque?.id).toBeTruthy()
 
     // Ingresar como repartidor
