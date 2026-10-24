@@ -245,6 +245,64 @@ describe('PedidosWorkspace (Composición)', () => {
     }))
   })
 
+  describe('P2-2 (#463): «Entregar después» en la venta rápida', () => {
+    const buscar = (valor: string) => fireEvent.change(screen.getByTestId('cliente-search-input'), { target: { value: valor } })
+    afterEach(() => vi.unstubAllEnvs())
+
+    it('sin el flag no existe la zona (el Hub se ve igual que hoy)', () => {
+      render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={vi.fn()} />)
+      expect(screen.queryByTestId('workspace-entrega-momento')).not.toBeInTheDocument()
+    })
+
+    it('con el flag: aparece solo en venta rápida a Punto; no en pedido normal ni en Domicilio', () => {
+      vi.stubEnv('NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR', 'true')
+      const { unmount } = render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={vi.fn()} />)
+      expect(screen.getByTestId('workspace-entrega-momento')).toBeInTheDocument()
+      fireEvent.click(screen.getByTestId('workspace-canal-DOMICILIO'))
+      expect(screen.queryByTestId('workspace-entrega-momento')).not.toBeInTheDocument()
+      unmount()
+      render(<PedidosWorkspace clientes={clientes} onSubmit={vi.fn()} />)
+      expect(screen.queryByTestId('workspace-entrega-momento')).not.toBeInTheDocument()
+    })
+
+    it('«después» sin comprador: aviso y no se puede guardar; «ahora» sí', async () => {
+      vi.stubEnv('NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR', 'true')
+      render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={vi.fn()} />)
+      fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+      await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+      fireEvent.click(screen.getByTestId('workspace-entrega-despues'))
+      expect(screen.getByTestId('workspace-entrega-despues-sin-comprador')).toBeInTheDocument()
+      await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeDisabled())
+      fireEvent.click(screen.getByTestId('workspace-entrega-ahora'))
+      await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    })
+
+    it('con comprador identificado, «después» viaja como entregado:false y el botón dice «Registrar venta»', async () => {
+      vi.stubEnv('NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR', 'true')
+      const onSubmit = vi.fn()
+      render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={onSubmit} />)
+      fireEvent.click(screen.getByTestId('workspace-identificar'))
+      buscar('Tienda')
+      fireEvent.click(await screen.findByTestId('cliente-search-result'))
+      fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+      fireEvent.click(screen.getByTestId('workspace-entrega-despues'))
+      await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+      expect(screen.getByTestId('workspace-commit')).toHaveTextContent(/Registrar venta/)
+      fireEvent.click(screen.getByTestId('workspace-commit'))
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ clienteId: 'c1', origen: 'PEDIDO', entregado: false }))
+    })
+
+    it('«ahora» (por defecto) viaja como entregado:true', async () => {
+      vi.stubEnv('NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR', 'true')
+      const onSubmit = vi.fn()
+      render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={onSubmit} />)
+      fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+      await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+      fireEvent.click(screen.getByTestId('workspace-commit'))
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ entregado: true }))
+    })
+  })
+
   describe('P1-3 (#394): un solo bloque «Comprador»', () => {
     const conTiendas = [
       {

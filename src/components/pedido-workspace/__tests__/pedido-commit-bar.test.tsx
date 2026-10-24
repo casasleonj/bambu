@@ -62,4 +62,9 @@ describe('PedidoCommitBar — sin conexión (B-20)', () => {
     expect(btn).toBeEnabled()
     expect(btn).toHaveTextContent(/Guardar sin conexión/)
   })
+
+  it('etiquetaCrear reemplaza «Crear pedido» (entregar después, P2-2)', () => {
+    renderBar({ phase: 'PREVIEW_READY', canCommit: true, etiquetaCrear: 'Registrar venta pagada' })
+    expect(screen.getByTestId('workspace-commit')).toHaveTextContent(/Registrar venta pagada \$27[.,]000/)
+  })
 })
