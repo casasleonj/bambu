@@ -1,5 +1,5 @@
 // @tests api/factura, api/abono, api/pedido
-import {test, expect, loginAs, goto, apiPost, apiGet, getFirstFacturaConSaldo, createPedido, createCliente,  resetDatabase} from './fixtures'
+import {test, expect, appMain, loginAs, goto, apiPost, apiGet, getFirstFacturaConSaldo, createPedido, createCliente,  resetDatabase} from './fixtures'
 
 test.describe('Facturas', () => {
   test.describe.configure({ mode: 'serial' })
@@ -14,7 +14,7 @@ test.describe('Facturas', () => {
   test('page loads', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/facturas')
-    await expect(page.getByRole('heading', { name: 'Facturas', exact: true })).toBeVisible()
+    await expect(appMain(page).getByRole('heading', { name: 'Facturas', exact: true })).toBeVisible()
   })
 
   test('ver detalle factura', async ({ page }) => {
