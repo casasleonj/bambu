@@ -80,6 +80,11 @@ export function WorkspaceEntrega({
 
   const AddressInputs = (
     <div className="mt-2 grid grid-cols-2 gap-2">
+      {entrega?.coords && !hayUbicacion && (
+        <p className="col-span-2 text-[11px] text-gray-600" data-testid="workspace-entrega-ubicacion-guardada">
+          📍 Ubicación guardada: se usa para ubicar el pedido. Pega otro link para cambiarla solo en este pedido.
+        </p>
+      )}
       <UbicacionEntregaInput
         lat={entregaLat}
         lng={entregaLng}
