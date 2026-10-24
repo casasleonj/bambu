@@ -14,12 +14,14 @@ test.describe('Facturas', () => {
   test('page loads', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/facturas')
-    await expect(appMain(page).getByRole('heading', { name: 'Facturas', exact: true })).toBeVisible()
+    // /facturas puede tardar en renderizar en un runner cargado (mobile): el 5 s por defecto no alcanza (#415)
+    await expect(appMain(page).getByRole('heading', { name: 'Facturas', exact: true })).toBeVisible({ timeout: 20000 })
   })
 
   test('ver detalle factura', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/facturas')
+    await expect(appMain(page).getByRole('heading', { name: 'Facturas', exact: true })).toBeVisible({ timeout: 20000 })
     // Click any factura card/row
     const cards = page.locator('[class*="cursor-pointer"]').first()
     if (await cards.count() > 0) {
