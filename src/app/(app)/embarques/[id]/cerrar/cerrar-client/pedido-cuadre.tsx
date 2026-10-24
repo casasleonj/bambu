@@ -1,5 +1,5 @@
 import type { Pedido, PagoItem, CuadrePedido, EmbarqueAbierto } from './types'
-import { METODOS_PAGO, calcularTotalEntregado, calcularMontoPagado } from './types'
+import { METODOS_PAGO, calcularMontoPagado } from './types'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { formatCurrency } from '@/lib/utils'
 import { useProductosDomicilio } from '@/hooks/use-productos-domicilio'
@@ -79,7 +79,6 @@ export function PedidoCuadre({
 
   const PRODUCTOS = ALL_PRODUCTOS.filter(p => domicilioCodes.has(p.codigo))
 
-  const totalReal = calcularTotalEntregado(cuadre)
   const montoPagado = calcularMontoPagado(cuadre.pagos)
 
   return (
@@ -268,21 +267,58 @@ export function PedidoCuadre({
             </table>
           </div>
 
-          {/* Advertencia si el total difiere >5% del original */}
-          {(() => {
-            const totalOriginal = Number(pedido.total)
-            const diff = totalReal - totalOriginal
-            const diffPct = totalOriginal > 0 ? Math.abs((diff / totalOriginal) * 100) : 0
-            if (diffPct > 5) {
-              return (
-                <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
-                  ⚠️ El total ({formatCurrency(totalReal)}) difiere {diffPct.toFixed(0)}% del original ({formatCurrency(totalOriginal)}).
-                  {diff < 0 ? ' El cliente pagará menos.' : ' El cliente pagará más.'}
-                  {!isAdmin && ' Contacta a un administrador para ajustar los precios.'}
-                </div>
-              )
-            }
-            return null
+          {/* #326: corregir un precio recalcula la obligación del pedido (total, saldo y factura). */}
+          {isAdmin && (() => {
+            const cambios = PRODUCTOS.flatMap((prod) => {
+              const precio = Number(cuadre.preciosReales[prod.precioKey]) || 0
+              const key = (`precio${prod.precioKey.charAt(0).toUpperCase() + prod.precioKey.slice(1)}`) as keyof Pedido
+              const original = Number(pedido[key] || 0)
+              const pedida = Number(pedido[PEDIDO_KEYS[prod.key]] || 0)
+              // Un precio vacío o 0 no corrige nada (el servidor lo ignora).
+              return precio > 0 && original > 0 && pedida > 0 && Math.abs(precio - original) > 0.001
+                ? [(precio - original) * pedida]
+                : []
+            })
+            if (cambios.length === 0) return null
+            const totalActual = Number(pedido.total)
+            const pagadoPrevio = Number(pedido.totalPagado)
+            const totalNuevo = totalActual + cambios.reduce((a, b) => a + b, 0)
+            const saldoNuevo = totalNuevo - pagadoPrevio - montoPagado
+            const sobrepago = totalNuevo < pagadoPrevio - 0.005
+            const sinMotivo = (cuadre.motivoPrecio ?? '').trim().length < 5
+            return (
+              <div
+                className={`mt-2 p-3 border rounded text-xs space-y-2 ${sobrepago ? 'bg-red-50 border-red-200 text-red-700' : 'bg-amber-50 border-amber-200 text-amber-800'}`}
+                data-testid="correccion-precio-aviso"
+              >
+                <p>
+                  ⚠️ Corregir el precio cambia lo que el cliente debe: el total del pedido pasa de{' '}
+                  <strong>{formatCurrency(totalActual)}</strong> a <strong>{formatCurrency(totalNuevo)}</strong>
+                  {!sobrepago && <> y el saldo quedará en <strong>{formatCurrency(Math.max(0, saldoNuevo))}</strong></>}.
+                </p>
+                {sobrepago ? (
+                  <p>
+                    El cliente ya pagó {formatCurrency(pagadoPrevio)}, más que el nuevo total. No se puede cerrar así:
+                    la diferencia requiere primero una reversión monetaria.
+                  </p>
+                ) : (
+                  <div>
+                    <label className="block font-medium mb-1" htmlFor={`motivo-precio-${pedido.id}`}>
+                      Motivo de la corrección (obligatorio)
+                    </label>
+                    <textarea
+                      id={`motivo-precio-${pedido.id}`}
+                      data-testid={`motivo-precio-${pedido.id}`}
+                      value={cuadre.motivoPrecio ?? ''}
+                      onChange={(e) => onUpdateCuadre(pedido.id, { motivoPrecio: e.target.value })}
+                      rows={2}
+                      maxLength={500}
+                      className={`w-full px-2 py-1 border rounded text-sm text-gray-800 ${sinMotivo ? 'border-red-300' : ''}`}
+                    />
+                  </div>
+                )}
+              </div>
+            )
           })()}
         </div>
       )}

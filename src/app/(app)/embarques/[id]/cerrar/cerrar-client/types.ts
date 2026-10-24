@@ -121,6 +121,8 @@ export interface CuadrePedido {
     bolsaAgua: number
     bolsaHielo: number
   }
+  /** #326: motivo de la corrección de precio (obligatorio si algún precio cambia respecto al pedido). */
+  motivoPrecio?: string
   pagado: 'COMPLETO' | 'PARCIAL' | 'NO_PAGADO'
   pagos: PagoItem[]
   nuevoEmbarqueId?: string

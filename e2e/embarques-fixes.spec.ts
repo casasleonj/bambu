@@ -235,6 +235,8 @@ test.describe('Embarques — Fix #2: REPARTIDOR no puede override precios', () =
         entregado: 'COMPLETO',
         productosEntregados: { cPacaAguaEnt: 1, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 },
         preciosReales: { pacaAgua: newPrice, pacaHielo: 0, botellonFab: 0, botellonDom: 0, bolsaAgua: 0, bolsaHielo: 0 },
+        // #326: corregir un precio en el cierre exige motivo y recalcula el total del pedido.
+        motivoPrecio: 'Acuerdo con el cliente en la puerta (prueba E2E)',
         pagado: 'COMPLETO',
         pagos: [{ metodo: 'EFECTIVO', monto: newPrice }],
       }],
