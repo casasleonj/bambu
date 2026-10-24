@@ -553,7 +553,7 @@ export class ProcesarPedidoService {
       acum.cBotellonDomEnt + acum.cBolsaAguaEnt + acum.cBolsaHieloEnt
     const completo = totalEntregadoAcum >= totalPedido && totalPedido > 0
 
-    // #326: la corrección de precio aplica a TODO el pedido (cada línea tiene un
+    // #326: la corrección de precio aplica a todo el pedido (cada línea tiene un
     // único precio) y recalcula la obligación; sin corrección real, `total` queda intacto (PR-1).
     const correccion = resolverCorreccionPrecio({
       pedido: paraCorreccion(pedido),

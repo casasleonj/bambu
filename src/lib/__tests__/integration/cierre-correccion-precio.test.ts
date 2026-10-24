@@ -208,7 +208,7 @@ describe('#326 — corrección de precio en el cierre, con recálculo', () => {
     expect(hist).toHaveLength(0)
   })
 
-  it('PARCIAL: el precio aplica a TODO el pedido; el valor entregado usa el precio corregido', async () => {
+  it('PARCIAL: el precio aplica a todo el pedido; el valor entregado usa el precio corregido', async () => {
     const emb = await crearEmbarque()
     const ped = await crearPedido(emb.id)
     const r = await cerrar(emb.id, ped.id, { entregado: 'PARCIAL', entrega: 6, precio: 1_100, motivoPrecio: MOTIVO })

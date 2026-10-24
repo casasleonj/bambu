@@ -464,7 +464,7 @@ describe('PR-1A — integridad del procesamiento de pedidos en el cierre', () =>
   // ── Revisión de PR-1A: auditoría de precio también en PARCIAL ───────────
   describe('B-11 — auditoría de precio unitario en entrega PARCIAL', () => {
     // #326 (decisión del PO 2026-10-23): la corrección de precio con motivo recalcula la obligación
-    // de TODO el pedido también en PARCIAL (antes: «la obligación NO se toca»); sin ella, la entrega
+    // de todo el pedido también en PARCIAL (antes: «la obligación NO se toca»); sin ella, la entrega
     // parcial por sí sola sigue sin tocar la obligación (ver «PARCIAL sin cambio de precio»).
     it('ADMIN cambia $1.000 -> $1.200 en una entrega PARCIAL (4 de 10): 1 PRECIO_CIERRE antes/después y motivo; el total, saldo y factura se recalculan sobre todo el pedido', async () => {
       const emb = await crearEmbarque({ PACA_AGUA: 4 })

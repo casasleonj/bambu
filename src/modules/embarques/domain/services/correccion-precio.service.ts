@@ -9,7 +9,7 @@
  *  - Un precio vacío, 0 o inválido NO es una corrección: se conserva el precio del pedido.
  *    (La pantalla manda `0` por un campo vacío; tomarlo como precio dejaba el pedido en $0.)
  *  - Una corrección real exige motivo (`PRECIO_SIN_MOTIVO`).
- *  - El precio rige para TODO el pedido (cada línea tiene un único precio):
+ *  - El precio rige para todo el pedido (cada línea tiene un único precio):
  *      total nuevo = total + Σ (precio nuevo − precio anterior) × cantidad PEDIDA.
  *    Se suma el delta (no se recalcula Σ líneas) para respetar ajustes ya aplicados al total.
  *  - Si el cliente ya pagó más que el nuevo total, se rechaza (`PRECIO_GENERARIA_SOBREPAGO`):
