@@ -542,6 +542,8 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await personaADomicilio(page, nombre)
 
     await page.getByTestId('workspace-entrega-cambiar').click()
+    // #459: la ubicación sale del link que manda el cliente; no hay botón de GPS del dispositivo
+    await expect(page.getByTestId('workspace-entrega-usar-ubicacion')).toHaveCount(0)
     await page.getByTestId('workspace-entrega-direccion').fill('')
     await page.getByTestId('workspace-entrega-barrio').fill('')
     await page.getByTestId('workspace-entrega-link').fill('https://maps.app.goo.gl/AbC123')
@@ -555,6 +557,28 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     const clienteBD = await prisma.cliente.findUniqueOrThrow({ where: { id: cliente.id } })
     expect(clienteBD.direccion).toBe('Calle 5 # 3-2')
     expect(clienteBD.barrio).toBe('Centro')
+  })
+
+  test('workspace (#459): con ubicación guardada se avisa y cambiarla con otro link es solo del pedido', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const t = Date.now()
+    const nombre = `Persona Guardada ${t}`
+    const { cliente } = await createCliente(page, { nombre, direccion: 'Calle 6 # 4-3', barrio: 'Centro' })
+    await prisma.cliente.update({ where: { id: cliente.id }, data: { lat: 4.6, lng: -74.1 } })
+    await personaADomicilio(page, nombre)
+
+    await page.getByTestId('workspace-entrega-cambiar').click()
+    await expect(page.getByTestId('workspace-entrega-ubicacion-guardada')).toBeVisible()
+    await page.getByTestId('workspace-entrega-link').fill('https://www.google.com/maps?q=4.6520,-74.0540')
+    await expect(page.getByTestId('workspace-entrega-ubicacion-fijada')).toBeVisible()
+    await expect(page.getByTestId('workspace-entrega-ubicacion-guardada')).toHaveCount(0)
+
+    const enBD = await crearYLeer(page)
+    expect(Number(enBD.entregaLat)).toBeCloseTo(4.652, 3)
+    expect(Number(enBD.entregaLng)).toBeCloseTo(-74.054, 3)
+    const clienteBD = await prisma.cliente.findUniqueOrThrow({ where: { id: cliente.id } })
+    expect(Number(clienteBD.lat)).toBeCloseTo(4.6, 3)
+    expect(Number(clienteBD.lng)).toBeCloseTo(-74.1, 3)
   })
 
   test('workspace (P1-4): venta rápida a domicilio con solo un link de Maps (sin dirección ni barrio) se cobra', async ({ browser }) => {
