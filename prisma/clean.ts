@@ -127,6 +127,7 @@ async function clean() {
     'GpsTrack',
     'PedidoItem',
     'Pago',
+    'Regularizacion', // #402: después de Pago (FK RESTRICT desde Pago.regularizacionId)
     'NotaCredito',
     'Abono',
     'ProduccionItem',

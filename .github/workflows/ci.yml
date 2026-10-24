@@ -369,6 +369,8 @@ jobs:
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
           # #401: una sola secuencia para Pedido.numero (DEFAULT + índice único parcial + trigger).
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
+          # #402: Pago.ocurridoAt/regularizacionId + tabla Regularizacion (CHECK no expresable en schema.prisma).
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261024_pago_tres_fechas_regularizacion/migration.sql
 
       - name: Run integration tests
         run: npm run test:integration
@@ -528,6 +530,8 @@ jobs:
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
           # #401: una sola secuencia para Pedido.numero (DEFAULT + índice único parcial + trigger).
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
+          # #402: Pago.ocurridoAt/regularizacionId + tabla Regularizacion (CHECK no expresable en schema.prisma).
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261024_pago_tres_fechas_regularizacion/migration.sql
 
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts
@@ -728,6 +732,8 @@ jobs:
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
           # #401: una sola secuencia para Pedido.numero (DEFAULT + índice único parcial + trigger).
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
+          # #402: Pago.ocurridoAt/regularizacionId + tabla Regularizacion (CHECK no expresable en schema.prisma).
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261024_pago_tres_fechas_regularizacion/migration.sql
 
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts
