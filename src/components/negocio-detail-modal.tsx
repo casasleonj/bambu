@@ -272,7 +272,7 @@ export function NegocioDetailModal({
         <div className="p-4 border-t border-gray-100 flex flex-wrap gap-2 justify-end bg-gray-50">
           {clienteId && (
             <Link
-              href={`/pedidos?clienteId=${clienteId}`}
+              href={`/pedidos?clienteId=${clienteId}&all=true`}
               className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 transition"
             >
               Ver pedidos
