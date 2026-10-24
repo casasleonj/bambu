@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -10,7 +10,8 @@ import { Label } from '@/components/ui/label'
 import { EmptyState } from '@/components/empty-state'
 import { DateRangeFilter } from '@/components/date-range-filter'
 import { UnifiedSearch } from '@/components/unified-search'
-import type { UnifiedSelection } from '@/components/unified-search'
+import type { UnifiedSelection, ClienteOption, FacturaOption } from '@/components/unified-search'
+import { MIN_SEARCH_CHARS } from '@/lib/cliente-search'
 import { Modal } from '@/components/modal'
 import { FacturaDetail } from './factura-detail'
 import './factura-print.css'
@@ -27,9 +28,53 @@ const DEFAULT_EMPRESA: EmpresaConfig = {
   email: 'info@aguabambu.com',
 }
 
-type SortField = 'fecha' | 'total' | 'saldo'
+type SortField = 'fecha' | 'numero' | 'cliente' | 'total' | 'saldo' | 'estado'
 type SortDir = 'asc' | 'desc'
-type EstadoFilter = 'TODAS' | 'PAGADA' | 'EMITIDA' | 'ANULADA'
+type EstadoFilter = 'TODAS' | 'EMITIDA' | 'PARCIAL' | 'PAGADA' | 'ANULADA'
+
+interface Totales {
+  totalFacturado: number
+  totalCobrado: number
+  totalPorCobrar: number
+  count: number
+  pagadas: number
+  pendientes: number
+  pendienteDesde: string | null
+}
+
+const TOTALES_VACIOS: Totales = {
+  totalFacturado: 0,
+  totalCobrado: 0,
+  totalPorCobrar: 0,
+  count: 0,
+  pagadas: 0,
+  pendientes: 0,
+  pendienteDesde: null,
+}
+
+const CONTEOS_VACIOS: Record<EstadoFilter, number> = { TODAS: 0, EMITIDA: 0, PARCIAL: 0, PAGADA: 0, ANULADA: 0 }
+
+// Primer clic en una columna: fecha y montos de mayor a menor, texto de A a Z.
+const DIR_INICIAL: Record<SortField, SortDir> = {
+  fecha: 'desc',
+  numero: 'asc',
+  cliente: 'asc',
+  total: 'desc',
+  saldo: 'desc',
+  estado: 'asc',
+}
+
+const ORDEN_OPCIONES: { value: string; label: string }[] = [
+  { value: 'fecha:desc', label: 'Más recientes primero' },
+  { value: 'fecha:asc', label: 'Más antiguas primero' },
+  { value: 'saldo:desc', label: 'Mayor saldo primero' },
+  { value: 'saldo:asc', label: 'Menor saldo primero' },
+  { value: 'total:desc', label: 'Mayor total primero' },
+  { value: 'total:asc', label: 'Menor total primero' },
+  { value: 'cliente:asc', label: 'Cliente (A–Z)' },
+  { value: 'cliente:desc', label: 'Cliente (Z–A)' },
+  { value: 'estado:asc', label: 'Estado' },
+]
 
 export default function FacturasPage() {
   const params = useShallowSearchParams()
@@ -55,6 +100,18 @@ export default function FacturasPage() {
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [hasAutoOpened, setHasAutoOpened] = useState(false)
   const [selection, setSelection] = useState<UnifiedSelection>(null)
+  const [selectedLabel, setSelectedLabel] = useState('')
+  const [clienteSeleccionado, setClienteSeleccionado] = useState<{ id: string; nombre: string } | null>(null)
+  const [searchResults, setSearchResults] = useState<{ clientes: ClienteOption[]; facturas: FacturaOption[] }>({
+    clientes: [],
+    facturas: [],
+  })
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchSeqRef = useRef(0)
+  const fetchSeqRef = useRef(0)
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [incluirAnuladas, setIncluirAnuladas] = useState(false)
+  const [conteos, setConteos] = useState<Record<EstadoFilter, number>>(CONTEOS_VACIOS)
   const cardRefs = useRef<Map<string, HTMLElement>>(new Map())
   const openFacturaParam = params.get('openFactura')
 
@@ -66,12 +123,7 @@ export default function FacturasPage() {
   const [pageSize] = useState(50)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
-  const [totales, setTotales] = useState({
-    totalFacturado: 0,
-    totalCobrado: 0,
-    totalPorCobrar: 0,
-    count: 0,
-  })
+  const [totales, setTotales] = useState<Totales>(TOTALES_VACIOS)
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -125,25 +177,47 @@ export default function FacturasPage() {
     }
   }, [openFacturaParam, facturas, hasAutoOpened, params, openFacturaDetail])
 
+  const selectedClienteId = selection?.type === 'cliente' ? selection.id : null
+  const selectedFacturaId = selection?.type === 'factura' ? selection.id : null
+
   const fetchFacturas = useCallback(async () => {
+    // Si el usuario cambia un filtro mientras otra consulta sigue en vuelo,
+    // solo la última respuesta puede pintar la pantalla.
+    const seq = ++fetchSeqRef.current
     setLoading(true)
     try {
-      const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+      const query = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+        sort: sortField,
+        dir: sortDir,
+      })
       if (dateRange.desde) query.set('desde', dateRange.desde)
       if (dateRange.hasta) query.set('hasta', dateRange.hasta)
+      if (estadoFilter !== 'TODAS') query.set('estado', estadoFilter)
+      if (selectedClienteId) query.set('clienteId', selectedClienteId)
+      if (selectedFacturaId) query.set('facturaId', selectedFacturaId)
+      if (incluirAnuladas) query.set('incluirAnuladas', 'true')
       const res = await fetch(`/api/facturas?${query.toString()}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
+      if (seq !== fetchSeqRef.current) return
       setFacturas(data.data || data.facturas || [])
       setTotal(data.total || 0)
       setTotalPages(data.totalPages || 0)
-      setTotales(data.totales || { totalFacturado: 0, totalCobrado: 0, totalPorCobrar: 0, count: 0 })
+      setTotales(data.totales || TOTALES_VACIOS)
+      setConteos(data.conteosPorEstado || CONTEOS_VACIOS)
     } catch (e) {
+      if (seq !== fetchSeqRef.current) return
       console.error(e)
       toast.error('Error cargando facturas')
     } finally {
-      setLoading(false)
+      if (seq === fetchSeqRef.current) {
+        setLoading(false)
+        setInitialLoading(false)
+      }
     }
-  }, [dateRange, page, pageSize])
+  }, [dateRange, page, pageSize, sortField, sortDir, estadoFilter, selectedClienteId, selectedFacturaId, incluirAnuladas])
 
   useEffect(() => {
     // Fetch de datos al montar / cambiar page-pageSize-dateRange — side
@@ -158,26 +232,8 @@ export default function FacturasPage() {
     setHighlightedFactura(null)
   }
 
-  const selectedClienteId = selection?.type === 'cliente' ? selection.id : null
-  const selectedFacturaId = selection?.type === 'factura' ? selection.id : null
-
+  // El servidor ya filtra y ordena; la lista es exactamente lo que devuelve.
   const facturasFiltradas = facturas
-    .filter((f) => {
-      if (estadoFilter !== 'TODAS' && f.estado !== estadoFilter) return false
-      if (selectedClienteId && f.cliente?.id !== selectedClienteId) return false
-      if (selectedFacturaId && f.id !== selectedFacturaId) return false
-      return true
-    })
-    .sort((a, b) => {
-      const dir = sortDir === 'asc' ? 1 : -1
-      if (sortField === 'fecha') {
-        return dir * (new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
-      }
-      if (sortField === 'total') {
-        return dir * (Number(a.total) - Number(b.total))
-      }
-      return dir * (Number(a.saldo) - Number(b.saldo))
-    })
 
   const registrarAbono = async (factura: Factura) => {
     if (!montoAbono) {
@@ -238,7 +294,9 @@ export default function FacturasPage() {
   }
 
   const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
-    setDateRange({ desde, hasta })
+    // El filtro de fechas avisa al montarse aunque no haya cambiado nada:
+    // conservar la referencia evita una consulta duplicada.
+    setDateRange(prev => (prev.desde === desde && prev.hasta === hasta ? prev : { desde, hasta }))
     setPage(1)
   }, [])
 
@@ -247,18 +305,84 @@ export default function FacturasPage() {
       setSortDir(prev => prev === 'asc' ? 'desc' : 'asc')
     } else {
       setSortField(field)
-      setSortDir(field === 'fecha' ? 'desc' : 'asc')
+      setSortDir(DIR_INICIAL[field])
+    }
+    setPage(1)
+  }
+
+  const handleSortSelect = (value: string) => {
+    const [field, dir] = value.split(':') as [SortField, SortDir]
+    setSortField(field)
+    setSortDir(dir)
+    setPage(1)
+  }
+
+  const handleEstadoChange = (estado: EstadoFilter) => {
+    setEstadoFilter(estado)
+    setPage(1)
+  }
+
+  const handleIncluirAnuladas = () => {
+    setIncluirAnuladas(prev => !prev)
+    setPage(1)
+  }
+
+  const handleQueryChange = (q: string) => {
+    setSearchQuery(q)
+    if (q.trim().length < MIN_SEARCH_CHARS) {
+      // Invalida cualquier búsqueda en vuelo para que no reaparezcan resultados viejos.
+      searchSeqRef.current++
+      setSearchResults({ clientes: [], facturas: [] })
     }
   }
 
-  // KPIs globales del rango de fechas (del backend)
+  const handleSelectionChange = (next: UnifiedSelection) => {
+    setSelection(next)
+    setPage(1)
+    if (!next) {
+      setSelectedLabel('')
+      setClienteSeleccionado(null)
+      return
+    }
+    if (next.type === 'cliente') {
+      const c = searchResults.clientes.find(x => x.id === next.id)
+      const nombre = c ? [c.nombre, c.apellido].filter(Boolean).join(' ') : ''
+      setSelectedLabel(nombre)
+      setClienteSeleccionado({ id: next.id, nombre })
+    } else {
+      const f = searchResults.facturas.find(x => x.id === next.id)
+      setSelectedLabel(f ? `#${f.numero}` : '')
+      setClienteSeleccionado(null)
+    }
+  }
+
+  // Búsqueda de clientes y facturas contra toda la base, no contra la página cargada.
+  useEffect(() => {
+    const q = searchQuery.trim()
+    if (q.length < MIN_SEARCH_CHARS) return
+    const seq = ++searchSeqRef.current
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/facturas/buscar?q=${encodeURIComponent(q)}`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (seq !== searchSeqRef.current) return
+        setSearchResults({ clientes: data.clientes ?? [], facturas: data.facturas ?? [] })
+      } catch {
+        /* Sin red: la búsqueda simplemente no ofrece resultados. */
+      }
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
   const kpis = {
     total: totales.totalFacturado,
     cobrado: totales.totalCobrado,
     porCobrar: totales.totalPorCobrar,
     count: totales.count,
-    countPendientes: facturasFiltradas.filter(f => f.saldo > 0).length,
-    countPagadas: facturasFiltradas.filter(f => f.estado === 'PAGADA').length,
+    countPendientes: totales.pendientes,
+    countPagadas: totales.pagadas,
+    pendienteDesde: totales.pendienteDesde,
   }
 
   const formatCurrency = (value: number) =>
@@ -286,47 +410,42 @@ export default function FacturasPage() {
   }
 
   const estadoFilterButtons: { key: EstadoFilter; label: string; count: number }[] = [
-    { key: 'TODAS', label: 'Todas', count: facturas.length },
-    { key: 'EMITIDA', label: 'Emitidas', count: facturas.filter(f => f.estado === 'EMITIDA').length },
-    { key: 'PAGADA', label: 'Pagadas', count: facturas.filter(f => f.estado === 'PAGADA').length },
-    { key: 'ANULADA', label: 'Anuladas', count: facturas.filter(f => f.estado === 'ANULADA').length },
+    { key: 'TODAS', label: 'Todas', count: conteos.TODAS },
+    { key: 'EMITIDA', label: 'Emitidas', count: conteos.EMITIDA },
+    { key: 'PARCIAL', label: 'Parciales', count: conteos.PARCIAL },
+    { key: 'PAGADA', label: 'Pagadas', count: conteos.PAGADA },
+    { key: 'ANULADA', label: 'Anuladas', count: conteos.ANULADA },
   ]
 
-  const clientesUnicos = useMemo(() => {
-    const map = new Map<string, { id: string; nombre: string; apellido: string | null; telefono: string; direccion: string | null }>()
-    facturas.forEach(f => {
-      if (f.cliente?.id && !map.has(f.cliente.id)) {
-        map.set(f.cliente.id, {
-          id: f.cliente.id,
-          nombre: f.cliente.nombre,
-          apellido: f.cliente.apellido ?? null,
-          telefono: f.cliente.telefono ?? '',
-          direccion: f.cliente.direccion ?? null,
-        })
-      }
-    })
-    return Array.from(map.values()).sort((a, b) => a.nombre.localeCompare(b.nombre))
-  }, [facturas])
-
-  const clienteSeleccionado = selectedClienteId
-    ? clientesUnicos.find(c => c.id === selectedClienteId) ?? null
-    : null
-
-  const facturaOptions = useMemo(() =>
-    facturas.map(f => ({
-      id: f.id,
-      numero: f.numero,
-      clienteNombre: f.cliente ? formatClienteNombre(f.cliente) : null,
-      fecha: f.fecha,
-    })),
-  [facturas])
+  const hayFiltros =
+    estadoFilter !== 'TODAS' || !!selection || !!dateRange.desde || !!dateRange.hasta
 
   const sortIcon = (field: SortField) => {
     if (sortField !== field) return <span className="text-gray-300 ml-1">↕</span>
     return <span className="text-blue-600 ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>
   }
 
-  if (loading && facturas.length === 0) {
+  const ariaSort = (field: SortField): 'ascending' | 'descending' | 'none' =>
+    sortField !== field ? 'none' : sortDir === 'asc' ? 'ascending' : 'descending'
+
+  const sortableTh = (field: SortField, label: string, align: 'left' | 'right' | 'center' = 'left') => (
+    <th
+      aria-sort={ariaSort(field)}
+      className={`px-4 py-3 text-${align} text-xs font-semibold text-gray-600 uppercase tracking-wider`}
+    >
+      <button
+        type="button"
+        onClick={() => handleSort(field)}
+        data-testid={`sort-${field}`}
+        className="inline-flex items-center uppercase tracking-wider hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+      >
+        {label}
+        {sortIcon(field)}
+      </button>
+    </th>
+  )
+
+  if (initialLoading) {
     return (
       <div className="p-4">
         <SkeletonPage hasStats cardCount={5} />
@@ -340,8 +459,16 @@ export default function FacturasPage() {
         <h1 className="text-2xl font-bold">Facturas</h1>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* KPIs: siguen los filtros de cliente, fechas y anuladas (no la pestaña de estado) */}
+      {(clienteSeleccionado || selectedFacturaId) && (
+        <p className="text-sm font-medium text-gray-700" data-testid="kpi-alcance">
+          {clienteSeleccionado
+            ? `Resumen de ${clienteSeleccionado.nombre || 'cliente'}`
+            : `Resumen de la factura ${selectedLabel}`}
+          {(dateRange.desde || dateRange.hasta) && ' en el período filtrado'}
+        </p>
+      )}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" data-testid="facturas-kpis">
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total facturado</p>
           <p className="text-lg font-bold text-gray-900 mt-1">{formatCurrency(kpis.total)}</p>
@@ -355,7 +482,10 @@ export default function FacturasPage() {
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Por cobrar</p>
           <p className="text-lg font-bold text-red-600 mt-1">{formatCurrency(kpis.porCobrar)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{kpis.countPendientes} pendiente{kpis.countPendientes !== 1 ? 's' : ''}</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {kpis.countPendientes} pendiente{kpis.countPendientes !== 1 ? 's' : ''}
+            {kpis.pendienteDesde && <> · desde {formatDate(kpis.pendienteDesde)}</>}
+          </p>
         </div>
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Cobranza</p>
@@ -379,7 +509,9 @@ export default function FacturasPage() {
           {estadoFilterButtons.map(btn => (
             <button
               key={btn.key}
-              onClick={() => setEstadoFilter(btn.key)}
+              onClick={() => handleEstadoChange(btn.key)}
+              data-testid={`estado-${btn.key}`}
+              aria-pressed={estadoFilter === btn.key}
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition border ${
                 estadoFilter === btn.key
                   ? 'bg-blue-600 text-white border-blue-600'
@@ -394,53 +526,79 @@ export default function FacturasPage() {
           ))}
         </div>
         <DateRangeFilter onDateChange={handleDateChange} />
-        <UnifiedSearch
-          clientes={clientesUnicos}
-          facturas={facturaOptions}
-          selection={selection}
-          onChange={setSelection}
-          placeholder="Buscar cliente o factura..."
-        />
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <UnifiedSearch
+            clientes={searchResults.clientes}
+            facturas={searchResults.facturas}
+            selection={selection}
+            onChange={handleSelectionChange}
+            onQueryChange={handleQueryChange}
+            remote
+            selectedLabel={selectedLabel}
+            placeholder="Buscar cliente o factura..."
+          />
+          <button
+            type="button"
+            role="switch"
+            aria-checked={incluirAnuladas}
+            onClick={handleIncluirAnuladas}
+            data-testid="switch-anuladas"
+            className="inline-flex items-center gap-2 text-sm text-gray-700"
+          >
+            <span
+              className={`relative inline-block h-5 w-9 rounded-full transition ${incluirAnuladas ? 'bg-blue-600' : 'bg-gray-300'}`}
+            >
+              <span
+                className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${incluirAnuladas ? 'left-[18px]' : 'left-0.5'}`}
+              />
+            </span>
+            Incluir anuladas
+          </button>
+          {/* Móvil: la lista son tarjetas sin encabezados, el orden se elige aquí. */}
+          <label className="md:hidden flex items-center gap-2 text-sm text-gray-600 w-full">
+            <span className="whitespace-nowrap">Ordenar por</span>
+            <select
+              value={`${sortField}:${sortDir}`}
+              onChange={(e) => handleSortSelect(e.target.value)}
+              data-testid="orden-select"
+              className="flex-1 h-9 rounded-lg border border-gray-300 bg-white px-2 text-sm"
+            >
+              {ORDEN_OPCIONES.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
-      {/* Resumen consolidado */}
+      {/* Resumen consolidado: historial completo o por rango de fechas */}
       {clienteSeleccionado && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
             <p className="text-sm font-medium text-blue-900">
-              {facturasFiltradas.filter(f => f.cliente?.id === clienteSeleccionado.id).length} factura{facturasFiltradas.filter(f => f.cliente?.id === clienteSeleccionado.id).length !== 1 ? 's' : ''} de <span className="font-bold">{clienteSeleccionado.nombre}</span>
+              {kpis.count} factura{kpis.count !== 1 ? 's' : ''} de <span className="font-bold">{clienteSeleccionado.nombre}</span>
             </p>
             <p className="text-xs text-blue-700 mt-0.5">
-              {dateRange.desde && dateRange.hasta
-                ? `Período filtrado: ${formatDateLocal(dateRange.desde)} — ${formatDateLocal(dateRange.hasta)}`
-                : 'Sin filtro de fechas. Selecciona un rango para ver el resumen.'
-              }
+              {dateRange.desde || dateRange.hasta
+                ? `Período filtrado: ${dateRange.desde ? formatDateLocal(dateRange.desde) : 'inicio'} — ${dateRange.hasta ? formatDateLocal(dateRange.hasta) : 'hoy'}`
+                : 'Historial completo. Elige fechas para resumir solo un período.'}
             </p>
           </div>
-          {dateRange.desde && dateRange.hasta ? (
-            <Link
-              href={`/resumen-facturas?clienteId=${clienteSeleccionado.id}&desde=${dateRange.desde}&hasta=${dateRange.hasta}`}
-              className="shrink-0"
-            >
-              <Button variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-100 bg-white">
-                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Ver resumen consolidado
-              </Button>
-            </Link>
-          ) : (
-            <Button
-              variant="outline"
-              className="border-blue-300 text-blue-700 hover:bg-blue-100 bg-white shrink-0"
-              onClick={() => toast.error('Selecciona un rango de fechas primero')}
-            >
+          <Link
+            href={`/resumen-facturas?${new URLSearchParams({
+              clienteId: clienteSeleccionado.id,
+              ...(dateRange.desde ? { desde: dateRange.desde } : {}),
+              ...(dateRange.hasta ? { hasta: dateRange.hasta } : {}),
+            }).toString()}`}
+            className="shrink-0"
+          >
+            <Button variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-100 bg-white" data-testid="btn-resumen-consolidado">
               <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               Ver resumen consolidado
             </Button>
-          )}
+          </Link>
         </div>
       )}
 
@@ -448,40 +606,25 @@ export default function FacturasPage() {
       {facturasFiltradas.length === 0 ? (
         <EmptyState
           icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
-          title={facturas.length > 0 ? 'No se encontraron facturas' : 'No hay facturas registradas'}
-          description={facturas.length > 0 ? 'Ninguna factura coincide con los filtros seleccionados' : 'Las facturas se generan automaticamente al crear pedidos con saldo pendiente'}
+          title={hayFiltros ? 'No se encontraron facturas' : 'No hay facturas registradas'}
+          description={hayFiltros ? 'Ninguna factura coincide con los filtros seleccionados' : 'Las facturas se generan automaticamente al crear pedidos con saldo pendiente'}
         />
       ) : (
         <div className="bg-white rounded-xl shadow overflow-hidden">
           {/* Tabla desktop */}
-          <div className="hidden md:block overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto" data-testid="facturas-desktop">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Factura
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Cliente
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer select-none"
-                      onClick={() => handleSort('fecha')}>
-                    Fecha {sortIcon('fecha')}
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer select-none"
-                      onClick={() => handleSort('total')}>
-                    Total {sortIcon('total')}
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer select-none"
-                      onClick={() => handleSort('saldo')}>
-                    Saldo {sortIcon('saldo')}
-                  </th>
+                  {sortableTh('numero', 'Factura')}
+                  {sortableTh('cliente', 'Cliente')}
+                  {sortableTh('fecha', 'Fecha')}
+                  {sortableTh('total', 'Total', 'right')}
+                  {sortableTh('saldo', 'Saldo', 'right')}
                   <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Progreso
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Estado
-                  </th>
+                  {sortableTh('estado', 'Estado', 'center')}
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Acciones
                   </th>
@@ -612,7 +755,7 @@ export default function FacturasPage() {
           </div>
 
           {/* Cards mobile */}
-          <div className="md:hidden space-y-3">
+          <div className="md:hidden space-y-3" data-testid="facturas-mobile">
             {facturasFiltradas.map((factura) => {
               const total = Number(factura.total)
               const saldo = Number(factura.saldo)

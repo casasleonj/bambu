@@ -870,11 +870,15 @@ export const FacturaCreateSchema = z.object({
   clienteId: z.string().min(1),
 });
 
+// `desde`/`hasta` son opcionales: sin ninguna se resume el historial completo
+// del cliente. No hay período máximo; el rango es el que limita el resumen.
+const FechaResumenSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato inválido, use YYYY-MM-DD')
+
 export const ResumenFacturasQuerySchema = z.object({
   clienteId: z.string().min(1),
-  desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato inválido, use YYYY-MM-DD'),
-  hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato inválido, use YYYY-MM-DD'),
-}).refine((data) => data.hasta >= data.desde, {
+  desde: FechaResumenSchema.optional(),
+  hasta: FechaResumenSchema.optional(),
+}).refine((data) => !data.desde || !data.hasta || data.hasta >= data.desde, {
   message: 'La fecha hasta debe ser posterior o igual a la fecha desde',
   path: ['hasta'],
 });

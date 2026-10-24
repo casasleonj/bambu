@@ -52,7 +52,7 @@ interface TotalesResumen {
 
 interface ResumenData {
   cliente: ClienteResumen
-  periodo: { desde: string; hasta: string }
+  periodo: { desde: string | null; hasta: string | null }
   facturas: FacturaResumen[]
   totales: TotalesResumen
   empresa: EmpresaResumen
@@ -64,6 +64,14 @@ function formatCurrency(value: number) {
 
 function formatDate(dateStr: string) {
   return new Date(`${dateStr}T12:00:00-05:00`).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+/** "Historial completo" sin fechas; "desde X", "hasta Y" o "X — Y" según el rango. */
+function formatPeriodo(desde: string | null, hasta: string | null): string {
+  if (desde && hasta) return `${formatDate(desde)} — ${formatDate(hasta)}`
+  if (desde) return `Desde ${formatDate(desde)}`
+  if (hasta) return `Hasta ${formatDate(hasta)}`
+  return 'Historial completo'
 }
 
 function generateResumenNumber(): string {
@@ -108,7 +116,7 @@ export default function ResumenFacturasPage() {
   const [generatedAt] = useState(() => formatDateTime())
 
   const fetchData = useCallback(async () => {
-    if (!clienteId || !desde || !hasta) {
+    if (!clienteId) {
       setLoading(false)
       return
     }
@@ -117,7 +125,11 @@ export default function ResumenFacturasPage() {
     setError(null)
 
     try {
-      const res = await fetch(`/api/clientes/${clienteId}/resumen-facturas?desde=${desde}&hasta=${hasta}`)
+      const query = new URLSearchParams()
+      if (desde) query.set('desde', desde)
+      if (hasta) query.set('hasta', hasta)
+      const qs = query.toString()
+      const res = await fetch(`/api/clientes/${clienteId}/resumen-facturas${qs ? `?${qs}` : ''}`)
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: { message: 'Error del servidor' } }))
         throw new Error(err.error?.message || `Error ${res.status}`)
@@ -146,7 +158,7 @@ export default function ResumenFacturasPage() {
   const handlePrint = () => { window.print() }
   const handleRetry = () => { fetchData() }
 
-  if (!clienteId || !desde || !hasta) {
+  if (!clienteId) {
     return (
       <div className="p-8 text-center text-gray-500">
         Parámetros incompletos.
@@ -266,7 +278,7 @@ export default function ResumenFacturasPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <p className="text-gray-600 font-medium">No hay facturas de <span className="font-bold">{cliente.nombre}</span></p>
-          <p className="text-gray-400 text-sm mt-1">entre {formatDate(periodo.desde)} y {formatDate(periodo.hasta)}</p>
+          <p className="text-gray-400 text-sm mt-1">Período: {formatPeriodo(periodo.desde, periodo.hasta)}</p>
         </div>
       )}
 
@@ -293,7 +305,7 @@ export default function ResumenFacturasPage() {
                 </div>
               </div>
               <div className="mt-3 flex gap-6 text-xs text-gray-600">
-                <span><strong>Período de facturas:</strong> {formatDate(periodo.desde)} — {formatDate(periodo.hasta)}</span>
+                <span><strong>Período de facturas:</strong> {formatPeriodo(periodo.desde, periodo.hasta)}</span>
               </div>
             </div>
 

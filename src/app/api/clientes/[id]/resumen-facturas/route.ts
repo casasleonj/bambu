@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireRole } from '@/lib/auth-check'
 import { ResumenFacturasQuerySchema } from '@/lib/validators'
-import { getDateRange } from '@/lib/dates'
+import { buildDateRangeFilter } from '@/lib/dates'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 
@@ -10,29 +10,24 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authResult = await requireAuth()
+  // Mismo alcance que GET /api/facturas: es información financiera.
+  const authResult = await requireRole(['ADMIN', 'CONTADOR'])
   if (authResult instanceof Response) return authResult
 
   const { id: clienteId } = await params
 
   try {
     const { searchParams } = new URL(request.url)
-    const desde = searchParams.get('desde')
-    const hasta = searchParams.get('hasta')
+    const desde = searchParams.get('desde') || undefined
+    const hasta = searchParams.get('hasta') || undefined
 
     const parsed = ResumenFacturasQuerySchema.safeParse({ clienteId, desde, hasta })
     if (!parsed.success) {
       return apiError('Datos inválidos', 400)
     }
 
-    const { startDate, endDate } = getDateRange(desde!, hasta!)
-
-    // Período máximo 3 meses
-    const diffMs = endDate.getTime() - startDate.getTime()
-    const diffMonths = diffMs / (1000 * 60 * 60 * 24 * 30)
-    if (diffMonths > 3) {
-      return apiError('El período no puede exceder 3 meses', 400)
-    }
+    // Sin fechas = historial completo; sin tope de meses (lo limita el rango).
+    const fecha = buildDateRangeFilter(desde, hasta)
 
     const [cliente, facturas, empresaConfigs] = await Promise.all([
       prisma.cliente.findUnique({
@@ -42,7 +37,7 @@ export async function GET(
       prisma.factura.findMany({
         where: {
           clienteId,
-          fecha: { gte: startDate, lt: endDate },
+          ...(fecha ? { fecha } : {}),
           estado: { not: 'ANULADA' },
         },
         orderBy: { fecha: 'asc' },
@@ -74,7 +69,7 @@ export async function GET(
 
     return apiSuccess({
       cliente,
-      periodo: { desde, hasta },
+      periodo: { desde: desde ?? null, hasta: hasta ?? null },
         facturas: facturas.map((f) => {
           const saldo = Number(f.saldo)
           const montoPagado = Number(f.montoPagado || 0)
