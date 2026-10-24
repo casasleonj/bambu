@@ -30,6 +30,16 @@ interface UnifiedSearchProps {
   selection: UnifiedSelection
   onChange: (selection: UnifiedSelection) => void
   placeholder?: string
+  /** Avisa cada vez que cambia el texto escrito (para buscar en el servidor). */
+  onQueryChange?: (query: string) => void
+  /**
+   * Los resultados ya vienen filtrados desde el servidor: no se vuelven a
+   * filtrar en memoria. Evita que la búsqueda quede limitada a la página
+   * cargada de una lista paginada.
+   */
+  remote?: boolean
+  /** Texto a mostrar cuando hay selección y esa opción ya no está en las listas. */
+  selectedLabel?: string
 }
 
 export function UnifiedSearch({
@@ -38,6 +48,9 @@ export function UnifiedSearch({
   selection,
   onChange,
   placeholder = 'Buscar cliente o factura...',
+  onQueryChange,
+  remote = false,
+  selectedLabel: selectedLabelProp,
 }: UnifiedSearchProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -48,6 +61,7 @@ export function UnifiedSearch({
 
   const selectedLabel = useMemo(() => {
     if (!selection) return ''
+    if (selectedLabelProp) return selectedLabelProp
     if (selection.type === 'cliente') {
       const c = clientes.find(x => x.id === selection.id)
       return c ? `${c.nombre} ${c.apellido || ''}`.trim() : ''
@@ -57,18 +71,20 @@ export function UnifiedSearch({
       return f ? `#${f.numero}` : ''
     }
     return ''
-  }, [selection, clientes, facturas])
+  }, [selection, selectedLabelProp, clientes, facturas])
 
   const meetsMinLength = useMemo(() => meetsMinSearchLength(query), [query])
 
   const filteredClientes = useMemo(() => {
+    if (remote) return clientes.slice(0, 8)
     if (!meetsMinLength) return clientes.slice(0, 5)
     return clientes
       .filter(c => matchCliente(c, query))
       .slice(0, 5)
-  }, [clientes, query, meetsMinLength])
+  }, [clientes, query, meetsMinLength, remote])
 
   const filteredFacturas = useMemo(() => {
+    if (remote) return facturas.slice(0, 8)
     if (!meetsMinLength) return facturas.slice(0, 5)
     const q = query.toLowerCase()
     return facturas
@@ -78,7 +94,7 @@ export function UnifiedSearch({
           (f.clienteNombre || '').toLowerCase().includes(q)
       )
       .slice(0, 5)
-  }, [facturas, query, meetsMinLength])
+  }, [facturas, query, meetsMinLength, remote])
 
   const totalResults = filteredClientes.length + filteredFacturas.length
   const showMinLengthHint = !meetsMinLength && query.trim().length > 0
@@ -88,10 +104,11 @@ export function UnifiedSearch({
       onChange({ type: 'cliente', id })
       setOpen(false)
       setQuery('')
+      onQueryChange?.('')
       setHighlightedIndex(-1)
       inputRef.current?.blur()
     },
-    [onChange]
+    [onChange, onQueryChange]
   )
 
   const handleSelectFactura = useCallback(
@@ -99,17 +116,19 @@ export function UnifiedSearch({
       onChange({ type: 'factura', id })
       setOpen(false)
       setQuery('')
+      onQueryChange?.('')
       setHighlightedIndex(-1)
       inputRef.current?.blur()
     },
-    [onChange]
+    [onChange, onQueryChange]
   )
 
   const handleClear = useCallback(() => {
     onChange(null)
     setQuery('')
+    onQueryChange?.('')
     inputRef.current?.focus()
-  }, [onChange])
+  }, [onChange, onQueryChange])
 
   useEffect(() => {
     if (!open) return
@@ -163,6 +182,7 @@ export function UnifiedSearch({
           onChange={e => {
             if (selection) onChange(null)
             setQuery(e.target.value)
+            onQueryChange?.(e.target.value)
             setOpen(true)
             setHighlightedIndex(-1)
           }}

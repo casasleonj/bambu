@@ -5,7 +5,14 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { FacturaCreateSchema } from '@/lib/validators'
 import { getNextNumero } from '@/lib/sequence'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
-import { buildDateRangeFilter } from '@/lib/dates'
+import {
+  parseFacturasFiltros,
+  parseFacturasOrden,
+  buildFacturasBaseWhere,
+  buildFacturasListWhere,
+  buildFacturasOrderBy,
+  resumirGrupos,
+} from '@/lib/facturas-filtros'
 import { logAudit } from '@/lib/audit'
 import { withAdvisoryLock } from '@/lib/locks'
 import type { Factura } from '@prisma/client'
@@ -19,27 +26,19 @@ export async function GET(request: NextRequest) {
   const authResult = await requireRole(['ADMIN', 'CONTADOR'])
   if (authResult instanceof Response) return authResult
   const { searchParams } = new URL(request.url)
-  const pendiente = searchParams.get('pendiente') === 'true'
   const pagination = getPaginationParams(searchParams)
 
   try {
-    const desde = searchParams.get('desde')
-    const hasta = searchParams.get('hasta')
-    const all = searchParams.get('all')
-
-    const where: Record<string, unknown> = pendiente ? { saldo: { gt: 0 } } : {}
-    if (all !== 'true') {
-      const dateFilter = buildDateRangeFilter(desde, hasta)
-      if (dateFilter) {
-        where.fecha = dateFilter
-      }
-    }
+    const filtros = parseFacturasFiltros(searchParams)
+    const { sort, dir } = parseFacturasOrden(searchParams)
+    const baseWhere = buildFacturasBaseWhere(filtros)
+    const listWhere = buildFacturasListWhere(filtros)
     const prismaPagination = getPrismaPagination(pagination)
 
-    const [facturas, total, agregados] = await Promise.all([
+    const [facturas, grupos, pendienteMasAntigua] = await Promise.all([
       prisma.factura.findMany({
-        where,
-        orderBy: { fecha: 'desc' },
+        where: listWhere,
+        orderBy: buildFacturasOrderBy(sort, dir),
         select: {
           id: true,
           numero: true,
@@ -70,25 +69,42 @@ export async function GET(request: NextRequest) {
         },
         ...prismaPagination,
       }),
-      prisma.factura.count({ where }),
-      prisma.factura.aggregate({
-        where,
-        _sum: { total: true, saldo: true, montoPagado: true },
+      // Un solo groupBy por estado alimenta totales, conteos y tamaño de lista.
+      prisma.factura.groupBy({
+        by: ['estado'],
+        where: baseWhere,
         _count: { _all: true },
+        _sum: { total: true, saldo: true, montoPagado: true },
+      }),
+      prisma.factura.aggregate({
+        where: { ...baseWhere, saldo: { gt: 0 }, estado: { not: 'ANULADA' } },
+        _min: { fecha: true },
       }),
     ])
 
+    const resumen = resumirGrupos(
+      grupos.map((g) => ({
+        estado: g.estado,
+        count: g._count._all,
+        total: Number(g._sum.total ?? 0),
+        montoPagado: Number(g._sum.montoPagado ?? 0),
+        saldo: Number(g._sum.saldo ?? 0),
+      })),
+      filtros,
+    )
     const totales = {
-      totalFacturado: Number(agregados._sum.total ?? 0),
-      totalCobrado: Number(agregados._sum.montoPagado ?? 0),
-      totalPorCobrar: Number(agregados._sum.saldo ?? 0),
-      count: agregados._count._all,
+      ...resumen.totales,
+      pendienteDesde: pendienteMasAntigua._min.fecha,
     }
 
     return apiSuccess(
       pagination.all
-        ? { facturas, total, totales }
-        : { ...buildPaginationResponse(facturas, total, pagination.page!, pagination.pageSize!), totales }
+        ? { facturas, total: resumen.totalLista, totales, conteosPorEstado: resumen.conteosPorEstado }
+        : {
+            ...buildPaginationResponse(facturas, resumen.totalLista, pagination.page!, pagination.pageSize!),
+            totales,
+            conteosPorEstado: resumen.conteosPorEstado,
+          }
     )
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching facturas:')

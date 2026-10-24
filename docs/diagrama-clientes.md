@@ -194,7 +194,7 @@ flowchart TD
 | **Teléfono válido** | Debe ser formato colombiano: celular 3xx (10 dígitos) o fijo 60x (10-11 dígitos) |
 | **Link de Maps** | Debe ser una URL válida. Es opcional |
 | **Contactos alternativos** | Deben tener nombre y teléfono. Se pueden agregar varios |
-| **Historial limitado** | El resumen de facturas máximo muestra 3 meses |
+| **Resumen de facturas** | Sin tope de meses: historial completo o por rango de fechas (#466) |
 
 ---
 

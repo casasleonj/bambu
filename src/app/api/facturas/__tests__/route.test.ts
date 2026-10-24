@@ -26,11 +26,11 @@ describe('GET /api/facturas — query optimizada', () => {
   })
 
   it('FIX: devuelve totales agregados en la respuesta', () => {
-    expect(source).toMatch(/prisma\.factura\.aggregate\(/)
+    // Los totales se derivan de un groupBy por estado (ver facturas-filtros.ts),
+    // de modo que siguen los filtros de cliente/fechas y excluyen anuladas.
+    expect(source).toMatch(/prisma\.factura\.groupBy\(/)
+    expect(source).toMatch(/resumirGrupos\(/)
     expect(source).toMatch(/const totales/)
-    expect(source).toMatch(/totalFacturado:/)
-    expect(source).toMatch(/totalCobrado:/)
-    expect(source).toMatch(/totalPorCobrar:/)
   })
 })
 
