@@ -92,6 +92,17 @@ export function deriveOperacion(p: Pedido, ctx: DeriveContext): OperacionDerivad
   return { estadoLegible, accionDestacada, focos }
 }
 
+/**
+ * Segunda línea de la fila (P2-3, #453): a qué embarque y repartidor va el
+ * pedido. null si no tiene embarque (o aún no llegó el dato).
+ */
+export function embarqueLinea(p: Pick<Pedido, 'embarqueId' | 'embarqueNumeroDia' | 'embarqueRepartidor'>): string | null {
+  if (!p.embarqueId || p.embarqueNumeroDia == null) return null
+  return p.embarqueRepartidor
+    ? `Embarque #${p.embarqueNumeroDia} · ${p.embarqueRepartidor}`
+    : `Embarque #${p.embarqueNumeroDia}`
+}
+
 /** Etiqueta corta del origen para el chip discreto (solo si ≠ PEDIDO). */
 export function origenLabel(origen: string): string | null {
   if (origen === 'PEDIDO') return null

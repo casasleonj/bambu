@@ -278,3 +278,21 @@ describe('FIX: DELETE solo cancela embarques ABIERTO y no resetea ENTREGADO', ()
     expect(deleteSource).toMatch(/estadoEntrega:\s*\{\s*not:\s*'ENTREGADO'\s*\}/)
   })
 })
+
+describe('#436: GET devuelve los precios congelados de cada pedido', () => {
+  const getStart = source.indexOf('export async function GET')
+  const getEnd = source.indexOf('export async function PUT')
+  const getSource = source.slice(getStart, getEnd)
+
+  it.each([
+    'precioPacaAgua',
+    'precioPacaHielo',
+    'precioBotellonFab',
+    'precioBotellonDom',
+    'precioBolsaAgua',
+    'precioBolsaHielo',
+  ])('selecciona %s y lo serializa como número', (campo) => {
+    expect(getSource).toMatch(new RegExp(`${campo}:\\s*true`))
+    expect(getSource).toMatch(new RegExp(`${campo}:\\s*Number\\(p\\.${campo}\\)`))
+  })
+})

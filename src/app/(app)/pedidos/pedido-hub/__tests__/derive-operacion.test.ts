@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { deriveOperacion } from '../derive-operacion'
+import { deriveOperacion, embarqueLinea } from '../derive-operacion'
 import type { Pedido } from '../../pedidos-client/types'
 
 const base = (over: Partial<Pedido>): Pedido => ({
@@ -71,5 +71,28 @@ describe('deriveOperacion', () => {
   it('cliente bloqueado → acción "Ver cartera" (prioridad sobre registrar pago)', () => {
     const d = deriveOperacion(base({ estadoEntrega: 'ENTREGADO', estadoPago: 'PARCIAL', totalPagado: 4000, saldo: 6000 }), { ...ctx, clienteBloqueado: true })
     expect(d.accionDestacada?.key).toBe('ver-cartera')
+  })
+})
+
+describe('embarqueLinea (P2-3, #453): segunda línea de la fila', () => {
+  it('con embarque y repartidor → «Embarque #N · Nombre»', () => {
+    expect(embarqueLinea({ embarqueId: 'e1', embarqueNumeroDia: 3, embarqueRepartidor: 'Juan' })).toBe('Embarque #3 · Juan')
+  })
+
+  it('embarque sin repartidor → solo «Embarque #N»', () => {
+    expect(embarqueLinea({ embarqueId: 'e1', embarqueNumeroDia: 3, embarqueRepartidor: null })).toBe('Embarque #3')
+  })
+
+  it('sin embarque (sin planificar o ya retirado) → nada', () => {
+    expect(embarqueLinea({ embarqueId: undefined, embarqueNumeroDia: null, embarqueRepartidor: null })).toBeNull()
+    expect(embarqueLinea({ embarqueId: null as unknown as undefined, embarqueNumeroDia: 3, embarqueRepartidor: 'Juan' })).toBeNull()
+  })
+
+  it('con embarqueId pero sin el dato todavía (payload viejo) → nada, sin romper', () => {
+    expect(embarqueLinea({ embarqueId: 'e1' })).toBeNull()
+  })
+
+  it('el número 0 (embarque sin numerar) sí se muestra', () => {
+    expect(embarqueLinea({ embarqueId: 'e1', embarqueNumeroDia: 0, embarqueRepartidor: 'Ana' })).toBe('Embarque #0 · Ana')
   })
 })

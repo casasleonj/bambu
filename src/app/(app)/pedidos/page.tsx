@@ -7,6 +7,7 @@ import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import { getPaginationParams } from '@/lib/pagination'
 import { pickCoords } from '@/lib/geo/pedido-coords'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
+import { cargarEmbarquesLista, camposEmbarqueLista } from '@/lib/embarque-lista'
 import type { PedidoResumenDTO } from '@/modules/pedidos/application/dto'
 import type { Pedido } from './pedidos-client/types'
 import { PedidosClient } from './pedidos-client'
@@ -126,7 +127,7 @@ export default async function PedidosPage({
     const negocioIds = [
       ...new Set(result.pedidos.map(p => p.negocioId).filter((id): id is string => Boolean(id))),
     ]
-    const [clientes, negocios] = await Promise.all([
+    const [clientes, negocios, embarquesPorId] = await Promise.all([
       prisma.cliente.findMany({
         where: { id: { in: clienteIds } },
         include: { ruta: { select: { nombre: true } } },
@@ -137,6 +138,7 @@ export default async function PedidosPage({
             include: { ruta: { select: { nombre: true } } },
           })
         : Promise.resolve([]),
+      cargarEmbarquesLista(prisma, result.pedidos.map(p => p.embarqueId)),
     ])
     const clienteById = new Map(clientes.map(c => [c.id, c]))
     const negocioById = new Map(negocios.map(n => [n.id, n]))
@@ -171,6 +173,7 @@ export default async function PedidosPage({
         entregaLng: p.entregaLng == null ? null : Number(p.entregaLng),
         lat: coordsEfectivas?.lat ?? null,
         lng: coordsEfectivas?.lng ?? null,
+        ...camposEmbarqueLista(p.embarqueId, embarquesPorId),
       }
     })
 

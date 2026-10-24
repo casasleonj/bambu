@@ -18,7 +18,7 @@
 // entonces la hidratación ya terminó.
 
 import type { Page } from '@playwright/test'
-import { test, expect, apiPost, apiGet, apiPut, apiPatch, createCliente, BASE, sharedLoginAs, appMain } from './fixtures'
+import { test, expect, apiPost, apiGet, apiPut, apiPatch, createCliente, createTrabajador, createEmbarque, BASE, sharedLoginAs, appMain } from './fixtures'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
@@ -415,6 +415,52 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     expect(enBD.barrioEntrega).toBe('Centro')
   })
 
+  // P2-3 (#453): la fila de la lista dice a qué embarque y repartidor va el pedido.
+  test('lista (P2-3): un pedido asignado a un embarque muestra «Embarque #N · Repartidor» y uno sin planificar no', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    const t = Date.now()
+    const nombreRep = `Repartidor Lista ${t % 100000}`
+    const trab = await createTrabajador(page, { nombre: nombreRep })
+    const trabajadorId = (trab.trabajador?.id ?? trab.data?.id) as string
+    const emb = await createEmbarque(page, trabajadorId)
+    const embarqueId = (emb.embarque?.id ?? emb.data?.id) as string
+    const embarqueBD = await prisma.embarque.findUniqueOrThrow({ where: { id: embarqueId } })
+
+    const nombreAsignado = `Lista Asignado ${t}`
+    const nombreLibre = `Lista Libre ${t}`
+    const ids: string[] = []
+    for (const nombre of [nombreAsignado, nombreLibre]) {
+      const { cliente } = await createCliente(page, { nombre })
+      const res = await apiPost(page, '/api/pedidos', {
+        clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO',
+        items: [{ producto: 'PACA_AGUA', cantidad: 1 }], offlineId: `lista-emb-${t}-${ids.length}`,
+      })
+      expect(res.status()).toBeLessThan(300)
+      const body = await res.json()
+      ids.push((body.data?.pedido ?? body.pedido).id as string)
+    }
+    await prisma.pedido.update({ where: { id: ids[0] }, data: { embarqueId } })
+
+    await page.goto(`${BASE}/pedidos`)
+    await expect(app.getByTestId(`operacion-row-${ids[0]}`)).toBeVisible({ timeout: 15000 })
+    await expect(app.getByTestId(`operacion-embarque-${ids[0]}`)).toHaveText(`Embarque #${embarqueBD.numeroDia} · ${nombreRep}`)
+    await expect(app.getByTestId(`operacion-row-${ids[1]}`)).toBeVisible()
+    await expect(app.getByTestId(`operacion-embarque-${ids[1]}`)).toHaveCount(0)
+
+    // GET /api/pedidos (refrescos de la lista) trae los mismos campos que la carga inicial
+    const api = await apiGet(page, '/api/pedidos?all=true')
+    expect(api.status()).toBe(200)
+    const cuerpo = await api.json()
+    const filas = (cuerpo.data?.pedidos ?? cuerpo.pedidos ?? cuerpo.data) as Array<{ id: string; embarqueNumeroDia: number | null; embarqueRepartidor: string | null }>
+    const asignado = filas.find((p) => p.id === ids[0])
+    const libre = filas.find((p) => p.id === ids[1])
+    expect(asignado?.embarqueNumeroDia).toBe(embarqueBD.numeroDia)
+    expect(asignado?.embarqueRepartidor).toBe(nombreRep)
+    expect(libre?.embarqueNumeroDia).toBeNull()
+    expect(libre?.embarqueRepartidor).toBeNull()
+  })
+
   // P1-4 (#419): el destino de UN pedido no pisa la dirección guardada del cliente, y con
   // una ubicación (link o GPS) la dirección y el barrio son opcionales. Se verifica en la BD.
   async function personaADomicilio(page: Page, nombre: string) {
@@ -496,6 +542,8 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await personaADomicilio(page, nombre)
 
     await page.getByTestId('workspace-entrega-cambiar').click()
+    // #459: la ubicación sale del link que manda el cliente; no hay botón de GPS del dispositivo
+    await expect(page.getByTestId('workspace-entrega-usar-ubicacion')).toHaveCount(0)
     await page.getByTestId('workspace-entrega-direccion').fill('')
     await page.getByTestId('workspace-entrega-barrio').fill('')
     await page.getByTestId('workspace-entrega-link').fill('https://maps.app.goo.gl/AbC123')
@@ -509,6 +557,28 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     const clienteBD = await prisma.cliente.findUniqueOrThrow({ where: { id: cliente.id } })
     expect(clienteBD.direccion).toBe('Calle 5 # 3-2')
     expect(clienteBD.barrio).toBe('Centro')
+  })
+
+  test('workspace (#459): con ubicación guardada se avisa y cambiarla con otro link es solo del pedido', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const t = Date.now()
+    const nombre = `Persona Guardada ${t}`
+    const { cliente } = await createCliente(page, { nombre, direccion: 'Calle 6 # 4-3', barrio: 'Centro' })
+    await prisma.cliente.update({ where: { id: cliente.id }, data: { lat: 4.6, lng: -74.1 } })
+    await personaADomicilio(page, nombre)
+
+    await page.getByTestId('workspace-entrega-cambiar').click()
+    await expect(page.getByTestId('workspace-entrega-ubicacion-guardada')).toBeVisible()
+    await page.getByTestId('workspace-entrega-link').fill('https://www.google.com/maps?q=4.6520,-74.0540')
+    await expect(page.getByTestId('workspace-entrega-ubicacion-fijada')).toBeVisible()
+    await expect(page.getByTestId('workspace-entrega-ubicacion-guardada')).toHaveCount(0)
+
+    const enBD = await crearYLeer(page)
+    expect(Number(enBD.entregaLat)).toBeCloseTo(4.652, 3)
+    expect(Number(enBD.entregaLng)).toBeCloseTo(-74.054, 3)
+    const clienteBD = await prisma.cliente.findUniqueOrThrow({ where: { id: cliente.id } })
+    expect(Number(clienteBD.lat)).toBeCloseTo(4.6, 3)
+    expect(Number(clienteBD.lng)).toBeCloseTo(-74.1, 3)
   })
 
   test('workspace (P1-4): venta rápida a domicilio con solo un link de Maps (sin dirección ni barrio) se cobra', async ({ browser }) => {

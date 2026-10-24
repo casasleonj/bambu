@@ -56,6 +56,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             cBotellonDomEnt: true,
             cBolsaAguaEnt: true,
             cBolsaHieloEnt: true,
+            // Precios congelados del pedido: el cierre los usa como precio real
+            // por defecto (#436). Sin ellos llegaban en 0 y el total salía $0.
+            precioPacaAgua: true,
+            precioPacaHielo: true,
+            precioBotellonFab: true,
+            precioBotellonDom: true,
+            precioBolsaAgua: true,
+            precioBolsaHielo: true,
             negocioId: true,
             ...(full
               ? {
@@ -89,6 +97,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ...embarqueRaw,
       pedidos: pedidosEnriquecidos.map((p) => ({
         ...p,
+        precioPacaAgua: Number(p.precioPacaAgua),
+        precioPacaHielo: Number(p.precioPacaHielo),
+        precioBotellonFab: Number(p.precioBotellonFab),
+        precioBotellonDom: Number(p.precioBotellonDom),
+        precioBolsaAgua: Number(p.precioBolsaAgua),
+        precioBolsaHielo: Number(p.precioBolsaHielo),
         total: Number(p.total),
         totalPagado: Number(p.totalPagado),
         saldo: Number(p.saldo),

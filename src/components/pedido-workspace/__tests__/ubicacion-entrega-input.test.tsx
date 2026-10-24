@@ -67,4 +67,27 @@ describe('UbicacionEntregaInput — links acortados de Maps (P1-4, #419)', () =>
     expect(fetchMock).not.toHaveBeenCalled()
     expect(screen.getByTestId('workspace-entrega-ubicacion-error')).toBeInTheDocument()
   })
+
+  it('no ofrece el GPS de quien digita: solo el campo del link (#459)', () => {
+    const getCurrentPosition = vi.fn()
+    vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } })
+    render(<UbicacionEntregaInput lat={null} lng={null} onChange={vi.fn()} />)
+    expect(screen.queryByTestId('workspace-entrega-usar-ubicacion')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Usar mi ubicación/i)).not.toBeInTheDocument()
+    const campo = screen.getByTestId('workspace-entrega-link')
+    expect(campo).toHaveAttribute('placeholder', 'Pega el link de ubicación que te mandó el cliente')
+    expect(campo.className).toContain('w-full')
+    expect(getCurrentPosition).not.toHaveBeenCalled()
+  })
+
+  it('los errores hablan solo del link o de la dirección, nunca de «tu ubicación» (#459)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }))
+    const { unmount } = render(<UbicacionEntregaInput lat={null} lng={null} onChange={vi.fn()} />)
+    pegar('hola')
+    expect(screen.getByTestId('workspace-entrega-ubicacion-error').textContent).not.toMatch(/tu ubicaci/i)
+    pegar(CORTO)
+    await act(async () => { await vi.advanceTimersByTimeAsync(600) })
+    expect(screen.getByTestId('workspace-entrega-ubicacion-error').textContent).not.toMatch(/tu ubicaci/i)
+    unmount()
+  })
 })

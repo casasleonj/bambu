@@ -93,6 +93,15 @@ export interface PagoItem {
   monto: number
 }
 
+/**
+ * - `OTRA_VISITA`: lo que falta sigue siendo del mismo pedido y se entrega después.
+ * - `NO_QUIERE_RESTO`: el cliente dijo que no quiere el resto. La reducción
+ *   comercial aún no tiene operación económica (#451): se registra el hecho en
+ *   las observaciones del cierre, el total NO cambia y el pendiente se trata
+ *   como `OTRA_VISITA` hasta que la oficina lo autorice.
+ */
+export type DecisionPendiente = 'OTRA_VISITA' | 'NO_QUIERE_RESTO'
+
 export interface CuadrePedido {
   pedidoId: string
   entregado: 'COMPLETO' | 'PARCIAL' | 'NO_ENTREGADO'
@@ -115,6 +124,11 @@ export interface CuadrePedido {
   pagado: 'COMPLETO' | 'PARCIAL' | 'NO_PAGADO'
   pagos: PagoItem[]
   nuevoEmbarqueId?: string
+  /**
+   * Cierre V2 (#447): qué pasa con lo que queda pendiente cuando se entrega
+   * menos de lo pedido. Sin valor por defecto: lo elige el asistente.
+   */
+  decisionPendiente?: DecisionPendiente
 }
 
 export interface VentaLibre {
@@ -128,6 +142,10 @@ export interface VentaLibre {
   cBolsaHielo: number
   pagos: PagoItem[]
   obs: string
+  /** Cierre V2: «venta al paso» (CONSUMIDOR_FINAL) elegida de forma explícita. */
+  anonima?: boolean
+  /** Cierre V2: el cliente elegido está bloqueado (viene del buscador). */
+  clienteBloqueado?: boolean
 }
 
 export function calcularMontoPagado(pagos: PagoItem[]): number {

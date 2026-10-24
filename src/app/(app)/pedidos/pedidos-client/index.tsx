@@ -644,7 +644,9 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // Wire-up de realtime (aditivo sobre el polling de 60s, que queda intacto
   // como fallback para cuando SSE está apagado: 2G, circuit breaker, tab
   // oculta, offline). Mismo patrón que clientes-client.
-  useRealtimeListener(['pedido.*'], () => {
+  // `embarque.*` también: reasignar el embarque o su repartidor cambia la segunda
+  // línea de la fila (P2-3, #453).
+  useRealtimeListener(['pedido.*', 'embarque.*'], () => {
     refreshPedidos()
   })
 
