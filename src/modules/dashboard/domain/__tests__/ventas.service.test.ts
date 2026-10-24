@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildVentasPorPrecio } from '@/modules/dashboard/domain/ventas.service'
+import { buildVentasPorPrecio, calcularVentas } from '@/modules/dashboard/domain/ventas.service'
 import type { PedidoRaw } from '@/modules/dashboard/domain/types'
 
 describe('buildVentasPorPrecio', () => {
@@ -175,5 +175,30 @@ describe('buildVentasPorPrecio', () => {
 
     expect(result).toHaveLength(1)
     expect(result[0].canal).toBe('DOMICILIO')
+  })
+})
+
+describe('calcularVentas (#470)', () => {
+  const base = {
+    numero: 1,
+    fecha: new Date(),
+    saldo: 0,
+    estadoPago: 'PENDIENTE',
+    cPacaAguaEnt: 0,
+    cPacaHieloEnt: 0,
+    cBotellonFabEnt: 0,
+    cBotellonDomEnt: 0,
+  }
+
+  it('solo suma pedidos ENTREGADOS: pendientes, en ruta, anulados y cancelados no cuentan', () => {
+    const pedidos: PedidoRaw[] = [
+      { ...base, id: 'a', total: 40000, estadoEntrega: 'ENTREGADO' },
+      { ...base, id: 'b', total: 100000, estadoEntrega: 'PENDIENTE' },
+      { ...base, id: 'c', total: 20000, estadoEntrega: 'EN_RUTA' },
+      { ...base, id: 'd', total: 50000, estadoEntrega: 'ANULADO' },
+      { ...base, id: 'e', total: 10000, estadoEntrega: 'CANCELADO' },
+    ]
+
+    expect(calcularVentas(pedidos)).toBe(40000)
   })
 })

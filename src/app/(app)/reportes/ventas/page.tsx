@@ -49,7 +49,7 @@ export default async function ReporteVentasPage({
 
   const where = {
     fecha: dateFilter,
-    estadoEntrega: { not: EstadoEntrega.CANCELADO },
+    estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] },
   }
 
   const [pedidos, total, ventasAgg, pagosPorMetodo, fiadoAgg] = await Promise.all([
@@ -79,13 +79,13 @@ export default async function ReporteVentasPage({
       where: {
         pedido: {
           fecha: dateFilter,
-          estadoEntrega: { not: EstadoEntrega.CANCELADO },
+          estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] },
         },
       },
       _sum: { monto: true },
     }),
     prisma.pedido.aggregate({
-      where: { ...where, saldo: { gt: 0 } },
+      where: { ...where, saldo: { gt: 0 }, estadoEntrega: EstadoEntrega.ENTREGADO },
       _sum: { saldo: true },
     }),
   ])
