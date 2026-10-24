@@ -1,9 +1,11 @@
 # Los dos ADR del cierre V2, en palabras sencillas
 
+*Actualizado el 2026-10-24 con las decisiones del PO.*
+
 Un ADR es una decisión escrita que el equipo aprueba **antes** de programar. Estos dos son borradores. Hasta que se aprueben, el cierre nuevo (Fase A) sigue apagado por flag y la Fase B no se empieza.
 
 - Borrador 1: `docs/adr/ADR-CIERRE-002.md` — qué debe **rechazar o exigir el servidor** al cerrar un embarque.
-- Borrador 2: `docs/adr/ADR-MONETARIO-002.md` — qué pasa con **el dinero y los precios** cuando algo cambia en el cierre.
+- Borrador 2: `docs/adr/ADR-MONETARIO-002.md` — qué pasa con **el dinero y los precios** cuando algo cambia en el cierre. Se apoya en lo que ya estaba definido: ADR-CORRECCION-MONETARIA-001, la política de saldo a favor y la `NotaCredito`.
 
 ---
 
@@ -26,11 +28,12 @@ Un ADR es una decisión escrita que el equipo aprueba **antes** de programar. Es
 
 **Importante:** una **señal** (por ejemplo «una venta fiada compensa un faltante») nunca bloquea ni acusa a nadie; solo avisa para que alguien revise.
 
-**Qué debe decidir el equipo**
-1. ¿Cancelar o anular un pedido lo debe sacar solo del embarque? (propuesta: sí).
-2. Preview sin gastar consecutivos: ¿calcular sin crear (recomendado) o mantener el ensayo y aceptar que gasta?
-3. ¿Qué umbral usar para pedir una nota cuando sobra plata en caja?
-4. Quién tiene el permiso específico para excepciones.
+**Decisiones tomadas (PO, 2026-10-24)**
+1. Cancelar o anular un pedido lo saca solo del embarque: **sí**.
+2. Resumen sin gastar consecutivos: se **calcula sin crear nada**.
+3. Permisos para excepciones: **ya estaban definidos** (la entidad `PedidoExcepcionCredito` y el permiso por usuario `puedeAutorizarExcepcionCredito` ya existen en el sistema; no se inventa otro).
+
+**Falta una sola decisión:** el umbral para pedir una nota cuando **sobra** plata en caja. Hoy solo el faltante tiene umbral ($5.000). Propuesta: usar el mismo valor.
 
 ---
 
@@ -53,11 +56,13 @@ Un ADR es una decisión escrita que el equipo aprueba **antes** de programar. Es
 
 **Lo que no cambia:** el saldo del pedido sigue siendo la fuente de verdad; un pago «reportado» no es «confirmado»; un saldo sin cobrar no es un fiado aprobado.
 
-**Qué debe decidir el PO**
-1. Quién puede corregir precios y quién autoriza una reducción.
-2. Si ya pagó de más: ¿devolución, saldo a favor o ambas?
-3. Si la reducción necesita nota crédito fiscal (consultar con contabilidad).
-4. A partir de qué diferencia de precio se avisa («precio raro»).
+**Decisiones tomadas (PO, 2026-10-24)**
+1. **Corrige un precio:** admin y asistente. **Autoriza:** admin.
+2. Si el cliente pagó de más: **saldo a favor** (regla que ya existía en `POLITICA_SALDO_FAVOR…`).
+3. Reducción con nota de crédito: **sí**. Ya estaba definido: la entidad `NotaCredito` existe y la usan anular y cancelar.
+4. «Precio raro»: menos de **$2.000** en pacas de agua o de hielo, menos de **$7.500** en botellones. Solo un admin puede aplicarlo.
+
+**Cómo queda el ejemplo del precio:** la asistente corrige el precio de Carlos de $2.300 a $2.000. Queda como solicitud; el admin la autoriza y recién ahí se recalcula el total. Si en cambio alguien intentara poner $1.500 por paca (menos de $2.000), el sistema lo marca como precio raro y solo un admin puede aplicarlo.
 
 ---
 

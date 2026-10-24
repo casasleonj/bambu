@@ -1,6 +1,6 @@
 # ADR-CIERRE-002 — Integridad del cierre de embarque (addendum a ADR-CIERRE-001)
 
-- Estado: **PROPUESTO — borrador para revisión del equipo** (no aprobado, no implementado)
+- Estado: **PROPUESTO — decisiones del PO del 2026-10-24 incorporadas; pendiente de aprobación final** (no implementado)
 - Fecha: 2026-10-24
 - Fuente: épica #447; hallazgos #438, #444, #445, #448, #449, #450; decisiones D1, D4, D5, D6, D9, D12 de `docs/embarques/2026-10-23-cierre-v2-resumen-para-revision.md`
 - Fase de implementación: Fase B del cierre V2
@@ -30,12 +30,10 @@ El cierre exige que `pedidos[]` contenga **exactamente** los pedidos vigentes de
 
 ### 2. Pedidos no entregables (#448)
 Un pedido `CANCELADO`, `ANULADO` o ya `ENTREGADO` no puede registrarse como entrega nueva: `409 PEDIDO_NO_ENTREGABLE`. La pantalla lo muestra como «Cancelado — no se entrega».
-- **Pregunta abierta (D5):** ¿`cancelar`/`anular` un pedido debe soltarlo del embarque automáticamente? (Propuesta: sí, con aviso al embarque.)
+- **Decidido por el PO (2026-10-24):** `cancelar`/`anular` un pedido lo suelta automáticamente del embarque, con aviso al embarque.
 
 ### 3. Preview sin efectos (#438)
-El preview no debe consumir secuencias ni escribir. Dos opciones:
-- **A (recomendada):** calcular el resultado sin crear documentos (los números se muestran como «se asignarán al confirmar»).
-- **B:** mantener el dry-run con rollback y aceptar que consume números (se descarta por violar «repetir el preview no cambia nada»).
+El preview no debe consumir secuencias ni escribir. **Decidido por el PO (2026-10-24): opción A** — calcular el resultado sin crear documentos (los números se muestran como «se asignarán al confirmar»). Se descarta mantener el dry-run con rollback porque consume números y viola «repetir el preview no cambia nada».
 Además: un `4xx` del preview es un rechazo real y bloquea «Confirmar» (D1); solo red o 5xx son «estimado local».
 
 ### 4. Venta libre completa (#445, #450, D4, D9)
@@ -47,13 +45,16 @@ Además: un `4xx` del preview es un rechazo real y bloquea «Confirmar» (D1); s
 - Pago sin productos ⇒ `400`.
 
 ### 5. Señales, no acusaciones (#450, D6)
-El servidor devuelve en el preview/cierre una lista de **señales** que nunca bloquean ni crean deuda: venta libre fiada que compensa faltante, pedido corregido a la baja, sobrante de caja sobre el umbral, cambios sin pedido en la ruta. El sobrante de caja sobre el umbral (por definir; propuesta: el mismo `UMBRAL_MINIMO_FALTANTE_CAJA`) exige nota.
+El servidor devuelve en el preview/cierre una lista de **señales** que nunca bloquean ni crean deuda: venta libre fiada que compensa faltante, pedido corregido a la baja, sobrante de caja sobre el umbral, cambios sin pedido en la ruta. El sobrante de caja sobre un umbral exige nota. **Pendiente de decidir el umbral:** hoy solo el faltante tiene umbral (`UMBRAL_MINIMO_FALTANTE_CAJA = 5000`); el sobrante no tiene ninguno definido. Propuesta: el mismo valor.
 
 ### 6. Límites de entrada (#444)
 Topes explícitos (monto por gasto, largo de notas, número de gastos y de ventas libres) y respuestas `400` con mensaje, nunca `500`.
 
 ### 7. Permisos (D12)
-Registrar el cierre sigue siendo ADMIN/ASISTENTE. Aprobar excepciones de crédito o de precio, o afectar a un tercero, exige un **permiso específico**, no basta el rol.
+Ya estaba definido, no se inventa nada nuevo:
+- Registrar el cierre sigue siendo ADMIN/ASISTENTE.
+- Las excepciones de crédito usan lo que ya existe: la entidad `PedidoExcepcionCredito` y el permiso por usuario `User.puedeAutorizarExcepcionCredito` (diseño F2), sobre el principio de ADR-AUTORIZACION-REGALOS-001: el repartidor registra hechos y no autoriza; el administrador autoriza excepciones y precios.
+- La venta libre fiada a un cliente bloqueado reutiliza ese mismo flujo.
 
 ## Qué NO se decide aquí
 - Reducción comercial aceptada (issue #451) y escasez/reasignación (issue #452): ADR propios.
