@@ -96,6 +96,21 @@ describe('WorkspaceEntrega — zona adaptativa (F-ENTREGA-i)', () => {
     expect(onUbicacionChange).toHaveBeenCalledWith(null, null)
   })
 
+  it('con ubicación guardada y sin ubicación propia avisa que se usa y cómo cambiarla solo en el pedido (#459)', () => {
+    render(<WorkspaceEntrega {...common} entrega={base({ estado: 'SUFICIENTE', coords: { lat: 4.65, lng: -74.05, origen: 'MANUAL' } })} />)
+    fireEvent.click(screen.getByTestId('workspace-entrega-cambiar'))
+    expect(screen.getByTestId('workspace-entrega-ubicacion-guardada')).toHaveTextContent(/Ubicación guardada/)
+    expect(screen.getByTestId('workspace-entrega-link')).toBeInTheDocument()
+  })
+
+  it('sin ubicación guardada no muestra el aviso; con ubicación propia tampoco (#459)', () => {
+    const { unmount } = render(<WorkspaceEntrega {...common} entrega={base({ estado: 'INSUFICIENTE', faltaBloqueante: ['direccion', 'ubicacion'] })} />)
+    expect(screen.queryByTestId('workspace-entrega-ubicacion-guardada')).not.toBeInTheDocument()
+    unmount()
+    render(<WorkspaceEntrega {...common} entregaLat={4.7} entregaLng={-74.1} entrega={base({ estado: 'INSUFICIENTE', faltaBloqueante: ['direccion'], coords: { lat: 4.65, lng: -74.05, origen: 'MANUAL' } })} />)
+    expect(screen.queryByTestId('workspace-entrega-ubicacion-guardada')).not.toBeInTheDocument()
+  })
+
   it('no recalcula suficiencia: sólo lee `entrega.estado` (guardrail de fuente)', () => {
     // El componente no importa resolverEntrega ni deriva el estado.
     // (verificación estática simple)
