@@ -609,12 +609,32 @@ test.describe('Clientes Resumen Facturas API', () => {
     expect(body.totales).toBeDefined()
   })
 
-  test('GET resumen-facturas con periodo mayor a 3 meses retorna 400', async ({ page: _page }) => {
+  test('GET resumen-facturas acepta un periodo mayor a 3 meses (#466: sin tope)', async ({ page: _page }) => {
     const c = await createCliente(p)
     const hoy = new Date().toISOString().split('T')[0]
     const hace4meses = new Date(Date.now() - 120 * 86400000).toISOString().split('T')[0]
 
     const res = await apiGet(p, `/api/clientes/${c.cliente.id}/resumen-facturas?desde=${hace4meses}&hasta=${hoy}`)
+    expect(res.status()).toBe(200)
+    const body = await res.json()
+    expect(body.periodo).toEqual({ desde: hace4meses, hasta: hoy })
+  })
+
+  test('GET resumen-facturas sin fechas devuelve el historial completo', async ({ page: _page }) => {
+    const c = await createCliente(p)
+
+    const res = await apiGet(p, `/api/clientes/${c.cliente.id}/resumen-facturas`)
+    expect(res.status()).toBe(200)
+    const body = await res.json()
+    expect(body.periodo).toEqual({ desde: null, hasta: null })
+  })
+
+  test('GET resumen-facturas con rango invertido retorna 400', async ({ page: _page }) => {
+    const c = await createCliente(p)
+    const hoy = new Date().toISOString().split('T')[0]
+    const ayer = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+
+    const res = await apiGet(p, `/api/clientes/${c.cliente.id}/resumen-facturas?desde=${hoy}&hasta=${ayer}`)
     expect(res.status()).toBe(400)
   })
 
