@@ -282,6 +282,8 @@ model User {
 
   // ADR-PAGO-REPORTADO-CONFIRMADO-001: pagos que este usuario confirmó/marcó discrepantes.
   pagosConfirmados Pago[] @relation("PagoConfirmador")
+  regularizacionesAutorizadas Regularizacion[] @relation("RegularizacionAutorizador")
+  regularizacionesEjecutadas  Regularizacion[] @relation("RegularizacionEjecutor")
 
   // ADR-CORRECCION-MONETARIA-001: correcciones de abono que este usuario autorizó.
   correccionesAbonoAutorizadas CorreccionAbono[] @relation("CorreccionAbonoAutorizador")
@@ -1122,7 +1124,17 @@ model Pago {
   // pero eso requiere migración DB. Por ahora, se documenta el trade-off
   // y se confía en que el cliente no cambie el body entre reintentos.
   offlineId String? // batch id para dedup offline-first (pagos del mismo batch comparten offlineId)
+  // #402 — tres fechas. `createdAt` es la fecha de REGISTRO: la pone la base
+  // (`now()`), ningún writer la fija a mano y es la que concilia la caja.
   createdAt DateTime   @default(now()) @db.Timestamptz()
+  // Fecha del HECHO (cuándo se cobró). `null` = igual a `createdAt` (pago
+  // normal). Solo difiere en una regularización histórica.
+  ocurridoAt DateTime? @db.Timestamptz()
+  // Lote de regularización que creó este pago (fecha de regularización =
+  // `Regularizacion.ejecutadoAt`). Estos pagos NO entran en la caja del día
+  // en que se registran (cierre de caja + regla V14).
+  regularizacionId String?
+  regularizacion   Regularizacion? @relation(fields: [regularizacionId], references: [id], onDelete: Restrict)
 
   // ADR-PAGO-REPORTADO-CONFIRMADO-001: ¿este dinero fue verificado?
   // El detalle de una discrepancia vive en el `ResponsibilityCase`, NO acá.
@@ -1142,6 +1154,28 @@ model Pago {
   @@index([offlineId])
   @@index([confirmacion])
   @@index([embarqueId])
+  @@index([regularizacionId])
+}
+
+/// #402 — Regularización histórica de pagos (plan de integridad v1.2 §5.D).
+/// Cada lote es una autorización aparte: quién la autorizó, quién la ejecutó,
+/// con qué evidencia y sobre qué simulación (hash del dry-run revisado).
+/// Append-only: los pagos que crea apuntan aquí por `Pago.regularizacionId`.
+model Regularizacion {
+  id              String   @id @default(cuid())
+  lote            String   @unique
+  motivo          String   @db.Text
+  evidencia       String?  @db.Text
+  autorizadoPorId String
+  autorizadoPor   User     @relation("RegularizacionAutorizador", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
+  ejecutadoPorId  String
+  ejecutadoPor    User     @relation("RegularizacionEjecutor", fields: [ejecutadoPorId], references: [id], onDelete: Restrict)
+  ejecutadoAt     DateTime @default(now()) @db.Timestamptz()
+  simulacionHash  String?
+  pagos           Pago[]
+
+  @@index([autorizadoPorId])
+  @@index([ejecutadoPorId])
 }
 
 // ====================

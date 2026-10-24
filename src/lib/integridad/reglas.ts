@@ -11,9 +11,6 @@ import { Prisma } from '@prisma/client'
  *
  * Las consultas se ejecutan dentro de una transacción READ ONLY
  * (`verificar.ts`); ninguna regla escribe ni corrige.
- *
- * V14 (pago de regularización contado en la caja de su fecha de registro)
- * depende de `Pago.regularizacionId` (PR-D) y se agrega con ese cambio.
  */
 
 export type Severidad = 'CRITICA' | 'ALTA' | 'MEDIA' | 'INFO'
@@ -256,6 +253,36 @@ export const REGLAS: readonly Regla[] = [
       WHERE p.canal = 'PUNTO' AND p."estadoEntrega" = 'PENDIENTE' AND ${ACTIVO}
         AND p."createdAt" < now() - interval '24 hours'
       ORDER BY p.numero`,
+  },
+  {
+    // #402: un pago de regularización (`Pago.regularizacionId`) describe un
+    // cobro de otro día y no debe entrar en la caja del día en que se registró.
+    // El cierre guarda el total por método de los pagos capturados ese día
+    // (cierre/route.ts); si coincide con el total INCLUYENDO los de
+    // regularización (y no sin ellos), el cierre los contó.
+    id: 'V14',
+    titulo: 'Pago de regularización contado en la caja de su fecha de registro',
+    severidad: 'CRITICA',
+    consulta: () => Prisma.sql`
+      WITH capturados AS (
+        SELECT c.id AS cierre, g.metodo,
+          COALESCE(SUM(g.monto) FILTER (WHERE g."regularizacionId" IS NULL), 0) AS normales,
+          COALESCE(SUM(g.monto) FILTER (WHERE g."regularizacionId" IS NOT NULL), 0) AS regularizados
+        FROM "CierreDia" c
+        JOIN "Pago" g ON g."createdAt" >= c.fecha AND g."createdAt" < c.fecha + interval '1 day'
+        JOIN "Pedido" p ON p.id = g."pedidoId" AND p."estadoEntrega" NOT IN ('ANULADO', 'CANCELADO')
+        GROUP BY c.id, g.metodo
+      )
+      SELECT c.id AS ref, NULL::int AS numero,
+        json_build_object('fecha', c.fecha, 'metodo', k.metodo, 'enCierre', t.en_cierre::float8,
+          'pagosNormales', k.normales::float8, 'pagosRegularizacion', k.regularizados::float8) AS detalle
+      FROM capturados k
+      JOIN "CierreDia" c ON c.id = k.cierre
+      CROSS JOIN LATERAL (SELECT CASE k.metodo
+        WHEN 'EFECTIVO' THEN c.efectivo WHEN 'NEQUI' THEN c.nequi WHEN 'DAVIPLATA' THEN c.daviplata
+        WHEN 'TRANSFERENCIA' THEN c.transferencia WHEN 'BONO' THEN c.bono END AS en_cierre) t
+      WHERE k.regularizados > 0 AND t.en_cierre = k.normales + k.regularizados
+      ORDER BY c.fecha, k.metodo`,
   },
   {
     id: 'V15',

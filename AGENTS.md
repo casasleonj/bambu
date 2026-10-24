@@ -247,7 +247,7 @@ vercel --prod
 | `src/lib/geo/pedido-coords.ts` | Regla única de coords efectivas del pedido (`pickCoords`: negocio gana, fallback cliente) |
 | `src/lib/geo/expand-short-maps-url.ts` | Expansión server-only de short URLs de Maps (allowlist SSRF, tope redirects, timeout) |
 | `src/lib/geo/backfill-negocio-coords.ts` | Backfill de coords de negocio (linkUbicacion parseado → mediana GPS historial) |
-| `src/lib/integridad/` | Verificador de integridad de solo lectura (reglas V1–V15 en una transacción READ ONLY). Expuesto en `GET /api/integridad` (ADMIN) y `npx tsx scripts/verificar-integridad.ts [--json]`. No escribe, no notifica, no corrige |
+| `src/lib/integridad/` | Verificador de integridad de solo lectura (reglas V1–V15 en una transacción READ ONLY; V14 = pago de regularización contado en la caja de su fecha de registro, #402). Expuesto en `GET /api/integridad` (ADMIN) y `npx tsx scripts/verificar-integridad.ts [--json]`. No escribe, no notifica, no corrige |
 | `src/app/api/negocios/[id]/geocode/route.ts` | Endpoint de geocode de negocio (usado por el botón "Actualizar coordenadas") |
 | `src/app/(app)/clientes/clientes-client/panel-prefetch.ts` | Caché TTL 60s/LRU 20 + prefetch de stats/historial del panel de cliente (fetch plano, nunca fetchResilient; invalidación vía realtime pedido.*/pago.*/embarque.*) |
 | `src/modules/dashboard/` | DDD pilot — domain/application/infrastructure/presentation |

@@ -269,7 +269,7 @@ export async function GET(request: NextRequest) {
       // `pago.createdAt`, no por `pedido.fecha` — un pago de fiado de hoy sobre
       // un pedido viejo también cuenta).
       prisma.pago.findMany({
-        where: { confirmacion: 'REPORTADO', createdAt: dateRange },
+        where: { confirmacion: 'REPORTADO', createdAt: dateRange, regularizacionId: null },
         select: { metodo: true, monto: true },
       }),
       // ...y los REPORTADO de días anteriores (advertencia, no bloquea).
@@ -288,6 +288,9 @@ export async function GET(request: NextRequest) {
       prisma.pago.findMany({
         where: {
           createdAt: dateRange,
+          // #402: un pago de regularización describe un cobro de otro día; no
+          // entró a la caja del día en que se registró.
+          regularizacionId: null,
           pedido: { estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
         },
         select: { metodo: true, monto: true },
@@ -534,7 +537,7 @@ export async function POST(request: NextRequest) {
   // su predicate-lock set (esta consulta escanea todo el histórico REPORTADO).
   const [pagosReportadosHoyRaw, reportadosDiasPreviosAgg] = await Promise.all([
     prisma.pago.findMany({
-      where: { confirmacion: 'REPORTADO', createdAt: { gte: startOfDay, lt: nextDay } },
+      where: { confirmacion: 'REPORTADO', createdAt: { gte: startOfDay, lt: nextDay }, regularizacionId: null },
       select: { metodo: true, monto: true },
     }),
     prisma.pago.aggregate({
@@ -602,6 +605,7 @@ export async function POST(request: NextRequest) {
           tx.pago.findMany({
             where: {
               createdAt: { gte: startOfDay, lt: nextDay },
+              regularizacionId: null, // #402: ver nota en el GET
               pedido: { estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
             },
             select: { metodo: true, monto: true },
