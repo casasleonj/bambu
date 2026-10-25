@@ -266,6 +266,9 @@ describe('Fase 2 — suficiencia de domicilio (Postgres real)', () => {
   describe('Recurrentes (D4)', () => {
     it('plantilla sin destino utilizable se salta con motivo: sin pedido, sin crédito ni factura; las demás se generan', async () => {
       const hoy = new Date()
+      // Los domingos la generación reprograma la plantilla al lunes (recurrentes.ts) antes de evaluar el
+      // destino: el test fija el día hábil siguiente para no depender del día en que corre.
+      if (hoy.getDay() === 0) hoy.setDate(hoy.getDate() + 1)
       const mkCliente = (nombre: string, direccion: string | null) => testPrisma.cliente.create({
         data: { nombre, telefono: uniqueId('t'), direccion, barrio: null, activo: true },
       })
