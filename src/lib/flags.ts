@@ -23,3 +23,12 @@ export function pedidosV2Enabled(): boolean {
 export function cierreV2Enabled(): boolean {
   return process.env.NEXT_PUBLIC_CIERRE_V2 === 'true'
 }
+
+/**
+ * `NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR` — «Entregar después» en la venta
+ * rápida (ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001): el cliente paga hoy y recoge o
+ * recibe después. OFF por defecto; el servidor ignora `entregado: false` sin él.
+ */
+export function ventaRutaEntregaPosteriorEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR === 'true'
+}

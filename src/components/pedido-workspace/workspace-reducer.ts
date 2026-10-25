@@ -85,11 +85,14 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         guardarDireccionEnCliente: false,
         // CONSUMIDOR_FINAL ⇒ origen VENTA_RAPIDA (ventaRapida→origen, PO 2026-09-06)
         origen: action.clienteId === 'CONSUMIDOR_FINAL' ? 'VENTA_RAPIDA' as const : 'PEDIDO' as const,
+        // sin comprador no hay «entregar después» (P2-2)
+        ...(action.clienteId === 'CONSUMIDOR_FINAL' && state.draft.entregado === false ? { entregado: true } : {}),
       }
       return afterDraftChange(state, draft)
     }
     case 'CLEAR_CLIENTE':
-      return afterDraftChange(state, { ...state.draft, clienteId: null, clienteNuevo: undefined, excepcionId: undefined, negocioId: null, entregaLat: null, entregaLng: null, guardarDireccionEnCliente: false })
+      // «Entregar después» exige comprador (P2-2): sin él vuelve a «ahora».
+      return afterDraftChange(state, { ...state.draft, ...(state.draft.entregado === false ? { entregado: true } : {}), clienteId: null, clienteNuevo: undefined, excepcionId: undefined, negocioId: null, entregaLat: null, entregaLng: null, guardarDireccionEnCliente: false })
     case 'SET_EXCEPCION':
       return afterDraftChange(state, { ...state.draft, excepcionId: action.excepcionId })
     case 'SET_CLIENTE_NUEVO': {
@@ -112,7 +115,12 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return afterDraftChange(state, draft)
     }
     case 'SET_CANAL':
-      return afterDraftChange(state, { ...state.draft, canal: action.canal })
+      // «Entregar después» solo existe en Punto (P2-2): al pasar a Domicilio vuelve a «ahora».
+      return afterDraftChange(state, {
+        ...state.draft,
+        canal: action.canal,
+        ...(action.canal !== 'PUNTO' && state.draft.entregado === false ? { entregado: true } : {}),
+      })
     case 'SET_GUARDAR_DIRECCION_EN_CLIENTE':
       return { ...state, draft: { ...state.draft, guardarDireccionEnCliente: action.value } }
     case 'SET_SOLO_PARA_ESTE_PEDIDO':

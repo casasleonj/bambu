@@ -645,6 +645,9 @@ jobs:
       # El flag: leído por el runner de Playwright (los `test.skip(!HUB_ON)`
       # de los specs) y por el build de abajo (Next.js lo inlinea).
       NEXT_PUBLIC_PEDIDOS_V2: 'true'
+      # P2-2 (#463): «Entregar después» en la venta rápida del Hub (el servidor
+      # también lo lee al crear). Solo este job lo enciende; `e2e` no cambia.
+      NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR: 'true'
 
     steps:
       - name: Checkout repository
@@ -702,6 +705,7 @@ jobs:
         run: npm run build
         env:
           NEXT_PUBLIC_PEDIDOS_V2: 'true'
+          NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR: 'true'
 
       - name: Copy static assets into standalone build
         run: |

@@ -601,6 +601,56 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     expect(enBD.direccionEntrega).toBeNull()
   })
 
+  // P2-2 (#463): «Entregar después» solo existe con NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR
+  // (el job «E2E Hub» lo enciende en el build y en el servidor).
+  test.describe('«Entregar después» (P2-2)', () => {
+    test.skip(process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR !== 'true', 'requiere NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR=true')
+
+    test('con comprador y pagada completa: queda pendiente y anticipada, con su pago', async ({ browser }) => {
+      const page = await sharedLoginAs(browser, 'admin')
+      const app = appMain(page)
+      const nombre = `Persona Despues ${Date.now()}`
+      const { cliente } = await createCliente(page, { nombre })
+      await page.goto(`${BASE}/pedidos`)
+      await app.getByTestId('fab-main').click()
+      await page.getByTestId('fab-venta-rapida').click()
+      await page.getByTestId('workspace-identificar').click()
+      await page.getByTestId('cliente-search-input').fill(nombre)
+      await page.getByTestId('cliente-search-result').first().click()
+      await expect(page.getByTestId('comprador-nombre')).toContainText(nombre)
+      await page.getByTestId('workspace-inc-PACA_AGUA').click()
+      await page.getByTestId('dinero-pagar-completo-EFECTIVO').click()
+      await page.getByTestId('workspace-entrega-despues').click()
+      await expect(page.getByTestId('workspace-entrega-despues-aviso')).toContainText('pendiente')
+      await expect(page.getByTestId('workspace-commit')).toContainText('Registrar venta pagada', { timeout: 10000 })
+
+      const enBD = await crearYLeer(page)
+      const conPagos = await prisma.pedido.findUniqueOrThrow({ where: { id: enBD.id }, include: { pagos: true } })
+      expect(conPagos.clienteId).toBe(cliente.id)
+      expect(conPagos.origen).toBe('PEDIDO')
+      expect(conPagos.estadoEntrega).toBe('PENDIENTE')
+      expect(conPagos.estadoPago).toBe('ANTICIPADO')
+      expect(Number(conPagos.saldo)).toBe(0)
+      expect(conPagos.pagos.length).toBeGreaterThan(0)
+    })
+
+    test('sin comprador no se puede dejar para después; «ahora» vuelve a permitirlo', async ({ browser }) => {
+      const page = await sharedLoginAs(browser, 'admin')
+      const app = appMain(page)
+      await page.goto(`${BASE}/pedidos`)
+      await app.getByTestId('fab-main').click()
+      await page.getByTestId('fab-venta-rapida').click()
+      await page.getByTestId('workspace-inc-PACA_AGUA').click()
+      await page.getByTestId('dinero-pagar-completo-EFECTIVO').click()
+      await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+      await page.getByTestId('workspace-entrega-despues').click()
+      await expect(page.getByTestId('workspace-entrega-despues-sin-comprador')).toBeVisible()
+      await expect(page.getByTestId('workspace-commit')).toBeDisabled()
+      await page.getByTestId('workspace-entrega-ahora').click()
+      await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    })
+  })
+
   // P1-3 (#394, B-05): el comprador se identifica DENTRO de la venta rápida, sea una
   // tienda o una persona, y se verifica en la base de datos.
   test('workspace (P1-3): venta rápida con comprador identificado — tienda elegida de un toque, pedido de la tienda pagado', async ({ browser }) => {

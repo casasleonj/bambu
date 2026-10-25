@@ -287,4 +287,30 @@ describe('P1-4 (#419) — destino propio del pedido', () => {
     expect(otraTienda.draft.guardarDireccionEnCliente).toBe(false)
     expect(otraTienda.draft.direccionEntrega).toBe('Cra 7')
   })
+
+  describe('«Entregar después» (P2-2, #463)', () => {
+    const conDespues = () => {
+      let st = workspaceReducer(s0(), { type: 'SET_CLIENTE', clienteId: 'c1' })
+      st = workspaceReducer(st, { type: 'SET_ENTREGADO', entregado: false })
+      return st
+    }
+
+    it('SET_ENTREGADO(false) deja la entrega para después', () => {
+      expect(conDespues().draft.entregado).toBe(false)
+    })
+
+    it('pasar a Domicilio vuelve a «entregar ahora»; seguir en Punto lo conserva', () => {
+      expect(workspaceReducer(conDespues(), { type: 'SET_CANAL', canal: 'DOMICILIO' }).draft.entregado).toBe(true)
+      expect(workspaceReducer(conDespues(), { type: 'SET_CANAL', canal: 'PUNTO' }).draft.entregado).toBe(false)
+    })
+
+    it('quitar al comprador vuelve a «entregar ahora»', () => {
+      expect(workspaceReducer(conDespues(), { type: 'CLEAR_CLIENTE' }).draft.entregado).toBe(true)
+      expect(workspaceReducer(conDespues(), { type: 'SET_CLIENTE', clienteId: 'CONSUMIDOR_FINAL' }).draft.entregado).toBe(true)
+    })
+
+    it('cambiar de un comprador a otro conserva la elección', () => {
+      expect(workspaceReducer(conDespues(), { type: 'SET_CLIENTE', clienteId: 'c2' }).draft.entregado).toBe(false)
+    })
+  })
 })

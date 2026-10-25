@@ -14,6 +14,8 @@ export interface PedidoCommitBarProps {
   modoEdicion?: boolean
   /** B-20: sin red el pedido se guarda en este equipo y se envía al reconectar. */
   sinConexion?: boolean
+  /** etiqueta propia del botón de crear (p. ej. «Registrar venta pagada» al entregar después). */
+  etiquetaCrear?: string
   onCommit: () => void
   onCancel?: () => void
 }
@@ -33,11 +35,12 @@ export function PedidoCommitBar({
   blockedReason,
   modoEdicion = false,
   sinConexion = false,
+  etiquetaCrear,
   onCommit,
   onCancel,
 }: PedidoCommitBarProps) {
   const totalLabel = total != null ? ` $${total.toLocaleString()}` : ''
-  const verbo = modoEdicion ? 'Guardar cambios' : sinConexion ? `Guardar sin conexión${totalLabel}` : `Crear pedido${totalLabel}`
+  const verbo = modoEdicion ? 'Guardar cambios' : sinConexion ? `Guardar sin conexión${totalLabel}` : `${etiquetaCrear ?? 'Crear pedido'}${totalLabel}`
 
   let label: string
   let enabled = false

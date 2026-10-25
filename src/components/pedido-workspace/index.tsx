@@ -15,6 +15,8 @@ import { PedidoCommitBar } from './pedido-commit-bar'
 import { WorkspaceEntrega } from './workspace-entrega'
 import { WorkspaceComprador } from './workspace-comprador'
 import { WorkspaceDinero } from './workspace-dinero'
+import { WorkspaceEntregaMomento } from './workspace-entrega-momento'
+import { ventaRutaEntregaPosteriorEnabled } from '@/lib/flags'
 import { PedidoItemEditor, type PedidoItemEditorItem } from '@/components/pedido-form-unified/pedido-item-editor'
 import { PedidoContextPanel, type NuevoClienteForm } from '@/components/pedido-form-unified/pedido-context-panel'
 import { resolveActualizarCliente } from '@/components/pedido-form-unified/resolve-actualizar-cliente'
@@ -361,14 +363,22 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
   const accionCommit = modoEdicion ? 'actualizar' : 'crear'
   const hasDraftItems = state.draft.items.some((i) => i.cantidad > 0)
   const sinConexion = state.sinConexion && !modoEdicion
+  // P2-2 (#463): «Entregar después» solo en venta rápida a Punto, al crear y con el flag activo.
+  const entregaPosterior = ventaRutaEntregaPosteriorEnabled() && !modoEdicion && intent === 'venta-rapida' && state.draft.canal === 'PUNTO'
+  const entregarDespues = entregaPosterior && state.draft.entregado === false
+  const tieneComprador = Boolean(clienteSeleccionado) || Boolean(state.draft.clienteNuevo)
+  const faltaCompradorParaDespues = entregarDespues && !tieneComprador
+  const pagadoCompleto = (calc?.saldoProyectado ?? 1) <= 0
   const commitEnabled = canCommit(state, accionCommit)
     && (state.phase === 'PREVIEW_READY' || (sinConexion && state.phase === 'DRAFTING'))
+    && !faltaCompradorParaDespues
   // B-20: sin preview del servidor, el cobro "completo" usa un total estimado con la tabla ya cargada.
   const totalEstimado = sinConexion && !calc
     ? estimarTotalOffline(state.draft.items, state.draft.canal, tabla, configs)
     : null
-  const blockedReason =
-    state.preview && !state.preview.allowedActions.includes(accionCommit)
+  const blockedReason = faltaCompradorParaDespues
+    ? 'Para entregar después hay que identificar al comprador.'
+    : state.preview && !state.preview.allowedActions.includes(accionCommit)
       ? (state.preview.warnings[0]?.message ?? `El backend no permite ${modoEdicion ? 'guardar' : 'crear'} este pedido.`)
       : null
 
@@ -662,6 +672,16 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
         />
       )}
 
+      {entregaPosterior && (
+        <WorkspaceEntregaMomento
+          entregarDespues={entregarDespues}
+          onChange={(despues) => dispatch({ type: 'SET_ENTREGADO', entregado: !despues })}
+          tieneComprador={tieneComprador}
+          pagadoCompleto={pagadoCompleto}
+          disabled={state.phase === 'COMMITTING' || state.phase === 'COMMITTED'}
+        />
+      )}
+
       {sinConexion && (
         <p role="status" data-testid="workspace-offline-aviso" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           Sin conexión: el pedido se guarda en este equipo y se envía solo al reconectar. El total, los precios especiales y los límites de crédito se confirman al sincronizar.
@@ -716,6 +736,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
         blockedReason={blockedReason}
         modoEdicion={modoEdicion}
         sinConexion={sinConexion}
+        etiquetaCrear={entregarDespues ? (pagadoCompleto ? 'Registrar venta pagada' : 'Registrar venta') : undefined}
         onCommit={handleCommit}
         onCancel={onCancel}
       />
