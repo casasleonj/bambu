@@ -1710,9 +1710,16 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             return merged
           })
         }
+      } else if (res) {
+        // El listado no trae campos del detalle (p. ej. si un precio manual fue autorizado):
+        // sin aviso, la copia del listado pasaría por la definitiva (#467).
+        toast.warning('No se pudo cargar todo el detalle del pedido. Algunos datos pueden estar incompletos.', { id: 'detalle-pedido-incompleto' })
       }
     } catch {
-      // Keep showing the list copy if the detail fetch fails.
+      // Se sigue mostrando la copia del listado, pero se avisa que puede estar incompleta (#467).
+      if (seq === detailSeqRef.current) {
+        toast.warning('No se pudo cargar todo el detalle del pedido. Algunos datos pueden estar incompletos.', { id: 'detalle-pedido-incompleto' })
+      }
     }
 
     // Fetch current prices for comparison
