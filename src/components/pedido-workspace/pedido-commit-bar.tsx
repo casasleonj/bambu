@@ -16,6 +16,8 @@ export interface PedidoCommitBarProps {
   sinConexion?: boolean
   /** etiqueta propia del botón de crear (p. ej. «Registrar venta pagada» al entregar después). */
   etiquetaCrear?: string
+  /** #425: el pago aplicado cubre el total (según el preview): el botón dice «Cobrar». */
+  cobrado?: boolean
   onCommit: () => void
   onCancel?: () => void
 }
@@ -36,11 +38,13 @@ export function PedidoCommitBar({
   modoEdicion = false,
   sinConexion = false,
   etiquetaCrear,
+  cobrado = false,
   onCommit,
   onCancel,
 }: PedidoCommitBarProps) {
   const totalLabel = total != null ? ` $${total.toLocaleString()}` : ''
-  const verbo = modoEdicion ? 'Guardar cambios' : sinConexion ? `Guardar sin conexión${totalLabel}` : `${etiquetaCrear ?? 'Crear pedido'}${totalLabel}`
+  const verboCrear = etiquetaCrear ?? (cobrado ? 'Cobrar' : 'Crear pedido')
+  const verbo = modoEdicion ? 'Guardar cambios' : sinConexion ? `Guardar sin conexión${totalLabel}` : `${verboCrear}${totalLabel}`
 
   let label: string
   let enabled = false

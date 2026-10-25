@@ -369,6 +369,8 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
   const tieneComprador = Boolean(clienteSeleccionado) || Boolean(state.draft.clienteNuevo)
   const faltaCompradorParaDespues = entregarDespues && !tieneComprador
   const pagadoCompleto = (calc?.saldoProyectado ?? 1) <= 0
+  // #425: «Cobrar» solo si hay dinero aplicado y el preview del servidor proyecta saldo cero.
+  const cobrado = pagadoCompleto && (calc?.total ?? 0) > 0 && state.draft.pagos.some((p) => p.monto > 0)
   const commitEnabled = canCommit(state, accionCommit)
     && (state.phase === 'PREVIEW_READY' || (sinConexion && state.phase === 'DRAFTING'))
     && !faltaCompradorParaDespues
@@ -737,6 +739,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
         modoEdicion={modoEdicion}
         sinConexion={sinConexion}
         etiquetaCrear={entregarDespues ? (pagadoCompleto ? 'Registrar venta pagada' : 'Registrar venta') : undefined}
+        cobrado={cobrado}
         onCommit={handleCommit}
         onCancel={onCancel}
       />
