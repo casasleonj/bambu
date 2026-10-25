@@ -130,7 +130,8 @@ describe('resumen', () => {
     expect(frases.join(' ')).toContain('ENTREGADO')
     expect(frases.join(' ')).toContain('Andrés')
     expect(frases.join(' ')).toMatch(/Los tiene Andrés/)
-    expect(frases.join(' ')).toMatch(/Quedan debiendo \$48\.000 hasta el 2026-10-30/)
+    expect(frases.join(' ')).toMatch(/Quedan debiendo \$48\.000 hasta el 30 de octubre/)
+    expect(frases[0]).toBe('Se marca como ENTREGADO el 24 de octubre.')
   })
   it('entrega parcial: avisa que el pedido sigue pendiente', () => {
     const p = pedido()

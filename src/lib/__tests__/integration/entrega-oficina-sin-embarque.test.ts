@@ -35,7 +35,7 @@ const diaBogota = (dias: number) => new Date(Date.now() - dias * 86_400_000).toL
 /** Mediodía de Bogotá (17:00Z) de un día YYYY-MM-DD. */
 const mediodia = (dia: string) => `${dia}T17:00:00.000Z`
 
-async function interruptor(valor: 'true' | 'false') {
+async function interruptor(valor: string) {
   await testPrisma.config.upsert({
     where: { clave: CLAVE_GESTION_ADMIN_SIN_EMBARQUE },
     create: { clave: CLAVE_GESTION_ADMIN_SIN_EMBARQUE, valor },
@@ -401,5 +401,19 @@ describe('#472 — entrega de oficina sin embarque (Postgres real)', () => {
     const cancelado = await crearPedido()
     await testPrisma.pedido.update({ where: { id: cancelado }, data: { estadoEntrega: 'CANCELADO', estado: 'CANCELADO', estadoPago: 'ANULADO' } })
     expect((await post(cancelado, { repartidorId })).status).toBe(409)
+  })
+})
+
+describe('#472 — el interruptor se lee siempre de la base (sin caché)', () => {
+  it('apagarlo surte efecto en la lectura inmediata siguiente', async () => {
+    const { gestionAdminSinEmbarqueActiva } = await import('@/lib/gestion-admin')
+    await interruptor('true')
+    expect(await gestionAdminSinEmbarqueActiva()).toBe(true)
+    await interruptor('false')
+    expect(await gestionAdminSinEmbarqueActiva()).toBe(false)
+    await interruptor('TRUE ')
+    expect(await gestionAdminSinEmbarqueActiva()).toBe(true)
+    await testPrisma.config.deleteMany({ where: { clave: CLAVE_GESTION_ADMIN_SIN_EMBARQUE } })
+    expect(await gestionAdminSinEmbarqueActiva()).toBe(false) // sin fila = apagado
   })
 })

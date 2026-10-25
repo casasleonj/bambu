@@ -46,6 +46,11 @@ export function hoyBogota(ahora: Date = new Date()): string {
   return ahora.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 }
 
+/** «25 de octubre» a partir de YYYY-MM-DD (mediodía de Bogotá: sin saltos de día por zona horaria). */
+export function fechaLarga(dia: string): string {
+  return new Date(`${dia}T12:00:00-05:00`).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', timeZone: 'America/Bogota' })
+}
+
 export function sumarDias(dia: string, dias: number): string {
   const d = new Date(`${dia}T12:00:00Z`)
   d.setUTCDate(d.getUTCDate() + dias)
@@ -151,8 +156,8 @@ export function resumen(p: PedidoParaEntrega, d: DatosEntrega, repartidores: Rep
 
   frases.push(
     total
-      ? `Se marca como ENTREGADO el ${d.fecha}.`
-      : `Se registra una entrega parcial el ${d.fecha}: ${unidades}. El pedido sigue pendiente por lo que falta.`,
+      ? `Se marca como ENTREGADO el ${fechaLarga(d.fecha)}.`
+      : `Se registra una entrega parcial el ${fechaLarga(d.fecha)}: ${unidades}. El pedido sigue pendiente por lo que falta.`,
   )
   if (nombreRep) frases.push(`Lo entregó ${nombreRep}.`)
 
@@ -163,7 +168,7 @@ export function resumen(p: PedidoParaEntrega, d: DatosEntrega, repartidores: Rep
   }
   const saldoDespues = Math.max(0, saldoActual(p) - monto)
   if (saldoDespues > 0 && total) {
-    frases.push(`Quedan debiendo ${pesos(saldoDespues)} hasta el ${d.promesa}.`)
+    frases.push(`Quedan debiendo ${pesos(saldoDespues)} hasta el ${fechaLarga(d.promesa)}.`)
   } else if (saldoDespues > 0) {
     frases.push(`Falta cobrar ${pesos(saldoDespues)} del pedido.`)
   } else {

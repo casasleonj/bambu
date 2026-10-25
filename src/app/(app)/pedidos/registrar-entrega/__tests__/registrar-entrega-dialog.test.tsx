@@ -52,7 +52,7 @@ describe('RegistrarEntregaDialog', () => {
     const resumen = screen.getByTestId('re-resumen')
     expect(resumen).toHaveTextContent('ENTREGADO')
     expect(resumen).toHaveTextContent('Andrés')
-    expect(resumen).toHaveTextContent(`hasta el ${manana}`)
+    expect(resumen).toHaveTextContent(/hasta el \d{1,2} de [a-záéíóú]+/)
     expect(screen.getByText(/no se puede deshacer/)).toBeInTheDocument()
   })
 

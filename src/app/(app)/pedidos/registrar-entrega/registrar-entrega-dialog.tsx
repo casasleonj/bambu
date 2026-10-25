@@ -115,6 +115,7 @@ export function RegistrarEntregaDialog({ pedido, repartidores, onClose, onRegist
       data-testid="registrar-entrega"
     >
       <div className="flex flex-col gap-4 p-4">
+        <h2 className="text-lg font-bold text-gray-900">{paso === 'datos' ? 'Registrar entrega' : 'Revisa antes de guardar'}</h2>
         <p className="text-sm text-gray-800">
           Pedido <b>#{pedido.numero}</b> · {pedido.nombreCliente} · {pesos(pedido.total)}
         </p>
