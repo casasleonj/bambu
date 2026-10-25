@@ -20,6 +20,7 @@ import { PrismaEmbarqueProductoRepository } from '@/modules/embarques/infrastruc
 import { PrismaTransactionManager } from '@/modules/embarques/infrastructure/transactions/PrismaTransactionManager'
 import { CerrarEmbarqueUseCase } from '@/modules/embarques/application/use-cases/CerrarEmbarqueUseCase'
 import { CierrePresenter } from '@/modules/embarques/presentation/CierrePresenter'
+import { mapCierreError, toCerrarInput } from '@/modules/embarques/presentation/cierre-http'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
@@ -51,12 +52,7 @@ export async function POST(
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { pedidos, ventasLibres, productos, gastos, dineroEntregado, justificacionDiscrepancia, justificacionFaltante, obs, offlineId } = parsed.data
-
-    // Helper to coerce null to 0 (from Zod .nullish() fields)
-    const n = (v: number | null | undefined): number => v ?? 0
-
-    // Map legacy DTO to DDD input
+    // Map legacy DTO to DDD input (compartido con el preview: mismo mapeo exacto)
     const useCase = new CerrarEmbarqueUseCase(
       embarqueRepo,
       gastoRepo,
@@ -66,53 +62,7 @@ export async function POST(
       session.user?.role,
     )
 
-    const result = await useCase.execute({
-      id,
-      pedidos: pedidos.map((p) => ({
-        pedidoId: p.pedidoId,
-        entregado: p.entregado,
-        productosEntregados: p.productosEntregados ? {
-          cPacaAguaEnt: n(p.productosEntregados.cPacaAguaEnt),
-          cPacaHieloEnt: n(p.productosEntregados.cPacaHieloEnt),
-          cBotellonFabEnt: n(p.productosEntregados.cBotellonFabEnt),
-          cBotellonDomEnt: n(p.productosEntregados.cBotellonDomEnt),
-          cBolsaAguaEnt: n(p.productosEntregados.cBolsaAguaEnt),
-          cBolsaHieloEnt: n(p.productosEntregados.cBolsaHieloEnt),
-        } : undefined,
-        pagos: p.pagos.map((pg) => ({ metodo: pg.metodo, monto: n(pg.monto) })),
-        preciosReales: p.preciosReales ? {
-          pacaAgua: n(p.preciosReales.pacaAgua),
-          pacaHielo: n(p.preciosReales.pacaHielo),
-          botellonFab: n(p.preciosReales.botellonFab),
-          botellonDom: n(p.preciosReales.botellonDom),
-          bolsaAgua: n(p.preciosReales.bolsaAgua),
-          bolsaHielo: n(p.preciosReales.bolsaHielo),
-        } : undefined,
-        nuevoEmbarqueId: p.nuevoEmbarqueId ?? undefined,
-      })),
-      ventasLibres: ventasLibres?.map((v) => ({
-        clienteId: v.clienteId,
-        cPacaAgua: n(v.cPacaAgua),
-        cPacaHielo: n(v.cPacaHielo),
-        cBotellonFab: n(v.cBotellonFab),
-        cBotellonDom: n(v.cBotellonDom),
-        cBolsaAgua: n(v.cBolsaAgua),
-        cBolsaHielo: n(v.cBolsaHielo),
-        pagos: v.pagos.map((pg) => ({ metodo: pg.metodo, monto: n(pg.monto) })),
-        obs: v.obs,
-      })),
-      productosRetorno: productos,
-      gastos: gastos?.map((g) => ({
-        categoria: g.categoria,
-        nota: g.nota,
-        monto: g.monto,
-      })),
-      dineroEntregado,
-      justificacionDiscrepancia,
-      justificacionFaltante,
-      obs,
-      offlineId,
-    })
+    const result = await useCase.execute(toCerrarInput(id, parsed.data, { offlineId: parsed.data.offlineId }))
 
     // Convert to legacy response shape for backward compatibility
     const legacyResponse = CierrePresenter.toLegacyResponse(result)
@@ -147,35 +97,11 @@ export async function POST(
     const message = error instanceof Error ? error.message : 'Unknown'
     logger.error({ err: message }, 'Error cerrando embarque:')
 
-    if (message === 'EMBARQUE_NOT_FOUND') {
-      return apiError('Embarque no encontrado', 404)
-    }
-    if (message === 'EMBARQUE_YA_CERRADO' || message.toLowerCase().includes('transicion')) {
-      return apiError('El embarque ya esta cerrado', 400)
-    }
-    if (message.startsWith('PAGOS_EXCEDIDOS')) {
-      return apiError(message.replace('PAGOS_EXCEDIDOS: ', ''), 400)
-    }
-    // B-12: `COMPLETO` exige cantidad acumulada completa; rechazo determinista.
-    if (message.startsWith('ENTREGA_INCOMPLETA') || message.startsWith('ENTREGA_EXCEDE_PEDIDO') || message.startsWith('ENTREGA_INCONSISTENTE') || message.startsWith('SALIDAS_EXCEDEN_CARGA')) {
-      return apiError(message.replace(/^(?:ENTREGA_(?:INCOMPLETA|EXCEDE_PEDIDO|INCONSISTENTE)|SALIDAS_EXCEDEN_CARGA): /, ''), 400)
-    }
-    // Defensa en profundidad: el guard de dominio `PAGOS_EXCEDIDOS`
-    // (procesar-pedido.service.ts) corre ANTES del `pedido.update` y es exacto,
-    // pero si algún camino no cubierto persiste `totalPagado > total`, la CHECK
-    // de Postgres (`chk_pedido_montopagado_le_total`) lo ataja. Sin este map
-    // salía como 500 genérico.
-    if (message.includes('chk_pedido_montopagado_le_total')) {
-      return apiError('Los pagos registrados exceden el total del pedido. Revisá los montos.', 400)
-    }
-    if (message.startsWith('EMBARQUE_DESTINO_NOT_FOUND')) {
-      return apiError(message.replace('EMBARQUE_DESTINO_NOT_FOUND: ', ''), 404)
-    }
-    if (message.startsWith('EMBARQUE_DESTINO_NO_DISPONIBLE')) {
-      return apiError(message.replace('EMBARQUE_DESTINO_NO_DISPONIBLE: ', ''), 400)
+    const conocido = mapCierreError(message)
+    if (conocido) {
+      return apiError(conocido.message, conocido.status, conocido.code ? { code: conocido.code } : undefined)
     }
 
-    logger.error({ err: message }, 'Error cerrando embarque:')
     return apiError('Error al cerrar embarque', 500)
   }
 }

@@ -50,6 +50,12 @@ const BASE: Array<{ key: EntKey; ped: keyof Pedido; ent: keyof Pedido; codigo: s
   { key: 'cBolsaHieloEnt', ped: 'cBolsaHieloPed', ent: 'cBolsaHieloEnt', codigo: 'BOLSA_HIELO', label: 'Bolsa de hielo' },
 ]
 
+/** Cancelado o anulado: no se entrega ni se cierra (ADR-CIERRE-002 §2). */
+export function pedidoEntregable(p: Pick<Pedido, 'estado' | 'estadoEntrega'>): boolean {
+  const NO = ['CANCELADO', 'ANULADO']
+  return !NO.includes(p.estadoEntrega ?? '') && !NO.includes(p.estado ?? '')
+}
+
 const n = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 
 /**

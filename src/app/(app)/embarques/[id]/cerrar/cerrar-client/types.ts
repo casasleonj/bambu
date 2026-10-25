@@ -12,6 +12,9 @@ export interface Pedido {
   numero: number
   clienteId: string
   negocioId?: string | null
+  /** Estado del pedido tal como lo devuelve la API (cancelado/anulado no se entrega). */
+  estado?: string
+  estadoEntrega?: string
   nombreCli: string
   apellidoCli?: string | null
   nombreNegocioCli?: string | null

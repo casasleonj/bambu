@@ -1,6 +1,6 @@
 # ADR-MONETARIO-002 — Corrección de precio, reducción comercial y saldo a favor en el cierre (addendum a ADR-MONETARIO-001)
 
-- Estado: **PROPUESTO — decisiones del PO del 2026-10-24 incorporadas; pendiente de aprobación final** (no implementado)
+- Estado: **PROPUESTO — decisiones del PO del 2026-10-24 incorporadas; pendiente de aprobación final** (NO implementado: la Fase B solo implementó ADR-CIERRE-002)
 - Fecha: 2026-10-24
 - Fuente: #326, #445, #451; decisiones del PO del 2026-10-23 (precio con recálculo; crédito con excepción autorizada; venta al paso con pago completo) y del 2026-10-24 (ver «Decisiones del PO»)
 - Complementa, sin reemplazar: ADR-MONETARIO-001 (el ledger y la fuente de verdad **no cambian**), ADR-CORRECCION-MONETARIA-001 (corrección de abonos y `REVERSION`), `POLITICA_SALDO_FAVOR_Y_DIFERENCIAL_NEGATIVO_v1.0` (2026-09-08), ADR-AUTORIZACION-REGALOS-001, diseño F2 de excepciones de crédito (ya implementado)

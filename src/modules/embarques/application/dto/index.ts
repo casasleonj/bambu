@@ -59,6 +59,11 @@ export interface CerrarEmbarqueInput {
     cBolsaHielo: number
     pagos: Array<{ metodo: string; monto: number }>
     obs?: string
+    /** ADR-CIERRE-002 §4: tienda de la venta y pedido del que nace la compra adicional. */
+    negocioId?: string
+    pedidoOrigenId?: string
+    /** F2: excepción de crédito ya autorizada para esta venta. */
+    excepcionId?: string
   }>
   productosRetorno?: Array<{
     producto: string
@@ -198,6 +203,8 @@ export interface CierreResultadoDTO {
     dineroEntregadoReportado: number
     sobranteFaltante: number
   }
+  /** ADR-CIERRE-002 §5: avisos para revisar; nunca bloquean ni crean deuda. */
+  senales?: Array<{ codigo: string; mensaje: string }>
   // BAMBU-LOG-006: true si este resultado viene de un replay offline-first
   // deduplicado por offlineId (el cierre real ya había ocurrido antes).
   deduped?: boolean
