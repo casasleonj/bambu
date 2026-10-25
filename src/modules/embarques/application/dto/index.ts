@@ -71,6 +71,12 @@ export interface CerrarEmbarqueInput {
     cambios: number
     rotas: number
   }>
+  /**
+   * #446: `cambios` sale de las sustituciones registradas del embarque; un `cambios`
+   * tecleado distinto de la suma se rechaza (CAMBIOS_NO_COINCIDEN). Sin este flag
+   * (cierre V1) `cambios` sigue siendo el número tecleado.
+   */
+  cambiosDesdeSustituciones?: boolean
   gastos?: Array<{
     categoria: string
     nota?: string

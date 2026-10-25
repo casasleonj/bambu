@@ -36,6 +36,7 @@ import { CrearDeudaFaltanteCajaService } from '../../domain/services/crear-deuda
 import { CerrarEmbarqueSideEffectsService } from '../../domain/services/cerrar-embarque-side-effects.service'
 import { CierreDedupService } from '../../domain/services/cierre-dedup.service'
 import { validarCoberturaPedidos } from '../../domain/services/cobertura-pedidos.service'
+import { resolverCambiosDelCierre, type CambiosAgregados } from '../../domain/services/cambios-sustituciones.service'
 import { calcularSenales, type VentaLibreResumen } from '../../domain/services/senales-cierre.service'
 import { UMBRAL_MINIMO_FALTANTE_CAJA } from '@/lib/constants'
 import { RegistrarMovimientosCierre } from '../../domain/services/registrar-movimientos-cierre.service'
@@ -151,6 +152,16 @@ export class CerrarEmbarqueUseCase {
       )
       const entregasDelCierre: EntregaDelCierre[] = []
 
+      // #446: «cambios» = Σ sustituciones registradas. Un número tecleado que no
+      // coincide se rechaza ANTES de procesar nada (no deja efectos).
+      let productosRetorno = input.productosRetorno ?? []
+      let cambiosAgregados: CambiosAgregados | undefined
+      if (input.cambiosDesdeSustituciones) {
+        const r = await resolverCambiosDelCierre(client, input.id, productosRetorno)
+        productosRetorno = r.productosRetorno
+        cambiosAgregados = r.cambios
+      }
+
       const pedidosHijosCreados: Array<{ id: string; numero: number }> = []
       const pedidosActualizados: Array<{ id: string; estado: string }> = []
       let totalVentas = 0
@@ -203,7 +214,7 @@ export class CerrarEmbarqueUseCase {
         input.id,
         embarque,
         vivo?.entregadas ?? this.salidasMision.entregadasPorAcumulado(pedidosRaw, input.ventasLibres ?? []),
-        input.productosRetorno ?? [],
+        productosRetorno,
       )
 
       // 6. Create descuento for unexplained discrepancies
@@ -231,7 +242,7 @@ export class CerrarEmbarqueUseCase {
       await this.sideEffectsService.actualizarProductosRetorno(
         tx,
         input.id,
-        input.productosRetorno ?? [],
+        productosRetorno,
         this.productoRepo,
       )
 
@@ -241,7 +252,7 @@ export class CerrarEmbarqueUseCase {
         embarqueId: input.id,
         pedidosRaw,
         ventasLibres: input.ventasLibres ?? [],
-        productosRetorno: input.productosRetorno ?? [],
+        productosRetorno,
         entregasCierre: vivo?.entregasCierre,
       })
 
@@ -317,6 +328,7 @@ export class CerrarEmbarqueUseCase {
           sobranteFaltanteCaja: caja.sobranteFaltante,
           notaCaja: input.justificacionFaltante,
           umbralCaja: UMBRAL_MINIMO_FALTANTE_CAJA,
+          cambios: cambiosAgregados,
         }),
         // FASE 6 (§13): el cierre detecta y crea ResponsibilityCase pendientes de
         // resolución autorizada; ya NO crea el cargo económico automáticamente.

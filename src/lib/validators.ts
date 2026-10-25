@@ -806,13 +806,20 @@ export const GastoEmbarqueSchema = z.object({
  * entrega una unidad fresca del mismo producto (ENTREGA → cliente). Produce
  * DOS movimientos físicos separados + una fila `Sustitucion` que los vincula.
  */
-export const SustitucionEmbarqueSchema = z.object({
-  producto: z.string().min(1),
-  cantidad: z.number().int().positive(),
-  pedidoId: z.string().min(1).optional(),
-  motivo: z.string().max(500).optional(),
-  offlineId: z.string().optional(),
-})
+export const SustitucionEmbarqueSchema = z
+  .object({
+    producto: z.string().min(1),
+    cantidad: z.number().int().positive().max(100_000),
+    pedidoId: z.string().min(1).optional(),
+    // #446: cambio a un cliente que no tiene pedido en la ruta.
+    clienteId: z.string().min(1).optional(),
+    motivo: z.string().max(500).optional(),
+    offlineId: z.string().optional(),
+  })
+  .refine((d) => d.pedidoId || !d.clienteId || (d.motivo ?? '').trim().length > 0, {
+    message: 'Un cambio a un cliente sin pedido en la ruta necesita motivo',
+    path: ['motivo'],
+  })
 
 // ====================
 // GPS TRACK (Fase 2)
@@ -886,6 +893,8 @@ export const CerrarEmbarqueSchema = z.object({
     cambios: z.coerce.number().int().min(0).default(0),
     rotas: z.coerce.number().int().min(0).default(0),
   })).min(1, 'Agrega al menos un producto en conciliación'),
+  // #446: el cierre V2 deriva «cambios» de las sustituciones registradas.
+  cambiosDesdeSustituciones: z.boolean().optional(),
   gastos: z.array(GastoEmbarqueSchema).max(60, 'Demasiados gastos en el cierre').optional().default([]),
   dineroEntregado: z.coerce.number().min(0).max(MAX_MONTO_CIERRE).default(0),
   justificacionDiscrepancia: z.string().max(2000).optional(),

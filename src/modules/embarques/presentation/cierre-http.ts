@@ -19,7 +19,7 @@ export function toCerrarInput(
   data: CerrarEmbarqueBody,
   extra: { offlineId?: string; dryRun?: boolean } = {},
 ): CerrarEmbarqueInput {
-  const { pedidos, ventasLibres, productos, gastos, dineroEntregado, justificacionDiscrepancia, justificacionFaltante, obs } = data
+  const { pedidos, ventasLibres, productos, cambiosDesdeSustituciones, gastos, dineroEntregado, justificacionDiscrepancia, justificacionFaltante, obs } = data
   return {
     id,
     pedidos: pedidos.map((p) => ({
@@ -59,6 +59,7 @@ export function toCerrarInput(
       excepcionId: v.excepcionId,
     })),
     productosRetorno: productos,
+    ...(cambiosDesdeSustituciones ? { cambiosDesdeSustituciones: true } : {}),
     gastos: gastos?.map((g) => ({ categoria: g.categoria, nota: g.nota, monto: g.monto })),
     dineroEntregado,
     justificacionDiscrepancia,
@@ -75,7 +76,7 @@ export interface ErrorHttpCierre {
   code?: string
 }
 
-const CODIGOS_409 = ['PEDIDOS_SIN_RESOLVER', 'PEDIDO_FUERA_DEL_EMBARQUE', 'PEDIDO_NO_ENTREGABLE', 'PEDIDO_DUPLICADO']
+const CODIGOS_409 = ['PEDIDOS_SIN_RESOLVER', 'PEDIDO_FUERA_DEL_EMBARQUE', 'PEDIDO_NO_ENTREGABLE', 'PEDIDO_DUPLICADO', 'CAMBIOS_NO_COINCIDEN']
 const CODIGOS_400 = [
   'VENTA_LIBRE_PAGO_SIN_PRODUCTOS', 'PAGO_EXCEDE_TOTAL', 'NEGOCIO_INVALIDO', 'PEDIDO_ORIGEN_INVALIDO',
   'VENTA_LIBRE_CLIENTE_NO_ENCONTRADO', 'PAGO_COMPLETO_OBLIGATORIO', 'EXCEPCION_CREDITO_YA_CONSUMIDA',

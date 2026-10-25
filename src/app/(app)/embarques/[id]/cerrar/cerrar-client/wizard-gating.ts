@@ -78,7 +78,15 @@ export function pasoVentasLibresValido(ventas: VentaLibre[], totales: number[]):
  * Paso 2 — Físico/Conciliación: si hay unidades sin conciliar, exigen
  * justificación (o ajustar devueltas/cambios/rotas).
  */
-export function pasoFisicoValido(totalDiscrepancia: number, justificacion: string): PasoValidez {
+export function pasoFisicoValido(
+  totalDiscrepancia: number,
+  justificacion: string,
+  /** V2 (#446): los cambios salen de las sustituciones; sin cargarlas no se puede conciliar. */
+  cambiosListos = true,
+): PasoValidez {
+  if (!cambiosListos) {
+    return { valido: false, motivos: ['Espera a que carguen los cambios registrados (o reintenta si falló).'] }
+  }
   if (totalDiscrepancia > 0 && !justificacion.trim()) {
     return {
       valido: false,

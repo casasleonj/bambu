@@ -9,11 +9,18 @@
  *   reduce un faltante de mercancía; sin ella la diferencia habría sido mayor.
  * - `SOBRANTE_CAJA_SIN_NOTA`: sobra efectivo en caja por encima del umbral y no hay nota.
  *
- * Las de «pedido corregido a la baja» y «cambios sin pedido en la ruta» llegan con
- * la reducción comercial (#451) y con cambios = Σ sustituciones (#446).
+ * Fase C (#446, cambios = Σ sustituciones):
+ * - `CAMBIO_A_CLIENTE_SIN_PEDIDO`: hubo cambios a un cliente que no tiene pedido en la ruta.
+ * - `CAMBIO_SIN_DESTINO`: hay cambios registrados sin cliente ni pedido.
+ *
+ * La de «pedido corregido a la baja» llega con la reducción comercial (#451).
  */
 
-export type CodigoSenal = 'VENTA_LIBRE_FIADA_COMPENSA_FALTANTE' | 'SOBRANTE_CAJA_SIN_NOTA'
+export type CodigoSenal =
+  | 'VENTA_LIBRE_FIADA_COMPENSA_FALTANTE'
+  | 'SOBRANTE_CAJA_SIN_NOTA'
+  | 'CAMBIO_A_CLIENTE_SIN_PEDIDO'
+  | 'CAMBIO_SIN_DESTINO'
 
 export interface SenalCierre {
   codigo: CodigoSenal
@@ -36,6 +43,8 @@ export function calcularSenales(args: {
   sobranteFaltanteCaja: number
   notaCaja?: string
   umbralCaja: number
+  /** #446: conteo de sustituciones por destino; ausente = cierre sin cambios derivados. */
+  cambios?: { aClienteSinPedido: number; sinDestino: number }
 }): SenalCierre[] {
   const senales: SenalCierre[] = []
 
@@ -73,6 +82,23 @@ export function calcularSenales(args: {
       codigo: 'SOBRANTE_CAJA_SIN_NOTA',
       mensaje:
         `Sobran ${args.sobranteFaltanteCaja} en caja sin explicar. Puede ser un cobro sin registrar: agrega una nota.`,
+    })
+  }
+
+  // 3. Cambios (sustituciones) sin pedido en la ruta o sin destino.
+  if (args.cambios && args.cambios.aClienteSinPedido > 0) {
+    senales.push({
+      codigo: 'CAMBIO_A_CLIENTE_SIN_PEDIDO',
+      mensaje:
+        `${args.cambios.aClienteSinPedido} cambio(s) fueron a un cliente que no tiene pedido en esta ruta. ` +
+        'Confirma con el repartidor que la unidad defectuosa se recibió.',
+    })
+  }
+  if (args.cambios && args.cambios.sinDestino > 0) {
+    senales.push({
+      codigo: 'CAMBIO_SIN_DESTINO',
+      mensaje:
+        `${args.cambios.sinDestino} cambio(s) no dicen a quién se entregaron. Revisa el tab «Físico» y completa el destino.`,
     })
   }
 

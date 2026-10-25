@@ -7,6 +7,11 @@ import { fetchResilient } from '@/lib/fetch-resilient'
 import { generateUUID } from '@/lib/uuid'
 import { PRODUCTO_ICONOS } from '@/lib/producto-iconos'
 import { SustitucionEmbarqueSchema } from '@/lib/validators'
+import { cierreV2Enabled } from '@/lib/flags'
+import { useClienteSearch } from '@/hooks/use-cliente-search'
+import { meetsMinSearchLength } from '@/lib/cliente-search'
+import { ClienteResultado } from '@/components/pedido-form-unified/cliente-resultado'
+import type { Cliente as ClienteBusqueda } from '@/components/pedido-form-unified/types'
 import type { PedidoOption } from '../ledger-client/types'
 
 /**
@@ -50,6 +55,11 @@ export function SustitucionFormModal({
   const [cantidad, setCantidad] = useState('')
   const [pedidoId, setPedidoId] = useState('')
   const [motivo, setMotivo] = useState('')
+  // #446 (cierre V2): el cambio exige destino; un cliente sin pedido en la ruta se busca aquí.
+  const v2 = cierreV2Enabled()
+  const [termino, setTermino] = useState('')
+  const [cliente, setCliente] = useState<{ id: string; nombre: string } | null>(null)
+  const { resultados, buscando } = useClienteSearch(v2 ? termino : '', [])
   const [submitting, setSubmitting] = useState(false)
 
   // offlineId estable por apertura del modal (no por submit): un reintento
@@ -67,6 +77,8 @@ export function SustitucionFormModal({
     setCantidad('')
     setPedidoId('')
     setMotivo('')
+    setTermino('')
+    setCliente(null)
   }
 
   const handleClose = () => {
@@ -82,9 +94,11 @@ export function SustitucionFormModal({
     producto,
     cantidad: cantidadNum,
     pedidoId: pedidoId || undefined,
+    clienteId: cliente?.id,
     motivo: motivo.trim() || undefined,
   })
-  const puedeEnviar = parseResult.success && !submitting
+  const faltaDestino = v2 && !pedidoId && !cliente
+  const puedeEnviar = parseResult.success && !submitting && !faltaDestino
 
   const motivoValido = (motivo.trim() || '').length <= 500
   const cantidadValida = Number.isInteger(cantidadNum) && cantidadNum > 0
@@ -101,6 +115,7 @@ export function SustitucionFormModal({
           producto,
           cantidad: cantidadNum,
           pedidoId: pedidoId || undefined,
+          clienteId: cliente?.id,
           motivo: motivo.trim() || undefined,
           offlineId,
         },
@@ -163,7 +178,7 @@ export function SustitucionFormModal({
 
         {pedidos.length > 0 && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Pedido asociado (opcional)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Pedido asociado{v2 ? '' : ' (opcional)'}</label>
             <select
               data-testid="sustitucion-pedido-select"
               value={pedidoId}
@@ -176,8 +191,54 @@ export function SustitucionFormModal({
           </div>
         )}
 
+        {v2 && !pedidoId && (
+          <div data-testid="sustitucion-cliente-bloque">
+            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="sust-cliente">
+              ¿A qué cliente? (si no tiene pedido en esta ruta)
+            </label>
+            {cliente ? (
+              <div className="flex items-center justify-between rounded-lg bg-blue-50 p-3 text-sm">
+                <span className="font-semibold">{cliente.nombre}</span>
+                <button type="button" onClick={() => setCliente(null)} className="min-h-11 px-3 underline">Cambiar</button>
+              </div>
+            ) : (
+              <>
+                <input
+                  id="sust-cliente"
+                  type="search"
+                  value={termino}
+                  onChange={(e) => setTermino(e.target.value)}
+                  placeholder="Nombre, apellido, tienda o celular"
+                  className="h-11 w-full rounded-lg border px-3 text-sm"
+                  autoComplete="off"
+                />
+                {meetsMinSearchLength(termino.trim()) && (
+                  <div className="mt-1 rounded-lg border bg-white" data-testid="sustitucion-cliente-resultados">
+                    {resultados.map((c) => (
+                      <ClienteResultado
+                        key={c.id}
+                        cliente={c}
+                        term={termino.trim()}
+                        onSelect={(sel: ClienteBusqueda) => {
+                          setCliente({ id: sel.id, nombre: `${sel.nombre}${sel.apellido ? ` ${sel.apellido}` : ''}` })
+                          setTermino('')
+                        }}
+                      />
+                    ))}
+                    {resultados.length === 0 && !buscando && <p className="p-3 text-sm text-gray-500">Sin resultados.</p>}
+                    {buscando && <p className="p-3 text-sm text-gray-400">Buscando…</p>}
+                  </div>
+                )}
+              </>
+            )}
+            {faltaDestino && <p className="mt-1 text-xs text-red-600">Elige el pedido o el cliente que recibió el cambio.</p>}
+          </div>
+        )}
+
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Motivo (opcional, ≤500)</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Motivo ({cliente && !pedidoId ? 'obligatorio' : 'opcional'}, ≤500)
+          </label>
           <textarea
             data-testid="sustitucion-motivo-input"
             value={motivo}

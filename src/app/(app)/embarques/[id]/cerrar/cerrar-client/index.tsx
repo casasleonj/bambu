@@ -16,8 +16,9 @@ import { PedidoCuadreV2 } from './pedido-cuadre-v2'
 import { VentaLibreRow } from './venta-libre-row'
 import { VentaLibreRowV2 } from './venta-libre-row-v2'
 import { cierreV2Enabled } from '@/lib/flags'
-import { clasificarErrorPreview, conciliar, pedidoEntregable, notaReduccionPendiente, totalVentaLibre, type PreciosVentaLibre, type StockPorProducto } from './cierre-logic'
+import { cambiosPorProducto, clasificarErrorPreview, conciliar, pedidoEntregable, notaReduccionPendiente, totalVentaLibre, type PreciosVentaLibre, type StockPorProducto, type SustitucionCierre } from './cierre-logic'
 import { ConfirmModal } from './confirm-modal'
+import { CambiosRegistrados } from './cambios-registrados'
 import { pasoPedidosValido, pasoPedidosValidoV2, pasoVentasLibresValido, pasoFisicoValido, pasoConfirmarValido, type PasoValidez } from './wizard-gating'
 
 const GASTO_CATEGORIAS = ['Gasolina', 'Alimentación', 'Peajes', 'Parqueadero', 'Mantenimiento', 'Otros']
@@ -43,7 +44,41 @@ export default function CerrarEmbarqueClient() {
   const [embarquesAbiertos, setEmbarquesAbiertos] = useState<EmbarqueAbierto[]>([])
   const [cuadres, setCuadres] = useState<Record<string, CuadrePedido>>({})
   const [ventasLibres, setVentasLibres] = useState<VentaLibre[]>([])
-  const [retornos, setRetornos] = useState<Record<string, ProductoRetorno>>({})
+  const [retornosEditables, setRetornos] = useState<Record<string, ProductoRetorno>>({})
+  // V2 (#446): «cambios» = Σ sustituciones registradas; se lee del servidor, no se teclea.
+  const [sustituciones, setSustituciones] = useState<SustitucionCierre[]>([])
+  const [sustEstado, setSustEstado] = useState<'cargando' | 'ok' | 'error'>('cargando')
+  const [sustVersion, setSustVersion] = useState(0)
+  useEffect(() => {
+    if (!v2) return
+    let cancelled = false
+    fetch(`/api/embarques/${embarqueId}/sustituciones`, { credentials: 'include' })
+      .then((res) => (res.ok ? (res.json() as Promise<{ sustituciones?: SustitucionCierre[] }>) : Promise.reject(new Error(String(res.status)))))
+      .then((data) => {
+        if (cancelled) return
+        setSustituciones(data.sustituciones ?? [])
+        setSustEstado('ok')
+      })
+      .catch(() => {
+        if (!cancelled) setSustEstado('error')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [v2, embarqueId, sustVersion])
+  const reintentarSustituciones = () => {
+    setSustEstado('cargando')
+    setSustVersion((n) => n + 1)
+  }
+  const cambiosSust = useMemo(() => cambiosPorProducto(sustituciones), [sustituciones])
+  const retornos = useMemo(() => {
+    if (!v2) return retornosEditables
+    const out: Record<string, ProductoRetorno> = {}
+    for (const k of new Set([...Object.keys(retornosEditables), ...Object.keys(cambiosSust)])) {
+      out[k] = { devueltas: retornosEditables[k]?.devueltas ?? 0, rotas: retornosEditables[k]?.rotas ?? 0, cambios: cambiosSust[k] ?? 0 }
+    }
+    return out
+  }, [v2, retornosEditables, cambiosSust])
   const [gastos, setGastos] = useState<GastoItem[]>([])
   const [dineroEntregado, setDineroEntregado] = useState(0)
   const [justificacion, setJustificacion] = useState('')
@@ -485,6 +520,7 @@ export default function CerrarEmbarqueClient() {
           obs: v.obs,
         })),
       productos: productosRetorno,
+      ...(v2 ? { cambiosDesdeSustituciones: true } : {}),
       gastos: gastos.filter(g => g.monto > 0).map(g => ({
         categoria: g.categoria,
         monto: g.monto,
@@ -645,7 +681,7 @@ export default function CerrarEmbarqueClient() {
     v2
       ? pasoVentasLibresValido(ventasLibres, ventasLibres.map((vl) => totalVentaLibre(vl, precios)))
       : { valido: true, motivos: [] },
-    pasoFisicoValido(calculos.totalDiscrepancia, justificacion),
+    pasoFisicoValido(calculos.totalDiscrepancia, justificacion, !v2 || sustEstado === 'ok'),
     { valido: true, motivos: [] },
     (() => {
       const base = pasoConfirmarValido(!!preview && !previewError, previewLoading, previewError, previewRechazo)
@@ -850,9 +886,13 @@ export default function CerrarEmbarqueClient() {
                             className="w-16 text-center px-1 py-0.5 border rounded text-sm" />
                         </td>
                         <td className="px-3 py-2">
-                          <input type="number" min={0} value={ret.cambios}
-                            onChange={(e) => updateRetorno(key, 'cambios', parseInt(e.target.value) || 0)}
-                            className="w-16 text-center px-1 py-0.5 border rounded text-sm" />
+                          {v2 ? (
+                            <span className="block w-16 text-center text-sm font-semibold" data-testid={`cambios-${key}`}>{ret.cambios}</span>
+                          ) : (
+                            <input type="number" min={0} value={ret.cambios}
+                              onChange={(e) => updateRetorno(key, 'cambios', parseInt(e.target.value) || 0)}
+                              className="w-16 text-center px-1 py-0.5 border rounded text-sm" />
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           <input type="number" min={0} value={ret.rotas}
@@ -881,6 +921,16 @@ export default function CerrarEmbarqueClient() {
                 </tfoot>
               </table>
             </div>
+
+            {v2 && (
+              <CambiosRegistrados
+                embarqueId={embarqueId}
+                sustituciones={sustituciones}
+                cargando={sustEstado === 'cargando'}
+                error={sustEstado === 'error'}
+                onReintentar={reintentarSustituciones}
+              />
+            )}
 
             {calculos.totalDiscrepancia > 0 && (
               <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">

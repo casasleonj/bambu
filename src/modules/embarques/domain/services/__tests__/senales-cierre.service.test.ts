@@ -60,3 +60,17 @@ describe('calcularSenales', () => {
     expect(calcularSenales({ ...base, sobranteFaltanteCaja: -9000 })).toEqual([])
   })
 })
+
+describe('señales de cambios (#446)', () => {
+  const base = { discrepanciasPorProducto: [], ventasLibres: [], sobranteFaltanteCaja: 0, umbralCaja: 1000 }
+
+  it('cambio a cliente sin pedido y cambio sin destino generan su señal', () => {
+    const r = calcularSenales({ ...base, cambios: { aClienteSinPedido: 2, sinDestino: 1 } })
+    expect(r.map((s) => s.codigo)).toEqual(['CAMBIO_A_CLIENTE_SIN_PEDIDO', 'CAMBIO_SIN_DESTINO'])
+  })
+
+  it('sin cambios atípicos (o sin el dato) no hay señal', () => {
+    expect(calcularSenales({ ...base, cambios: { aClienteSinPedido: 0, sinDestino: 0 } })).toEqual([])
+    expect(calcularSenales(base)).toEqual([])
+  })
+})

@@ -166,3 +166,14 @@ describe('pasoFisicoValido con sobrantes', () => {
     expect(pasoFisicoValido(2, '').valido).toBe(false)
   })
 })
+
+describe('pasoFisicoValido — cambios listos (#446)', () => {
+  it('V2: no avanza si los cambios registrados no cargaron', () => {
+    const r = pasoFisicoValido(0, '', false)
+    expect(r.valido).toBe(false)
+    expect(r.motivos[0]).toMatch(/cambios registrados/)
+  })
+  it('por defecto (V1) no cambia el comportamiento', () => {
+    expect(pasoFisicoValido(0, '').valido).toBe(true)
+  })
+})

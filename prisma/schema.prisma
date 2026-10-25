@@ -496,6 +496,9 @@ model Cliente {
   // Bloque 3: índice para query "top N clientes con scoreLlamada más alto".
   @@index([scoreLlamada])
   @@index([diasAtraso])
+  // #446 — cambios (sustituciones) atribuidos a este cliente.
+  sustituciones Sustitucion[]
+
   @@index([nombre])
 }
 
@@ -1395,6 +1398,9 @@ model Sustitucion {
   embarque   Embarque @relation(fields: [embarqueId], references: [id], onDelete: Cascade)
   pedidoId   String?
   pedido     Pedido?  @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  // #446 — destino del cambio cuando el cliente no tiene pedido en la ruta.
+  clienteId  String?
+  cliente    Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
 
   // Vincula los DOS hechos físicos separados (contrato §9): recepción de la
   // unidad defectuosa (RETORNO repartidor→inspección) + entrega de la unidad
@@ -1413,6 +1419,7 @@ model Sustitucion {
 
   @@index([embarqueId])
   @@index([pedidoId])
+  @@index([clienteId])
 }
 
 model Retorno {
