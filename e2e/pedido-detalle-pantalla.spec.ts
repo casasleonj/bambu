@@ -103,7 +103,8 @@ test.describe('Pantalla de detalle del pedido (P1-1 PR B)', () => {
 
     await fijar({ precioOrigen: 'volumen' })
     await abrir()
-    await expect(origen).toHaveText('volumen')
+    // con tramo conocido la insignia lleva el rango («volumen 1–4 und»); el rango se prueba en su propio test
+    await expect(origen).toHaveText(/^volumen/)
 
     await fijar({ precioOrigen: 'cliente' })
     await abrir()
