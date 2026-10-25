@@ -42,6 +42,8 @@ export interface Pedido {
   pagoReportadoPendiente?: boolean
   pagoDiscrepante?: boolean
   embarqueId?: string
+  /** TEMPORAL-SIN-EMBARQUE(#472): repartidor responsable de la entrega de oficina. */
+  entregadoPorId?: string | null
   /** P2-3 (#453): número del día y repartidor del embarque, para la fila de la lista. */
   embarqueNumeroDia?: number | null
   embarqueRepartidor?: string | null

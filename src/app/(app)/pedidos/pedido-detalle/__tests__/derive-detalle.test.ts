@@ -138,3 +138,33 @@ describe('origenPrecio', () => {
     for (const origen of ['volumen', 'cliente', 'manual']) expect(origenPrecio({ precioOrigen: origen }, 'ADMIN')?.ayuda.length).toBeGreaterThan(10)
   })
 })
+
+// TEMPORAL-SIN-EMBARQUE(#472)
+describe('accionesDetalle con gestión de administrador sin embarque', () => {
+  it('sin la opción, todo queda exactamente como antes', () => {
+    for (const e of ['PENDIENTE', 'EN_RUTA', 'NO_ENTREGADO', 'ENTREGADO', 'CANCELADO', 'ANULADO']) {
+      expect(accionesDetalle(e, null, {})).toEqual(accionesDetalle(e))
+      expect(accionesDetalle(e, null, { gestionAdmin: false })).toEqual(accionesDetalle(e))
+    }
+  })
+  it('PENDIENTE: «Registrar entrega» es la primaria y Enviar sigue disponible', () => {
+    const a = accionesDetalle('PENDIENTE', null, { gestionAdmin: true })
+    expect(a.primaria?.key).toBe('registrar-entrega')
+    expect(a.secundarias.map((x) => x.key)).toEqual(['enviar', 'editar', 'cancelar'])
+  })
+  it('NO_ENTREGADO: puede registrarse la entrega', () => {
+    expect(accionesDetalle('NO_ENTREGADO', null, { gestionAdmin: true }).primaria?.key).toBe('registrar-entrega')
+  })
+  it('EN_RUTA: se conservan las acciones de siempre y se agrega «Registrar entrega»', () => {
+    const base = accionesDetalle('EN_RUTA', 'EN_RUTA')
+    const a = accionesDetalle('EN_RUTA', 'EN_RUTA', { gestionAdmin: true })
+    expect(a.primaria).toEqual(base.primaria)
+    expect(a.secundarias.map((x) => x.key)).toEqual(['registrar-entrega', ...base.secundarias.map((x) => x.key)])
+  })
+  it('un pedido cerrado no ofrece registrar entrega', () => {
+    for (const e of ['ENTREGADO', 'CANCELADO', 'ANULADO']) {
+      const claves = [accionesDetalle(e, null, { gestionAdmin: true }).primaria, ...accionesDetalle(e, null, { gestionAdmin: true }).secundarias].map((x) => x?.key)
+      expect(claves).not.toContain('registrar-entrega')
+    }
+  })
+})

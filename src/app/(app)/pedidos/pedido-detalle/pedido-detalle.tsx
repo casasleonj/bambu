@@ -22,6 +22,10 @@ interface Props {
   preciosActuales: Record<string, { precio: number; origen: string }>
   updatingId: string | null
   userRole?: string | null
+  /** TEMPORAL-SIN-EMBARQUE(#472): ADMIN con la gestión temporal activa. */
+  gestionAdmin?: boolean
+  /** Nombre del repartidor responsable (si se conoce). */
+  nombreRepartidor?: string | null
   estadoBadge: React.ReactNode
   canalBadge: React.ReactNode
   onClose: () => void
@@ -77,7 +81,7 @@ const TONO_BOTON: Record<AccionDetalle['tone'], string> = {
 }
 
 export function PedidoDetalle({
-  pedido, embarqueNumeroDia, preciosActuales, updatingId, userRole, estadoBadge, canalBadge, onClose, onAccion,
+  pedido, embarqueNumeroDia, preciosActuales, updatingId, userRole, gestionAdmin, nombreRepartidor, estadoBadge, canalBadge, onClose, onAccion,
 }: Props) {
   const [relacionadoAbierto, setRelacionadoAbierto] = useState(false)
   const total = Number(pedido.total)
@@ -86,7 +90,7 @@ export function PedidoDetalle({
   const entregado = pedido.estadoEntrega === 'ENTREGADO'
   const pct = porcentajePagado(total, pagado)
   const links = linksContacto(pedido)
-  const acciones = accionesDetalle(pedido.estadoEntrega, pedido.embarqueResumen?.estado)
+  const acciones = accionesDetalle(pedido.estadoEntrega, pedido.embarqueResumen?.estado, { gestionAdmin })
   const busy = updatingId === pedido.id
   const pasos = lineaDeTiempo(pedido)
   const items = itemsDe(pedido)
@@ -356,6 +360,11 @@ export function PedidoDetalle({
               </section>
             )}
 
+            {(nombreRepartidor || pedido.entregadoPorId) && (
+              <p data-testid="detalle-repartidor" className="text-xs text-gray-600 px-1">
+                Entregado por {nombreRepartidor ?? 'el repartidor registrado'}
+              </p>
+            )}
             {pedido.creadoPor && <p className="text-xs text-gray-400 px-1">Registrado por {pedido.creadoPor}</p>}
           </div>
         </div>

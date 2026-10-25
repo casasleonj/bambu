@@ -798,6 +798,10 @@ model Trabajador {
   rutasAsignadas Ruta[] @relation("RutaRepartidor")
   rutasRespaldo  Ruta[] @relation("RutaRespaldo")
 
+  // TEMPORAL-SIN-EMBARQUE(#472)
+  pedidosEntregados Pedido[] @relation("PedidoEntregadoPor")
+  pagosRecibidos    Pago[]   @relation("PagoRecibidoPor")
+
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
 
@@ -925,6 +929,12 @@ model Pedido {
   adminOverrideNota     String?   @db.Text
   adminOverrideBy       String?
   adminOverrideAt       DateTime? @db.Timestamptz()
+  // TEMPORAL-SIN-EMBARQUE(#472): repartidor responsable de la entrega que la
+  // oficina registró sin embarque. UN solo repartidor por pedido: las entregas
+  // siguientes del mismo pedido quedan fijas en él. Se conserva al retirar la
+  // función temporal (historial de comisión y de fiado).
+  entregadoPorId        String?
+  entregadoPor          Trabajador? @relation("PedidoEntregadoPor", fields: [entregadoPorId], references: [id], onDelete: SetNull)
   offlineId             String?   @unique
   recurrenteBatchId     String? // batch id compartido por todos los pedidos de un batch de recurrentes
   // FIX Fase 1: dedup key dedicado para POST /api/pedidos/[id]/enviar.
@@ -1073,6 +1083,7 @@ model Pedido {
   @@index([promesaPagoFecha])
   @@index([numero])
   @@index([fecha, numero])
+  @@index([entregadoPorId])
 }
 
 // ====================
@@ -1135,6 +1146,10 @@ model Pago {
   // en que se registran (cierre de caja + regla V14).
   regularizacionId String?
   regularizacion   Regularizacion? @relation(fields: [regularizacionId], references: [id], onDelete: Restrict)
+  // TEMPORAL-SIN-EMBARQUE(#472): trabajador que recibió físicamente el dinero.
+  // `null` = la oficina (o dato histórico anterior a esta columna).
+  recibidoPorId String?
+  recibidoPor   Trabajador? @relation("PagoRecibidoPor", fields: [recibidoPorId], references: [id], onDelete: SetNull)
 
   // ADR-PAGO-REPORTADO-CONFIRMADO-001: ¿este dinero fue verificado?
   // El detalle de una discrepancia vive en el `ResponsibilityCase`, NO acá.

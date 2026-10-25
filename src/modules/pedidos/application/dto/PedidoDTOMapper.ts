@@ -79,6 +79,7 @@ export class PedidoDTOMapper {
       adminOverrideNota: pedido.adminOverrideNota ?? null,
       adminOverrideBy: pedido.adminOverrideBy ?? null,
       adminOverrideAt: pedido.adminOverrideAt?.toISOString() ?? null,
+      entregadoPorId: pedido.entregadoPorId ?? null,
       // Legacy price fields
       precioPacaAgua: legacy.precioPacaAgua,
       precioPacaHielo: legacy.precioPacaHielo,
