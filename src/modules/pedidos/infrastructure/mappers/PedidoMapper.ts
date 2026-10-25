@@ -47,6 +47,7 @@ interface PrismaPedido {
   adminOverrideNota: string | null
   adminOverrideBy: string | null
   adminOverrideAt: Date | null
+  entregadoPorId?: string | null
   offlineId: string | null
   entregaOfflineId: string | null
   anulacionOfflineId: string | null
@@ -135,6 +136,7 @@ export class PedidoMapper {
       adminOverrideNota: raw.adminOverrideNota || undefined,
       adminOverrideBy: raw.adminOverrideBy || undefined,
       adminOverrideAt: raw.adminOverrideAt || undefined,
+      entregadoPorId: raw.entregadoPorId || undefined,
       offlineId: raw.offlineId || undefined,
       entregaOfflineId: raw.entregaOfflineId || undefined,
       anulacionOfflineId: raw.anulacionOfflineId || undefined,
@@ -182,6 +184,7 @@ export class PedidoMapper {
       adminOverrideNota: pedido.adminOverrideNota || null,
       adminOverrideBy: pedido.adminOverrideBy || null,
       adminOverrideAt: pedido.adminOverrideAt || null,
+      entregadoPorId: pedido.entregadoPorId || null,
       entregaOfflineId: pedido.entregaOfflineId || null,
       anulacionOfflineId: pedido.anulacionOfflineId || null,
       cancelacionOfflineId: pedido.cancelacionOfflineId || null,
@@ -228,6 +231,7 @@ export class PedidoMapper {
       adminOverrideNota: pedido.adminOverrideNota || null,
       adminOverrideBy: pedido.adminOverrideBy || null,
       adminOverrideAt: pedido.adminOverrideAt || null,
+      entregadoPorId: pedido.entregadoPorId || null,
       entregaOfflineId: pedido.entregaOfflineId || null,
       anulacionOfflineId: pedido.anulacionOfflineId || null,
       cancelacionOfflineId: pedido.cancelacionOfflineId || null,

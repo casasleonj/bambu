@@ -39,6 +39,8 @@ import { useAnularPedido } from '@/hooks/use-anular-pedido'
 import { useCancelarPedido } from '@/hooks/use-cancelar-pedido'
 import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
 import { useEntregarPedido } from '@/hooks/use-entregar-pedido'
+import { useGestionAdmin } from '@/hooks/use-gestion-admin'
+import { RegistrarEntregaDialog } from '../registrar-entrega/registrar-entrega-dialog'
 import { itemsCambiaron } from '@/lib/pedido-edicion-items'
 import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
@@ -1010,6 +1012,10 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       fetchEmbarques()
     },
   })
+
+  // TEMPORAL-SIN-EMBARQUE(#472): el ADMIN registra entregas y cobros sin embarque.
+  const gestionAdmin = useGestionAdmin(userRole === 'ADMIN')
+  const [registrarEntregaPara, setRegistrarEntregaPara] = useState<Pedido | null>(null)
 
   const { entregar } = useEntregarPedido({
     onSuccess: () => {
@@ -2407,6 +2413,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             preciosActuales={preciosActuales}
             updatingId={updatingId}
             userRole={userRole}
+            gestionAdmin={gestionAdmin.activa}
+            nombreRepartidor={gestionAdmin.repartidores.find((r) => r.id === selectedPedido.entregadoPorId)?.nombre ?? null}
             estadoBadge={getEstadoEntregaBadge(selectedPedido.estadoEntrega)}
             canalBadge={getCanalBadge(selectedPedido.canal)}
             onClose={() => setShowDetailModal(false)}
@@ -2420,6 +2428,10 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
                 case 'cancelar': void cambiarEstado(selectedPedido.id, 'CANCELADO'); break
                 case 'entregar': void entregarPedido(selectedPedido, 'REPARTIDOR'); break
                 case 'entregar-retiro': void entregarPedido(selectedPedido, 'CLIENTE_RETIRO'); break
+                case 'registrar-entrega':
+                  setShowDetailModal(false)
+                  setRegistrarEntregaPara(selectedPedido)
+                  break
                 case 'volver-pendiente': void cambiarEstado(selectedPedido.id, 'PENDIENTE'); break
                 case 'anular': void cambiarEstado(selectedPedido.id, 'ANULADO'); break
               }
@@ -2427,6 +2439,33 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           />
         )}
       </Modal>
+
+      {/* TEMPORAL-SIN-EMBARQUE(#472): Registrar entrega (ADMIN, sin embarque) */}
+      {registrarEntregaPara && (
+        <RegistrarEntregaDialog
+          pedido={{
+            id: registrarEntregaPara.id,
+            numero: registrarEntregaPara.numero,
+            canal: registrarEntregaPara.canal,
+            clienteId: registrarEntregaPara.clienteId,
+            nombreCliente: registrarEntregaPara.nombreCli,
+            total: Number(registrarEntregaPara.total),
+            totalPagado: Number(registrarEntregaPara.totalPagado),
+            entregadoPorId: registrarEntregaPara.entregadoPorId ?? null,
+            items: (registrarEntregaPara.items ?? []).map((i) => ({ producto: i.producto, cantPedido: i.cantPedido, cantEntrega: i.cantEntrega })),
+          }}
+          repartidores={gestionAdmin.repartidores}
+          onClose={() => setRegistrarEntregaPara(null)}
+          onRegistrado={({ deduped, numero }) => {
+            setRegistrarEntregaPara(null)
+            refreshPedidos()
+            refetchFiados()
+            refetchAlertas()
+            if (deduped) toast.info(`La entrega del pedido #${numero} ya estaba registrada`)
+            else toast.success(`Entrega del pedido #${numero} registrada`)
+          }}
+        />
+      )}
 
       {/* Modal Editar Pedido */}
       {pedidoEditando && (() => {

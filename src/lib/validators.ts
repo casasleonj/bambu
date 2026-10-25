@@ -184,6 +184,30 @@ export const PreviewPedidoSchema = z.object({
 // ENTREGA (nuevo)
 // ====================
 
+/**
+ * TEMPORAL-SIN-EMBARQUE(#472): cuerpo de `POST /api/pedidos/[id]/gestion-admin/entrega`.
+ * Esquema propio: la entrega normal exige `embarqueId` para todo cobro (ADR de
+ * captura de pago) y la oficina registra el dinero sin embarque.
+ */
+export const EntregaOficinaSchema = z.object({
+  // Obligatorio: es la clave de idempotencia de un comando de administrador.
+  offlineId: z.string().min(8, 'Falta la clave de idempotencia').max(100),
+  itemsEntregados: z.array(z.object({
+    producto: z.string().min(1),
+    cantidad: z.number().int().min(0),
+  })).min(1, 'Indica qué se entregó'),
+  repartidorId: z.string().min(1).optional(),
+  recibioDinero: z.enum(['REPARTIDOR', 'OFICINA']).optional(),
+  pagos: z.array(z.object({
+    metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
+    monto: z.number().positive('El monto debe ser mayor que cero'),
+  })).optional(),
+  fechaEntrega: z.string().datetime().optional(),
+  nota: z.string().max(500, 'La nota es muy larga').optional(),
+  // YYYY-MM-DD (fecha de calendario de Bogotá).
+  promesaPagoFecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha de promesa inválida').optional(),
+})
+
 export const EntregaSchema = z.object({
   // pedidoId is intentionally NOT required here — the route uses params.id from
   // the URL path (/api/pedidos/[id]/entrega). Kept as optional for clients

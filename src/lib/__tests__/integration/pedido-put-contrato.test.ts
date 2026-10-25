@@ -47,7 +47,7 @@ const PEDIDO_GESTIONADAS = new Set([
 ])
 
 /** Valores centinela para TODAS las demás columnas: una edición debe dejarlas igual. */
-function centinelasPedido(ctx: { adminId: string; embarqueOrigenId: string; pedidoOrigenId: string; sufijo?: string }): Record<string, unknown> {
+function centinelasPedido(ctx: { adminId: string; embarqueOrigenId: string; pedidoOrigenId: string; trabajadorId: string; sufijo?: string }): Record<string, unknown> {
   const sx = ctx.sufijo ?? 'x'
   const f = new Date('2026-03-04T05:06:07.000Z')
   return {
@@ -67,6 +67,8 @@ function centinelasPedido(ctx: { adminId: string; embarqueOrigenId: string; pedi
     adminOverrideNota: 'centinela override',
     adminOverrideBy: ctx.adminId,
     adminOverrideAt: f,
+    // #472: repartidor de la entrega de oficina; una edición NO lo toca
+    entregadoPorId: ctx.trabajadorId,
     recurrenteBatchId: 'CENTINELA_BATCH',
     envioOfflineId: `cen-envio-offline-${sx}`,
     entregaOfflineId: `cen-entrega-offline-${sx}`,
@@ -113,6 +115,7 @@ describe('PR-1 — contrato PUT /api/pedidos/[id] (Postgres real)', () => {
   let clienteSinDireccionId: string
   let embarqueOrigenId: string
   let pedidoOrigenId: string
+  let trabajadorId: string
 
   async function put(pedidoId: string, body: Record<string, unknown>) {
     const req = new NextRequest(`http://localhost/api/pedidos/${pedidoId}`, {
@@ -141,7 +144,7 @@ describe('PR-1 — contrato PUT /api/pedidos/[id] (Postgres real)', () => {
       createdById: adminId, createdByRole: 'ADMIN',
       offlineId: `put-contrato-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     })
-    const centinelas = centinelasPedido({ adminId, embarqueOrigenId, pedidoOrigenId, sufijo: Math.random().toString(36).slice(2, 10) })
+    const centinelas = centinelasPedido({ adminId, embarqueOrigenId, pedidoOrigenId, trabajadorId, sufijo: Math.random().toString(36).slice(2, 10) })
     // offlineId es UNIQUE y lo usó la creación: se conserva el real y no se pisa.
     const { offlineId: _ignorado, ...resto } = centinelas
     void _ignorado
@@ -165,6 +168,7 @@ describe('PR-1 — contrato PUT /api/pedidos/[id] (Postgres real)', () => {
       data: { nombre: 'Cliente sin dirección', telefono: '3004445566', direccion: '', activo: true },
     })).id
     const trabajador = await testPrisma.trabajador.create({ data: { nombre: 'Rep PUT', rol: 'REPARTIDOR', usaMoto: true } })
+    trabajadorId = trabajador.id
     embarqueOrigenId = (await testPrisma.embarque.create({ data: { trabajadorId: trabajador.id, fecha: new Date(), estado: 'ABIERTO' } })).id
     const { pedido: origen } = await crearPedidoUseCase.execute({
       clienteId, canal: 'DOMICILIO', origen: 'PEDIDO', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], pagos: [],
@@ -181,7 +185,7 @@ describe('PR-1 — contrato PUT /api/pedidos/[id] (Postgres real)', () => {
 
   // ── 1. La clasificación cubre TODAS las columnas ──────────────────────────
   it('toda columna de Pedido y PedidoItem está clasificada (una columna nueva obliga a decidir)', () => {
-    const centinelas = new Set([...Object.keys(centinelasPedido({ adminId: 'x', embarqueOrigenId: 'x', pedidoOrigenId: 'x' })), 'offlineId'])
+    const centinelas = new Set([...Object.keys(centinelasPedido({ adminId: 'x', embarqueOrigenId: 'x', pedidoOrigenId: 'x', trabajadorId: 'x' })), 'offlineId'])
     const sinClasificar = columnas('Pedido').filter(
       (c) => !PEDIDO_GESTIONADAS.has(c) && !PEDIDO_IDENTIDAD.has(c) && !centinelas.has(c),
     )

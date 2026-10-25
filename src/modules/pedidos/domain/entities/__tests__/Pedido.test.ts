@@ -272,6 +272,7 @@ describe('Pedido.toProps — copia COMPLETA (fuente única para reconstruir el a
       adminOverrideNota: 'an',
       adminOverrideBy: 'ab',
       adminOverrideAt: new Date('2026-01-04T00:00:00Z'),
+      entregadoPorId: 'ep',
       offlineId: 'of',
       entregaOfflineId: 'eo',
       anulacionOfflineId: 'ao',

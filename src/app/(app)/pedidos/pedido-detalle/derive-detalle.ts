@@ -1,7 +1,7 @@
 import type { Pedido } from '../pedidos-client/types'
 import { formatoTramo } from '@/lib/tramo-volumen'
 
-export type AccionDetalleKey = 'editar' | 'enviar' | 'cancelar' | 'entregar' | 'entregar-retiro' | 'volver-pendiente' | 'anular'
+export type AccionDetalleKey = 'editar' | 'enviar' | 'cancelar' | 'entregar' | 'entregar-retiro' | 'volver-pendiente' | 'anular' | 'registrar-entrega'
 
 export interface AccionDetalle {
   key: AccionDetalleKey
@@ -27,6 +27,13 @@ const ENTREGAR_REPARTIDOR: AccionDetalle = { key: 'entregar', label: '🚚 Entre
 const ENTREGAR_RETIRO: AccionDetalle = { key: 'entregar-retiro', label: '🏢 Cliente retiró', labelBusy: 'Entregando...', tone: 'neutral' }
 const VOLVER: AccionDetalle = { key: 'volver-pendiente', label: 'Volver a Pendiente', tone: 'neutral' }
 const ANULAR: AccionDetalle = { key: 'anular', label: 'Anular Pedido', labelBusy: 'Anulando...', tone: 'danger' }
+/** TEMPORAL-SIN-EMBARQUE(#472): el ADMIN registra la entrega desde la oficina, sin embarque. */
+const REGISTRAR_ENTREGA: AccionDetalle = { key: 'registrar-entrega', label: 'Registrar entrega', tone: 'primary' }
+
+export interface OpcionesAcciones {
+  /** TEMPORAL-SIN-EMBARQUE(#472): ADMIN con la gestión temporal activa. */
+  gestionAdmin?: boolean
+}
 
 /**
  * Mismas acciones y rótulos que el modal anterior, ordenadas por estado.
@@ -35,7 +42,20 @@ const ANULAR: AccionDetalle = { key: 'anular', label: 'Anular Pedido', labelBusy
  * intermedias. En cualquier otro caso (sin embarque, o embarque que aún no sale)
  * sigue un solo botón y el sistema decide solo (ver `resolverEntrega`).
  */
-export function accionesDetalle(estadoEntrega: string, embarqueEstado?: string | null): AccionesDetalle {
+export function accionesDetalle(estadoEntrega: string, embarqueEstado?: string | null, opciones: OpcionesAcciones = {}): AccionesDetalle {
+  if (opciones.gestionAdmin) {
+    const base = accionesDetalle(estadoEntrega, embarqueEstado)
+    if (estadoEntrega === 'PENDIENTE') {
+      return { primaria: REGISTRAR_ENTREGA, secundarias: [ENVIAR, ...base.secundarias], sinAcciones: null }
+    }
+    if (estadoEntrega === 'NO_ENTREGADO') {
+      return { primaria: REGISTRAR_ENTREGA, secundarias: [], sinAcciones: null }
+    }
+    if (estadoEntrega === 'EN_RUTA') {
+      return { ...base, secundarias: [REGISTRAR_ENTREGA, ...base.secundarias] }
+    }
+    return base
+  }
   switch (estadoEntrega) {
     case 'PENDIENTE':
       return { primaria: ENVIAR, secundarias: [EDITAR, CANCELAR], sinAcciones: null }

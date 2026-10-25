@@ -24,5 +24,10 @@ export interface IPagoRepository {
      * pago fuera de misión. Se aplica a todos los `pagos` del batch.
      */
     embarqueId?: string | null,
+    /**
+     * TEMPORAL-SIN-EMBARQUE(#472): quién recibió el dinero (`null` = oficina) y
+     * la fecha del hecho cuando difiere del registro (`Pago.ocurridoAt`).
+     */
+    extras?: { recibidoPorId?: string | null; ocurridoAt?: Date | null },
   ): Promise<void>
 }

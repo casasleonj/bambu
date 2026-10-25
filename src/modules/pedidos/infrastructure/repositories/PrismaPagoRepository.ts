@@ -27,6 +27,7 @@ export class PrismaPagoRepository implements IPagoRepository {
     tx?: TransactionClient,
     metodosRequieren?: string[],
     embarqueId?: string | null,
+    extras?: { recibidoPorId?: string | null; ocurridoAt?: Date | null },
   ): Promise<void> {
     const client = tx || prisma
     if (pagos.length === 0) return
@@ -41,6 +42,11 @@ export class PrismaPagoRepository implements IPagoRepository {
         monto: p.monto,
         // ADR-PAGO-EMBARQUE-CAPTURA-001: contexto de captura (mismo para el batch).
         embarqueId: embarqueId ?? null,
+        // Solo la gestión de oficina (#472) los escribe: los pagos normales
+        // conservan exactamente la forma de siempre.
+        ...(extras
+          ? { recibidoPorId: extras.recibidoPorId ?? null, ocurridoAt: extras.ocurridoAt ?? null }
+          : {}),
         ...datosConfirmacionInicial(p.metodo, metodosConfirmacion),
       })) as unknown as Prisma.PagoCreateManyInput[],
     })

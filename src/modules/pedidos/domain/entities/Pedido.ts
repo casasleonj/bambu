@@ -49,6 +49,8 @@ export interface PedidoProps {
   adminOverrideNota?: string
   adminOverrideBy?: string
   adminOverrideAt?: Date
+  /** TEMPORAL-SIN-EMBARQUE(#472): repartidor responsable de la entrega de oficina. */
+  entregadoPorId?: string
   offlineId?: string
   entregaOfflineId?: string
   anulacionOfflineId?: string
@@ -98,6 +100,7 @@ export class Pedido {
   get adminOverrideNota(): string | undefined { return this.props.adminOverrideNota }
   get adminOverrideBy(): string | undefined { return this.props.adminOverrideBy }
   get adminOverrideAt(): Date | undefined { return this.props.adminOverrideAt }
+  get entregadoPorId(): string | undefined { return this.props.entregadoPorId }
   get offlineId(): string | undefined { return this.props.offlineId }
   get entregaOfflineId(): string | undefined { return this.props.entregaOfflineId }
   get anulacionOfflineId(): string | undefined { return this.props.anulacionOfflineId }
@@ -120,6 +123,16 @@ export class Pedido {
 
   puedeEntregar(): boolean {
     return this.props.estadoEntrega.canTransitionTo(EstadoEntregaVO.create('ENTREGADO'))
+  }
+
+  /**
+   * TEMPORAL-SIN-EMBARQUE(#472): entrega registrada por la oficina sin pasar
+   * por un embarque. Es la ÚNICA vía PENDIENTE|NO_ENTREGADO → ENTREGADO; la
+   * tabla global de transiciones no cambia. EN_RUTA ya podía entregarse.
+   */
+  puedeEntregarOficina(): boolean {
+    const e = this.props.estadoEntrega.get()
+    return e === 'PENDIENTE' || e === 'NO_ENTREGADO' || e === 'EN_RUTA'
   }
 
   puedeCancelar(): boolean {
@@ -191,9 +204,11 @@ export class Pedido {
       entregadoAt?: Date
       codigoVisita?: string
       entregaOfflineId?: string
+      /** TEMPORAL-SIN-EMBARQUE(#472): entrega de oficina (ver `puedeEntregarOficina`). */
+      desdeOficina?: boolean
     },
   ): void {
-    if (!this.puedeEntregar()) {
+    if (!(metadata?.desdeOficina ? this.puedeEntregarOficina() : this.puedeEntregar())) {
       throw new Error(`Transición inválida: ${this.estadoEntrega.get()} → ENTREGADO`)
     }
 
@@ -240,6 +255,20 @@ export class Pedido {
       entregadoAt: metadata?.entregadoAt ?? this.props.entregadoAt ?? new Date(),
       codigoVisita: metadata?.codigoVisita || this.props.codigoVisita,
       entregaOfflineId: metadata?.entregaOfflineId ?? this.props.entregaOfflineId,
+    }
+  }
+
+  /**
+   * TEMPORAL-SIN-EMBARQUE(#472): deja constancia de quién repartió (un solo
+   * repartidor por pedido) y de quién registró la entrega desde la oficina.
+   */
+  registrarEntregaOficina(input: { repartidorId?: string; nota: string; adminId: string }): void {
+    this.props = {
+      ...this.props,
+      entregadoPorId: input.repartidorId ?? this.props.entregadoPorId,
+      adminOverrideNota: input.nota,
+      adminOverrideBy: input.adminId,
+      adminOverrideAt: new Date(),
     }
   }
 

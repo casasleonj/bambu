@@ -90,6 +90,23 @@ export interface ActualizarPedidoInput {
   casoId?: string
 }
 
+/**
+ * TEMPORAL-SIN-EMBARQUE(#472): datos de una entrega que la oficina registra sin
+ * embarque. Su presencia activa las reglas de la entrega de oficina.
+ */
+export interface EntregaOficinaInput {
+  /** Repartidor responsable. Obligatorio en DOMICILIO; un solo repartidor por pedido. */
+  repartidorId?: string
+  /** Quién recibió el dinero. Obligatorio si hay cobro; sin valor por defecto. */
+  recibioDinero?: 'REPARTIDOR' | 'OFICINA'
+  /** Cuándo se entregó (no futura, hasta 7 días atrás, no un día ya cerrado). */
+  fechaEntrega: Date
+  /** Nota del administrador (queda en `adminOverrideNota`). */
+  nota?: string
+  /** Hasta cuándo promete pagar el saldo. Obligatoria si queda debiendo. */
+  promesaPagoFecha?: Date
+}
+
 export interface EntregarPedidoInput {
   pedidoId: string
   /** Actor que ejecuta la entrega — propagado a logAudit de la reconexión N2 (obligacion-guard). */
@@ -129,6 +146,8 @@ export interface EntregarPedidoInput {
   entregadoAt?: string
   codigoVisita?: string
   offlineId?: string
+  /** TEMPORAL-SIN-EMBARQUE(#472): activa la entrega de oficina sin embarque. */
+  oficina?: EntregaOficinaInput
 }
 
 export interface AnularPedidoInput {
@@ -213,6 +232,8 @@ export interface PedidoResumenDTO {
   adminOverrideNota?: string | null
   adminOverrideBy?: string | null
   adminOverrideAt?: string | null
+  /** TEMPORAL-SIN-EMBARQUE(#472) */
+  entregadoPorId?: string | null
   // Legacy price fields (for backward compat with UI and tests)
   precioPacaAgua: number
   precioPacaHielo: number
