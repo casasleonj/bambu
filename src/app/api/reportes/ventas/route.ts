@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
 
     const where = {
       fecha: dateFilter,
-      estadoEntrega: { not: EstadoEntrega.CANCELADO },
+      estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] },
     }
 
     const pagination = all ? { all: true } : { page: page ?? 1, pageSize: pageSize ?? 10 }
@@ -84,13 +84,13 @@ export async function GET(request: NextRequest) {
         where: {
           pedido: {
             fecha: dateFilter,
-            estadoEntrega: { not: EstadoEntrega.CANCELADO },
+            estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] },
           },
         },
         _sum: { monto: true },
       }),
       prisma.pedido.aggregate({
-        where: { ...where, saldo: { gt: 0 } },
+        where: { ...where, saldo: { gt: 0 }, estadoEntrega: EstadoEntrega.ENTREGADO },
         _sum: { saldo: true },
       }),
     ])

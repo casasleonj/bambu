@@ -165,7 +165,7 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
           <p className="text-3xl font-bold text-green-600">
             <MoneyDisplay value={ventas} userRole={userRole} />
           </p>
-          <p className="text-xs text-gray-400 mt-1">Total vendido</p>
+          <p className="text-xs text-gray-400 mt-1">Total entregado</p>
           <p className={`text-xs mt-1 font-medium ${trendClass(ventasTrend)}`}>
             {trendArrow(ventasTrend)} {Math.abs(ventasTrend).toFixed(0)}% vs ayer
           </p>

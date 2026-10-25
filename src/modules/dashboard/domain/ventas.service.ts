@@ -18,10 +18,14 @@ export function pedidosValidos(pedidos: PedidoRaw[]): PedidoRaw[] {
 }
 
 /**
- * Calculate total sales from valid pedidos.
+ * Calculate total sales: only ENTREGADO pedidos count as sold.
+ * Pending / en ruta / no entregado orders are not revenue yet (and ANULADO /
+ * CANCELADO never are), so they must not inflate the day's totals.
  */
 export function calcularVentas(pedidos: PedidoRaw[]): number {
-  return pedidos.reduce((acc, p) => acc + Number(p.total), 0)
+  return pedidos
+    .filter(p => p.estadoEntrega === 'ENTREGADO')
+    .reduce((acc, p) => acc + Number(p.total), 0)
 }
 
 /**
