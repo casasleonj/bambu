@@ -47,7 +47,10 @@ global de transiciones **no cambia**: `Pedido.puedeEntregarOficina()` es la úni
 2. Mergear con el interruptor apagado.
 3. **No encender hasta que la nómina sume esta comisión (PR-2 de #472)**: sin eso, una entrega
    registrada así no le pagaría comisión a nadie.
-4. Encender `GESTION_ADMIN_SIN_EMBARQUE=true` en `Config`.
+4. Encender `GESTION_ADMIN_SIN_EMBARQUE=true` en `Config`. **Todavía no hay pantalla para esto** (la maqueta 9
+   queda para una fase siguiente): se enciende con `POST /api/config {"clave":"GESTION_ADMIN_SIN_EMBARQUE","valor":"true"}`
+   como ADMIN, o con SQL. El interruptor se lee **siempre de la base, sin caché** (#479: el caché de `Config` sirve el valor
+   viejo una vez tras un cambio), así que apagarlo surte efecto en la petición siguiente.
 
 ## Cómo retirarla cuando Embarques funcione
 
