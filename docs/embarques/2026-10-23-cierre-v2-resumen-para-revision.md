@@ -319,7 +319,7 @@ Para revisar (señales, no acusaciones: no impiden cerrar)
 |---|---|---|
 | **A** (1 rama = 1 PR; flag `NEXT_PUBLIC_CIERRE_V2` OFF) | Entrega derivada y decisión de pendiente; panel de dinero; frescura y borrador; revisión y señales; preview 4xx; venta libre con buscador/total/bloqueos/botellón único; #436 (precios), #437 (cuadre) | No |
 | **B** (ADR addendum de embarques y de ADR-MONETARIO-001) | #448, #449, #444, reglas de #445 (anónimo, crédito con excepción, precios especiales, `negocioId`, `pedidoOrigenId`), umbral de sobrante, recálculo por corrección de precio (#326) | **Sí** |
-| **C** (ADR) | Reducción comercial aceptada (comando propio); `cambios` = Σ sustituciones (#446) | Sí |
+| **C** (ADR) | Reducción comercial aceptada (comando propio); `cambios` = Σ sustituciones (#446) — **`cambios` hecho en la Fase C, ver ADR-CIERRE-003**; la reducción comercial sigue pendiente (#451) | Sí |
 | **D** (ADR, depende de un ledger físico de disponibles y comprometidos) | Escasez: recarga, reprogramar o reasignar a **un solo** cliente, con recuperación (6.3) | Sí |
 
 **Criterios de aceptación**

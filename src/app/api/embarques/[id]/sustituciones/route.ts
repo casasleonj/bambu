@@ -26,6 +26,8 @@ import {
 const sustitucionInclude = {
   movimientoRecepcion: true,
   movimientoEntrega: true,
+  cliente: { select: { id: true, nombre: true, apellido: true } },
+  pedido: { select: { id: true, numero: true } },
   autorizadoPor: { select: { id: true, nombre: true } },
 } as const
 
@@ -79,7 +81,7 @@ export async function POST(
     if (!parsed.success) {
       return apiError(formatZodError(parsed.error), 400)
     }
-    const { producto, cantidad, pedidoId, motivo } = parsed.data
+    const { producto, cantidad, pedidoId, clienteId, motivo } = parsed.data
     offlineId = parsed.data.offlineId
 
     // Idempotencia (ADR-IDEMPOTENCIA-001 / contrato §14).
@@ -102,6 +104,10 @@ export async function POST(
     if (pedidoId) {
       const pedido = await prisma.pedido.findFirst({ where: { id: pedidoId, embarqueId: id }, select: { id: true } })
       if (!pedido) return apiError('El pedido no pertenece a este embarque', 400)
+    }
+    if (clienteId) {
+      const cliente = await prisma.cliente.findUnique({ where: { id: clienteId }, select: { id: true } })
+      if (!cliente) return apiError('Cliente no encontrado', 404)
     }
 
     const { recepcion, entrega } = construirMovimientosSustitucion({ producto, cantidad })
@@ -139,6 +145,7 @@ export async function POST(
         data: {
           embarqueId: id,
           pedidoId: pedidoId ?? null,
+          clienteId: clienteId ?? null,
           movimientoRecepcionId: movRecepcion.id,
           movimientoEntregaId: movEntrega.id,
           autorizadoPorId: session.user?.id ?? null,
@@ -151,7 +158,7 @@ export async function POST(
           entidad: 'Embarque',
           registroId: id,
           accion: 'UPDATE',
-          datos: { sustitucionId: creada.id, producto, cantidad, pedidoId: pedidoId ?? null },
+          datos: { sustitucionId: creada.id, producto, cantidad, pedidoId: pedidoId ?? null, clienteId: clienteId ?? null },
           usuarioId: session.user?.id,
         },
         tx,

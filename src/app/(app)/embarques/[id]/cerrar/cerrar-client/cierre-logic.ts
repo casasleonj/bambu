@@ -298,3 +298,30 @@ export function notaReduccionPendiente(pedidos: Pedido[], cuadres: Record<string
   }
   return lineas.join('\n')
 }
+
+/** Sustitución tal como la devuelve `GET /api/embarques/[id]/sustituciones` (#446). */
+export interface SustitucionCierre {
+  id: string
+  pedidoId: string | null
+  clienteId: string | null
+  movimientoEntrega: { producto: string; cantidad: number }
+  movimientoRecepcion?: { metadata?: { motivoDetalle?: string } | null } | null
+  cliente?: { nombre: string; apellido?: string | null } | null
+  pedido?: { numero: number } | null
+}
+
+/** «Cambios» del cierre V2 = Σ unidades de reemplazo entregadas, por producto. */
+export function cambiosPorProducto(sustituciones: SustitucionCierre[]): Record<string, number> {
+  const r: Record<string, number> = {}
+  for (const s of sustituciones) {
+    r[s.movimientoEntrega.producto] = (r[s.movimientoEntrega.producto] ?? 0) + s.movimientoEntrega.cantidad
+  }
+  return r
+}
+
+/** A quién se le hizo el cambio, en palabras para el usuario. */
+export function destinoDeCambio(s: SustitucionCierre): string {
+  if (s.pedido) return `Pedido #${s.pedido.numero}`
+  if (s.cliente) return `${s.cliente.nombre}${s.cliente.apellido ? ` ${s.cliente.apellido}` : ''} (sin pedido en la ruta)`
+  return 'Sin destino registrado'
+}
