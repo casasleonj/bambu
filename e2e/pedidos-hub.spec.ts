@@ -651,6 +651,121 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     })
   })
 
+  // P2-5 (#477): el precio de cada línea lo resuelve el servidor (especial del negocio >
+  // especial del cliente > tramo de volumen > base). Se verifica en la BD, no en pantalla.
+  test.describe('precios automáticos desde el Hub (P2-5)', () => {
+    const especiales = (precio: number) => JSON.stringify({ PUNTO: { PACA_AGUA: precio }, DOMICILIO: { PACA_AGUA: precio } })
+
+    async function ventaRapidaConComprador(page: Page, nombre: string) {
+      const app = appMain(page)
+      await page.goto(`${BASE}/pedidos`)
+      await app.getByTestId('fab-main').click()
+      await page.getByTestId('fab-venta-rapida').click()
+      await page.getByTestId('workspace-identificar').click()
+      await page.getByTestId('cliente-search-input').fill(nombre)
+      await page.getByTestId('cliente-search-result').first().click()
+      await expect(page.getByTestId('comprador-nombre')).toContainText(nombre)
+    }
+
+    async function crearYLeerItems(page: Page) {
+      await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+      const creado = page.waitForResponse((r) => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST')
+      await page.getByTestId('workspace-commit').click()
+      const res = await creado
+      expect(res.status()).toBeLessThan(300)
+      const body = await res.json()
+      const pedidoId = (body.data?.pedido ?? body.pedido).id as string
+      const pedido = await prisma.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: { items: true } })
+      return { pedido, item: pedido.items.find((i) => i.producto === 'PACA_AGUA')! }
+    }
+
+    /** Tramo de la tabla vigente para una cantidad (misma regla que `pricing.ts`). */
+    async function tramoDe(cantidad: number) {
+      const tramos = await prisma.precioVolumen.findMany({ where: { activo: true, producto: { codigo: 'PACA_AGUA' } } })
+      return tramos
+        .filter((t) => t.cantMin <= cantidad && (t.cantMax === null || t.cantMax >= cantidad))
+        .sort((a, b) => b.cantMin - a.cantMin)[0]
+    }
+
+    test('el precio especial del cliente se aplica solo y queda en la BD', async ({ browser }) => {
+      const page = await sharedLoginAs(browser, 'admin')
+      const t = Date.now()
+      const nombre = `Persona Especial ${t}`
+      const { cliente } = await createCliente(page, { nombre })
+      await prisma.cliente.update({ where: { id: cliente.id }, data: { preciosEspeciales: especiales(1900) } })
+
+      await ventaRapidaConComprador(page, nombre)
+      await page.getByTestId('workspace-inc-PACA_AGUA').click()
+      await page.getByTestId('workspace-inc-PACA_AGUA').click()
+      await expect(page.getByTestId('workspace-cant-PACA_AGUA')).toHaveValue('2')
+
+      const { pedido, item } = await crearYLeerItems(page)
+      expect(pedido.clienteId).toBe(cliente.id)
+      expect(Number(item.precio)).toBe(1900)
+      expect(item.precioOrigen).toBe('cliente')
+      expect(Number(item.subtotal)).toBe(3800)
+      expect(Number(pedido.total)).toBe(3800)
+    })
+
+    test('si la tienda tiene su propio precio especial, gana el de la tienda; el cliente queda como respaldo', async ({ browser }) => {
+      const page = await sharedLoginAs(browser, 'admin')
+      const t = Date.now()
+      const { cliente } = await createCliente(page, { nombre: `Dueño Precios ${t}` })
+      const nombreTienda = `Tienda Precios${t}`
+      const rn = await apiPost(page, '/api/negocios', { clienteId: cliente.id, nombre: nombreTienda, tipoNegocio: 'Tienda', direccion: 'Cra 7 # 10-20', barrio: 'Centro' })
+      expect(rn.status()).toBeLessThan(300)
+      const negocio = await prisma.negocio.findFirstOrThrow({ where: { clienteId: cliente.id, nombre: nombreTienda } })
+      await prisma.cliente.update({ where: { id: cliente.id }, data: { preciosEspeciales: especiales(1900) } })
+      await prisma.negocio.update({ where: { id: negocio.id }, data: { preciosEspeciales: especiales(1700) } })
+
+      // comprando como la tienda: 1700 (el de la tienda)
+      await ventaRapidaConComprador(page, nombreTienda)
+      await page.getByTestId('workspace-inc-PACA_AGUA').click()
+      const deTienda = await crearYLeerItems(page)
+      expect(deTienda.pedido.negocioId).toBe(negocio.id)
+      expect(Number(deTienda.item.precio)).toBe(1700)
+      expect(deTienda.item.precioOrigen).toBe('cliente')
+
+      // comprando como la persona (sin tienda): 1900 (el del cliente)
+      await ventaRapidaConComprador(page, `Dueño Precios ${t}`)
+      await page.getByTestId('workspace-inc-PACA_AGUA').click()
+      const dePersona = await crearYLeerItems(page)
+      expect(dePersona.pedido.negocioId).toBeNull()
+      expect(Number(dePersona.item.precio)).toBe(1900)
+      expect(dePersona.item.precioOrigen).toBe('cliente')
+    })
+
+    test('sin precio especial, la cantidad fija el tramo de volumen sin intervención del usuario', async ({ browser }) => {
+      const page = await sharedLoginAs(browser, 'admin')
+      const t = Date.now()
+      const nombre = `Persona Volumen ${t}`
+      await createCliente(page, { nombre })
+
+      const tramoUno = await tramoDe(1)
+      const tramoCinco = await tramoDe(5)
+      // la tabla de prueba (seed-test) tiene tramos distintos para 1 y 5 und
+      expect(tramoUno && tramoCinco && tramoUno.id !== tramoCinco.id).toBeTruthy()
+
+      // 1 und → tramo de 1 und
+      await ventaRapidaConComprador(page, nombre)
+      await page.getByTestId('workspace-inc-PACA_AGUA').click()
+      const una = await crearYLeerItems(page)
+      expect(Number(una.item.precio)).toBe(Number(tramoUno.precio))
+      expect(una.item.precioOrigen).toBe('volumen')
+
+      // 5 und → tramo de 5 und, más barato por unidad
+      await ventaRapidaConComprador(page, nombre)
+      await page.getByTestId('workspace-cant-PACA_AGUA').fill('5')
+      await expect(page.getByTestId('workspace-cant-PACA_AGUA')).toHaveValue('5')
+      const cinco = await crearYLeerItems(page)
+      expect(Number(cinco.item.precio)).toBe(Number(tramoCinco.precio))
+      expect(cinco.item.precioOrigen).toBe('volumen')
+      expect(Number(cinco.item.precio)).toBeLessThan(Number(tramoUno.precio))
+      expect(Number(cinco.item.subtotal)).toBe(Number(tramoCinco.precio) * 5)
+      expect(Number(cinco.pedido.total)).toBe(Number(tramoCinco.precio) * 5)
+    })
+  })
+
   // P1-3 (#394, B-05): el comprador se identifica DENTRO de la venta rápida, sea una
   // tienda o una persona, y se verifica en la base de datos.
   test('workspace (P1-3): venta rápida con comprador identificado — tienda elegida de un toque, pedido de la tienda pagado', async ({ browser }) => {

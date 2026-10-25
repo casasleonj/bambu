@@ -365,7 +365,8 @@ La clienta tiene un pedido de julio con `totalPagado > 0` y **sin fila `Pago`**,
 | P2-1 | Búsqueda con entidad que coincidió + preselección del negocio — B-11 | ✅ completo en `main` (2026-10-22, #388 issue #385; #393 issue #392) |
 | P2-4 | Ocultar la creación de pedidos a quien no puede — B-17 | ✅ completo en este PR (issue #434). Solo ADMIN/ASISTENTE (igual que `POST /api/pedidos`) ven el «+» flotante, «Nueva operación» del menú de comandos y el «Crear Pedido» de la lista vacía; `?new=1` no abre el formulario a los demás y limpia el enlace. `canCreatePedidos(role)` en `permissions.ts`. Fuera de alcance: acciones sobre pedidos ya creados |
 | P2-3 | Embarque y repartidor visibles en la lista — B-16 | ✅ completo en este PR (issue #453). La fila del Hub muestra «Embarque #N · Repartidor» bajo el estado (solo si el pedido tiene embarque). `GET /api/pedidos` y la carga inicial de `/pedidos` comparten `embarque-lista.ts` (una consulta por página, sin N+1) y la lista escucha también `embarque.*`. Sin migración |
-| P2-2, P2-5 | Entregar después, E2E precio especial | ❌ abiertos |
+| P2-2 | «Entregar después» en la venta rápida | ✅ completo en `main` (#476, issue #463), detrás de `NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR` |
+| P2-5 | E2E de precio especial / volumen automático desde el Hub | ✅ completo en este PR (issue #477). 3 specs en `pedidos-hub.spec.ts` verifican en la BD el precio y `precioOrigen` de cada línea: especial del cliente, el de la tienda gana al del cliente (y la persona sin tienda cae al del cliente), y tramo de volumen por cantidad. Mutation check: desactivar el precio de la tienda hace fallar el spec. Sin cambios de código de producción |
 
 ### 12.2 Brechas nuevas
 
