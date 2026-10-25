@@ -14,7 +14,7 @@ const pedido = (o: Partial<PedidoParaEntrega> = {}): PedidoParaEntrega => ({
   items: [{ producto: 'PACA_AGUA', cantPedido: 10, cantEntrega: 0 }],
   ...o,
 })
-const datos = (p: PedidoParaEntrega, o: Partial<DatosEntrega> = {}): DatosEntrega => ({ ...datosIniciales(p, AHORA), alcance: 'TODO', repartidorId: 'r1', ...o })
+const datos = (p: PedidoParaEntrega, o: Partial<DatosEntrega> = {}): DatosEntrega => ({ ...datosIniciales(p, AHORA), alcance: 'COMPLETA', repartidorId: 'r1', ...o })
 const nombre = (c: string) => c
 
 describe('datosIniciales', () => {

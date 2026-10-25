@@ -23,7 +23,7 @@ export interface Repartidor { id: string; nombre: string }
 
 export interface DatosEntrega {
   /** `null` = todavía sin elegir. */
-  alcance: 'TODO' | 'MENOS' | null
+  alcance: 'COMPLETA' | 'MENOS' | null
   /** Unidades que se entregan AHORA por producto (solo cuando `alcance === 'MENOS'`). */
   cantidades: Record<string, number>
   repartidorId: string
@@ -81,7 +81,7 @@ export function datosIniciales(p: PedidoParaEntrega, ahora: Date = new Date()): 
 /** Unidades que se entregarán ahora, por producto. */
 export function itemsAEntregar(p: PedidoParaEntrega, d: DatosEntrega): Array<{ producto: string; cantidad: number }> {
   const pend = pendientes(p)
-  if (d.alcance === 'TODO') return pend.map((i) => ({ producto: i.producto, cantidad: i.pendiente }))
+  if (d.alcance === 'COMPLETA') return pend.map((i) => ({ producto: i.producto, cantidad: i.pendiente }))
   return pend
     .map((i) => ({ producto: i.producto, cantidad: Math.min(i.pendiente, Math.max(0, Math.floor(d.cantidades[i.producto] ?? 0))) }))
     .filter((i) => i.cantidad > 0)

@@ -125,7 +125,7 @@ export function RegistrarEntregaDialog({ pedido, repartidores, onClose, onRegist
             <section className={TARJETA}>
               <span className={ETIQUETA}>¿Se entregó todo lo pedido? *</span>
               <div className="flex flex-col gap-2">
-                <Opcion name="alcance" checked={datos.alcance === 'TODO'} onChange={() => set('alcance', 'TODO')} testId="alcance-todo">
+                <Opcion name="alcance" checked={datos.alcance === 'COMPLETA'} onChange={() => set('alcance', 'COMPLETA')} testId="alcance-todo">
                   Sí, se entregó todo ({pend.map((i) => `${i.pendiente} ${nombreProducto(i.producto)}`).join(', ')})
                 </Opcion>
                 <Opcion name="alcance" checked={datos.alcance === 'MENOS'} onChange={() => set('alcance', 'MENOS')} testId="alcance-menos">
