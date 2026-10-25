@@ -175,9 +175,11 @@ describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§5 con
       data: { pedidoId: pedido.id, metodo: 'EFECTIVO', monto: 15_000, confirmacion: 'CONFIRMADO', embarqueId: origen.embarque.id },
     })
 
+    // ADR-CIERRE-002 §1: el pedido vigente asignado a este embarque debe quedar
+    // resuelto en el cierre (aquí: no se entregó en esta misión).
     const result = await buildUseCase().execute({
       id: embarque.id,
-      pedidos: [],
+      pedidos: [{ pedidoId: pedido.id, entregado: 'NO_ENTREGADO', pagos: [] }],
       gastos: [],
       dineroEntregado: 30_000,
       dryRun: true,

@@ -16,7 +16,7 @@ import { PedidoCuadreV2 } from './pedido-cuadre-v2'
 import { VentaLibreRow } from './venta-libre-row'
 import { VentaLibreRowV2 } from './venta-libre-row-v2'
 import { cierreV2Enabled } from '@/lib/flags'
-import { clasificarErrorPreview, conciliar, notaReduccionPendiente, totalVentaLibre, type PreciosVentaLibre, type StockPorProducto } from './cierre-logic'
+import { clasificarErrorPreview, conciliar, pedidoEntregable, notaReduccionPendiente, totalVentaLibre, type PreciosVentaLibre, type StockPorProducto } from './cierre-logic'
 import { ConfirmModal } from './confirm-modal'
 import { pasoPedidosValido, pasoPedidosValidoV2, pasoVentasLibresValido, pasoFisicoValido, pasoConfirmarValido, type PasoValidez } from './wizard-gating'
 
@@ -56,6 +56,8 @@ export default function CerrarEmbarqueClient() {
     caja: { efectivoEsperado: number; efectivoReal: number; diferencia: number; otrosPagos: number; sobranteFaltante: number }
     conciliacion: { totalDiscrepancy: number }
     responsibilityCases: Array<{ id: string; tipo: string; montoEstimado: number }>
+    /** ADR-CIERRE-002 §5: avisos para revisar; nunca bloquean el cierre. */
+    senales: Array<{ codigo: string; mensaje: string }>
   } | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState(false)
@@ -138,6 +140,8 @@ export default function CerrarEmbarqueClient() {
 
           const initialCuadres: Record<string, CuadrePedido> = {}
           for (const p of emb.pedidos) {
+            // Cancelado/anulado: no se entrega ni va en el payload del cierre (ADR-CIERRE-002 §2).
+            if (!pedidoEntregable(p)) continue
             initialCuadres[p.id] = {
               pedidoId: p.id,
               entregado: 'COMPLETO',
@@ -516,7 +520,7 @@ export default function CerrarEmbarqueClient() {
         if (cancelled) return
         if (res.ok) {
           const json = await res.json()
-          setPreview({ caja: json.caja, conciliacion: json.conciliacion, responsibilityCases: json.responsibilityCases || [] })
+          setPreview({ caja: json.caja, conciliacion: json.conciliacion, responsibilityCases: json.responsibilityCases || [], senales: json.senales || [] })
           setPreviewError(false)
           setPreviewRechazo(null)
         } else {
@@ -643,7 +647,14 @@ export default function CerrarEmbarqueClient() {
       : { valido: true, motivos: [] },
     pasoFisicoValido(calculos.totalDiscrepancia, justificacion),
     { valido: true, motivos: [] },
-    pasoConfirmarValido(!!preview && !previewError, previewLoading, previewError, previewRechazo),
+    (() => {
+      const base = pasoConfirmarValido(!!preview && !previewError, previewLoading, previewError, previewRechazo)
+      // V2 (ADR-CIERRE-002 §5): un sobrante de caja sobre el umbral exige nota, igual que el faltante.
+      if (v2 && base.valido && authoritative.faltanteSobrante >= UMBRAL_MINIMO_FALTANTE_CAJA && !justificacionFaltante.trim()) {
+        return { valido: false, motivos: [`Sobran ${formatCurrency(authoritative.faltanteSobrante)} en caja. Agrega una nota que lo explique (por ejemplo, un cobro sin registrar).`] }
+      }
+      return base
+    })(),
   ]
 
   const sections = [
@@ -718,6 +729,13 @@ export default function CerrarEmbarqueClient() {
             <h2 className="text-lg font-semibold">Pedidos Asignados ({embarque.pedidos.length})</h2>
             {embarque.pedidos.map((pedido) => {
               const cuadre = cuadres[pedido.id]
+              if (!cuadre && !pedidoEntregable(pedido)) {
+                return (
+                  <div key={pedido.id} className="rounded-lg border bg-gray-50 p-4 text-sm text-gray-600" data-testid={`pedido-no-entregable-${pedido.numero}`}>
+                    <b>#{pedido.numero}</b> · {pedido.nombreCli} — Cancelado, no se entrega. No hace parte de este cierre.
+                  </div>
+                )
+              }
               if (!cuadre) return null
               if (v2) {
                 return (
@@ -1049,6 +1067,35 @@ export default function CerrarEmbarqueClient() {
                         : 'No genera responsabilidad (por debajo del umbral o justificado)'}
                     </p>
                   )}
+                </div>
+              )}
+
+              {v2 && authoritative.faltanteSobrante >= UMBRAL_MINIMO_FALTANTE_CAJA && (
+                <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4" data-testid="nota-sobrante">
+                  <label className="block text-sm font-semibold text-amber-900" htmlFor="nota-sobrante-input">
+                    Sobran {formatCurrency(authoritative.faltanteSobrante)} en caja: explica por qué
+                  </label>
+                  <textarea
+                    id="nota-sobrante-input"
+                    value={justificacionFaltante}
+                    onChange={(e) => setJustificacionFaltante(e.target.value)}
+                    placeholder="Ej: un cliente pagó un pedido de ayer que no estaba registrado"
+                    className="mt-2 w-full rounded-lg border border-amber-300 px-3 py-2 text-sm"
+                    rows={2}
+                  />
+                </div>
+              )}
+
+              {preview && preview.senales.length > 0 && (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4" data-testid="senales-cierre">
+                  <p className="mb-2 text-sm font-semibold text-amber-900">
+                    Para revisar <span className="font-normal text-amber-800">(avisos: no impiden cerrar)</span>
+                  </p>
+                  <ul className="space-y-1 text-sm text-amber-900">
+                    {preview.senales.map((sn) => (
+                      <li key={sn.codigo}>• {sn.mensaje}</li>
+                    ))}
+                  </ul>
                 </div>
               )}
 

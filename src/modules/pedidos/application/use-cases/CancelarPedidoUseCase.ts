@@ -50,6 +50,10 @@ export class CancelarPedidoUseCase {
       // Previously, pedido.total was reset to 0 inside cancelar(), causing the NC
       // to be created with monto=0 (customer lost refund silently).
       const { tuvoPagos, totalPagado } = pedido.cancelar(input.offlineId)
+      // ADR-CIERRE-002 §2 (decisión del PO 2026-10-24): un pedido cancelado deja de
+      // formar parte del embarque, para que el cierre no lo vea como pendiente ni
+      // lo cierre como entregado (#448).
+      pedido.liberarEmbarque()
 
       const updated = await this.pedidoRepo.update(pedido, tx)
 

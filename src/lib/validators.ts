@@ -772,7 +772,7 @@ export const EmbarqueUpdateSchema = z.object({
 
 export const GastoEmbarqueSchema = z.object({
   categoria: z.string().min(1),
-  monto: z.coerce.number().positive(),
+  monto: z.coerce.number().positive().max(99_999_999, 'El monto del gasto es demasiado grande'),
   nota: z.string().max(500).optional(),
 })
 
@@ -803,60 +803,72 @@ export const GpsTrackCreateSchema = z.object({
   offlineId: z.string().optional(),
 })
 
+/**
+ * Topes del cierre de embarque (ADR-CIERRE-002 §6, #444). Las columnas monetarias son
+ * Decimal(10,2) (máx. 99.999.999,99): un monto mayor reventaba en la base con un 500.
+ * Ahora se rechaza con 400 y mensaje claro antes de tocar la base.
+ */
+const MAX_MONTO_CIERRE = 99_999_999
+const MAX_CANTIDAD_CIERRE = 100_000
+
 export const CerrarEmbarqueSchema = z.object({
   pedidos: z.array(z.object({
     pedidoId: z.string().min(1),
     entregado: z.enum(['COMPLETO', 'PARCIAL', 'NO_ENTREGADO']),
     productosEntregados: z.object({
-      cPacaAguaEnt: z.number().int().min(0).nullish().default(0),
-      cPacaHieloEnt: z.number().int().min(0).nullish().default(0),
-      cBotellonFabEnt: z.number().int().min(0).nullish().default(0),
-      cBotellonDomEnt: z.number().int().min(0).nullish().default(0),
-      cBolsaAguaEnt: z.number().int().min(0).nullish().default(0),
-      cBolsaHieloEnt: z.number().int().min(0).nullish().default(0),
+      cPacaAguaEnt: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
+      cPacaHieloEnt: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
+      cBotellonFabEnt: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
+      cBotellonDomEnt: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
+      cBolsaAguaEnt: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
+      cBolsaHieloEnt: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
     }).nullish(),
     preciosReales: z.object({
-      pacaAgua: z.number().min(0).nullish().default(0),
-      pacaHielo: z.number().min(0).nullish().default(0),
-      botellonFab: z.number().min(0).nullish().default(0),
-      botellonDom: z.number().min(0).nullish().default(0),
-      bolsaAgua: z.number().min(0).nullish().default(0),
-      bolsaHielo: z.number().min(0).nullish().default(0),
+      pacaAgua: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
+      pacaHielo: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
+      botellonFab: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
+      botellonDom: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
+      bolsaAgua: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
+      bolsaHielo: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
     }).nullish(),
     pagado: z.enum(['COMPLETO', 'PARCIAL', 'NO_PAGADO']),
     pagos: z.array(z.object({
       metodo: z.string(),
-      monto: z.number().min(0).nullish().default(0),
-    })).default([]),
+      monto: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
+    })).max(10, 'Demasiados pagos en un pedido').default([]),
     nuevoEmbarqueId: z.string().nullish(),
-  })),
+  })).max(200, 'Demasiados pedidos en el cierre'),
   ventasLibres: z.array(z.object({
     clienteId: z.string().min(1),
-    cPacaAgua: z.number().int().min(0).nullish().default(0),
-    cPacaHielo: z.number().int().min(0).nullish().default(0),
-    cBotellonFab: z.number().int().min(0).nullish().default(0),
-    cBotellonDom: z.number().int().min(0).nullish().default(0),
-    cBolsaAgua: z.number().int().min(0).nullish().default(0),
-    cBolsaHielo: z.number().int().min(0).nullish().default(0),
+    cPacaAgua: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
+    cPacaHielo: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
+    cBotellonFab: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
+    cBotellonDom: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
+    cBolsaAgua: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
+    cBolsaHielo: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
     pagos: z.array(z.object({
       metodo: z.string(),
-      monto: z.number().min(0).nullish().default(0),
-    })).default([]),
-    obs: z.string().optional(),
-  })).optional().default([]),
+      monto: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
+    })).max(10, 'Demasiados pagos en una venta libre').default([]),
+    obs: z.string().max(500).optional(),
+    // ADR-CIERRE-002 §4: vínculos opcionales de la venta libre del cierre.
+    negocioId: z.string().min(1).optional(),
+    pedidoOrigenId: z.string().min(1).optional(),
+    excepcionId: z.string().min(1).optional(),
+  })).max(100, 'Demasiadas ventas libres en el cierre').optional().default([]),
   productos: z.array(z.object({
     producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),
     devueltas: z.coerce.number().int().min(0).default(0),
     cambios: z.coerce.number().int().min(0).default(0),
     rotas: z.coerce.number().int().min(0).default(0),
   })).min(1, 'Agrega al menos un producto en conciliación'),
-  gastos: z.array(GastoEmbarqueSchema).optional().default([]),
-  dineroEntregado: z.coerce.number().min(0).default(0),
-  justificacionDiscrepancia: z.string().optional(),
+  gastos: z.array(GastoEmbarqueSchema).max(60, 'Demasiados gastos en el cierre').optional().default([]),
+  dineroEntregado: z.coerce.number().min(0).max(MAX_MONTO_CIERRE).default(0),
+  justificacionDiscrepancia: z.string().max(2000).optional(),
   // PR3: permite justificar un faltante de caja para evitar crear
   // una DeudaTrabajador automática al cerrar el embarque.
-  justificacionFaltante: z.string().optional(),
-  obs: z.string().optional(),
+  justificacionFaltante: z.string().max(2000).optional(),
+  obs: z.string().max(2000).optional(),
   // BAMBU-LOG-006: offline-first dedup para el cierre de embarque.
   offlineId: z.string().optional(),
 })

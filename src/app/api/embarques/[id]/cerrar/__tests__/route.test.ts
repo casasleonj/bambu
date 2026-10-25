@@ -6,7 +6,11 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 
 const routePath = join(process.cwd(), 'src/app/api/embarques/[id]/cerrar/route.ts')
-const source = readFileSync(routePath, 'utf-8')
+const routeSource = readFileSync(routePath, 'utf-8')
+// ADR-CIERRE-002: el mapeo del body al use case vive en `cierre-http.ts`, compartido
+// con el preview (que debe mapear EXACTAMENTE igual). La ruta lo usa vía `toCerrarInput`.
+const httpSource = readFileSync(join(process.cwd(), 'src/modules/embarques/presentation/cierre-http.ts'), 'utf-8')
+const source = routeSource + '\n' + httpSource
 
 describe('PR3: endpoint de cierre expone resumen de caja y deuda', () => {
   it('FIX: la ruta extrae justificacionFaltante del body', () => {
@@ -14,7 +18,8 @@ describe('PR3: endpoint de cierre expone resumen de caja y deuda', () => {
   })
 
   it('FIX: pasa justificacionFaltante al use case', () => {
-    expect(source).toMatch(/justificacionFaltante,/)
+    expect(routeSource).toMatch(/toCerrarInput\(/)
+    expect(httpSource).toMatch(/justificacionFaltante,/)
   })
 })
 

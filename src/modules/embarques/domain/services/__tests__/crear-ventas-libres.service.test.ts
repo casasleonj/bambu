@@ -54,9 +54,10 @@ describe('F4.10-b: el use case delega al service (no duplica lógica)', () => {
 })
 
 describe('F4.10-b: el service mantiene la lógica completa', () => {
-  it('FIX: el service importa resolverPrecio, calcularEstadoPago, getNextNumero', () => {
-    expect(serviceSource).toMatch(/import\s+\{\s*resolverPrecio\s*\}\s+from\s+['"]@\/lib\/pricing['"]/)
-    expect(serviceSource).toMatch(/import\s+\{\s*calcularEstadoPago\s*\}\s+from\s+['"]@\/lib\/pedido-utils['"]/)
+  it('FIX: el service importa resolverPreciosPedido, calcularEstadoPago, getNextNumero', () => {
+    // ADR-CIERRE-002 §4: precios con la misma prioridad que un pedido (negocio → cliente → volumen).
+    expect(serviceSource).toMatch(/import\s+\{\s*resolverPreciosPedido[^}]*\}\s+from\s+['"]@\/lib\/pricing['"]/)
+    expect(serviceSource).toMatch(/import\s+\{\s*calcularEstadoPago[^}]*\}\s+from\s+['"]@\/lib\/pedido-utils['"]/)
     expect(serviceSource).toMatch(/import\s+\{\s*getNextNumero\s*\}\s+from\s+['"]@\/lib\/sequence['"]/)
   })
 

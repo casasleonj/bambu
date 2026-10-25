@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { startOfDayBogota, endOfDayBogota } from './dates'
 
 // Sin index signature: los accesos dinámicos ($queryRawUnsafe, tx[model])
@@ -47,6 +48,21 @@ const SEQ_NAMES: Record<string, string> = {
   'notaCredito:numero': 'nota_credito_numero_seq',
 }
 
+/**
+ * #438 / ADR-CIERRE-002 §3: `nextval()` NO se revierte con ROLLBACK, así que un
+ * dry-run (preview del cierre) que numera documentos "gastaba" consecutivos reales.
+ * Dentro de `sinConsumirSecuencias()` los números se calculan SIN avanzar la
+ * secuencia: se lee su estado y se devuelven valores provisionales (muy por encima
+ * del rango real, para no chocar con pedidos que se creen en paralelo). Como el
+ * dry-run siempre termina en rollback, esos números nunca se persisten.
+ */
+const PROVISIONAL_OFFSET = 1_000_000
+const contextoSinConsumo = new AsyncLocalStorage<Map<string, number>>()
+
+export function sinConsumirSecuencias<T>(fn: () => Promise<T>): Promise<T> {
+  return contextoSinConsumo.run(new Map<string, number>(), fn)
+}
+
 export async function getNextNumero(
   tx: TxLike,
   options: {
@@ -77,6 +93,17 @@ export async function getNextNumero(
     // "Cannot read properties of undefined (reading '_createPrismaPromise')"
     // en algunos entornos (confirmado en CI, ver PR #120).
     const txWithRaw = tx as unknown as { $queryRawUnsafe: (query: string, ...values: unknown[]) => Promise<unknown[]> }
+    const sinConsumo = contextoSinConsumo.getStore()
+    if (sinConsumo) {
+      // seqName ya validado arriba (identificador simple). Solo lectura.
+      const estado = await txWithRaw.$queryRawUnsafe(
+        `SELECT last_value, is_called FROM ${seqName}`,
+      ) as Array<{ last_value: bigint; is_called: boolean }>
+      const siguiente = Number(estado[0].last_value) + (estado[0].is_called ? 1 : 0)
+      const emitidos = sinConsumo.get(seqName) ?? 0
+      sinConsumo.set(seqName, emitidos + 1)
+      return PROVISIONAL_OFFSET + siguiente + emitidos
+    }
     const rows = await txWithRaw.$queryRawUnsafe(
       `SELECT nextval('${seqName}')`,
     ) as Array<{ nextval: bigint }>

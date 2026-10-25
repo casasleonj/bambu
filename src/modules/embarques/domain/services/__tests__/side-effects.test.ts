@@ -116,7 +116,10 @@ describe('F4.10-c-d: el use case se simplificó (398 → ~335 líneas)', () => {
     // sola query por `Pago.embarqueId` en el helper. No es la regresión de
     // duplicación que este test original detectaba.
     const lines = useCaseSource.split('\n').length
-    expect(lines).toBeLessThan(440)
+    // Subido de 440 a 480 por ADR-CIERRE-002 (cobertura exacta de pedidos, preview sin
+    // secuencias y señales: la lógica vive en servicios de dominio —`cobertura-pedidos`,
+    // `senales-cierre`, `sinConsumirSecuencias`—; en el use case solo quedan las llamadas).
+    expect(lines).toBeLessThan(480)
   })
 
   it('FIX: el archivo final tiene más de 320 líneas (sanity check)', () => {

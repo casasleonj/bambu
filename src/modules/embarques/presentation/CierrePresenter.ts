@@ -43,6 +43,8 @@ export interface CierreLegacyResponse {
   deudaCreada: { id: string; monto: number } | null
   // FASE 6 (§13): casos de responsabilidad detectados, pendientes de resolución.
   responsibilityCases: Array<{ id: string; tipo: string; montoEstimado: number }>
+  /** ADR-CIERRE-002 §5: avisos para revisar; nunca bloquean el cierre. */
+  senales: Array<{ codigo: string; mensaje: string }>
   deduped?: boolean
 }
 
@@ -78,6 +80,7 @@ export class CierrePresenter {
       caja: result.caja,
       deudaCreada: null,
       responsibilityCases: result.responsibilityCases,
+      senales: result.senales ?? [],
       deduped: result.deduped,
     }
   }

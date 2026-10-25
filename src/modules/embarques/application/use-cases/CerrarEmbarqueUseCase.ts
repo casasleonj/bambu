@@ -21,6 +21,7 @@
 import { prisma } from '@/lib/prisma'
 import { logAudit } from '@/lib/audit'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
+import { sinConsumirSecuencias } from '@/lib/sequence'
 import { leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 
 import type { IEmbarqueRepository } from '../../domain/repositories/IEmbarqueRepository'
@@ -34,6 +35,9 @@ import { CrearDescuentoDiscrepanciaService } from '../../domain/services/crear-d
 import { CrearDeudaFaltanteCajaService } from '../../domain/services/crear-deuda-faltante-caja.service'
 import { CerrarEmbarqueSideEffectsService } from '../../domain/services/cerrar-embarque-side-effects.service'
 import { CierreDedupService } from '../../domain/services/cierre-dedup.service'
+import { validarCoberturaPedidos } from '../../domain/services/cobertura-pedidos.service'
+import { calcularSenales, type VentaLibreResumen } from '../../domain/services/senales-cierre.service'
+import { UMBRAL_MINIMO_FALTANTE_CAJA } from '@/lib/constants'
 import { RegistrarMovimientosCierre } from '../../domain/services/registrar-movimientos-cierre.service'
 import type { PedidoRawInput } from '../../domain/services/procesar-pedido.service'
 import type { EntregaDelCierre } from '../../domain/services/procesar-pedido.service'
@@ -112,7 +116,10 @@ export class CerrarEmbarqueUseCase {
     // adquiere `SECUENCIA:pedido` en la MISMA tx (orden CIERRE → SECUENCIA,
     // anti-deadlock); se elimina en FASE 8 con secuencia atómica de pedido.
     try {
-      return await this.txManager.executeWithLock('CIERRE', input.id, async (tx) => {
+      // #438: el preview (dryRun) numera con valores provisionales y NO avanza las
+      // secuencias de Postgres (`nextval()` no se revierte con el rollback).
+      const ejecutar = <T,>(fn: () => Promise<T>) => (input.dryRun ? sinConsumirSecuencias(fn) : fn())
+      return await ejecutar(() => this.txManager.executeWithLock('CIERRE', input.id, async (tx) => {
       const client = this.getTx(tx)
 
       await acquireAdvisoryLockTx(client, 'SECUENCIA', 'pedido')
@@ -134,6 +141,14 @@ export class CerrarEmbarqueUseCase {
 
       // 2. Fetch pedidos for this embarque
       const pedidosRaw = await this.fetchPedidosForEmbarque(input.id, client)
+
+      // ADR-CIERRE-002 §1-2 (#444, #448, #449): el cierre cubre EXACTAMENTE los
+      // pedidos vigentes del embarque. Va ANTES de procesar nada: un rechazo no
+      // deja efectos y el embarque sigue en ruta.
+      validarCoberturaPedidos(
+        pedidosRaw.map((p) => ({ id: p.id, numero: p.numero, estadoEntrega: p.estadoEntrega, estado: p.estado })),
+        input.pedidos.map((p) => p.pedidoId),
+      )
       const entregasDelCierre: EntregaDelCierre[] = []
 
       const pedidosHijosCreados: Array<{ id: string; numero: number }> = []
@@ -166,12 +181,14 @@ export class CerrarEmbarqueUseCase {
         totalVentas += totalReal
       }
 
+      const ventasLibresResumen: VentaLibreResumen[] = []
       const ventasLibresCount = await this.crearVentasLibresService.execute(
         client,
         input.ventasLibres ?? [],
         input.id,
         this.userId,
         metodosConfirmacion,
+        ventasLibresResumen,
       )
 
       // PR-1C: en modo vivo lo entregado sale del ledger (se lee ANTES de que el
@@ -293,6 +310,14 @@ export class CerrarEmbarqueUseCase {
         pedidosActualizados,
         ventasLibresCreadas: ventasLibresCount,
         discrepanciaTotal: totalDiscrepancia,
+        // ADR-CIERRE-002 §5: señales para revisar (no bloquean).
+        senales: calcularSenales({
+          discrepanciasPorProducto,
+          ventasLibres: ventasLibresResumen,
+          sobranteFaltanteCaja: caja.sobranteFaltante,
+          notaCaja: input.justificacionFaltante,
+          umbralCaja: UMBRAL_MINIMO_FALTANTE_CAJA,
+        }),
         // FASE 6 (§13): el cierre detecta y crea ResponsibilityCase pendientes de
         // resolución autorizada; ya NO crea el cargo económico automáticamente.
         responsibilityCases: [
@@ -320,7 +345,7 @@ export class CerrarEmbarqueUseCase {
       }
 
       return finalResult
-    })
+    }))
     } catch (err) {
       if (err instanceof DryRunSignal) return err.result
       throw err
