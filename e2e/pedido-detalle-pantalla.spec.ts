@@ -176,4 +176,18 @@ test.describe('Pantalla de detalle del pedido (P1-1 PR B)', () => {
     await expect(insigniaAsistente).toHaveText('manual', { timeout: 20000 })
     await expect(insigniaAsistente).toHaveAttribute('title', /escrito a mano/)
   })
+
+  test('si el detalle no carga (429), la pantalla avisa en vez de pasar la copia del listado por definitiva (#467)', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const ped = await crearPedido(page, `Detalle falla ${Date.now()}`, false)
+    // Solo el GET del detalle de ESTE pedido falla; el listado sigue funcionando.
+    await page.route(new RegExp(`/api/pedidos/${ped.id}$`), (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({ status: 429, contentType: 'application/json', body: '{"error":"rate"}' })
+        : route.continue(),
+    )
+    await page.goto(`${BASE}/pedidos?all=true&openPedido=${ped.id}`)
+    await expect(appMain(page).getByTestId('pedido-detalle')).toBeVisible({ timeout: 20000 })
+    await expect(page.getByText(/No se pudo cargar todo el detalle del pedido/)).toBeVisible({ timeout: 10000 })
+  })
 })
