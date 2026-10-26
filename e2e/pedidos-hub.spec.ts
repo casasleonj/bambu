@@ -351,6 +351,8 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await page.getByTestId('dinero-recibido').fill('20000')
     await expect(page.getByTestId('dinero-cambio')).toBeVisible()
     await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    // #425: el pago cubre el total → el botón dice lo que va a pasar
+    await expect(page.getByTestId('workspace-commit')).toHaveText(/^Cobrar \$/)
 
     const creado = page.waitForResponse((r) => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST')
     await page.getByTestId('workspace-commit').click()
@@ -841,6 +843,8 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await page.getByTestId('workspace-inc-PACA_AGUA').click()
     // con comprador identificado el saldo no bloquea: queda fiado a su nombre
     await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    // #425: sin pago queda saldo → el botón sigue diciendo «Crear pedido», no «Cobrar»
+    await expect(page.getByTestId('workspace-commit')).toHaveText(/^Crear pedido \$/)
     await expect(page.getByTestId('dinero-deudor-requerido')).toHaveCount(0)
     const creado = page.waitForResponse((r) => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST')
     await page.getByTestId('workspace-commit').click()

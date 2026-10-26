@@ -68,3 +68,30 @@ describe('PedidoCommitBar — sin conexión (B-20)', () => {
     expect(screen.getByTestId('workspace-commit')).toHaveTextContent(/Registrar venta pagada \$27[.,]000/)
   })
 })
+
+describe('PedidoCommitBar — «Cobrar» cuando el pago cubre el total (#425)', () => {
+  const texto = () => screen.getByTestId('workspace-commit').textContent
+
+  it('cobrado → «Cobrar $X»; sin cobrar → «Crear pedido $X»', () => {
+    const { rerender } = renderBar({ phase: 'PREVIEW_READY', canCommit: true, cobrado: true })
+    expect(texto()).toMatch(/^Cobrar \$27[.,]000$/)
+    rerender(<PedidoCommitBar phase={'PREVIEW_READY' as WorkspacePhase} {...base} canCommit cobrado={false} />)
+    expect(texto()).toMatch(/^Crear pedido \$27[.,]000$/)
+  })
+
+  it('sin conexión, edición y entregar después tienen prioridad sobre «Cobrar»', () => {
+    const { rerender } = renderBar({ phase: 'PREVIEW_READY', canCommit: true, cobrado: true, sinConexion: true })
+    expect(texto()).toMatch(/^Guardar sin conexión/)
+    rerender(<PedidoCommitBar phase={'PREVIEW_READY' as WorkspacePhase} {...base} canCommit cobrado modoEdicion />)
+    expect(texto()).toBe('Guardar cambios')
+    rerender(<PedidoCommitBar phase={'PREVIEW_READY' as WorkspacePhase} {...base} canCommit cobrado etiquetaCrear="Registrar venta pagada" />)
+    expect(texto()).toMatch(/^Registrar venta pagada/)
+  })
+
+  it('bloqueado y en proceso no dicen «Cobrar»', () => {
+    const { rerender } = renderBar({ phase: 'PREVIEW_READY', canCommit: false, cobrado: true })
+    expect(texto()).toBe('No se puede crear')
+    rerender(<PedidoCommitBar phase={'COMMITTING' as WorkspacePhase} {...base} cobrado />)
+    expect(texto()).toBe('Creando…')
+  })
+})
