@@ -747,7 +747,8 @@ export const CierreCreateSchema = z.object({
   stockIniHielo: z.coerce.number().int().min(0),
   prodHielo: z.coerce.number().int().min(0),
   stockFinHielo: z.coerce.number().int().min(0),
-  comisiones: z.coerce.number().min(0),
+  // #499: el servidor calcula las comisiones; si llega, se ignora (compat. con clientes viejos).
+  comisiones: z.coerce.number().min(0).optional(),
   salarios: z.coerce.number().min(0),
   reporte: z.string().optional(),
 }).strict() // Reject extra fields like netoCaja, totalVentas, etc.

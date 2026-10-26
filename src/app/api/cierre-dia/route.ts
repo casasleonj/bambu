@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit'
 import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
 import { withAdvisoryLock } from '@/lib/locks'
 import { logger } from '@/lib/logger'
+import { comisionesDelCierre } from '@/lib/comision-pagada'
 
 const CierreDiaSchema = z.object({
   fecha: z.string().datetime().optional(),
@@ -128,10 +129,15 @@ export async function POST(request: NextRequest) {
         throw new Error('CIERRE_YA_EXISTE')
       }
 
+      // #499: las comisiones las calcula el servidor (sellador + repartidores pagados de la caja
+      // ese día); la cifra del cuerpo se ignora para que no se salte el cálculo automático.
+      const comisiones = await comisionesDelCierre(tx, fechaBogota, start, end)
+
       return tx.cierreDia.create({
         data: {
           fecha: targetDate,
           ...rest,
+          comisiones: comisiones.total,
         },
       })
     })

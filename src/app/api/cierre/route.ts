@@ -12,6 +12,7 @@ import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { whereEmbarquesPendientesCierreDia } from '@/lib/cierre-dia-embarques'
+import { comisionesDelCierre } from '@/lib/comision-pagada'
 
 type PagoMetodoMonto = { metodo: MetodoPago; monto: unknown }
 type DiasPreviosAgg = { _count: number; _sum: { monto: unknown } }
@@ -297,6 +298,9 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
+    // #499: comisiones del día calculadas por el servidor (repartidores con lo pagado/pendiente + sellador).
+    const comisionesAuto = await comisionesDelCierre(prisma, fechaStr, startOfDay, endOfDay)
+
     const totalNC = notasCredito.reduce((sum, nc) => sum + Number(nc.monto), 0)
     const totalVentas = pedidos.reduce((acc, p) => acc + Number(p.total), 0) - totalNC
     const cobrado = pedidos.reduce((acc, p) => acc + Number(p.totalPagado), 0)
@@ -484,6 +488,14 @@ export async function GET(request: NextRequest) {
         bolsaAguaVendida,
         bolsaHieloVendida,
         produccion: produccionFlat,
+        comisionesAuto: {
+          sellador: comisionesAuto.sellador,
+          pagadoRepartidores: comisionesAuto.pagadoRepartidores,
+          total: comisionesAuto.total,
+          repartidores: comisionesAuto.repartidores.map((r) => ({
+            trabajadorId: r.trabajadorId, nombre: r.nombre, total: r.total, pagado: r.pagado, pendiente: r.pendiente,
+          })),
+        },
 
         // Fecha
         fecha: fechaStr,
@@ -640,11 +652,14 @@ export async function POST(request: NextRequest) {
           abonos.reduce((sum, a) => sum + Number(a.monto), 0) -
           Number(correccionesAbonoAgg._sum.montoRevertido ?? 0)
         const gastosTotal = Number(gastosAgg._sum.monto) || 0
+        // #499: las comisiones salen del servidor (sellador del día + repartidores que se pagaron de la
+        // caja hoy). La cifra que mande el cliente se ignora: nadie teclea ni suma comisiones.
+        const comisiones = await comisionesDelCierre(tx, fechaStr, startOfDay, nextDay)
         // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 — `porConfirmar` calculado arriba,
         // fuera de la tx (informativo, no altera netoCaja).
 
         // 6. Calculate netoCaja server-side
-        const netoCaja = Number(parsed.data.baseDia) + cobroVentasHoy + cobroCartera - gastosTotal - Number(parsed.data.comisiones) - Number(parsed.data.salarios)
+        const netoCaja = Number(parsed.data.baseDia) + cobroVentasHoy + cobroCartera - gastosTotal - comisiones.total - Number(parsed.data.salarios)
 
         // 7. Parse and enrich reporte snapshot
         let reporteData: Record<string, unknown> = {}
@@ -659,6 +674,14 @@ export async function POST(request: NextRequest) {
         reporteData.porConfirmar = porConfirmar
         reporteData.totalVentas = totalVentas
         reporteData.totalNotasCredito = totalNC
+        reporteData.comisionesAuto = {
+          sellador: comisiones.sellador,
+          pagadoRepartidores: comisiones.pagadoRepartidores,
+          total: comisiones.total,
+          repartidores: comisiones.repartidores.map((r) => ({
+            trabajadorId: r.trabajadorId, nombre: r.nombre, total: r.total, pagado: r.pagado, pendiente: r.pendiente,
+          })),
+        }
 
         // 8. Create cierre
         const nuevoCierre = await tx.cierreDia.create({
@@ -674,7 +697,7 @@ export async function POST(request: NextRequest) {
             daviplata,
             bono,
             baseDia: parsed.data.baseDia,
-            comisiones: parsed.data.comisiones,
+            comisiones: comisiones.total,
             salarios: parsed.data.salarios,
             gastos: gastosTotal,
             stockIniAgua: parsed.data.stockIniAgua,

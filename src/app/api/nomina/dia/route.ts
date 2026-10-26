@@ -4,7 +4,7 @@ import { requireRole } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { parseDateParam, todayStringBogota } from '@/lib/dates'
-import { comisionRepartidoresDelDia } from '@/lib/comision-repartidor'
+import { comisionDiaConEstado } from '@/lib/comision-pagada'
 
 /**
  * GET /api/nomina/dia?fecha=YYYY-MM-DD — comisión de cada repartidor en un día de
@@ -19,11 +19,13 @@ export async function GET(request: NextRequest) {
   const fecha = parseDateParam(new URL(request.url).searchParams.get('fecha'), todayStringBogota())
 
   try {
-    const repartidores = await comisionRepartidoresDelDia(prisma, fecha)
+    const repartidores = await comisionDiaConEstado(prisma, fecha)
     return apiSuccess({
       fecha,
       repartidores,
       total: repartidores.reduce((s, r) => s + r.total, 0),
+      pagado: repartidores.reduce((s, r) => s + r.pagado, 0),
+      pendiente: repartidores.reduce((s, r) => s + r.pendiente, 0),
     })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error calculando comisiones del día:')

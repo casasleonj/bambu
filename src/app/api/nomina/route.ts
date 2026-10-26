@@ -9,6 +9,7 @@ import { logger } from '@/lib/logger'
 import { executeSerializableWithRetry } from '@/lib/serializable'
 import { calcularDeduccionesDeuda } from '@/lib/nomina-deudas'
 import { calcularComisionRepartidor, tarifasRepartidor } from '@/lib/comision-repartidor'
+import { comisionPagadaEnPeriodo } from '@/lib/comision-pagada'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-3): Only ADMIN/CONTADOR can read nominas
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest) {
         totalComisiones: number
         totalDescuentos: number
         descuentoDeudas: number
+        comisionPagadaCaja: number
       }>(async (tx) => {
         // Verificar duplicados
         const existente = await tx.nomina.findFirst({
@@ -160,7 +162,12 @@ export async function POST(request: NextRequest) {
         }
 
         const salarioFijo = Number(trabajador.salarioFijo || 0)
-        let total = totalComisiones + salarioFijo
+        // #499: la comisión que ya salió de la caja día a día (pagos del cierre) no se paga otra vez.
+        // Si se pagó de más (p. ej. se anuló un pedido después), la parte de comisión queda en 0 y
+        // el excedente se ve en `comisionPagadaCaja` > `totalComisiones`; nunca resta del salario.
+        const comisionPagadaCaja = await comisionPagadaEnPeriodo(tx, trabajadorId, ini, fin)
+        const comisionPorPagar = Math.max(0, totalComisiones - comisionPagadaCaja)
+        let total = comisionPorPagar + salarioFijo
 
         // Aplicar descuentos por faltante de embarque
         let totalDescuentos = 0
@@ -233,6 +240,7 @@ export async function POST(request: NextRequest) {
             total,
             totalDescuentos,
             descuentoDeudas,
+            comisionPagadaCaja,
             estado: 'PENDIENTE',
           },
         })
@@ -258,6 +266,7 @@ export async function POST(request: NextRequest) {
           totalComisiones,
           totalDescuentos,
           descuentoDeudas,
+          comisionPagadaCaja,
         }
       }, 'nomina.POST:AUTO')
 
@@ -284,6 +293,7 @@ export async function POST(request: NextRequest) {
           comHielo: result.comHielo,
           comBotellon: result.comBotellon,
           comisionTotal: result.totalComisiones,
+          comisionPagadaCaja: result.comisionPagadaCaja,
           descuentos: result.totalDescuentos,
           descuentoDeudas: result.descuentoDeudas,
           salarioFijo: result.nomina.salario,

@@ -12,6 +12,8 @@ export interface Nomina {
   totalComisiones: number
   salario: number
   descuentoDeudas: number
+  /** #499: comisión ya pagada de la caja día a día; el `total` viene sin ella. */
+  comisionPagadaCaja?: number
   total: number
   estado: string
   trabajador: {

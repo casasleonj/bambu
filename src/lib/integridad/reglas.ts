@@ -298,4 +298,39 @@ export const REGLAS: readonly Regla[] = [
         AND COALESCE(s.last_value, 0) < COALESCE(m.max, 0)
       ORDER BY s.sequencename`,
   },
+  {
+    // #499: la comisión del repartidor pagada de la caja (`PagoComisionRepartidor`) debe
+    // cuadrar en dos lugares. (1) El cierre de un día guarda cuánto salió de la caja por
+    // comisión de repartidores; si los pagos de ese día (por `createdAt`) suman otra cosa,
+    // hubo un pago posterior al cierre o un cierre editado. (2) Una nómina descuenta lo que
+    // se pagó de la caja en su período; si descuenta otra cifra, la comisión se pagaría dos
+    // veces o se dejaría de pagar.
+    id: 'V16',
+    titulo: 'Comisión del repartidor pagada de la caja no cuadra con el cierre o con la nómina',
+    severidad: 'ALTA',
+    consulta: () => Prisma.sql`
+      SELECT c.id AS ref, NULL::int AS numero,
+        json_build_object('caso', 'cierre', 'fecha', c.fecha,
+          'enCierre', (c.reporte->'comisionesAuto'->>'pagadoRepartidores')::float8,
+          'pagosDelDia', COALESCE(p.s, 0)::float8) AS detalle
+      FROM "CierreDia" c
+      LEFT JOIN LATERAL (
+        SELECT SUM(g.monto) AS s FROM "PagoComisionRepartidor" g
+        WHERE g."createdAt" >= c.fecha AND g."createdAt" < c.fecha + interval '1 day'
+      ) p ON true
+      WHERE c.reporte->'comisionesAuto'->>'pagadoRepartidores' IS NOT NULL
+        AND ABS((c.reporte->'comisionesAuto'->>'pagadoRepartidores')::numeric - COALESCE(p.s, 0)) > 0.005
+      UNION ALL
+      SELECT n.id AS ref, NULL::int AS numero,
+        json_build_object('caso', 'nomina', 'trabajadorId', n."trabajadorId",
+          'descuentaNomina', n."comisionPagadaCaja"::float8, 'pagadoEnPeriodo', COALESCE(p.s, 0)::float8) AS detalle
+      FROM "Nomina" n
+      LEFT JOIN LATERAL (
+        SELECT SUM(g.monto) AS s FROM "PagoComisionRepartidor" g
+        WHERE g."trabajadorId" = n."trabajadorId" AND g.fecha >= n."fechaInicio" AND g.fecha <= n."fechaFin"
+      ) p ON true
+      WHERE n.estado <> 'ANULADA'
+        AND ABS(n."comisionPagadaCaja" - COALESCE(p.s, 0)) > 0.005
+      ORDER BY 1`,
+  },
 ]
