@@ -19,7 +19,7 @@
 
 import { formatCurrency } from '@/lib/utils'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
-import type { AlertaItem, AlertaRow, SeveridadAlerta } from '@/lib/alertas-config'
+import type { AlertaItem, AlertaRow, AlertaTipo, SeveridadAlerta } from '@/lib/alertas-config'
 import { estaIgnorada } from '@/lib/alertas-config'
 import { UMBRALES_DEFAULT, type UmbralesAlertas } from '@/lib/umbrales'
 
