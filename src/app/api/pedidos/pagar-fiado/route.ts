@@ -17,6 +17,11 @@ import { registrarReceivableEntry, detectarDivergencia, registrarDivergencia } f
 import { datosConfirmacionInicial, parseMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import { getConfig } from '@/lib/config'
 import { isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
+import { gestionAdminSinEmbarqueActiva } from '@/lib/gestion-admin'
+import { diaBogota, validarFechaHechoOficina } from '@/lib/gestion-admin-fecha'
+import { nominaQueCubre } from '@/lib/nomina-cobertura'
+import { todayStringBogota } from '@/lib/dates'
+import { EntregaOficinaError, ESTADO_HTTP_OFICINA } from '@/modules/pedidos/domain/services/entrega-oficina.errors'
 
 export async function POST(request: NextRequest) {
   // FIX C-1: solo ADMIN/ASISTENTE pueden registrar pagos de fiado.
@@ -33,7 +38,23 @@ export async function POST(request: NextRequest) {
       return apiError('Datos inválidos', 400)
     }
 
-    const { clienteId, monto, metodo, offlineId } = parsed.data
+    const { clienteId, monto, metodo, offlineId, recibioDinero, repartidorId, fechaRecepcion } = parsed.data
+
+    // TEMPORAL-SIN-EMBARQUE(#472): «quién recibió» y «cuándo» solo los acepta el
+    // ADMIN con la gestión temporal encendida. Sin estos campos el cobro no cambia.
+    const gestionOficina = recibioDinero !== undefined || repartidorId !== undefined || fechaRecepcion !== undefined
+    if (gestionOficina) {
+      if ((authResult.user as { role?: string } | undefined)?.role !== ROLES.ADMIN) {
+        return apiError('Solo el administrador puede registrar quién recibió el dinero y cuándo.', 403, { code: 'SOLO_ADMIN' })
+      }
+      if (!(await gestionAdminSinEmbarqueActiva())) {
+        return apiError(
+          'Esta función está desactivada por ahora. Consulta con el administrador del sistema.',
+          403,
+          { code: 'FUNCION_DESACTIVADA' },
+        )
+      }
+    }
 
     // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: métodos que nacen REPORTADO.
     const metodosConfirmacion = parseMetodosRequierenConfirmacion(
@@ -90,6 +111,42 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // TEMPORAL-SIN-EMBARQUE(#472): quién recibió el dinero y cuándo. Va DESPUÉS del
+      // dedup (un reintento ya aplicado no se re-valida) y ANTES de tocar saldos.
+      let recibidoPorId: string | null = null
+      let ocurridoAt: Date | null = null
+      if (gestionOficina) {
+        if (!recibioDinero) {
+          throw new EntregaOficinaError('QUIEN_RECIBIO_REQUERIDO', 'Indica quién recibió el dinero.')
+        }
+        const fechaCobro = fechaRecepcion ? new Date(fechaRecepcion) : new Date()
+        await validarFechaHechoOficina(tx, fechaCobro, 'cobro')
+        if (recibioDinero === 'REPARTIDOR') {
+          if (!repartidorId) {
+            throw new EntregaOficinaError('QUIEN_RECIBIO_REQUERIDO', 'Para decir que lo recibió el repartidor, elige primero quién fue.')
+          }
+          const t = await tx.trabajador.findUnique({
+            where: { id: repartidorId },
+            select: { activo: true, usaMoto: true },
+          })
+          if (!t || !t.activo || !t.usaMoto) {
+            throw new EntregaOficinaError(
+              'REPARTIDOR_INVALIDO',
+              'Ese trabajador no aparece en la lista: solo se pueden elegir trabajadores activos con moto.',
+            )
+          }
+          if (await nominaQueCubre(tx, repartidorId, fechaCobro)) {
+            throw new EntregaOficinaError(
+              'NOMINA_EXISTENTE',
+              'La nómina de ese repartidor para esa fecha ya está hecha. Elige una fecha de un período abierto o habla con quien liquida la nómina.',
+            )
+          }
+          recibidoPorId = repartidorId
+        }
+        // La fecha del hecho solo se guarda si difiere del registro (#402).
+        ocurridoAt = diaBogota(fechaCobro) !== todayStringBogota() ? fechaCobro : null
+      }
+
       // 1. Buscar pedidos fiados del cliente, ordenados por fecha ASC (FIFO)
       const pedidosFiados = await tx.pedido.findMany({
         where: {
@@ -138,6 +195,7 @@ export async function POST(request: NextRequest) {
             metodo,
             monto: montoAplicar,
             offlineId: offlineId || null, // dedup offline-first
+            ...(gestionOficina ? { recibidoPorId, ocurridoAt } : {}),
             ...datosConfirmacionInicial(metodo, metodosConfirmacion),
           },
         })
@@ -281,7 +339,10 @@ export async function POST(request: NextRequest) {
         entidad: 'Pedido',
         registroId: clienteId,
         accion: 'UPDATE',
-        datos: { monto, metodo, pagosAplicados, saldoFavorAcreditado },
+        datos: {
+          monto, metodo, pagosAplicados, saldoFavorAcreditado,
+          ...(gestionOficina ? { recibioDinero, repartidorId: recibidoPorId, fechaRecepcion: ocurridoAt?.toISOString() ?? null } : {}),
+        },
         usuarioId: authResult.user?.id,
       }, tx)
 
@@ -340,6 +401,9 @@ export async function POST(request: NextRequest) {
           }),
     })
   } catch (error) {
+    if (error instanceof EntregaOficinaError) {
+      return apiError(error.message, ESTADO_HTTP_OFICINA[error.codigo], { code: error.codigo })
+    }
     if (error instanceof Error && error.message === 'SIN_DEUDA') {
       return apiError('El cliente no tiene deudas pendientes', 400)
     }

@@ -1,7 +1,7 @@
 import type { Pedido } from '../pedidos-client/types'
 import { formatoTramo } from '@/lib/tramo-volumen'
 
-export type AccionDetalleKey = 'editar' | 'enviar' | 'cancelar' | 'entregar' | 'entregar-retiro' | 'volver-pendiente' | 'anular' | 'registrar-entrega'
+export type AccionDetalleKey = 'editar' | 'enviar' | 'cancelar' | 'entregar' | 'entregar-retiro' | 'volver-pendiente' | 'anular' | 'registrar-entrega' | 'corregir-canal'
 
 export interface AccionDetalle {
   key: AccionDetalleKey
@@ -30,6 +30,9 @@ const ANULAR: AccionDetalle = { key: 'anular', label: 'Anular Pedido', labelBusy
 /** TEMPORAL-SIN-EMBARQUE(#472): el ADMIN registra la entrega desde la oficina, sin embarque. */
 const REGISTRAR_ENTREGA: AccionDetalle = { key: 'registrar-entrega', label: 'Registrar entrega', tone: 'primary' }
 
+/** TEMPORAL-SIN-EMBARQUE(#472): el ADMIN corrige el canal (PUNTO ↔ DOMICILIO) de un pedido abierto. */
+const CORREGIR_CANAL: AccionDetalle = { key: 'corregir-canal', label: 'Corregir canal', tone: 'neutral' }
+
 export interface OpcionesAcciones {
   /** TEMPORAL-SIN-EMBARQUE(#472): ADMIN con la gestión temporal activa. */
   gestionAdmin?: boolean
@@ -46,10 +49,10 @@ export function accionesDetalle(estadoEntrega: string, embarqueEstado?: string |
   if (opciones.gestionAdmin) {
     const base = accionesDetalle(estadoEntrega, embarqueEstado)
     if (estadoEntrega === 'PENDIENTE') {
-      return { primaria: REGISTRAR_ENTREGA, secundarias: [ENVIAR, ...base.secundarias], sinAcciones: null }
+      return { primaria: REGISTRAR_ENTREGA, secundarias: [ENVIAR, CORREGIR_CANAL, ...base.secundarias], sinAcciones: null }
     }
     if (estadoEntrega === 'NO_ENTREGADO') {
-      return { primaria: REGISTRAR_ENTREGA, secundarias: [], sinAcciones: null }
+      return { primaria: REGISTRAR_ENTREGA, secundarias: [CORREGIR_CANAL], sinAcciones: null }
     }
     if (estadoEntrega === 'EN_RUTA') {
       return { ...base, secundarias: [REGISTRAR_ENTREGA, ...base.secundarias] }

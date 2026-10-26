@@ -164,6 +164,15 @@ export function PedidoCuadreV2({
             />
           </div>
           <div className="mt-1 text-sm text-gray-500">Valor del pedido {formatCurrency(dinero.valorPedido)}</div>
+          <a
+            href={`/pedidos?openPedido=${pedido.id}`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 inline-flex min-h-11 items-center text-xs font-medium text-blue-700 underline"
+            data-testid="cuadre-corregir-precio"
+          >
+            ¿Precio equivocado? Corregirlo en el pedido
+          </a>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-bold ${ui.clase}`} data-testid="estado-derivado">
           {ui.texto}

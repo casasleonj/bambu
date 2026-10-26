@@ -12,6 +12,7 @@ export {
   anularPedidoUseCase,
   cancelarPedidoUseCase,
   actualizarPedidoUseCase,
+  corregirCanalPedidoUseCase,
   getFiadoStatusUseCase,
   previewPedidoUseCase,
   solicitarExcepcionCreditoUseCase,

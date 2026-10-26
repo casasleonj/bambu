@@ -2,7 +2,7 @@
 // embarque, desde la ficha del pedido, con un navegador real. Cada prueba mira la
 // BASE DE DATOS (no solo la pantalla): el incidente P0 de ventas anónimas mostró
 // que una prueba de venta que no mira la base pasa con el bug activo.
-import { test, expect, apiPost, createCliente, BASE, sharedLoginAs, appMain, resetTestDatabase } from './fixtures'
+import { test, expect, apiPost, createCliente, BASE, sharedLoginAs, appMain, resetTestDatabase, responsiveContainer } from './fixtures'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
@@ -123,6 +123,85 @@ test.describe('Gestión temporal sin embarque (#472)', () => {
     expect(await prisma.pago.count({ where: { pedidoId: ped.id } })).toBe(0)
   })
 
+  test('ENCENDIDO: cobrar un fiado pide quién recibió el dinero y lo deja guardado en el pago', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    await interruptor(page, 'true')
+    const repartidor = await prisma.trabajador.create({ data: { nombre: `Dario E2E ${Date.now()}`, rol: 'REPARTIDOR', usaMoto: true } })
+    const ped = await crearPedidoPendiente(page, `GE cobro ${Date.now()}`)
+    // Se entrega y queda debiendo (fiado) por la ruta de oficina.
+    const promesa = new Date(Date.now() + 3 * 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    const entrega = await apiPost(page, `/api/pedidos/${ped.id}/gestion-admin/entrega`, {
+      offlineId: `ge-fiado-${Date.now()}-${Math.random()}`,
+      itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 2 }],
+      repartidorId: repartidor.id,
+      promesaPagoFecha: promesa,
+    })
+    expect(entrega.ok()).toBeTruthy()
+
+    await page.goto(`${BASE}/pedidos?tab=fiados`)
+    const fiados = responsiveContainer(page, 'fiados-mobile', 'fiados-desktop')
+    const fila = fiados.getByText(/GE cobro/).first()
+    await expect(fila).toBeVisible({ timeout: 20000 })
+    await fiados.getByRole('button', { name: /^(Pagar)$/ }).last().click()
+    await fiados.getByPlaceholder(/Máx|Monto a pagar/).fill(String(ped.total))
+
+    // Sin decir quién recibió NO se cobra.
+    await fiados.getByRole('button', { name: /Confirmar pago|^Pagar$/ }).last().click()
+    await expect(fiados.getByText('Indica quién recibió el dinero.')).toBeVisible()
+    expect(await prisma.pago.count({ where: { pedidoId: ped.id } })).toBe(0)
+
+    await fiados.getByTestId('cobro-recibio-repartidor').check()
+    await fiados.getByLabel(/¿Qué repartidor\?/).selectOption({ label: repartidor.nombre })
+    await fiados.getByRole('button', { name: /Confirmar pago|^Pagar$/ }).last().click()
+    await expect(page.getByText(/Pago aplicado/)).toBeVisible({ timeout: 20000 })
+
+    const pagos = await prisma.pago.findMany({ where: { pedidoId: ped.id } })
+    expect(pagos).toHaveLength(1)
+    expect(pagos[0].recibidoPorId).toBe(repartidor.id)
+    expect(Number(pagos[0].monto)).toBe(ped.total)
+    const p = await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })
+    expect(p.estadoPago).toBe('PAGADO')
+    expect(Number(p.saldo)).toBe(0)
+  })
+
+  test('ENCENDIDO: el ADMIN corrige el canal de un pedido abierto y queda registrado con su motivo', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    await interruptor(page, 'true')
+    const ped = await crearPedidoPendiente(page, `GE canal ${Date.now()}`) // nace como DOMICILIO
+    expect((await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })).canal).toBe('DOMICILIO')
+
+    await page.goto(`${BASE}/pedidos?openPedido=${ped.id}`)
+    const acciones = appMain(page).getByTestId('detalle-acciones')
+    await expect(acciones.getByRole('button', { name: 'Corregir canal' })).toBeVisible({ timeout: 20000 })
+    await acciones.getByRole('button', { name: 'Corregir canal' }).click()
+
+    const dialogo = page.getByTestId('corregir-canal')
+    await expect(dialogo.getByTestId('cc-canales')).toContainText('Hoy es de Domicilio. Pasará a Punto de venta.')
+    // Sin motivo NO se puede continuar.
+    await dialogo.getByTestId('cc-revisar').click()
+    await expect(dialogo.getByText(/Escribe el motivo de la corrección/)).toBeVisible()
+    expect((await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })).canal).toBe('DOMICILIO')
+
+    await dialogo.getByLabel(/Motivo/).fill('Se registró como domicilio por error')
+    await dialogo.getByTestId('cc-revisar').click()
+    const resumen = dialogo.getByTestId('cc-resumen')
+    await expect(resumen).toContainText('pasa de Domicilio a Punto de venta')
+    await expect(resumen).toContainText('Los precios no cambian')
+    // La vista previa no escribe nada.
+    expect((await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })).canal).toBe('DOMICILIO')
+
+    await dialogo.getByTestId('cc-guardar').click()
+    await expect(page.getByText(new RegExp(`Pedido #${ped.numero} corregido a punto de venta`))).toBeVisible({ timeout: 20000 })
+
+    const p = await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })
+    expect(p.canal).toBe('PUNTO')
+    expect(Number(p.total)).toBe(ped.total)
+    expect(p.estadoEntrega).toBe('PENDIENTE')
+    const auditorias = await prisma.historial.findMany({ where: { entidad: 'Pedido', registroId: ped.id, datos: { contains: '"correccionCanal":true' } } })
+    expect(auditorias).toHaveLength(1)
+    expect(JSON.parse(auditorias[0].datos).motivo).toBe('Se registró como domicilio por error')
+  })
+
   test('ENCENDIDO pero no es ADMIN (ASISTENTE): no ve la acción ni la API responde', async ({ browser }) => {
     const admin = await sharedLoginAs(browser, 'admin')
     await interruptor(admin, 'true')
@@ -132,10 +211,16 @@ test.describe('Gestión temporal sin embarque (#472)', () => {
     const acciones = appMain(page).getByTestId('detalle-acciones')
     await expect(acciones.getByRole('button', { name: /Enviar/ })).toBeVisible({ timeout: 20000 })
     await expect(acciones.getByRole('button', { name: 'Registrar entrega' })).toHaveCount(0)
+    await expect(acciones.getByRole('button', { name: 'Corregir canal' })).toHaveCount(0)
     const res = await page.request.post(`${BASE}/api/pedidos/${ped.id}/gestion-admin/entrega`, {
       data: { offlineId: `ge-asis-${Date.now()}`, itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 2 }] },
     })
     expect(res.status()).toBe(403)
+    const canal = await page.request.post(`${BASE}/api/pedidos/${ped.id}/gestion-admin/canal`, {
+      data: { offlineId: `ge-canal-${Date.now()}`, canal: 'PUNTO', motivo: 'Prueba de permisos' },
+    })
+    expect(canal.status()).toBe(403)
+    expect((await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })).canal).toBe('DOMICILIO')
     expect((await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })).estadoEntrega).toBe('PENDIENTE')
     await interruptor(admin, 'false') // deja el interruptor como se encontró
   })

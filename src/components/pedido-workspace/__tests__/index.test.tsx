@@ -28,7 +28,14 @@ function routedFetch() {
   return vi.fn(async (url: string, init?: { body?: string }) => {
     if (url.includes('/api/pedidos/preview')) {
       const body = init?.body ? JSON.parse(init.body) : {}
-      return { ok: true, json: async () => (body.pedidoId ? previewEdit(9000) : previewBody(9000)) }
+      if (body.pedidoId) return { ok: true, json: async () => previewEdit(9000) }
+      // el servidor proyecta el saldo con los pagos que recibe (sin pagos: saldo = total)
+      const pagado = ((body.pagos ?? []) as Array<{ monto: number }>).reduce((s, p) => s + (p.monto || 0), 0)
+      const preview = previewBody(9000)
+      return {
+        ok: true,
+        json: async () => ({ ...preview, calculation: { ...preview.calculation, totalPagado: pagado, saldoProyectado: Math.max(0, 9000 - pagado) } }),
+      }
     }
     if (url.includes('/fiado-status')) return { ok: true, json: async () => ({ success: true, status: { nivel: 'ok', count: 0, limite: 3 } }) }
     if (url.includes('/api/negocios')) return { ok: true, json: async () => ({ success: true, data: [] }) }
@@ -68,6 +75,32 @@ describe('PedidosWorkspace (Composición)', () => {
     fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
     fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
     await waitFor(() => expect(screen.getByTestId('workspace-commit')).toHaveTextContent(/Crear pedido \$9[.,]000/), { timeout: 3000 })
+  })
+
+  it('#425: el botón dice «Cobrar $X» solo cuando el pago cubre el total del preview', async () => {
+    render(<PedidosWorkspace clientes={clientes} onSubmit={vi.fn()} />)
+    await elegirCliente()
+    for (let i = 0; i < 3; i++) fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    const commit = () => screen.getByTestId('workspace-commit')
+    await waitFor(() => expect(commit()).toHaveTextContent(/^Crear pedido \$9[.,]000$/), { timeout: 3000 })
+
+    // paga todo → «Cobrar»
+    fireEvent.click(screen.getByTestId('dinero-pagar-completo-EFECTIVO'))
+    await waitFor(() => expect(commit()).toHaveTextContent(/^Cobrar \$9[.,]000$/), { timeout: 3000 })
+
+    // quita el pago → vuelve a «Crear pedido»
+    fireEvent.click(screen.getByTestId('dinero-quitar-0'))
+    await waitFor(() => expect(commit()).toHaveTextContent(/^Crear pedido \$9[.,]000$/), { timeout: 3000 })
+
+    // pago parcial → queda saldo → «Crear pedido»
+    fireEvent.click(screen.getByTestId('dinero-pago-parcial'))
+    fireEvent.change(screen.getByTestId('dinero-pago-monto-0'), { target: { value: '4000' } })
+    await waitFor(() => expect(screen.getByTestId('dinero-saldo')).toHaveTextContent(/5[.,]000/), { timeout: 3000 })
+    expect(commit()).toHaveTextContent(/^Crear pedido \$9[.,]000$/)
+
+    // completa el pago → «Cobrar»
+    fireEvent.change(screen.getByTestId('dinero-pago-monto-0'), { target: { value: '9000' } })
+    await waitFor(() => expect(commit()).toHaveTextContent(/^Cobrar \$9[.,]000$/), { timeout: 3000 })
   })
 
   it('commit deshabilitado sin preview; habilitado en PREVIEW_READY; onSubmit con el payload', async () => {
