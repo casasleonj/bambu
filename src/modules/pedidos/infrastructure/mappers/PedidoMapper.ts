@@ -48,6 +48,7 @@ interface PrismaPedido {
   adminOverrideBy: string | null
   adminOverrideAt: Date | null
   entregadoPorId?: string | null
+  createdById?: string | null
   offlineId: string | null
   entregaOfflineId: string | null
   anulacionOfflineId: string | null
@@ -136,6 +137,7 @@ export class PedidoMapper {
       adminOverrideNota: raw.adminOverrideNota || undefined,
       adminOverrideBy: raw.adminOverrideBy || undefined,
       adminOverrideAt: raw.adminOverrideAt || undefined,
+      createdById: raw.createdById || undefined,
       entregadoPorId: raw.entregadoPorId || undefined,
       offlineId: raw.offlineId || undefined,
       entregaOfflineId: raw.entregaOfflineId || undefined,
@@ -188,6 +190,8 @@ export class PedidoMapper {
       entregaOfflineId: pedido.entregaOfflineId || null,
       anulacionOfflineId: pedido.anulacionOfflineId || null,
       cancelacionOfflineId: pedido.cancelacionOfflineId || null,
+      // #400: quién registró el pedido. Solo al crear; nunca se reescribe en el update.
+      createdById: pedido.createdById || null,
       ...legacy,
       items: {
         create: pedido.items.map(i => ({
