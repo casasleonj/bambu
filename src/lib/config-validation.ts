@@ -8,6 +8,8 @@
  * Unknown keys are accepted without validation (forward-compatible).
  */
 
+import { CLAVE_GESTION_ADMIN_SIN_EMBARQUE } from './config-claves-restringidas'
+
 type Validator = (valor: string) => string | null
 
 const VALIDATORS: Record<string, Validator> = {
@@ -114,6 +116,10 @@ const VALIDATORS: Record<string, Validator> = {
   // ADR-PAGO-REPORTADO-CONFIRMADO-001 §3: userId del usuario designado para
   // confirmar pagos. Vacío = nadie ve la cola (válido).
   USUARIO_CONFIRMA_PAGOS: (v) => (v.trim().length > 200 ? 'ID de usuario inválido' : null),
+
+  // TEMPORAL-SIN-EMBARQUE(#472): interruptor de la gestión temporal. Solo 'true' o 'false':
+  // cualquier otro texto se leería como "apagado" en silencio y parecería un cambio hecho.
+  [CLAVE_GESTION_ADMIN_SIN_EMBARQUE]: (v) => (v === 'true' || v === 'false' ? null : "Debe ser 'true' o 'false'"),
 }
 
 /**

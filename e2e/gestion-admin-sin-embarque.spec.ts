@@ -202,6 +202,55 @@ test.describe('Gestión temporal sin embarque (#472)', () => {
     expect(JSON.parse(auditorias[0].datos).motivo).toBe('Se registró como domicilio por error')
   })
 
+  test('el ADMIN enciende y apaga el interruptor desde Configuración (apagar pide confirmación) y el CONTADOR no puede', async ({ browser }) => {
+    const admin = await sharedLoginAs(browser, 'admin')
+    await interruptor(admin, 'true')
+    const valorEnBase = async () => (await prisma.config.findUnique({ where: { clave: CLAVE } }))?.valor
+
+    await admin.goto(`${BASE}/configuracion`)
+    const tarjeta = admin.getByTestId('gestion-sin-embarques')
+    await expect(tarjeta).toBeVisible({ timeout: 20000 })
+    await expect(tarjeta.getByTestId('gse-estado')).toHaveText('Encendido')
+
+    // Apagar pide confirmación y no cambia nada hasta confirmar.
+    await tarjeta.getByTestId('gse-interruptor').click()
+    const confirmar = admin.getByTestId('gse-confirmar')
+    await expect(confirmar).toBeVisible()
+    await expect(confirmar).toContainText('Se conserva todo lo ya registrado')
+    expect(await valorEnBase()).toBe('true')
+    await confirmar.getByText('Cancelar').click()
+    await expect(confirmar).toHaveCount(0)
+    expect(await valorEnBase()).toBe('true')
+
+    await tarjeta.getByTestId('gse-interruptor').click()
+    await admin.getByTestId('gse-confirmar-apagar').click()
+    await expect(tarjeta.getByTestId('gse-estado')).toHaveText('Apagado', { timeout: 20000 })
+    expect(await valorEnBase()).toBe('false')
+
+    // Con la función apagada la ficha de un pedido no ofrece las acciones temporales.
+    const ped = await crearPedidoPendiente(admin, `GE interruptor ${Date.now()}`)
+    await admin.goto(`${BASE}/pedidos?openPedido=${ped.id}`)
+    const acciones = appMain(admin).getByTestId('detalle-acciones')
+    await expect(acciones.getByRole('button', { name: /Enviar/ })).toBeVisible({ timeout: 20000 })
+    await expect(acciones.getByRole('button', { name: 'Corregir canal' })).toHaveCount(0)
+
+    // Encender no pide confirmación.
+    await admin.goto(`${BASE}/configuracion`)
+    await admin.getByTestId('gestion-sin-embarques').getByTestId('gse-interruptor').click()
+    await expect(admin.getByTestId('gestion-sin-embarques').getByTestId('gse-estado')).toHaveText('Encendido', { timeout: 20000 })
+    expect(await valorEnBase()).toBe('true')
+    await expect(admin.getByTestId('gse-confirmar')).toHaveCount(0)
+
+    // Un CONTADOR no ve la tarjeta ni puede cambiarlo por la API.
+    const contador = await sharedLoginAs(browser, 'contador')
+    await contador.goto(`${BASE}/configuracion`)
+    await expect(contador.getByTestId('gestion-sin-embarques')).toHaveCount(0)
+    const res = await apiPost(contador, '/api/config', { clave: CLAVE, valor: 'false' })
+    expect(res.status()).toBe(403)
+    expect(await valorEnBase()).toBe('true')
+    await interruptor(admin, 'false') // deja el interruptor como se encontró
+  })
+
   test('ENCENDIDO pero no es ADMIN (ASISTENTE): no ve la acción ni la API responde', async ({ browser }) => {
     const admin = await sharedLoginAs(browser, 'admin')
     await interruptor(admin, 'true')

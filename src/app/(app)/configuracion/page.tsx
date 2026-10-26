@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
+import { CLAVE_GESTION_ADMIN_SIN_EMBARQUE } from '@/lib/config-claves-restringidas'
 import ConfiguracionClient from './configuracion-client'
 
 export default async function ConfiguracionPage() {
@@ -26,5 +27,24 @@ export default async function ConfiguracionPage() {
     UMBRAL_HORAS_HABILES_RIESGO: configMap.UMBRAL_HORAS_HABILES_RIESGO || '2',
   }
 
-  return <ConfiguracionClient initialData={initialData} />
+  // TEMPORAL-SIN-EMBARQUE(#472): estado del interruptor y «último cambio» (quién y cuándo).
+  const filaGestion = configs.find((c) => c.clave === CLAVE_GESTION_ADMIN_SIN_EMBARQUE)
+  const ultimo = filaGestion
+    ? await prisma.historial.findFirst({
+        where: { entidad: 'Config', datos: { contains: `"${CLAVE_GESTION_ADMIN_SIN_EMBARQUE}"` } },
+        orderBy: { fecha: 'desc' },
+        select: { fecha: true, usuarioId: true },
+      })
+    : null
+  const autor = ultimo?.usuarioId
+    ? await prisma.user.findUnique({ where: { id: ultimo.usuarioId }, select: { username: true } })
+    : null
+  const gestionSinEmbarques = {
+    activa: filaGestion?.valor === 'true',
+    cambio: filaGestion
+      ? { fecha: (ultimo?.fecha ?? filaGestion.updatedAt).toISOString(), por: autor?.username ?? null }
+      : null,
+  }
+
+  return <ConfiguracionClient initialData={initialData} gestionSinEmbarques={gestionSinEmbarques} />
 }

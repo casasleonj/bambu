@@ -3,9 +3,10 @@
 // funciona, el ADMIN registra entregas y cobros desde el pedido. Se retira
 // completa cuando Embarques funcione (ver docs/pedidos/GESTION_TEMPORAL_SIN_EMBARQUE.md).
 import { prisma } from './prisma'
+import { CLAVE_GESTION_ADMIN_SIN_EMBARQUE } from './config-claves-restringidas'
 
 /** Clave de `Config` que enciende/apaga toda la gestión temporal. Apagada por defecto. */
-export const CLAVE_GESTION_ADMIN_SIN_EMBARQUE = 'GESTION_ADMIN_SIN_EMBARQUE'
+export { CLAVE_GESTION_ADMIN_SIN_EMBARQUE }
 
 /**
  * Lee el interruptor SIEMPRE de la base, sin el caché de `getConfig`.
