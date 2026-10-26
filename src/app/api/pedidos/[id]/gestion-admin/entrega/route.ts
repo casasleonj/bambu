@@ -18,22 +18,7 @@ import { sendPushToUser } from '@/lib/push'
 import { shouldFireCulminado } from '@/lib/pedido-utils'
 import { startOfDayBogota } from '@/lib/dates'
 import { entregarPedidoUseCase } from '@/modules/pedidos'
-import { EntregaOficinaError, type EntregaOficinaCodigo } from '@/modules/pedidos/domain/services/entrega-oficina.errors'
-
-const ESTADO_HTTP: Record<EntregaOficinaCodigo, number> = {
-  REPARTIDOR_REQUERIDO: 422,
-  REPARTIDOR_INVALIDO: 422,
-  REPARTIDOR_DISTINTO: 409,
-  QUIEN_RECIBIO_REQUERIDO: 422,
-  FECHA_FUTURA: 422,
-  FECHA_MUY_ANTIGUA: 422,
-  DIA_CERRADO: 409,
-  NOMINA_EXISTENTE: 409,
-  DEUDOR_REQUERIDO: 422,
-  PROMESA_REQUERIDA: 422,
-  PROMESA_PASADA: 422,
-  SIN_UNIDADES: 422,
-}
+import { EntregaOficinaError, ESTADO_HTTP_OFICINA } from '@/modules/pedidos/domain/services/entrega-oficina.errors'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -128,7 +113,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return apiSuccess(result)
   } catch (error) {
     if (error instanceof EntregaOficinaError) {
-      return apiError(error.message, ESTADO_HTTP[error.codigo], { code: error.codigo })
+      return apiError(error.message, ESTADO_HTTP_OFICINA[error.codigo], { code: error.codigo })
     }
     if (error instanceof Error && error.message === 'PEDIDO_NOT_FOUND') {
       return apiError('Pedido no encontrado', 404)

@@ -20,11 +20,11 @@ import {
 import type { EntregarPedidoInput, EntregarPedidoResult, EntregaOficinaInput } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 import { Pedido } from '../../domain/entities/Pedido'
-import { EntregaOficinaError, DIAS_MAX_ATRAS_ENTREGA_OFICINA } from '../../domain/services/entrega-oficina.errors'
+import { EntregaOficinaError } from '../../domain/services/entrega-oficina.errors'
 import { nominaQueCubre } from '@/lib/nomina-cobertura'
-import { endOfDayBogota, startOfDayBogota, todayStringBogota } from '@/lib/dates'
+import { todayStringBogota } from '@/lib/dates'
+import { diaBogota, validarFechaHechoOficina } from '@/lib/gestion-admin-fecha'
 
-const diaBogota = (d: Date): string => d.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 
 const tieneCobro = (input: EntregarPedidoInput): boolean => (input.pagos ?? []).some((p) => p.monto > 0)
 
@@ -323,30 +323,7 @@ export class EntregarPedidoUseCase {
     oficina: EntregaOficinaInput,
     hayCobro: boolean,
   ): Promise<string | undefined> {
-    const ahora = Date.now()
-    const fecha = oficina.fechaEntrega.getTime()
-    if (fecha > ahora + 5 * 60_000) {
-      throw new EntregaOficinaError('FECHA_FUTURA', 'La fecha de entrega no puede ser futura.')
-    }
-    if (fecha < ahora - DIAS_MAX_ATRAS_ENTREGA_OFICINA * 24 * 3_600_000) {
-      throw new EntregaOficinaError(
-        'FECHA_MUY_ANTIGUA',
-        `Solo se puede registrar una entrega de hasta ${DIAS_MAX_ATRAS_ENTREGA_OFICINA} días atrás.`,
-      )
-    }
-    // Un día anterior ya cerrado no se reabre. El día de hoy sí se admite aunque
-    // tenga cierre (mismo criterio que ENTREGA_POST_CIERRE de embarques: un
-    // hecho real que llega tarde no se bloquea, queda auditado).
-    const dia = diaBogota(oficina.fechaEntrega)
-    if (dia < todayStringBogota()) {
-      const cierre = await tx.cierreDia.findFirst({
-        where: { fecha: { gte: startOfDayBogota(dia), lte: endOfDayBogota(dia) } },
-        select: { id: true },
-      })
-      if (cierre) {
-        throw new EntregaOficinaError('DIA_CERRADO', 'Ese día ya está cerrado. Elige un día que siga abierto.')
-      }
-    }
+    await validarFechaHechoOficina(tx, oficina.fechaEntrega, 'entrega')
 
     const esDomicilio = pedido.canal.get() === 'DOMICILIO'
     const fijado = pedido.entregadoPorId

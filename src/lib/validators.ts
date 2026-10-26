@@ -1013,6 +1013,11 @@ export const PagarFiadoSchema = z.object({
   metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
   // Offline-first: dedup por batchId (compartido por todos los Pagos del batch)
   offlineId: z.string().optional(),
+  // TEMPORAL-SIN-EMBARQUE(#472): quién recibió el dinero y cuándo. Solo los acepta
+  // el ADMIN con la gestión temporal encendida; sin estos campos el cobro es el de siempre.
+  recibioDinero: z.enum(['OFICINA', 'REPARTIDOR']).optional(),
+  repartidorId: z.string().min(1).optional(),
+  fechaRecepcion: z.string().datetime().optional(),
 })
 
 // ====================

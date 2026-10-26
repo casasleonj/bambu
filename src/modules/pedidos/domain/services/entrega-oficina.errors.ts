@@ -30,3 +30,19 @@ export class EntregaOficinaError extends Error {
 
 /** Días hacia atrás que se permite registrar una entrega de oficina. */
 export const DIAS_MAX_ATRAS_ENTREGA_OFICINA = 7
+
+/** Estado HTTP de cada error, compartido por las rutas de la gestión de oficina. */
+export const ESTADO_HTTP_OFICINA: Record<EntregaOficinaCodigo, number> = {
+  REPARTIDOR_REQUERIDO: 422,
+  REPARTIDOR_INVALIDO: 422,
+  REPARTIDOR_DISTINTO: 409,
+  QUIEN_RECIBIO_REQUERIDO: 422,
+  FECHA_FUTURA: 422,
+  FECHA_MUY_ANTIGUA: 422,
+  DIA_CERRADO: 409,
+  NOMINA_EXISTENTE: 409,
+  DEUDOR_REQUERIDO: 422,
+  PROMESA_REQUERIDA: 422,
+  PROMESA_PASADA: 422,
+  SIN_UNIDADES: 422,
+}
