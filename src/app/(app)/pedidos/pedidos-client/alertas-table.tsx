@@ -2,6 +2,8 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { calcularAlertas, REGLAS_ALERTAS } from './alertas-utils'
+import { filtrarAlertasIgnoradas } from '@/lib/alertas-detector'
+import { toast } from 'sonner'
 import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
 import { CasoGuiaModal, type Caso } from '@/components/caso-guia-modal'
 import type { AlertaTipo, AlertaItem, SeveridadAlerta } from '@/lib/alertas-config'
@@ -53,7 +55,20 @@ export function AlertasTable({
       })
   }, [])
 
-  const alertaRows = useMemo(() => calcularAlertas(pedidosAlertas), [pedidosAlertas])
+  // Cambia al ignorar para recalcular sin recargar la página (localStorage no es reactivo).
+  const [ignoradasVersion, setIgnoradasVersion] = useState(0)
+
+  const alertaRows = useMemo(
+    () => filtrarAlertasIgnoradas(calcularAlertas(pedidosAlertas)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ignoradasVersion fuerza releer localStorage
+    [pedidosAlertas, ignoradasVersion],
+  )
+
+  const handleIgnorar = (clienteId: string, tipo: AlertaTipo) => {
+    ignorarAlerta(clienteId, tipo)
+    setIgnoradasVersion((v) => v + 1)
+    toast.success('Alerta ignorada por 24 horas')
+  }
 
   const filtrados = alertaRows
     .filter((row) => {
@@ -118,7 +133,11 @@ export function AlertasTable({
           pedidoId: alerta.pedidoId || null,
         }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.success) {
+        toast.error(data?.error && typeof data.error === 'string' ? data.error : 'No se pudo crear el caso')
+        return
+      }
       if (data.success) {
         const clienteData = pedidosAlertas.find(p => p.clienteId === clienteId)
         const pedidoData = pedidosAlertas.find(p => p.id === alerta.pedidoId)
@@ -129,9 +148,18 @@ export function AlertasTable({
         })
       }
     } catch {
+      toast.error('No se pudo crear el caso. Revisa tu conexión e intenta de nuevo.')
     } finally {
       setCreandoCaso(null)
     }
+  }
+
+  const handleIgnorarTodas = (row: { clienteId: string; alertas: AlertaItem[] }) => {
+    const ignorables = row.alertas.filter((a) => a.severidad !== 'ALTA')
+    if (ignorables.length === 0) return
+    ignorables.forEach((a) => ignorarAlerta(row.clienteId, a.tipo))
+    setIgnoradasVersion((v) => v + 1)
+    toast.success(`${ignorables.length} alerta${ignorables.length !== 1 ? 's' : ''} ignorada${ignorables.length !== 1 ? 's' : ''} por 24 horas`)
   }
 
   const getContextData = (clienteId: string, alerta: AlertaItem) => {
@@ -338,6 +366,17 @@ export function AlertasTable({
                     <tr>
                       <td colSpan={4} className="px-4 py-3 bg-gray-50">
                         <div className="space-y-2">
+                          {row.alertas.some((a) => a.severidad !== 'ALTA') && (
+                            <div className="flex justify-end">
+                              <button
+                                onClick={() => handleIgnorarTodas(row)}
+                                data-testid="alertas-ignorar-todas"
+                                className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-200 transition"
+                              >
+                                Ignorar todas (24h)
+                              </button>
+                            </div>
+                          )}
                           {row.alertas.map((alerta, idx) => (
                             <div key={idx} className="flex items-center justify-between py-2 border-b last:border-b-0">
                               <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -365,7 +404,8 @@ export function AlertasTable({
                                   </button>
                                   {alerta.severidad !== 'ALTA' && (
                                     <button
-                                      onClick={() => { ignorarAlerta(row.clienteId, alerta.tipo); window.location.reload() }}
+                                      onClick={() => handleIgnorar(row.clienteId, alerta.tipo)}
+                                      data-testid="alerta-ignorar"
                                       className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded transition"
                                       title="Ignorar 24h"
                                     >
@@ -412,6 +452,15 @@ export function AlertasTable({
               </button>
               {expandedCliente === row.clienteId && (
                 <div className="mt-3 space-y-2 bg-gray-50 p-3 rounded-lg">
+                  {row.alertas.some((a) => a.severidad !== 'ALTA') && (
+                    <button
+                      onClick={() => handleIgnorarTodas(row)}
+                      data-testid="alertas-ignorar-todas"
+                      className="w-full text-xs text-gray-500 border border-gray-200 py-2 rounded-lg"
+                    >
+                      Ignorar todas (24h)
+                    </button>
+                  )}
                   {row.alertas.map((alerta, idx) => (
                     <div key={idx} className="flex items-center justify-between text-sm py-1 border-b last:border-b-0">
                       <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -431,7 +480,7 @@ export function AlertasTable({
                             {creandoCaso === `${row.clienteId}_${alerta.tipo}` ? '...' : 'Caso'}
                           </button>
                           {alerta.severidad !== 'ALTA' && (
-                            <button onClick={() => { ignorarAlerta(row.clienteId, alerta.tipo); window.location.reload() }} className="text-xs text-gray-400">Ignorar</button>
+                            <button onClick={() => handleIgnorar(row.clienteId, alerta.tipo)} data-testid="alerta-ignorar" className="text-xs text-gray-400">Ignorar</button>
                           )}
                         <span className="text-xs text-gray-400">{new Date(alerta.fecha).toLocaleDateString('es-CO')}</span>
                       </div>

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { calcularAlertas, calcularAlertasCliente, calcularPromedioCliente, calcularAlertasRepartidor, findPrecioMinimo, calcularMediana } from '@/lib/alertas-detector'
-import type { PedidoBase, EmbarqueBase } from '@/lib/alertas-detector'
+import { filtrarAlertasIgnoradas, calcularAlertas, calcularAlertasCliente, calcularPromedioCliente, calcularAlertasRepartidor, findPrecioMinimo, calcularMediana } from '@/lib/alertas-detector'
+import type { PedidoBase, EmbarqueBase, AlertaRow, AlertaTipo, SeveridadAlerta } from '@/lib/alertas-detector'
 import { UMBRALES_DEFAULT } from '@/lib/umbrales'
 
 // Helper para construir un PedidoBase de test
@@ -1209,5 +1209,33 @@ describe('calcularAlertasCliente — CLIENTE_NO_VERIFICADO filtrado por creadoPo
       [],
     )
     expect(result.some((a) => a.tipo === 'CLIENTE_NO_VERIFICADO')).toBe(false)
+  })
+})
+
+describe('filtrarAlertasIgnoradas', () => {
+  const alerta = (tipo: AlertaTipo, severidad: SeveridadAlerta) => ({ tipo, severidad, detalle: 'x', fecha: '2026-01-01' })
+  const row = (clienteId: string, alertas: ReturnType<typeof alerta>[]): AlertaRow => ({
+    clienteId, nombreCli: clienteId, telefonoCli: '', alertas, severidadMasAlta: 'ALTA',
+  })
+
+  it('oculta BAJA/MEDIA ignoradas por cliente+tipo y recalcula la severidad', () => {
+    const rows = [row('c1', [alerta('MONTO_ANOMALO', 'ALTA'), alerta('2DO_PEDIDO', 'BAJA')])]
+    const out = filtrarAlertasIgnoradas(rows, (c, t) => c === 'c1' && t === '2DO_PEDIDO')
+    expect(out[0].alertas.map((a) => a.tipo)).toEqual(['MONTO_ANOMALO'])
+    expect(out[0].severidadMasAlta).toBe('ALTA')
+  })
+
+  it('descarta la fila cuando todas sus alertas se ignoran y no mezcla clientes', () => {
+    const rows = [row('c1', [alerta('2DO_PEDIDO', 'BAJA')]), row('c2', [alerta('2DO_PEDIDO', 'BAJA')])]
+    const out = filtrarAlertasIgnoradas(rows, (c) => c === 'c1')
+    expect(out.map((r) => r.clienteId)).toEqual(['c2'])
+  })
+
+  it('nunca ignora ALTA y baja la severidad si solo queda BAJA', () => {
+    const rows = [row('c1', [alerta('DISPUTA_ABIERTA', 'ALTA')]), row('c2', [alerta('3RO_PEDIDO', 'MEDIA'), alerta('2DO_PEDIDO', 'BAJA')])]
+    const out = filtrarAlertasIgnoradas(rows, () => true)
+    expect(out.map((r) => r.clienteId)).toEqual(['c1'])
+    const out2 = filtrarAlertasIgnoradas([rows[1]], (_c, t) => t === '3RO_PEDIDO')
+    expect(out2[0].severidadMasAlta).toBe('BAJA')
   })
 })

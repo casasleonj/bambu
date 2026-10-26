@@ -152,6 +152,28 @@ export interface CalcularAlertasOptions {
   minNotasCreditoCount?: number
 }
 
+/**
+ * Quita de cada fila las alertas BAJA/MEDIA ignoradas (por cliente + tipo),
+ * recalcula la severidad más alta y descarta las filas que se quedan sin
+ * alertas. Las ALTA nunca se ignoran. Pura: `ignorada` es inyectable.
+ */
+export function filtrarAlertasIgnoradas(
+  rows: AlertaRow[],
+  ignorada: (clienteId: string, tipo: AlertaTipo) => boolean = estaIgnorada,
+): AlertaRow[] {
+  const resultado: AlertaRow[] = []
+  for (const row of rows) {
+    const alertas = row.alertas.filter((a) => a.severidad === 'ALTA' || !ignorada(row.clienteId, a.tipo))
+    if (alertas.length === 0) continue
+    const severidadMasAlta = alertas.reduce<SeveridadAlerta>(
+      (max, a) => (SEVERIDAD_ORDER[a.severidad] > SEVERIDAD_ORDER[max] ? a.severidad : max),
+      'BAJA',
+    )
+    resultado.push({ ...row, alertas, severidadMasAlta })
+  }
+  return resultado
+}
+
 export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasOptions | string = {}): AlertaRow[] {
   // Backward compat: si options es string, tratarlo como clienteIdIgnorar (firma antigua)
   const opts: CalcularAlertasOptions = typeof options === 'string' ? { clienteIdIgnorar: options } : options
