@@ -30,7 +30,7 @@ global de transiciones **no cambia**: `Pedido.puedeEntregarOficina()` es la úni
 
 | Pieza | Ruta |
 |---|---|
-| Interruptor | `Config.GESTION_ADMIN_SIN_EMBARQUE` (`src/lib/gestion-admin.ts`), apagado por defecto |
+| Interruptor | `Config.GESTION_ADMIN_SIN_EMBARQUE` (`src/lib/gestion-admin.ts`), apagado por defecto; pantalla `src/app/(app)/configuracion/gestion-sin-embarques-card.tsx`; claves solo-ADMIN en `src/lib/config-claves-restringidas.ts` |
 | Ruta de entrega | `POST /api/pedidos/[id]/gestion-admin/entrega` (solo ADMIN) |
 | Estado + repartidores | `GET /api/pedidos/gestion-admin/estado` |
 | Errores de dominio | `src/modules/pedidos/domain/services/entrega-oficina.errors.ts` |
@@ -42,7 +42,7 @@ global de transiciones **no cambia**: `Pedido.puedeEntregarOficina()` es la úni
 | Pantalla | `src/app/(app)/pedidos/registrar-entrega/` |
 | Hook | `src/hooks/use-gestion-admin.ts` |
 | Acción en la ficha | `registrar-entrega` en `pedido-detalle/derive-detalle.ts` |
-| Pruebas | `src/lib/__tests__/integration/entrega-oficina-sin-embarque.test.ts`, `nomina-comision-sin-embarque.test.ts`, `pagar-fiado-oficina.test.ts`, `corregir-canal-pedido.test.ts` + unitarias junto a cada pieza |
+| Pruebas | `src/lib/__tests__/integration/entrega-oficina-sin-embarque.test.ts`, `nomina-comision-sin-embarque.test.ts`, `pagar-fiado-oficina.test.ts`, `corregir-canal-pedido.test.ts`, `config-gestion-admin-permiso.test.ts` + unitarias junto a cada pieza |
 
 ## Cobro posterior de un fiado (PR-3 de #472)
 
@@ -83,10 +83,11 @@ con antes/después y el motivo; un reintento con la misma clave no se aplica dos
    las mismas tarifas y la misma regla de tipo de pago (COMISIÓN/MIXTO con moto) que las entregas de embarque. Un pedido
    que está en un embarque no se cuenta dos veces. Una entrega **parcial** no paga comisión hasta completarse, y la
    comisión completa es de quien registró la entrega que la completó (un solo repartidor por pedido).
-4. Encender `GESTION_ADMIN_SIN_EMBARQUE=true` en `Config`. **Todavía no hay pantalla para esto** (la maqueta 9
-   queda para una fase siguiente): se enciende con `POST /api/config {"clave":"GESTION_ADMIN_SIN_EMBARQUE","valor":"true"}`
-   como ADMIN, o con SQL. El interruptor se lee **siempre de la base, sin caché** (#479: el caché de `Config` sirve el valor
-   viejo una vez tras un cambio), así que apagarlo surte efecto en la petición siguiente.
+4. Encender la función desde **Configuración → «Gestión temporal sin embarques»** (solo el ADMIN la ve). Apagar pide confirmación;
+   encender no. La tarjeta muestra el último cambio (quién y cuándo). Por debajo es `Config.GESTION_ADMIN_SIN_EMBARQUE`
+   = `true`/`false`, que solo cambia un **ADMIN** por **cualquier** ruta (`POST /api/config` y `POST /api/config/section`;
+   un CONTADOR recibe 403) y solo acepta esos dos valores. El interruptor se lee **siempre de la base, sin caché** (#479: el caché
+   de `Config` sirve el valor viejo una vez tras un cambio), así que apagarlo surte efecto en la petición siguiente.
 
 ## Cómo retirarla cuando Embarques funcione
 

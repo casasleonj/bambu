@@ -5,6 +5,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { validateConfigBatch } from '@/lib/config-validation'
 import { revalidateConfigCache } from '@/lib/config'
+import { CLAVES_SOLO_ADMIN } from '@/lib/config-claves-restringidas'
 
 /**
  * POST /api/config/section
@@ -42,6 +43,11 @@ export async function POST(request: NextRequest) {
 
   // Role check: BASE_DIA keys can be set by any authenticated user
   // Other keys require ADMIN or CONTADOR
+  // Si alguna clave mueve dinero o permisos (p. ej. el interruptor de la gestión sin embarque): solo ADMIN
+  if (entries.some(e => CLAVES_SOLO_ADMIN.has(e.clave))) {
+    const roleCheck = await requireRole(['ADMIN'], authResult)
+    if (roleCheck instanceof Response) return roleCheck
+  }
   const hasNonBaseDia = entries.some(e => !e.clave.startsWith('BASE_DIA'))
   if (hasNonBaseDia) {
     const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)

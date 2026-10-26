@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit'
 import { validateConfigValue } from '@/lib/config-validation'
 import { revalidateConfigCache } from '@/lib/config'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { CLAVES_SOLO_ADMIN } from '@/lib/config-claves-restringidas'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -61,7 +62,11 @@ export async function POST(request: NextRequest) {
 
   // BASE_DIA keys can be set by any authenticated user
   const isBaseDia = clave.startsWith('BASE_DIA')
-  if (!isBaseDia) {
+  // Claves que mueven dinero o permisos (p. ej. el interruptor de la gestión sin embarque): solo ADMIN.
+  if (CLAVES_SOLO_ADMIN.has(clave)) {
+    const roleCheck = await requireRole(['ADMIN'], authResult)
+    if (roleCheck instanceof Response) return roleCheck
+  } else if (!isBaseDia) {
     const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)
     if (roleCheck instanceof Response) return roleCheck
   }

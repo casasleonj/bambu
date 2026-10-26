@@ -11,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsList } from '@/components/ui/tabs'
 import { PushSettings } from '@/components/push-settings'
 import { cn } from '@/lib/utils'
+import { GestionSinEmbarquesCard, type EstadoGestionSinEmbarques } from './gestion-sin-embarques-card'
 
 /* ================================================================
    TYPES
@@ -37,6 +38,8 @@ interface ConfigData {
 
 interface ConfiguracionClientProps {
   initialData: ConfigData
+  /** TEMPORAL-SIN-EMBARQUE(#472): estado del interruptor para el ADMIN. */
+  gestionSinEmbarques?: EstadoGestionSinEmbarques
 }
 
 interface FieldConfig {
@@ -160,7 +163,7 @@ function timeAgo(date: Date | null): string {
    COMPONENT
    ================================================================ */
 
-export default function ConfiguracionClient({ initialData }: ConfiguracionClientProps) {
+export default function ConfiguracionClient({ initialData, gestionSinEmbarques }: ConfiguracionClientProps) {
   const { data: session } = useSession()
   const isAdmin = (session?.user as { role?: string } | undefined)?.role === 'ADMIN'
 
@@ -590,6 +593,9 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
           </div>
         </CardContent>
       </Card>
+
+      {/* TEMPORAL-SIN-EMBARQUE(#472): interruptor de la gestión sin embarques (solo ADMIN) */}
+      {isAdmin && gestionSinEmbarques && <GestionSinEmbarquesCard inicial={gestionSinEmbarques} usuarioActual={session?.user?.name ?? null} />}
 
       {/* Push notifications */}
       <Card data-testid="push-settings">

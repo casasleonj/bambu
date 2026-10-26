@@ -169,3 +169,14 @@ describe('METODOS_REQUIEREN_CONFIRMACION (ADR-PAGO-REPORTADO-CONFIRMADO-001 §2)
     expect(err).toContain('NEQUII')
   })
 })
+
+// TEMPORAL-SIN-EMBARQUE(#472)
+describe('validateConfigValue — GESTION_ADMIN_SIN_EMBARQUE', () => {
+  it("acepta solo 'true' y 'false'", () => {
+    expect(validateConfigValue('GESTION_ADMIN_SIN_EMBARQUE', 'true')).toBeNull()
+    expect(validateConfigValue('GESTION_ADMIN_SIN_EMBARQUE', 'false')).toBeNull()
+    for (const malo of ['si', 'TRUE', '1', '', ' true']) {
+      expect(validateConfigValue('GESTION_ADMIN_SIN_EMBARQUE', malo), `valor «${malo}»`).not.toBeNull()
+    }
+  })
+})
