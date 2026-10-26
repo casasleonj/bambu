@@ -305,6 +305,19 @@ test.describe('Recurrentes', () => {
   })
 })
 
+/**
+ * Próxima generación de la plantilla del test: hoy (día de Bogotá) a mediodía UTC,
+ * o el lunes si hoy es domingo. Una plantilla que cae en domingo solo ofrece
+ * «Domingo → Lunes» en la vista previa (regla A3), así que con «ahora» el spec
+ * fallaba cuando se corría en domingo (#494). A mediodía UTC el día de calendario
+ * es el mismo en UTC y en Bogotá.
+ */
+function proxGeneracionHabil(ahora: Date = new Date()): string {
+  const [y, m, d] = ahora.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }).split('-').map(Number)
+  const esDomingo = new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 0
+  return new Date(Date.UTC(y, m - 1, esDomingo ? d + 1 : d, 12)).toISOString()
+}
+
 async function generateRecurrente(page: import('@playwright/test').Page, clienteId: string) {
   const res = await page.request.post(`${BASE}/api/recurrentes`, {
     data: {
@@ -312,7 +325,7 @@ async function generateRecurrente(page: import('@playwright/test').Page, cliente
       tipo: 'ENVIO',
       canal: 'DOMICILIO',
       cadaNDias: 1,
-      proxGeneracion: new Date().toISOString(),
+      proxGeneracion: proxGeneracionHabil(),
       productos: { pacaAgua: 5 }, // 5 pacas para superar el crédito de 4 pacas
     },
   })
