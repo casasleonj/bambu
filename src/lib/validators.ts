@@ -208,6 +208,16 @@ export const EntregaOficinaSchema = z.object({
   promesaPagoFecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha de promesa inválida').optional(),
 })
 
+// TEMPORAL-SIN-EMBARQUE(#472): corrección de canal de un pedido abierto por el ADMIN.
+export const CorregirCanalSchema = z.object({
+  offlineId: z.string().min(8, 'Falta la clave de idempotencia').max(100),
+  canal: z.enum(['PUNTO', 'DOMICILIO']),
+  precios: z.enum(['CONSERVAR', 'RECALCULAR']).default('CONSERVAR'),
+  motivo: z.string().trim().min(3, 'Escribe el motivo de la corrección').max(500, 'El motivo es muy largo'),
+  /** `true` = solo calcula el impacto, sin escribir nada. */
+  vistaPrevia: z.boolean().optional(),
+})
+
 export const EntregaSchema = z.object({
   // pedidoId is intentionally NOT required here — the route uses params.id from
   // the URL path (/api/pedidos/[id]/entrega). Kept as optional for clients

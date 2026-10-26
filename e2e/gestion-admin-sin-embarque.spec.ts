@@ -164,6 +164,44 @@ test.describe('Gestión temporal sin embarque (#472)', () => {
     expect(Number(p.saldo)).toBe(0)
   })
 
+  test('ENCENDIDO: el ADMIN corrige el canal de un pedido abierto y queda registrado con su motivo', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    await interruptor(page, 'true')
+    const ped = await crearPedidoPendiente(page, `GE canal ${Date.now()}`) // nace como DOMICILIO
+    expect((await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })).canal).toBe('DOMICILIO')
+
+    await page.goto(`${BASE}/pedidos?openPedido=${ped.id}`)
+    const acciones = appMain(page).getByTestId('detalle-acciones')
+    await expect(acciones.getByRole('button', { name: 'Corregir canal' })).toBeVisible({ timeout: 20000 })
+    await acciones.getByRole('button', { name: 'Corregir canal' }).click()
+
+    const dialogo = page.getByTestId('corregir-canal')
+    await expect(dialogo.getByTestId('cc-canales')).toContainText('Hoy es de Domicilio. Pasará a Punto de venta.')
+    // Sin motivo NO se puede continuar.
+    await dialogo.getByTestId('cc-revisar').click()
+    await expect(dialogo.getByText(/Escribe el motivo de la corrección/)).toBeVisible()
+    expect((await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })).canal).toBe('DOMICILIO')
+
+    await dialogo.getByLabel(/Motivo/).fill('Se registró como domicilio por error')
+    await dialogo.getByTestId('cc-revisar').click()
+    const resumen = dialogo.getByTestId('cc-resumen')
+    await expect(resumen).toContainText('pasa de Domicilio a Punto de venta')
+    await expect(resumen).toContainText('Los precios no cambian')
+    // La vista previa no escribe nada.
+    expect((await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })).canal).toBe('DOMICILIO')
+
+    await dialogo.getByTestId('cc-guardar').click()
+    await expect(page.getByText(new RegExp(`Pedido #${ped.numero} corregido a punto de venta`))).toBeVisible({ timeout: 20000 })
+
+    const p = await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })
+    expect(p.canal).toBe('PUNTO')
+    expect(Number(p.total)).toBe(ped.total)
+    expect(p.estadoEntrega).toBe('PENDIENTE')
+    const auditorias = await prisma.historial.findMany({ where: { entidad: 'Pedido', registroId: ped.id, datos: { contains: '"correccionCanal":true' } } })
+    expect(auditorias).toHaveLength(1)
+    expect(JSON.parse(auditorias[0].datos).motivo).toBe('Se registró como domicilio por error')
+  })
+
   test('ENCENDIDO pero no es ADMIN (ASISTENTE): no ve la acción ni la API responde', async ({ browser }) => {
     const admin = await sharedLoginAs(browser, 'admin')
     await interruptor(admin, 'true')
@@ -173,10 +211,16 @@ test.describe('Gestión temporal sin embarque (#472)', () => {
     const acciones = appMain(page).getByTestId('detalle-acciones')
     await expect(acciones.getByRole('button', { name: /Enviar/ })).toBeVisible({ timeout: 20000 })
     await expect(acciones.getByRole('button', { name: 'Registrar entrega' })).toHaveCount(0)
+    await expect(acciones.getByRole('button', { name: 'Corregir canal' })).toHaveCount(0)
     const res = await page.request.post(`${BASE}/api/pedidos/${ped.id}/gestion-admin/entrega`, {
       data: { offlineId: `ge-asis-${Date.now()}`, itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 2 }] },
     })
     expect(res.status()).toBe(403)
+    const canal = await page.request.post(`${BASE}/api/pedidos/${ped.id}/gestion-admin/canal`, {
+      data: { offlineId: `ge-canal-${Date.now()}`, canal: 'PUNTO', motivo: 'Prueba de permisos' },
+    })
+    expect(canal.status()).toBe(403)
+    expect((await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })).canal).toBe('DOMICILIO')
     expect((await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })).estadoEntrega).toBe('PENDIENTE')
     await interruptor(admin, 'false') // deja el interruptor como se encontró
   })

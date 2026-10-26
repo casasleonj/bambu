@@ -18,6 +18,7 @@ import { EntregarPedidoUseCase } from './use-cases/EntregarPedidoUseCase'
 import { AnularPedidoUseCase } from './use-cases/AnularPedidoUseCase'
 import { CancelarPedidoUseCase } from './use-cases/CancelarPedidoUseCase'
 import { ActualizarPedidoUseCase } from './use-cases/ActualizarPedidoUseCase'
+import { CorregirCanalPedidoUseCase } from './use-cases/CorregirCanalPedidoUseCase'
 import { GetFiadoStatusUseCase, ClienteNotFoundError } from './use-cases/GetFiadoStatusUseCase'
 import { PreviewPedidoUseCase } from './use-cases/PreviewPedidoUseCase'
 import { SolicitarExcepcionCreditoUseCase } from './use-cases/SolicitarExcepcionCreditoUseCase'
@@ -73,6 +74,16 @@ export const cancelarPedidoUseCase = new CancelarPedidoUseCase(
 )
 
 export const actualizarPedidoUseCase = new ActualizarPedidoUseCase(
+  pedidoRepo,
+  facturaRepo,
+  clienteRepo,
+  pricingAdapter,
+  txManager,
+  resolverCoordsDeLink,
+)
+
+// TEMPORAL-SIN-EMBARQUE(#472): corrección de canal por el ADMIN (se retira con la función).
+export const corregirCanalPedidoUseCase = new CorregirCanalPedidoUseCase(
   pedidoRepo,
   facturaRepo,
   clienteRepo,

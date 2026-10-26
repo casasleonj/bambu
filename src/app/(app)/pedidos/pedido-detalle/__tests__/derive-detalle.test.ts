@@ -150,10 +150,12 @@ describe('accionesDetalle con gestión de administrador sin embarque', () => {
   it('PENDIENTE: «Registrar entrega» es la primaria y Enviar sigue disponible', () => {
     const a = accionesDetalle('PENDIENTE', null, { gestionAdmin: true })
     expect(a.primaria?.key).toBe('registrar-entrega')
-    expect(a.secundarias.map((x) => x.key)).toEqual(['enviar', 'editar', 'cancelar'])
+    expect(a.secundarias.map((x) => x.key)).toEqual(['enviar', 'corregir-canal', 'editar', 'cancelar'])
   })
-  it('NO_ENTREGADO: puede registrarse la entrega', () => {
-    expect(accionesDetalle('NO_ENTREGADO', null, { gestionAdmin: true }).primaria?.key).toBe('registrar-entrega')
+  it('NO_ENTREGADO: puede registrarse la entrega y corregirse el canal', () => {
+    const a = accionesDetalle('NO_ENTREGADO', null, { gestionAdmin: true })
+    expect(a.primaria?.key).toBe('registrar-entrega')
+    expect(a.secundarias.map((x) => x.key)).toEqual(['corregir-canal'])
   })
   it('EN_RUTA: se conservan las acciones de siempre y se agrega «Registrar entrega»', () => {
     const base = accionesDetalle('EN_RUTA', 'EN_RUTA')
@@ -161,10 +163,21 @@ describe('accionesDetalle con gestión de administrador sin embarque', () => {
     expect(a.primaria).toEqual(base.primaria)
     expect(a.secundarias.map((x) => x.key)).toEqual(['registrar-entrega', ...base.secundarias.map((x) => x.key)])
   })
-  it('un pedido cerrado no ofrece registrar entrega', () => {
+  it('un pedido cerrado no ofrece registrar entrega ni corregir el canal', () => {
     for (const e of ['ENTREGADO', 'CANCELADO', 'ANULADO']) {
       const claves = [accionesDetalle(e, null, { gestionAdmin: true }).primaria, ...accionesDetalle(e, null, { gestionAdmin: true }).secundarias].map((x) => x?.key)
       expect(claves).not.toContain('registrar-entrega')
+      expect(claves).not.toContain('corregir-canal')
+    }
+  })
+  it('un pedido EN_RUTA (dentro de un embarque) no ofrece corregir el canal', () => {
+    const claves = [accionesDetalle('EN_RUTA', 'EN_RUTA', { gestionAdmin: true }).primaria, ...accionesDetalle('EN_RUTA', 'EN_RUTA', { gestionAdmin: true }).secundarias].map((x) => x?.key)
+    expect(claves).not.toContain('corregir-canal')
+  })
+  it('sin la opción nunca aparece «Corregir canal»', () => {
+    for (const e of ['PENDIENTE', 'EN_RUTA', 'NO_ENTREGADO', 'ENTREGADO']) {
+      const a = accionesDetalle(e, null, {})
+      expect([a.primaria, ...a.secundarias].map((x) => x?.key)).not.toContain('corregir-canal')
     }
   })
 })

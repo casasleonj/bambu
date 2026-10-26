@@ -41,6 +41,7 @@ import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
 import { useEntregarPedido } from '@/hooks/use-entregar-pedido'
 import { useGestionAdmin } from '@/hooks/use-gestion-admin'
 import { RegistrarEntregaDialog } from '../registrar-entrega/registrar-entrega-dialog'
+import { CorregirCanalDialog } from '../corregir-canal/corregir-canal-dialog'
 import { itemsCambiaron } from '@/lib/pedido-edicion-items'
 import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
@@ -1016,6 +1017,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // TEMPORAL-SIN-EMBARQUE(#472): el ADMIN registra entregas y cobros sin embarque.
   const gestionAdmin = useGestionAdmin(userRole === 'ADMIN')
   const [registrarEntregaPara, setRegistrarEntregaPara] = useState<Pedido | null>(null)
+  const [corregirCanalPara, setCorregirCanalPara] = useState<Pedido | null>(null)
 
   const { entregar } = useEntregarPedido({
     onSuccess: () => {
@@ -2432,6 +2434,10 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
                   setShowDetailModal(false)
                   setRegistrarEntregaPara(selectedPedido)
                   break
+                case 'corregir-canal':
+                  setShowDetailModal(false)
+                  setCorregirCanalPara(selectedPedido)
+                  break
                 case 'volver-pendiente': void cambiarEstado(selectedPedido.id, 'PENDIENTE'); break
                 case 'anular': void cambiarEstado(selectedPedido.id, 'ANULADO'); break
               }
@@ -2463,6 +2469,28 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             refetchAlertas()
             if (deduped) toast.info(`La entrega del pedido #${numero} ya estaba registrada`)
             else toast.success(`Entrega del pedido #${numero} registrada`)
+          }}
+        />
+      )}
+
+      {/* TEMPORAL-SIN-EMBARQUE(#472): Corregir canal (ADMIN, pedido abierto) */}
+      {corregirCanalPara && (
+        <CorregirCanalDialog
+          pedido={{
+            id: corregirCanalPara.id,
+            numero: corregirCanalPara.numero,
+            canal: corregirCanalPara.canal,
+            nombreCliente: corregirCanalPara.nombreCli,
+            total: Number(corregirCanalPara.total),
+          }}
+          onClose={() => setCorregirCanalPara(null)}
+          onCorregido={({ deduped, numero, canalDespues }) => {
+            setCorregirCanalPara(null)
+            refreshPedidos()
+            refetchFiados()
+            refetchAlertas()
+            if (deduped) toast.info(`El canal del pedido #${numero} ya estaba corregido`)
+            else toast.success(`Pedido #${numero} corregido a ${canalDespues === 'DOMICILIO' ? 'domicilio' : 'punto de venta'}`)
           }}
         />
       )}
