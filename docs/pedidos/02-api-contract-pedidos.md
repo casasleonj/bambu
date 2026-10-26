@@ -175,10 +175,10 @@ Prepara una operación de **creación de pedido** sin persistir: calcula precios
 
 | Campo | Definición |
 |---|---|
-| `precioUnitario` | precio final resuelto por Pricing — **ya incluye el recargo de domicilio** cuando `canal=DOMICILIO` y el producto `aplicaDomicilio` |
+| `precioUnitario` | precio final resuelto por Pricing. El recargo de domicilio se suma **solo** cuando el origen es el precio base (`precioOrigen='base'`), `canal=DOMICILIO` y el producto `aplicaDomicilio`. Manual, especial de cliente/negocio y volumen son finales y ya incluyen el domicilio (#493) |
 | `subtotalItem` (`items[].subtotal`) | `precioUnitario × cantidad` |
 | `total` | `Σ subtotalItem` |
-| `recargoDomicilio` | `Σ (sobreCostoDomicilio_producto × cantidad)` sobre los productos con `aplicaDomicilio=true`, **solo cuando `canal=DOMICILIO`**; `0` en `PUNTO` |
+| `recargoDomicilio` | `Σ (sobreCostoDomicilio_producto × cantidad)` sobre los ítems con `precioOrigen='base'` y `aplicaDomicilio=true`, **solo cuando `canal=DOMICILIO`**; `0` en `PUNTO` |
 | `subtotal` | `total − recargoDomicilio` (el monto equivalente sin el recargo) |
 | identidad | `total = subtotal + recargoDomicilio` |
 
