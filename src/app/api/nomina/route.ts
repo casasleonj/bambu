@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { executeSerializableWithRetry } from '@/lib/serializable'
 import { calcularDeduccionesDeuda } from '@/lib/nomina-deudas'
+import { calcularComisionRepartidor, tarifasRepartidor } from '@/lib/comision-repartidor'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-3): Only ADMIN/CONTADOR can read nominas
@@ -127,57 +128,23 @@ export async function POST(request: NextRequest) {
 
         // Repartidor eventual: cualquier trabajador con moto y tipoPago
         // COMISION/MIXTO cobra comision por entregas de embarque, sin
-        // depender de rol=REPARTIDOR.
+        // depender de rol=REPARTIDOR. El cálculo vive en `comision-repartidor.ts`
+        // (fuente única de la nómina, la vista del día y el cierre, #499).
         if (trabajador.usaMoto && comisionesEnabled) {
-          const embarques = await tx.embarque.findMany({
-            where: {
-              trabajadorId,
-              fecha: { gte: ini, lte: fin },
-              estado: 'CERRADO',
-            },
-            include: {
-              pedidos: { where: { estado: 'ENTREGADO' } },
-            },
-          })
-
-          for (const emp of embarques) {
-            for (const ped of emp.pedidos) {
-              entregasAgua += ped.cPacaAguaEnt
-              entregasHielo += ped.cPacaHieloEnt
-              entregasBotellon += (ped.cBotellonFabEnt || 0) + (ped.cBotellonDomEnt || 0)
-            }
-          }
-
-          // TEMPORAL-SIN-EMBARQUE(#472): segunda fuente de comisión. Entregas a
-          // domicilio que la oficina registró sin embarque, con este trabajador
-          // como repartidor responsable. `embarqueId: null` evita contar dos
-          // veces un pedido que sí está en un embarque (esos van por arriba).
-          // Al retirar la función temporal, borrar este bloque y la nota.
-          const entregasSinEmbarque = await tx.pedido.findMany({
-            where: {
-              entregadoPorId: trabajadorId,
-              embarqueId: null,
-              canal: 'DOMICILIO',
-              estadoEntrega: 'ENTREGADO',
-              entregadoAt: { gte: ini, lte: fin },
-            },
-            select: {
-              cPacaAguaEnt: true,
-              cPacaHieloEnt: true,
-              cBotellonFabEnt: true,
-              cBotellonDomEnt: true,
-            },
-          })
-          for (const ped of entregasSinEmbarque) {
-            entregasAgua += ped.cPacaAguaEnt
-            entregasHielo += ped.cPacaHieloEnt
-            entregasBotellon += (ped.cBotellonFabEnt || 0) + (ped.cBotellonDomEnt || 0)
-          }
-
-          comAgua = entregasAgua * Number(trabajador.comRepartAgua || configMap.COM_REPARTIDOR || 200)
-          comHielo = entregasHielo * Number(trabajador.comRepartHielo || configMap.COM_REPARTIDOR || 200)
-          comBotellon = entregasBotellon * Number(trabajador.comRepartBotellon || 200)
-          totalComisiones = comAgua + comHielo + comBotellon
+          const com = await calcularComisionRepartidor(
+            tx,
+            trabajadorId,
+            ini,
+            fin,
+            tarifasRepartidor(trabajador, configMap.COM_REPARTIDOR),
+          )
+          entregasAgua = com.entregasAgua
+          entregasHielo = com.entregasHielo
+          entregasBotellon = com.entregasBotellon
+          comAgua = com.comAgua
+          comHielo = com.comHielo
+          comBotellon = com.comBotellon
+          totalComisiones = com.total
         }
 
         if (isSellador && comisionesEnabled) {

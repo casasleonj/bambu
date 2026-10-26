@@ -38,7 +38,7 @@ global de transiciones **no cambia**: `Pedido.puedeEntregarOficina()` es la úni
 | Cobro de fiado con «quién recibió» | `POST /api/pedidos/pagar-fiado` (campos `recibioDinero`, `repartidorId`, `fechaRecepcion`), `registrar-entrega/logica-cobro.ts` y `cobro-oficina-campos.tsx` |
 | Corregir canal | `POST /api/pedidos/[id]/gestion-admin/canal`, `CorregirCanalPedidoUseCase`, `correccion-canal.errors.ts`, pantalla `src/app/(app)/pedidos/corregir-canal/` |
 | Regla de fecha compartida | `src/lib/gestion-admin-fecha.ts` (no futura, ≤ 7 días, día no cerrado) |
-| Comisión en la nómina | segunda fuente en `POST /api/nomina` (bloque `TEMPORAL-SIN-EMBARQUE(#472)`) |
+| Comisión en la nómina | segunda fuente en `src/lib/comision-repartidor.ts` (`calcularComisionRepartidor`, bloque `TEMPORAL-SIN-EMBARQUE(#472)`), usada por `POST /api/nomina` y por `GET /api/nomina/dia` (#499) |
 | Pantalla | `src/app/(app)/pedidos/registrar-entrega/` |
 | Hook | `src/hooks/use-gestion-admin.ts` |
 | Acción en la ficha | `registrar-entrega` en `pedido-detalle/derive-detalle.ts` |
