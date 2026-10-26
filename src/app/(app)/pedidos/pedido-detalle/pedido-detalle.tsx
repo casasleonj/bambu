@@ -1,5 +1,7 @@
 'use client'
 
+import { CorreccionPrecioPanel } from '@/components/correccion-precio/correccion-precio-panel'
+import { cierreV2Enabled } from '@/lib/flags'
 import Link from 'next/link'
 import { useState } from 'react'
 import { formatCurrency } from '@/lib/utils'
@@ -261,6 +263,15 @@ export function PedidoDetalle({
                 })}
               </div>
             </Seccion>
+
+            {cierreV2Enabled() && (
+              <CorreccionPrecioPanel
+                pedidoId={pedido.id}
+                lineas={items.map((i) => ({ producto: i.producto, cantPedido: i.cantPedido, precio: Number(i.precio) }))}
+                userRole={userRole}
+                corregible={pedido.estadoEntrega !== 'CANCELADO' && pedido.estadoEntrega !== 'ANULADO'}
+              />
+            )}
 
             <Seccion titulo="Pagos y factura" testId="detalle-pagos">
               {pagos.length === 0 ? (
