@@ -179,7 +179,7 @@ export class CorregirCanalPedidoUseCase {
         const resueltos = await this.pricingPort.resolverPrecios(
           pedido.items.map((i) => {
             if (i.precioOrigen !== 'manual') return { codigo: i.producto, cantidad: i.cantPedido }
-            // El resolvedor suma el sobrecosto de domicilio a TODO precio (también al manual): el
+            // El resolvedor suma el sobrecosto de domicilio a cualquier precio (también al manual): el
             // precio guardado ya lo trae si el canal era DOMICILIO. Se le quita para recuperar el
             // precio que se escribió a mano, y el canal nuevo vuelve a aplicar el suyo.
             const cfg = contexto.productosByCode[i.producto as string]
