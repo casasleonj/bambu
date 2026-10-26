@@ -101,6 +101,8 @@ export class Pedido {
   get adminOverrideBy(): string | undefined { return this.props.adminOverrideBy }
   get adminOverrideAt(): Date | undefined { return this.props.adminOverrideAt }
   get entregadoPorId(): string | undefined { return this.props.entregadoPorId }
+  /** #400: quién registró el pedido (sin valor en los generados automáticamente). */
+  get createdById(): string | undefined { return this.props.createdById }
   get offlineId(): string | undefined { return this.props.offlineId }
   get entregaOfflineId(): string | undefined { return this.props.entregaOfflineId }
   get anulacionOfflineId(): string | undefined { return this.props.anulacionOfflineId }
