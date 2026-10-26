@@ -77,6 +77,7 @@ export default function NominaPage() {
     comisionTotal: number
     descuentos?: number
     descuentoDeudas: number
+    comisionPagadaCaja: number
     salarioFijo: number
   } | null>(null)
   const [selectedNomina, setSelectedNomina] = useState<Nomina | null>(null)
@@ -232,6 +233,7 @@ export default function NominaPage() {
       comBotellon: Number(nom.comEntregasBotellon ?? 0),
       comisionTotal: Number(nom.totalComisiones),
       descuentoDeudas: Number(nom.descuentoDeudas ?? 0),
+      comisionPagadaCaja: Number(nom.comisionPagadaCaja ?? 0),
       salarioFijo: Number(nom.salario),
     })
     setSelectedNomina(nom)
@@ -347,6 +349,12 @@ export default function NominaPage() {
                 <div className="text-muted-foreground">Hielo</div><div className="font-medium text-right">${formatCOP(detalles.comHielo)}</div>
                 <div className="text-muted-foreground">Botellón</div><div className="font-medium text-right">${formatCOP(detalles.comBotellon)}</div>
                 <div className="font-semibold border-t pt-2">Total comisiones</div><div className="font-semibold text-right border-t pt-2">${formatCOP(detalles.comisionTotal)}</div>
+                {detalles.comisionPagadaCaja > 0 && (
+                  <>
+                    <div className="text-muted-foreground" data-testid="nomina-pagado-caja">Ya pagado día a día (caja)</div>
+                    <div className="font-medium text-right text-red-600">-${formatCOP(detalles.comisionPagadaCaja)}</div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -522,7 +530,9 @@ export default function NominaPage() {
                             <span>{new Date(nom.fechaInicio).toLocaleDateString()} — {new Date(nom.fechaFin).toLocaleDateString()}</span>
                           </div>
                           <div className="text-xs text-muted-foreground mt-0.5">
-                            Comisiones ${formatCOP(Number(nom.totalComisiones))} + Salario ${formatCOP(Number(nom.salario))}
+                            Comisiones ${formatCOP(Number(nom.totalComisiones))}
+                            {Number(nom.comisionPagadaCaja ?? 0) > 0 && <> − pagado en caja ${formatCOP(Number(nom.comisionPagadaCaja))}</>}
+                            {' '}+ Salario ${formatCOP(Number(nom.salario))}
                           </div>
                         </div>
                         <div className="text-right shrink-0">

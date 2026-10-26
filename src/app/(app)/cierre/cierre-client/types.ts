@@ -120,6 +120,14 @@ export interface CierreData {
     comRepartTotal: number
   } | null
 
+  // #499: comisiones del día calculadas por el servidor (repartidores con lo pagado y lo pendiente + sellador)
+  comisionesAuto?: {
+    sellador: number
+    pagadoRepartidores: number
+    total: number
+    repartidores: { trabajadorId: string; nombre: string; total: number; pagado: number; pendiente: number }[]
+  }
+
   // Cierre
   netoCaja: number
 

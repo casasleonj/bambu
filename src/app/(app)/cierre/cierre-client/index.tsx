@@ -17,6 +17,7 @@ import CierreSection from '@/components/cierre/cierre-section'
 import CierreStockBlock from '@/components/cierre/cierre-stock-block'
 import CierreValidationList from '@/components/cierre/cierre-validation-list'
 import type { CierreData } from './types'
+import { ComisionesRepartidores } from './comisiones-repartidores'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
 const formatMoney = (val: number) => formatCurrency(val)
@@ -43,7 +44,6 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const [stockFinAgua, setStockFinAgua] = useState(0)
   const [stockFinHielo, setStockFinHielo] = useState(0)
   const [baseDia, setBaseDia] = useState(0)
-  const [comisiones, setComisiones] = useState(0)
   const [salarios, setSalarios] = useState(0)
   const [arqueoData, setArqueoData] = useState<{ arqueo: ArqueoData; totalContado: number; diferencia: number }>({
     arqueo: {},
@@ -69,6 +69,10 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const { data: session } = useSession()
   const userRole = (session?.user as { role?: string } | undefined)?.role
   const canClose = userRole === 'ADMIN' || userRole === 'ASISTENTE'
+  // #499: las comisiones las calcula el servidor; el cierre resta solo lo realmente pagado.
+  const comisiones = data?.comisionesAuto?.total ?? 0
+  const puedePagarComision = userRole === 'ADMIN' || userRole === 'CONTADOR'
+  const diaCerrado = yaCerrado || (statusCierre as string | null) === 'CERRADO'
 
 
   const loadBaseDia = useCallback(async (dateStr: string, signal: AbortSignal) => {
@@ -123,12 +127,6 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           setStockIniHielo(json.cierre.produccion.stockIniHielo || 0)
           setStockFinAgua(json.cierre.produccion.stockFinAgua || 0)
           setStockFinHielo(json.cierre.produccion.stockFinHielo || 0)
-          const comSell = Number(json.cierre.produccion.comSellTotal) || 0
-          const comRepart = Number(json.cierre.produccion.comRepartTotal) || 0
-          const comisionesCalculadas = comSell + comRepart
-          if (comisionesCalculadas > 0) {
-            setComisiones(prev => prev === 0 ? comisionesCalculadas : prev)
-          }
         }
       }
     } catch {
@@ -235,7 +233,6 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       const cierreData = {
         fecha,
         baseDia,
-        comisiones,
         salarios,
         stockIniAgua, prodAgua, stockFinAgua,
         stockIniHielo, prodHielo, stockFinHielo,
@@ -576,13 +573,26 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
               {baseDia <= 0 && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Requerido para cerrar</p>}
             </div>
             <div>
-              <label htmlFor="cierre-comisiones" className="text-xs text-muted-foreground">Comisiones</label>
-              <Input id="cierre-comisiones" type="number" min="0" value={comisiones} onChange={(e) => setComisiones(Math.max(0, Number(e.target.value)))} className="mt-1" />
+              <p className="text-xs text-muted-foreground">Comisiones (automático)</p>
+              <p className="mt-1 flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm font-medium" data-testid="cierre-comisiones-auto">{formatMoney(comisiones)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Lo pagado a repartidores hoy y la comisión de sellador.</p>
             </div>
             <div>
               <label htmlFor="cierre-salarios" className="text-xs text-muted-foreground">Salarios</label>
               <Input id="cierre-salarios" type="number" min="0" value={salarios} onChange={(e) => setSalarios(Math.max(0, Number(e.target.value)))} className="mt-1" />
             </div>
+          </div>
+
+          {/* Comisiones de repartidores (#499) */}
+          <div>
+            <p className="mb-2 text-sm font-medium">Comisiones de repartidores</p>
+            <ComisionesRepartidores
+              fecha={fecha}
+              repartidores={data?.comisionesAuto?.repartidores ?? []}
+              puedePagar={puedePagarComision}
+              diaCerrado={diaCerrado}
+              onPagado={() => { void fetchCierre(fecha, new AbortController().signal) }}
+            />
           </div>
 
           {/* Stock blocks */}

@@ -246,6 +246,7 @@ model User {
   gastosCreados       Gasto[]               @relation("GastoCreador")
   produccionesCreadas Produccion[]          @relation("ProduccionCreador")
   nominasCreadas      Nomina[]              @relation("NominaCreador")
+  pagosComisionHechos PagoComisionRepartidor[] @relation("PagoComisionPagador")
   comprasCreadas      CompraInsumo[]        @relation("CompraCreador")
   insumosCreados      Insumo[]              @relation("InsumoCreador")
   proveedoresCreados  Proveedor[]           @relation("ProveedorCreador")
@@ -806,6 +807,7 @@ model Trabajador {
 
   // TEMPORAL-SIN-EMBARQUE(#472)
   pedidosEntregados Pedido[] @relation("PedidoEntregadoPor")
+  pagosComision     PagoComisionRepartidor[] @relation("PagoComisionTrabajador")
   pagosRecibidos    Pago[]   @relation("PagoRecibidoPor")
 
   createdAt DateTime @default(now()) @db.Timestamptz()
@@ -818,6 +820,25 @@ model Trabajador {
 // ====================
 // NOMINA
 // ====================
+
+/// #499 — Comisión del repartidor pagada de la caja un día. Un registro por pago (si
+/// luego sube la comisión del mismo día, se paga la diferencia con otro registro).
+/// `fecha` = día (inicio en Bogotá) al que pertenece la comisión; `createdAt` = cuándo
+/// salió el dinero de la caja (el cierre de ese día lo resta). `offlineId` evita el doble toque.
+model PagoComisionRepartidor {
+  id           String     @id @default(cuid())
+  trabajadorId String
+  trabajador   Trabajador @relation("PagoComisionTrabajador", fields: [trabajadorId], references: [id])
+  fecha        DateTime   @db.Timestamptz()
+  monto        Decimal    @db.Decimal(10, 2)
+  pagadoPorId  String?
+  pagadoPor    User?      @relation("PagoComisionPagador", fields: [pagadoPorId], references: [id], onDelete: SetNull)
+  offlineId    String?    @unique
+  createdAt    DateTime   @default(now()) @db.Timestamptz()
+
+  @@index([trabajadorId, fecha])
+  @@index([createdAt])
+}
 
 model Nomina {
   id           String     @id @default(cuid())
@@ -850,6 +871,10 @@ model Nomina {
   // Deducciones aplicadas
   totalDescuentos Decimal @default(0) @db.Decimal(10, 2)
   descuentoDeudas Decimal @default(0) @db.Decimal(10, 2)
+
+  // #499: comisión del repartidor que ya salió de la caja día a día
+  // (PagoComisionRepartidor). `total` ya viene sin ella: no se paga dos veces.
+  comisionPagadaCaja Decimal @default(0) @db.Decimal(10, 2)
 
   estado    EstadoNomina @default(PENDIENTE)
   fechaPago DateTime?    @db.Timestamptz()
