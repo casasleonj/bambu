@@ -56,6 +56,8 @@ test.describe('Pedidos > Alertas: ignorar y crear caso', () => {
       await visibles(p, 'alerta-ignorar').first().click()
     }
     await expect(p.getByText(nombre)).toHaveCount(0)
+    // El contador de la pestaña no debe quedarse en 1 con la lista vacía
+    await expect(p.getByTestId('tab-alertas')).not.toContainText('1')
     expect(await p.evaluate(() => (window as unknown as { __noReload?: boolean }).__noReload)).toBe(true)
     await expect(p.getByText('Alerta ignorada por 24 horas').first()).toBeVisible()
   })

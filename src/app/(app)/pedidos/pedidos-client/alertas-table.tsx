@@ -15,6 +15,8 @@ interface AlertasTableProps {
   loading: boolean
   error: string | null
   activeTab: 'hoy' | 'fiados' | 'alertas'
+  /** Clientes con alertas visibles (ya sin las ignoradas), para el contador de la pestaña. */
+  onCountChange?: (count: number) => void
 }
 
 const SEVERIDAD_ORDER = { ALTA: 3, MEDIA: 2, BAJA: 1 }
@@ -24,6 +26,7 @@ export function AlertasTable({
   loading,
   error,
   activeTab,
+  onCountChange,
 }: AlertasTableProps) {
   const [expandedCliente, setExpandedCliente] = useState<string | null>(null)
   const [filtroSeveridad, setFiltroSeveridad] = useState<'TODAS' | 'ALTA' | 'MEDIA' | 'BAJA'>('TODAS')
@@ -63,6 +66,11 @@ export function AlertasTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ignoradasVersion fuerza releer localStorage
     [pedidosAlertas, ignoradasVersion],
   )
+
+  useEffect(() => {
+    if (loading && pedidosAlertas.length === 0) return
+    onCountChange?.(alertaRows.length)
+  }, [alertaRows, loading, pedidosAlertas.length, onCountChange])
 
   const handleIgnorar = (clienteId: string, tipo: AlertaTipo) => {
     ignorarAlerta(clienteId, tipo)
