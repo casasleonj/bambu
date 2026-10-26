@@ -115,6 +115,16 @@ function toNumber(value: number | { toNumber: () => number } | null | undefined)
   return typeof value === 'number' ? value : value.toNumber()
 }
 
+/**
+ * Precio enviado por el cierre solo cuenta si es un número finito mayor que 0.
+ * Un campo vacío llega como `0` (la pantalla y la ruta convierten vacío/null en 0): tomarlo como
+ * precio dejaba el pedido en $0 y la comisión en 0 (#487). `0`, negativos, NaN o ausentes
+ * significan «sin corrección»: se conserva el precio del pedido.
+ */
+function precioEnviado(valor: number | null | undefined): number | undefined {
+  return typeof valor === 'number' && Number.isFinite(valor) && valor > 0 ? valor : undefined
+}
+
 // N2, guard I-11 (docs/pedidos/AGUA_BAMBU_N2_ALS_v2.0.md §3.4bis): traduce las
 // columnas legacy per-producto (cXPed/cXEnt) al shape genérico que espera el
 // guard compartido con EntregarPedidoUseCase. `BOTELLON` suma Fab+Dom porque
@@ -281,12 +291,12 @@ export class ProcesarPedidoService {
 
     const precios: PreciosPedido = (cuadre.preciosReales && userRole === 'ADMIN')
       ? {
-          pacaAgua: cuadre.preciosReales['pacaAgua'] ?? preciosOriginales.pacaAgua,
-          pacaHielo: cuadre.preciosReales['pacaHielo'] ?? preciosOriginales.pacaHielo,
-          botellonFab: cuadre.preciosReales['botellonFab'] ?? preciosOriginales.botellonFab,
-          botellonDom: cuadre.preciosReales['botellonDom'] ?? preciosOriginales.botellonDom,
-          bolsaAgua: cuadre.preciosReales['bolsaAgua'] ?? preciosOriginales.bolsaAgua,
-          bolsaHielo: cuadre.preciosReales['bolsaHielo'] ?? preciosOriginales.bolsaHielo,
+          pacaAgua: precioEnviado(cuadre.preciosReales['pacaAgua']) ?? preciosOriginales.pacaAgua,
+          pacaHielo: precioEnviado(cuadre.preciosReales['pacaHielo']) ?? preciosOriginales.pacaHielo,
+          botellonFab: precioEnviado(cuadre.preciosReales['botellonFab']) ?? preciosOriginales.botellonFab,
+          botellonDom: precioEnviado(cuadre.preciosReales['botellonDom']) ?? preciosOriginales.botellonDom,
+          bolsaAgua: precioEnviado(cuadre.preciosReales['bolsaAgua']) ?? preciosOriginales.bolsaAgua,
+          bolsaHielo: precioEnviado(cuadre.preciosReales['bolsaHielo']) ?? preciosOriginales.bolsaHielo,
         }
       : preciosOriginales
 
@@ -536,12 +546,12 @@ export class ProcesarPedidoService {
     // se persisten para el registro pero NO alteran `total` (PR-1).
     const precios = (cuadre.preciosReales && userRole === 'ADMIN')
       ? {
-          precioPacaAgua: cuadre.preciosReales['pacaAgua'] ?? toNumber(pedido.precioPacaAgua),
-          precioPacaHielo: cuadre.preciosReales['pacaHielo'] ?? toNumber(pedido.precioPacaHielo),
-          precioBotellonFab: cuadre.preciosReales['botellonFab'] ?? toNumber(pedido.precioBotellonFab),
-          precioBotellonDom: cuadre.preciosReales['botellonDom'] ?? toNumber(pedido.precioBotellonDom),
-          precioBolsaAgua: cuadre.preciosReales['bolsaAgua'] ?? toNumber(pedido.precioBolsaAgua),
-          precioBolsaHielo: cuadre.preciosReales['bolsaHielo'] ?? toNumber(pedido.precioBolsaHielo),
+          precioPacaAgua: precioEnviado(cuadre.preciosReales['pacaAgua']) ?? toNumber(pedido.precioPacaAgua),
+          precioPacaHielo: precioEnviado(cuadre.preciosReales['pacaHielo']) ?? toNumber(pedido.precioPacaHielo),
+          precioBotellonFab: precioEnviado(cuadre.preciosReales['botellonFab']) ?? toNumber(pedido.precioBotellonFab),
+          precioBotellonDom: precioEnviado(cuadre.preciosReales['botellonDom']) ?? toNumber(pedido.precioBotellonDom),
+          precioBolsaAgua: precioEnviado(cuadre.preciosReales['bolsaAgua']) ?? toNumber(pedido.precioBolsaAgua),
+          precioBolsaHielo: precioEnviado(cuadre.preciosReales['bolsaHielo']) ?? toNumber(pedido.precioBolsaHielo),
         }
       : {}
 
@@ -654,7 +664,7 @@ export class ProcesarPedidoService {
     // tocan `total`, saldos ni facturas (obligación económica intacta, PR-1).
     const hayOverride = !!cuadre.preciosReales && userRole === 'ADMIN'
     const aplicar = (clave: string, original: number): number =>
-      hayOverride ? (cuadre.preciosReales?.[clave] ?? original) : original
+      hayOverride ? (precioEnviado(cuadre.preciosReales?.[clave]) ?? original) : original
     const originales: PreciosPedido = {
       pacaAgua: toNumber(pedido.precioPacaAgua),
       pacaHielo: toNumber(pedido.precioPacaHielo),
