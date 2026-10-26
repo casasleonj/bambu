@@ -35,11 +35,26 @@ global de transiciones **no cambia**: `Pedido.puedeEntregarOficina()` es la úni
 | Estado + repartidores | `GET /api/pedidos/gestion-admin/estado` |
 | Errores de dominio | `src/modules/pedidos/domain/services/entrega-oficina.errors.ts` |
 | Regla nómina | `src/lib/nomina-cobertura.ts` |
+| Cobro de fiado con «quién recibió» | `POST /api/pedidos/pagar-fiado` (campos `recibioDinero`, `repartidorId`, `fechaRecepcion`), `registrar-entrega/logica-cobro.ts` y `cobro-oficina-campos.tsx` |
+| Regla de fecha compartida | `src/lib/gestion-admin-fecha.ts` (no futura, ≤ 7 días, día no cerrado) |
 | Comisión en la nómina | segunda fuente en `POST /api/nomina` (bloque `TEMPORAL-SIN-EMBARQUE(#472)`) |
 | Pantalla | `src/app/(app)/pedidos/registrar-entrega/` |
 | Hook | `src/hooks/use-gestion-admin.ts` |
 | Acción en la ficha | `registrar-entrega` en `pedido-detalle/derive-detalle.ts` |
-| Pruebas | `src/lib/__tests__/integration/entrega-oficina-sin-embarque.test.ts`, `nomina-comision-sin-embarque.test.ts` + unitarias junto a cada pieza |
+| Pruebas | `src/lib/__tests__/integration/entrega-oficina-sin-embarque.test.ts`, `nomina-comision-sin-embarque.test.ts`, `pagar-fiado-oficina.test.ts` + unitarias junto a cada pieza |
+
+## Cobro posterior de un fiado (PR-3 de #472)
+
+En **Pedidos → Fiados**, al cobrar, el ADMIN (con la función encendida) ve dos preguntas más:
+
+- **¿Quién recibió el dinero?** («Se pagó en la oficina» o «Lo recibió un repartidor» + cuál). **No viene marcada.** El pago guarda
+  `Pago.recibidoPorId` (vacío = oficina).
+- **¿Cuándo se recibió?** Hoy por defecto, hasta 7 días atrás, nunca futuro y no un día ya cerrado. Si no es hoy se guarda como
+  `Pago.ocurridoAt`; el registro (`createdAt`) sigue siendo el momento real.
+
+Si el repartidor tiene una nómina que cubre esa fecha, se rechaza (`NOMINA_EXISTENTE`). La ASISTENTE y el ADMIN con la función apagada cobran
+como siempre, sin estas preguntas: el servidor rechaza los campos nuevos si no es ADMIN (`SOLO_ADMIN`) o si está apagada (`FUNCION_DESACTIVADA`).
+Un cobro que ya se aplicó (misma clave) no se vuelve a validar al reintentarse.
 
 ## Activación
 

@@ -11,6 +11,9 @@ import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { MoneyDisplay } from '@/components/money-display'
 import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
+import { useGestionAdmin } from '@/hooks/use-gestion-admin'
+import { CobroOficinaCampos } from '../registrar-entrega/cobro-oficina-campos'
+import { camposCobro, datosCobroIniciales, hayErroresCobro, validarCobro, type DatosCobroOficina } from '../registrar-entrega/logica-cobro'
 
 interface FiadoRow {
   clienteId: string
@@ -65,6 +68,15 @@ export function FiadosTable({
   const [montoPago, setMontoPago] = useState('')
   const [metodoPago, setMetodoPago] = useState('EFECTIVO')
   const [submitting, setSubmitting] = useState(false)
+  // TEMPORAL-SIN-EMBARQUE(#472): quién recibió el dinero y cuándo (solo ADMIN con la función encendida).
+  const gestionAdmin = useGestionAdmin(userRole === 'ADMIN')
+  const [cobro, setCobro] = useState<DatosCobroOficina>(() => datosCobroIniciales())
+  const [intentoCobro, setIntentoCobro] = useState(false)
+  const abrirPago = (clienteId: string) => {
+    setCobro(datosCobroIniciales())
+    setIntentoCobro(false)
+    setPagandoClienteId(clienteId)
+  }
   const [trabajadores, setTrabajadores] = useState<Array<{ id: string; nombre: string; rol: string }>>([])
   const [convirtiendoClienteId, setConvirtiendoClienteId] = useState<string | null>(null)
   const [trabajadorDeudaId, setTrabajadorDeudaId] = useState('')
@@ -192,6 +204,11 @@ export function FiadosTable({
       toast.error('Ingresa un monto válido')
       return
     }
+    // TEMPORAL-SIN-EMBARQUE(#472): con la función encendida el ADMIN debe decir quién recibió.
+    if (gestionAdmin.activa) {
+      setIntentoCobro(true)
+      if (hayErroresCobro(validarCobro(cobro))) return
+    }
     setSubmitting(true)
     try {
       const result = await fetchResilient<{
@@ -210,6 +227,7 @@ export function FiadosTable({
             monto: Number(montoPago),
             metodo: metodoPago,
             offlineId: generateUUID(),
+            ...(gestionAdmin.activa ? camposCobro(cobro) : {}),
           },
           localEndpoint: 'pagar-fiado',
         }
@@ -468,7 +486,7 @@ export function FiadosTable({
                           {expandedCliente === row.clienteId ? 'Ocultar' : 'Ver pedidos'}
                         </button>
                         <button
-                          onClick={() => setPagandoClienteId(row.clienteId)}
+                          onClick={() => abrirPago(row.clienteId)}
                           className="text-sm bg-blue-600 text-white hover:bg-blue-700 px-3 py-1.5 rounded-lg transition"
                         >
                           Pagar
@@ -611,6 +629,17 @@ export function FiadosTable({
                             </button>
                           </div>
                         </div>
+                        {gestionAdmin.activa && (
+                          <div className="mt-3">
+                            <CobroOficinaCampos
+                              datos={cobro}
+                              errores={validarCobro(cobro)}
+                              intento={intentoCobro}
+                              repartidores={gestionAdmin.repartidores}
+                              onChange={(c) => setCobro((d) => ({ ...d, ...c }))}
+                            />
+                          </div>
+                        )}
                         <p className="text-xs text-gray-500 mt-2">
                           El pago se aplicará automáticamente a los pedidos más antiguos primero (FIFO).
                         </p>
@@ -664,7 +693,7 @@ export function FiadosTable({
                   {expandedCliente === row.clienteId ? 'Ocultar' : `Ver ${row.pedidosFiados.length} pedidos`}
                 </button>
                 <button
-                  onClick={() => setPagandoClienteId(row.clienteId)}
+                  onClick={() => abrirPago(row.clienteId)}
                   className="flex-1 text-sm bg-blue-600 text-white py-2 rounded-lg"
                 >
                   Pagar
@@ -756,6 +785,15 @@ export function FiadosTable({
                     <option value="DAVIPLATA">💳 Daviplata</option>
                     <option value="BONO">🎁 Bono</option>
                   </select>
+                  {gestionAdmin.activa && (
+                    <CobroOficinaCampos
+                      datos={cobro}
+                      errores={validarCobro(cobro)}
+                      intento={intentoCobro}
+                      repartidores={gestionAdmin.repartidores}
+                      onChange={(c) => setCobro((d) => ({ ...d, ...c }))}
+                    />
+                  )}
                   <div className="flex gap-2">
                     <button
                       onClick={() => setPagandoClienteId(null)}
