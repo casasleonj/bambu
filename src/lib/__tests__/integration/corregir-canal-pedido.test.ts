@@ -90,7 +90,11 @@ describe('#472 — corregir el canal de un pedido abierto (Postgres real)', () =
   beforeAll(async () => {
     await resetAndSeed()
     adminId = (await getAdminUser()).id
-    await testPrisma.producto.update({ where: { codigo: 'BOTELLON' }, data: { aplicaDomicilio: true, sobreCostoDomicilio: SOBRECOSTO } })
+    // #493: solo el precio base lleva el recargo de domicilio (manual, especial y volumen son
+    // finales). Para que corregir el canal con RECALCULAR cambie el precio, el BOTELLON se
+    // cotiza por precio base: sin tramos de volumen.
+    await testPrisma.precioVolumen.updateMany({ where: { producto: { codigo: 'BOTELLON' } }, data: { activo: false } })
+    await testPrisma.producto.update({ where: { codigo: 'BOTELLON' }, data: { aplicaDomicilio: true, sobreCostoDomicilio: SOBRECOSTO, precioBase: 6500 } })
     clienteId = (await testPrisma.cliente.create({
       data: { nombre: 'Cliente Canal', telefono: '3001230003', direccion: 'Calle 1 # 2-3', barrio: 'Centro', limitePedidosFiados: 20, activo: true },
     })).id
@@ -155,17 +159,16 @@ describe('#472 — corregir el canal de un pedido abierto (Postgres real)', () =
     expect(await violaciones(id)).toEqual([])
   })
 
-  it('recalcular respeta un precio puesto a mano: conserva el precio escrito y solo cambia el sobrecosto del canal', async () => {
+  it('recalcular respeta un precio puesto a mano: es final y no cambia con el canal (#493)', async () => {
     const id = await crearPedido({ canal: 'PUNTO', items: [{ producto: 'BOTELLON', cantidad: 2, precioManual: 9000 }] })
     expect((await fila(id)).items[0].precioOrigen).toBe('manual')
 
     expect((await corregir(id, { canal: 'DOMICILIO', precios: 'RECALCULAR' })).status).toBe(200)
     let p = await fila(id)
-    expect(Number(p.items[0].precio)).toBe(9000 + SOBRECOSTO) // el precio escrito + sobrecosto de domicilio
+    expect(Number(p.items[0].precio)).toBe(9000) // el precio escrito ya incluye el domicilio
     expect(p.items[0].precioOrigen).toBe('manual')
-    expect(Number(p.total)).toBe((9000 + SOBRECOSTO) * 2)
+    expect(Number(p.total)).toBe(18000)
 
-    // De vuelta a punto de venta: el precio escrito a mano reaparece, sin el sobrecosto (no se acumula).
     expect((await corregir(id, { canal: 'PUNTO', precios: 'RECALCULAR' })).status).toBe(200)
     p = await fila(id)
     expect(Number(p.items[0].precio)).toBe(9000)

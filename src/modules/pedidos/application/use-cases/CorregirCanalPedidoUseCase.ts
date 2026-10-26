@@ -13,9 +13,9 @@
  * Precios (decisión del PO):
  *  - CONSERVAR (por defecto): solo cambia el canal; precios y total intactos.
  *  - RECALCULAR: se vuelve a resolver el precio de cada línea con la regla de
- *    la creación y el canal nuevo (sobrecosto de domicilio). Las líneas con
- *    precio manual conservan el precio escrito a mano (sin sobrecosto) y el canal
- *    nuevo les aplica el suyo. Nunca deja `total < totalPagado`
+ *    la creación y el canal nuevo. El recargo de domicilio solo afecta al precio
+ *    base (#493); las líneas con precio manual, especial o por volumen conservan su
+ *    precio. Nunca deja `total < totalPagado`
  *    (devolver o absorber dinero cobrado es una decisión comercial, no de aquí).
  *
  * Con `soloVistaPrevia` calcula el impacto sin escribir nada. Toda mutación va
@@ -179,12 +179,8 @@ export class CorregirCanalPedidoUseCase {
         const resueltos = await this.pricingPort.resolverPrecios(
           pedido.items.map((i) => {
             if (i.precioOrigen !== 'manual') return { codigo: i.producto, cantidad: i.cantPedido }
-            // El resolvedor suma el sobrecosto de domicilio a cualquier precio (también al manual): el
-            // precio guardado ya lo trae si el canal era DOMICILIO. Se le quita para recuperar el
-            // precio que se escribió a mano, y el canal nuevo vuelve a aplicar el suyo.
-            const cfg = contexto.productosByCode[i.producto as string]
-            const recargoAnterior = canalAntes === 'DOMICILIO' && cfg?.aplicaDomicilio ? cfg.sobreCostoDomicilio : 0
-            return { codigo: i.producto, cantidad: i.cantPedido, precioManual: i.precio.toDecimal() - recargoAnterior }
+            // #493: el precio escrito a mano es final (ya incluye el domicilio); el resolvedor no le suma recargo.
+            return { codigo: i.producto, cantidad: i.cantPedido, precioManual: i.precio.toDecimal() }
           }),
           input.canalNuevo,
           contexto,
