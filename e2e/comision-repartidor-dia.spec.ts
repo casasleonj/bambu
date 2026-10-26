@@ -65,19 +65,19 @@ test.describe('Comisión del repartidor en el cierre (#499)', () => {
     await expect(page.getByTestId(`comision-${r.id}`).getByTestId('comision-pagado')).toContainText('800', { timeout: 30000 })
   })
 
-  test('la ASISTENTE ve lo pendiente pero no puede pagarlo', async ({ browser }) => {
+  test('el CONTADOR también ve y puede pagar; la ASISTENTE recibe 403 por la API y no se registra nada', async ({ browser }) => {
     const admin = await sharedLoginAs(browser, 'admin')
-    const r = await repartidorConEntrega(admin, `Sin permiso E2E ${Date.now()}`, 1)
+    const r = await repartidorConEntrega(admin, `Roles E2E ${Date.now()}`, 1)
 
-    const asistente = await sharedLoginAs(browser, 'asistente')
-    await goto(asistente, '/cierre')
-    const fila = asistente.getByTestId(`comision-${r.id}`)
+    const contador = await sharedLoginAs(browser, 'contador')
+    await goto(contador, '/cierre')
+    const fila = contador.getByTestId(`comision-${r.id}`)
     await expect(fila).toBeVisible({ timeout: 30000 })
     await expect(fila.getByTestId('comision-pendiente')).toContainText('400')
-    await expect(fila.getByTestId(`pagar-comision-${r.id}`)).toHaveCount(0)
-    await expect(asistente.getByTestId('comisiones-aviso-pendiente')).toContainText('Un administrador debe pagar')
+    await expect(fila.getByTestId(`pagar-comision-${r.id}`)).toBeVisible()
 
-    // Y la API se lo confirma: 403 y nada se registra.
+    // La ASISTENTE no paga comisiones: la API lo rechaza (el servidor decide, no la pantalla).
+    const asistente = await sharedLoginAs(browser, 'asistente')
     const res = await apiPost(asistente, '/api/nomina/dia/pagar', {
       trabajadorId: r.id, fecha: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }), offlineId: `a-${Date.now()}-xxxx`,
     })
