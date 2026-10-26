@@ -295,6 +295,9 @@ model User {
 
   // F2 (Excepciones de Crédito)
   excepcionesCreditoSolicitadas PedidoExcepcionCredito[] @relation("ExcepcionCreditoSolicitante")
+  // ADR-CIERRE-004 / ADR-MONETARIO-002: correcciones de precio solicitadas / resueltas.
+  correccionesPrecioSolicitadas PedidoCorreccionPrecio[] @relation("CorreccionPrecioSolicitante")
+  correccionesPrecioResueltas   PedidoCorreccionPrecio[] @relation("CorreccionPrecioResolutor")
   excepcionesCreditoAutorizadas PedidoExcepcionCredito[] @relation("ExcepcionCreditoAutorizador")
   excepcionesCreditoRechazadas  PedidoExcepcionCredito[] @relation("ExcepcionCreditoRechazador")
 
@@ -1038,6 +1041,7 @@ model Pedido {
 
   // FASE 2 (ledger físico)
   sustituciones Sustitucion[]
+  correccionesPrecio PedidoCorreccionPrecio[]
   retornos      Retorno[]
 
   // FASE 3 (obligaciones)
@@ -2961,4 +2965,56 @@ model PlanExcepcion {
 
   @@index([planDiaId])
   @@index([planDiaId, estado])
+}
+
+// ====================
+// PEDIDO_CORRECCION_PRECIO (ADR-MONETARIO-002 §1, ADR-CIERRE-004)
+// ====================
+//
+// Corrección del precio de UNA línea del pedido con recálculo de la obligación.
+// El ASISTENTE solicita (PENDIENTE); el ADMIN aplica o rechaza. Un ADMIN que la
+// registra la aplica en el acto. `totalAntes/totalDespues` y `precioAnterior/
+// precioNuevo` son el antes/después auditable; la fila nunca se borra.
+
+enum PedidoCorreccionPrecioEstado {
+  PENDIENTE
+  APLICADA
+  RECHAZADA
+}
+
+model PedidoCorreccionPrecio {
+  id       String @id @default(cuid())
+  pedidoId String
+  pedido   Pedido @relation(fields: [pedidoId], references: [id])
+
+  producto       String
+  cantidad       Int
+  precioAnterior Decimal @db.Decimal(10, 2)
+  precioNuevo    Decimal @db.Decimal(10, 2)
+  /// (precioNuevo − precioAnterior) × cantidad, con signo.
+  delta          Decimal @db.Decimal(10, 2)
+  /// Precio por debajo del umbral de alerta (< $2.000 pacas, < $7.500 botellón).
+  precioRaro     Boolean @default(false)
+  motivo         String
+
+  estado PedidoCorreccionPrecioEstado @default(PENDIENTE)
+
+  solicitadoPorId String
+  solicitadoPor   User     @relation("CorreccionPrecioSolicitante", fields: [solicitadoPorId], references: [id])
+  solicitadoAt    DateTime @default(now()) @db.Timestamptz()
+
+  resueltoPorId String?
+  resueltoPor   User?     @relation("CorreccionPrecioResolutor", fields: [resueltoPorId], references: [id], onDelete: SetNull)
+  resueltoAt    DateTime? @db.Timestamptz()
+  notaResolucion String?
+
+  /// Solo si APLICADA: total del pedido justo antes y justo después.
+  totalAntes   Decimal? @db.Decimal(10, 2)
+  totalDespues Decimal? @db.Decimal(10, 2)
+
+  offlineId String? @unique
+
+  @@index([pedidoId])
+  @@index([estado])
+  @@index([solicitadoPorId])
 }
