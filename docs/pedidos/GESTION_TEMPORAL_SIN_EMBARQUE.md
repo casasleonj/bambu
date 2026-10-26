@@ -35,18 +35,22 @@ global de transiciones **no cambia**: `Pedido.puedeEntregarOficina()` es la úni
 | Estado + repartidores | `GET /api/pedidos/gestion-admin/estado` |
 | Errores de dominio | `src/modules/pedidos/domain/services/entrega-oficina.errors.ts` |
 | Regla nómina | `src/lib/nomina-cobertura.ts` |
+| Comisión en la nómina | segunda fuente en `POST /api/nomina` (bloque `TEMPORAL-SIN-EMBARQUE(#472)`) |
 | Pantalla | `src/app/(app)/pedidos/registrar-entrega/` |
 | Hook | `src/hooks/use-gestion-admin.ts` |
 | Acción en la ficha | `registrar-entrega` en `pedido-detalle/derive-detalle.ts` |
-| Pruebas | `src/lib/__tests__/integration/entrega-oficina-sin-embarque.test.ts` + unitarias junto a cada pieza |
+| Pruebas | `src/lib/__tests__/integration/entrega-oficina-sin-embarque.test.ts`, `nomina-comision-sin-embarque.test.ts` + unitarias junto a cada pieza |
 
 ## Activación
 
 1. Aplicar `prisma/migrations/20261025_pedido_entregado_por_pago_recibido_por` en producción
    **antes** del merge (aditiva e idempotente, #350).
 2. Mergear con el interruptor apagado.
-3. **No encender hasta que la nómina sume esta comisión (PR-2 de #472)**: sin eso, una entrega
-   registrada así no le pagaría comisión a nadie.
+3. La nómina ya suma esta comisión (PR-2 de #472): un pedido a **domicilio**, **entregado por completo**, con
+   `entregadoPorId` = el trabajador, **sin embarque** (`embarqueId` nulo) y `entregadoAt` dentro del período, cuenta con
+   las mismas tarifas y la misma regla de tipo de pago (COMISIÓN/MIXTO con moto) que las entregas de embarque. Un pedido
+   que está en un embarque no se cuenta dos veces. Una entrega **parcial** no paga comisión hasta completarse, y la
+   comisión completa es de quien registró la entrega que la completó (un solo repartidor por pedido).
 4. Encender `GESTION_ADMIN_SIN_EMBARQUE=true` en `Config`. **Todavía no hay pantalla para esto** (la maqueta 9
    queda para una fase siguiente): se enciende con `POST /api/config {"clave":"GESTION_ADMIN_SIN_EMBARQUE","valor":"true"}`
    como ADMIN, o con SQL. El interruptor se lee **siempre de la base, sin caché** (#479: el caché de `Config` sirve el valor

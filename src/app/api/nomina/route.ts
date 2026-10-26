@@ -148,6 +148,32 @@ export async function POST(request: NextRequest) {
             }
           }
 
+          // TEMPORAL-SIN-EMBARQUE(#472): segunda fuente de comisión. Entregas a
+          // domicilio que la oficina registró sin embarque, con este trabajador
+          // como repartidor responsable. `embarqueId: null` evita contar dos
+          // veces un pedido que sí está en un embarque (esos van por arriba).
+          // Al retirar la función temporal, borrar este bloque y la nota.
+          const entregasSinEmbarque = await tx.pedido.findMany({
+            where: {
+              entregadoPorId: trabajadorId,
+              embarqueId: null,
+              canal: 'DOMICILIO',
+              estadoEntrega: 'ENTREGADO',
+              entregadoAt: { gte: ini, lte: fin },
+            },
+            select: {
+              cPacaAguaEnt: true,
+              cPacaHieloEnt: true,
+              cBotellonFabEnt: true,
+              cBotellonDomEnt: true,
+            },
+          })
+          for (const ped of entregasSinEmbarque) {
+            entregasAgua += ped.cPacaAguaEnt
+            entregasHielo += ped.cPacaHieloEnt
+            entregasBotellon += (ped.cBotellonFabEnt || 0) + (ped.cBotellonDomEnt || 0)
+          }
+
           comAgua = entregasAgua * Number(trabajador.comRepartAgua || configMap.COM_REPARTIDOR || 200)
           comHielo = entregasHielo * Number(trabajador.comRepartHielo || configMap.COM_REPARTIDOR || 200)
           comBotellon = entregasBotellon * Number(trabajador.comRepartBotellon || 200)
