@@ -148,15 +148,22 @@ export async function POST(request: NextRequest) {
       }
 
       // 1. Buscar pedidos fiados del cliente, ordenados por fecha ASC (FIFO)
-      const pedidosFiados = await tx.pedido.findMany({
+      // #514: nunca a cancelados/anulados, y la deuda ya ENTREGADA (la que la app muestra como
+      // «Este cliente debe») va antes que un pedido aún sin entregar, que solo recibe el
+      // sobrante como pago anticipado. Dentro de cada grupo, el más viejo primero.
+      const pedidosConSaldo = await tx.pedido.findMany({
         where: {
           clienteId,
           saldo: { gt: 0 },
-          estadoEntrega: { not: 'ANULADO' },
+          estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
         },
         orderBy: { fecha: 'asc' },
         include: { factura: true },
       })
+      const pedidosFiados = [
+        ...pedidosConSaldo.filter((p) => p.estadoEntrega === 'ENTREGADO'),
+        ...pedidosConSaldo.filter((p) => p.estadoEntrega !== 'ENTREGADO'),
+      ]
 
       if (pedidosFiados.length === 0) {
         throw new Error('SIN_DEUDA')
