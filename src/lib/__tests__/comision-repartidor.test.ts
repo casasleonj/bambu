@@ -17,4 +17,11 @@ describe('tarifasRepartidor', () => {
     expect(tarifasRepartidor({ comRepartAgua: null, comRepartHielo: null, comRepartBotellon: null }))
       .toEqual({ agua: 200, hielo: 200, botellon: 200 })
   })
+
+  it('una tarifa en 0 cuenta como «sin definir» y usa la general (#500)', () => {
+    expect(tarifasRepartidor({ comRepartAgua: 0, comRepartHielo: 0, comRepartBotellon: 0 }, 300))
+      .toEqual({ agua: 300, hielo: 300, botellon: 200 })
+    expect(tarifasRepartidor({ comRepartAgua: 0, comRepartHielo: 250, comRepartBotellon: 0 }))
+      .toEqual({ agua: 200, hielo: 250, botellon: 200 })
+  })
 })

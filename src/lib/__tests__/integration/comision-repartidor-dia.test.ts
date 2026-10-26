@@ -158,14 +158,14 @@ describe('#499 — comisión del repartidor por día (Postgres real)', () => {
     expect(filas.find((f) => f.trabajadorId === sinEntregas)?.total).toBe(0)
   })
 
-  it('conserva la regla actual de tarifas: una tarifa 0 se queda en 0 (decisión pendiente en #500)', async () => {
+  it('una tarifa 0 es «sin definir»: usa la general COM_REPARTIDOR (#500)', async () => {
     await testPrisma.config.upsert({ where: { clave: 'COM_REPARTIDOR' }, create: { clave: 'COM_REPARTIDOR', valor: '300' }, update: { valor: '300' } })
     const id = await repartidor('Config Día', { propias: false })
     await pedidoEntregado({ repartidorId: id, agua: 2, hielo: 1, entregadoAt: bogota('11:00:00') })
 
     const fila = (await comisionRepartidoresDelDia(testPrisma, DIA)).find((f) => f.trabajadorId === id)
     expect(fila?.entregasAgua).toBe(2)
-    expect(fila?.total).toBe(0)
+    expect(fila?.total).toBe(2 * 300 + 1 * 300)
     await testPrisma.config.delete({ where: { clave: 'COM_REPARTIDOR' } })
   })
 

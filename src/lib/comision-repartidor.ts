@@ -43,17 +43,18 @@ type DatosTarifa = {
 const TARIFA_DEFECTO = 200
 
 /**
- * Mismas reglas de siempre, sin cambios (#499 no toca dinero): tarifa del trabajador, si no
- * `COM_REPARTIDOR`, si no 200 (botellón: 200). Ojo: las columnas son `Decimal` no nulas con
- * default 0 y un `Decimal` siempre es «verdadero», así que hoy un 0 se queda en 0 y nunca
- * cae a la tarifa general. Decisión pendiente del PO en #500.
+ * Tarifa del trabajador; si está en 0 («no definida»), la general `COM_REPARTIDOR`; si no existe, 200
+ * (botellón: 200). Un 0 significa «sin tarifa puesta», no «no cobra»: quien no cobra comisión tiene
+ * `tipoPago` FIJO y ni siquiera entra a este cálculo (#500). Antes un `Decimal` en 0 era «verdadero»
+ * y la tarifa general nunca se aplicaba.
  */
 export function tarifasRepartidor(t: DatosTarifa, comRepartidorConfig?: number): TarifasRepartidor {
   const base = comRepartidorConfig || TARIFA_DEFECTO
+  const propia = (v: DatosTarifa['comRepartAgua']) => (v && Number(v) > 0 ? Number(v) : null)
   return {
-    agua: Number(t.comRepartAgua || base),
-    hielo: Number(t.comRepartHielo || base),
-    botellon: Number(t.comRepartBotellon || TARIFA_DEFECTO),
+    agua: propia(t.comRepartAgua) ?? base,
+    hielo: propia(t.comRepartHielo) ?? base,
+    botellon: propia(t.comRepartBotellon) ?? TARIFA_DEFECTO,
   }
 }
 
