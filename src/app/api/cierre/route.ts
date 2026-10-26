@@ -13,6 +13,7 @@ import { NotificationEventType } from '@/lib/notifications/event-types'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { whereEmbarquesPendientesCierreDia } from '@/lib/cierre-dia-embarques'
 import { comisionesDelCierre } from '@/lib/comision-pagada'
+import { sumaAbonosDelDiaSinEspejo } from '@/lib/cobro-cartera'
 
 type PagoMetodoMonto = { metodo: MetodoPago; monto: unknown }
 type DiasPreviosAgg = { _count: number; _sum: { monto: unknown } }
@@ -172,7 +173,6 @@ export async function GET(request: NextRequest) {
       produccion,
       gastosAgg,
       notasCredito,
-      abonos,
       facturas,
       gastosDetalle,
       embarquesDetalle,
@@ -207,13 +207,6 @@ export async function GET(request: NextRequest) {
         _sum: { monto: true },
       }),
       prisma.notaCredito.findMany({ where: { fecha: dateRange } }),
-      prisma.abono.findMany({
-        where: { fecha: dateRange },
-        include: {
-          factura: { select: { numero: true, cliente: { select: { nombre: true } } } },
-          pedido: { select: { id: true } },
-        },
-      }),
       prisma.factura.findMany({
         where: { fecha: dateRange },
         include: { cliente: { select: { nombre: true } } },
@@ -333,8 +326,9 @@ export async function GET(request: NextRequest) {
     const bolsaAguaVendida = pedidos.reduce((acc, p) => acc + p.cBolsaAguaEnt, 0)
     const bolsaHieloVendida = pedidos.reduce((acc, p) => acc + p.cBolsaHieloEnt, 0)
 
+    // #513: el Abono espejo de pagar-fiado ya está en `cobroVentasHoy` (su Pago); no se cuenta dos veces.
     const cobroCartera =
-      abonos.reduce((sum, a) => sum + Number(a.monto), 0) -
+      (await sumaAbonosDelDiaSinEspejo(prisma, startOfDay, endOfDay)) -
       Number(correccionesAbonoAgg._sum.montoRevertido ?? 0)
     const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
 
@@ -598,13 +592,12 @@ export async function POST(request: NextRequest) {
         }
 
         // 5. Recalculate ALL totals server-side
-        const [pedidos, gastosAgg, abonos, notasCredito, correccionesAbonoAgg, pagosCapturadosHoy] = await Promise.all([
+        const [pedidos, gastosAgg, notasCredito, correccionesAbonoAgg, pagosCapturadosHoy] = await Promise.all([
           tx.pedido.findMany({
             where: { fecha: { gte: startOfDay, lt: nextDay }, estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
             // F-B: los métodos de pago ya no salen de aquí (ver `pagosCapturadosHoy`).
           }),
           tx.gasto.aggregate({ where: { fecha: { gte: startOfDay, lt: nextDay } }, _sum: { monto: true } }),
-          tx.abono.findMany({ where: { fecha: { gte: startOfDay, lt: nextDay } } }),
           tx.notaCredito.findMany({ where: { fecha: { gte: startOfDay, lt: nextDay } } }),
           // ADR-CORRECCION-MONETARIA-001: reversiones de abonos de ESTE día
           // (por `abono.fecha`) → restan del cobro de cartera. Ver nota en el GET.
@@ -648,8 +641,9 @@ export async function POST(request: NextRequest) {
         const daviplata = totalesPorMetodo[MetodoPago.DAVIPLATA]
         const bono = totalesPorMetodo[MetodoPago.BONO]
         const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
+        // #513: ver nota en el GET.
         const cobroCartera =
-          abonos.reduce((sum, a) => sum + Number(a.monto), 0) -
+          (await sumaAbonosDelDiaSinEspejo(tx, startOfDay, nextDay)) -
           Number(correccionesAbonoAgg._sum.montoRevertido ?? 0)
         const gastosTotal = Number(gastosAgg._sum.monto) || 0
         // #499: las comisiones salen del servidor (sellador del día + repartidores que se pagaron de la
