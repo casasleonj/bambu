@@ -7,9 +7,9 @@ import { CambiarModoActividadUseCase } from '@/modules/embarques/application/use
 let adminId: string
 let clienteId: string
 
-/** Pedido con 4 BOTELLON pendientes (6 de 10 ya entregados), canal PUNTO, precio histórico $6.500/u. */
+/** Pedido con 4 BOTELLON pendientes (6 de 10 ya entregados), canal PUNTO, precio histórico $4.000/u (actual $6.500/u). */
 async function crearPedidoConBotellonesPendientes() {
-  const total = 65_000
+  const total = 40_000
   const pedido = await testPrisma.pedido.create({
     data: {
       clienteId, canal: 'PUNTO', origen: 'PEDIDO', tipo: 'PUNTO',
@@ -17,8 +17,8 @@ async function crearPedidoConBotellonesPendientes() {
       // chk_pedido_estadopago_proyectado: pagado completo + PENDIENTE (aún
       // no entregado) → ANTICIPADO, no PAGADO.
       estadoEntrega: 'PENDIENTE', estado: 'PENDIENTE', estadoPago: 'ANTICIPADO',
-      cBotellonFabPed: 10, cBotellonFabEnt: 6, precioBotellonFab: 6_500,
-      items: { create: [{ producto: 'BOTELLON', cantPedido: 10, cantEntrega: 6, precio: 6_500, subtotal: total }] },
+      cBotellonFabPed: 10, cBotellonFabEnt: 6, precioBotellonFab: 4_000,
+      items: { create: [{ producto: 'BOTELLON', cantPedido: 10, cantEntrega: 6, precio: 4_000, subtotal: total }] },
     },
   })
   const facturaNum = `FAC-T${Math.floor(Math.random() * 1e7)}`
@@ -50,7 +50,7 @@ describe('N2 — CambiarModoActividadUseCase', () => {
     expect(result.deduped).toBe(false)
     expect(result.modoAnterior).toBe('PUNTO')
     expect(result.modoNuevo).toBe('DOMICILIO')
-    // histórico 4*6500=26000, actual DOMICILIO 4*9000=36000 → +10000
+    // histórico 4*4000=16000, actual DOMICILIO 4*6500=26000 → +10000
     expect(result.diferencial?.diferencial).toBe(10_000)
 
     const actividad = await testPrisma.actividad.findUniqueOrThrow({ where: { id: actividadId } })
@@ -85,10 +85,18 @@ describe('N2 — CambiarModoActividadUseCase', () => {
     const pMid = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
     expect(Number(pMid.total)).toBe(totalOriginal + 10_000) // diferencial inicial aplicado
 
-    // Vuelve a PUNTO (== canal original, precio histórico == precio actual → diferencial 0).
-    const result = await new CambiarModoActividadUseCase().execute({
-      actividadId, modoDestino: 'PUNTO', actorId: adminId,
-    })
+    // Vuelve a PUNTO con el precio vigente igual al histórico ($4.000) → diferencial 0.
+    // #493: el precio ya no depende del canal, así que se baja el tramo y se restaura después.
+    const tramos = await testPrisma.precioVolumen.findMany({ where: { producto: { codigo: 'BOTELLON' } } })
+    await testPrisma.precioVolumen.updateMany({ where: { producto: { codigo: 'BOTELLON' } }, data: { precio: 4_000 } })
+    let result: Awaited<ReturnType<CambiarModoActividadUseCase['execute']>>
+    try {
+      result = await new CambiarModoActividadUseCase().execute({
+        actividadId, modoDestino: 'PUNTO', actorId: adminId,
+      })
+    } finally {
+      for (const t of tramos) await testPrisma.precioVolumen.update({ where: { id: t.id }, data: { precio: t.precio } })
+    }
     expect(result.diferencial?.diferencial).toBe(0)
 
     const pFinal = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
