@@ -238,6 +238,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const tabFromUrl = shallowParams.get('tab')
   const initialTab = tabFromUrl === 'fiados' || tabFromUrl === 'alertas' ? tabFromUrl : 'hoy'
   const [activeTab, setActiveTab] = useState<'hoy' | 'fiados' | 'alertas'>(initialTab)
+  // Clientes con alertas tras descontar las ignoradas (el contador del servidor no las conoce).
+  const [alertasVisibles, setAlertasVisibles] = useState<number | null>(null)
   const [fabOpen, setFabOpen] = useState(false)
   const [fabHoverable, setFabHoverable] = useState(false)
   const [modalKey, setModalKey] = useState(0)
@@ -1920,7 +1922,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           {[
             { key: 'hoy', label: 'Pedidos', count: pedidosVisibles.length },
             { key: 'fiados', label: 'Fiados', count: fiadosCount },
-            { key: 'alertas', label: 'Alertas', count: alertasCount },
+            { key: 'alertas', label: 'Alertas', count: alertasVisibles ?? alertasCount },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -2162,6 +2164,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           loading={loadingAlertas}
           error={errorAlertas}
           activeTab={activeTab}
+          onCountChange={setAlertasVisibles}
         />
       )}
 

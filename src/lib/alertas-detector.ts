@@ -19,7 +19,7 @@
 
 import { formatCurrency } from '@/lib/utils'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
-import type { AlertaItem, AlertaRow, SeveridadAlerta } from '@/lib/alertas-config'
+import type { AlertaItem, AlertaRow, AlertaTipo, SeveridadAlerta } from '@/lib/alertas-config'
 import { estaIgnorada } from '@/lib/alertas-config'
 import { UMBRALES_DEFAULT, type UmbralesAlertas } from '@/lib/umbrales'
 
@@ -150,6 +150,28 @@ export interface CalcularAlertasOptions {
   notasCreditoCount?: Map<string, number>
   /** Minimo de NCs en el periodo para disparar alerta (default 2) */
   minNotasCreditoCount?: number
+}
+
+/**
+ * Quita de cada fila las alertas BAJA/MEDIA ignoradas (por cliente + tipo),
+ * recalcula la severidad más alta y descarta las filas que se quedan sin
+ * alertas. Las ALTA nunca se ignoran. Pura: `ignorada` es inyectable.
+ */
+export function filtrarAlertasIgnoradas(
+  rows: AlertaRow[],
+  ignorada: (clienteId: string, tipo: AlertaTipo) => boolean = estaIgnorada,
+): AlertaRow[] {
+  const resultado: AlertaRow[] = []
+  for (const row of rows) {
+    const alertas = row.alertas.filter((a) => a.severidad === 'ALTA' || !ignorada(row.clienteId, a.tipo))
+    if (alertas.length === 0) continue
+    const severidadMasAlta = alertas.reduce<SeveridadAlerta>(
+      (max, a) => (SEVERIDAD_ORDER[a.severidad] > SEVERIDAD_ORDER[max] ? a.severidad : max),
+      'BAJA',
+    )
+    resultado.push({ ...row, alertas, severidadMasAlta })
+  }
+  return resultado
 }
 
 export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasOptions | string = {}): AlertaRow[] {
