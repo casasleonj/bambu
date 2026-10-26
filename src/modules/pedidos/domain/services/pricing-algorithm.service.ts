@@ -107,8 +107,9 @@ export function resolverPreciosPedido(ctx: PricingContext): ItemPedidoResuelto[]
       }
     }
 
-    // 5. Apply domicilio surcharge
-    if (canal === 'DOMICILIO' && precio > 0) {
+    // 5. Recargo de domicilio: solo sobre el precio base. Manual, especial y
+    //    volumen son finales y ya incluyen el domicilio (#493).
+    if (canal === 'DOMICILIO' && precio > 0 && origen === 'base') {
       const prodConfig = productosByCode[item.codigo]
       if (prodConfig?.aplicaDomicilio) {
         precio += prodConfig.sobreCostoDomicilio
@@ -176,7 +177,7 @@ export function resolverPrecioUnitario(
     origen = 'base'
   }
 
-  if (canal === 'DOMICILIO' && precio > 0 && productoConfig?.aplicaDomicilio) {
+  if (canal === 'DOMICILIO' && precio > 0 && origen === 'base' && productoConfig?.aplicaDomicilio) {
     precio += productoConfig.sobreCostoDomicilio
   }
 

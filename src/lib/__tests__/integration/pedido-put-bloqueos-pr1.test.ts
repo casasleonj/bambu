@@ -322,7 +322,16 @@ describe('PR-1 — bloqueos de revisión del contrato PUT', () => {
       // Canal PUNTO + gestión en DOMICILIO ⇒ diferencial positivo sobre Pedido.total.
       const id = await crear({ canal: 'PUNTO', items: [{ producto: 'BOTELLON', cantidad: 4 }, { producto: 'PACA_AGUA', cantidad: 2 }] })
       const antes = await testPrisma.pedido.findUniqueOrThrow({ where: { id } })
-      const r = await new GestionarPendienteUseCase().execute({ pedidoId: id, producto: 'BOTELLON', cantidad: 4, modoInicial: 'DOMICILIO', usuarioId: adminId })
+      // #493: el precio por volumen ya incluye el domicilio, así que el diferencial nace de que
+      // el precio vigente subió desde que se creó el pedido. Se sube y se restaura después.
+      const tramos = await testPrisma.precioVolumen.findMany({ where: { producto: { codigo: 'BOTELLON' } } })
+      await testPrisma.precioVolumen.updateMany({ where: { producto: { codigo: 'BOTELLON' } }, data: { precio: { increment: 2500 } } })
+      let r: Awaited<ReturnType<GestionarPendienteUseCase['execute']>>
+      try {
+        r = await new GestionarPendienteUseCase().execute({ pedidoId: id, producto: 'BOTELLON', cantidad: 4, modoInicial: 'DOMICILIO', usuarioId: adminId })
+      } finally {
+        for (const t of tramos) await testPrisma.precioVolumen.update({ where: { id: t.id }, data: { precio: t.precio } })
+      }
       const despues = await testPrisma.pedido.findUniqueOrThrow({ where: { id }, include: { factura: true } })
       return { id, totalAntes: Number(antes.total), totalConDiferencial: Number(despues.total), diferencial: r.diferencial }
     }

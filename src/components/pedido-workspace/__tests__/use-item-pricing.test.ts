@@ -39,10 +39,10 @@ describe('useItemPricing', () => {
     expect(result.current.precioBaseFor('PACA_AGUA', 'PUNTO')).toBe(3000)
   })
 
-  it('precioBaseFor suma el recargo de domicilio cuando aplicaDomicilio', async () => {
+  it('precioBaseFor con tramo de volumen NO suma recargo: ya incluye el domicilio (#493)', async () => {
     const { result } = renderHook(() => useItemPricing())
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(result.current.precioBaseFor('PACA_AGUA', 'DOMICILIO')).toBe(3500)
+    expect(result.current.precioBaseFor('PACA_AGUA', 'DOMICILIO')).toBe(3000)
     // BOTELLON no aplica domicilio → sin recargo
     expect(result.current.precioBaseFor('BOTELLON', 'DOMICILIO')).toBe(result.current.precioBaseFor('BOTELLON', 'PUNTO'))
   })

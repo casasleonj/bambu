@@ -55,8 +55,10 @@ export function useItemPricing(): ItemPricingData {
 
   const precioBaseFor = (codigo: string, canal: 'PUNTO' | 'DOMICILIO'): number => {
     const tiers = tabla[codigo]
-    let precio = tiers && tiers.length > 0 ? tiers[0].precio : (DEFAULT_PRICES[codigo] || 0)
-    if (canal === 'DOMICILIO') {
+    const hayTramo = !!tiers && tiers.length > 0
+    let precio = hayTramo ? tiers[0].precio : (DEFAULT_PRICES[codigo] || 0)
+    // El precio por volumen es final; solo el precio base lleva recargo (#493).
+    if (canal === 'DOMICILIO' && !hayTramo) {
       const cfg = configs.find((c) => c.codigo === codigo)
       if (cfg?.aplicaDomicilio) precio += Number(cfg.sobreCostoDomicilio)
     }

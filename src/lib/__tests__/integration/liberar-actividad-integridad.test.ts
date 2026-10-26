@@ -8,9 +8,9 @@ import { LiberarActividadUseCase } from '@/modules/embarques/application/use-cas
 let adminId: string
 let clienteId: string
 
-/** Pedido con 4 BOTELLON pendientes (6 de 10 ya entregados), canal PUNTO, precio histórico $6.500/u. */
+/** Pedido con 4 BOTELLON pendientes (6 de 10 ya entregados), canal PUNTO, precio histórico $4.000/u (actual $6.500/u). */
 async function crearPedidoConBotellonesPendientes() {
-  const total = 65_000
+  const total = 40_000
   const pedido = await testPrisma.pedido.create({
     data: {
       clienteId, canal: 'PUNTO', origen: 'PEDIDO', tipo: 'PUNTO',
@@ -18,8 +18,8 @@ async function crearPedidoConBotellonesPendientes() {
       // chk_pedido_estadopago_proyectado: pagado completo + PENDIENTE (aún
       // no entregado) → ANTICIPADO, no PAGADO.
       estadoEntrega: 'PENDIENTE', estado: 'PENDIENTE', estadoPago: 'ANTICIPADO',
-      cBotellonFabPed: 10, cBotellonFabEnt: 6, precioBotellonFab: 6_500,
-      items: { create: [{ producto: 'BOTELLON', cantPedido: 10, cantEntrega: 6, precio: 6_500, subtotal: total }] },
+      cBotellonFabPed: 10, cBotellonFabEnt: 6, precioBotellonFab: 4_000,
+      items: { create: [{ producto: 'BOTELLON', cantPedido: 10, cantEntrega: 6, precio: 4_000, subtotal: total }] },
     },
   })
   const facturaNum = `FAC-T${Math.floor(Math.random() * 1e7)}`

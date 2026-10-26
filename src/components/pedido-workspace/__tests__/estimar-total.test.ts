@@ -14,8 +14,8 @@ describe('estimarTotalOffline (B-20)', () => {
     expect(estimarTotalOffline([{ producto: 'PACA_AGUA', cantidad: 3 }], 'PUNTO', tabla, configs)).toBe(7500)
     expect(estimarTotalOffline([{ producto: 'PACA_AGUA', cantidad: 10 }], 'PUNTO', tabla, configs)).toBe(23000)
   })
-  it('suma el recargo de domicilio solo en DOMICILIO', () => {
-    expect(estimarTotalOffline([{ producto: 'PACA_AGUA', cantidad: 3 }], 'DOMICILIO', tabla, configs)).toBe(8100)
+  it('el precio por volumen ya incluye el domicilio: no suma recargo (#493)', () => {
+    expect(estimarTotalOffline([{ producto: 'PACA_AGUA', cantidad: 3 }], 'DOMICILIO', tabla, configs)).toBe(7500)
   })
   it('el precio manual manda y no lleva recargo', () => {
     expect(estimarTotalOffline([{ producto: 'PACA_AGUA', cantidad: 2, precioManual: 2000 }], 'DOMICILIO', tabla, configs)).toBe(4000)

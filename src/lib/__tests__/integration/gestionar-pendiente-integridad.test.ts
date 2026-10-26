@@ -21,7 +21,7 @@ let clienteId: string
 
 /**
  * Pedido con 10 BOTELLON pendientes (6 ya entregados), canal PUNTO, precio
- * histórico $6.500/u. `estadoEntrega` param permite EN_RUTA (para poder
+ * histórico $4.000/u (el actual es $6.500/u, #493: sin recargo de domicilio). `estadoEntrega` param permite EN_RUTA (para poder
  * ejercer EntregarPedidoUseCase, que exige PENDIENTE→EN_RUTA→ENTREGADO) o
  * PENDIENTE (default, para los tests que solo gestionan el pendiente).
  */
@@ -30,7 +30,7 @@ async function crearPedidoConBotellonesPendientes(
   pedidos: number,
   estadoEntrega: 'PENDIENTE' | 'EN_RUTA' = 'PENDIENTE',
 ) {
-  const precioHistorico = 6500
+  const precioHistorico = 4000
   const total = pedidos * precioHistorico
   const pedido = await testPrisma.pedido.create({
     data: {
@@ -119,8 +119,8 @@ describe('N2 — GestionarPendienteUseCase', () => {
     const result = await new GestionarPendienteUseCase().execute({
       pedidoId: pedido.id, producto: 'BOTELLON', cantidad: 4, modoInicial: 'DOMICILIO', usuarioId: adminId,
     })
-    // histórico 4*6500=26000, actual DOMICILIO 4*(6500+2500)=36000 → diferencial +10000
-    expect(result.diferencial).toEqual({ valorHistorico: 26_000, valorActual: 36_000, diferencial: 10_000 })
+    // histórico 4*4000=16000, actual DOMICILIO 4*6500=26000 → diferencial +10000
+    expect(result.diferencial).toEqual({ valorHistorico: 16_000, valorActual: 26_000, diferencial: 10_000 })
 
     const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
     expect(Number(p.total)).toBe(Number(pedido.total) + 10_000)
@@ -137,15 +137,15 @@ describe('N2 — GestionarPendienteUseCase', () => {
   })
 
   it('diferencial negativo → Cliente.saldoFavor sube, Pedido.total NO cambia', async () => {
-    // Histórico caro ($9.500/u) → actual DOMICILIO ($9.000/u) → diferencial negativo.
-    const total = 10 * 9500
+    // Histórico caro ($7.000/u) → actual DOMICILIO ($6.500/u) → diferencial negativo.
+    const total = 10 * 7000
     const pedido = await testPrisma.pedido.create({
       data: {
         clienteId, canal: 'PUNTO', origen: 'PEDIDO', tipo: 'PUNTO',
         total, totalPagado: total, saldo: 0,
         estadoEntrega: 'PENDIENTE', estado: 'PENDIENTE', estadoPago: 'ANTICIPADO',
-        cBotellonFabPed: 10, cBotellonFabEnt: 6, precioBotellonFab: 9500,
-        items: { create: [{ producto: 'BOTELLON', cantPedido: 10, cantEntrega: 6, precio: 9500, subtotal: total }] },
+        cBotellonFabPed: 10, cBotellonFabEnt: 6, precioBotellonFab: 7000,
+        items: { create: [{ producto: 'BOTELLON', cantPedido: 10, cantEntrega: 6, precio: 7000, subtotal: total }] },
       },
     })
     const clienteAntes = await testPrisma.cliente.findUniqueOrThrow({ where: { id: clienteId } })

@@ -26,8 +26,11 @@ export function resolverTramoVolumen(
     .filter((t) => t.cantMin <= cantidad && (t.cantMax === null || t.cantMax >= cantidad))
     .sort((a, b) => b.cantMin - a.cantMin)[0]
   if (!candidato) return null
-  const esperado = candidato.precio + sobreCostoDomicilio
-  if (Math.abs(esperado - precioGuardado) > 0.005) return null
+  // Desde #493 el precio por volumen es final; los pedidos anteriores lo guardaron
+  // con el recargo sumado, así que se aceptan ambos.
+  const coincide = [candidato.precio, candidato.precio + sobreCostoDomicilio]
+    .some((esperado) => Math.abs(esperado - precioGuardado) <= 0.005)
+  if (!coincide) return null
   return { cantMin: candidato.cantMin, cantMax: candidato.cantMax }
 }
 

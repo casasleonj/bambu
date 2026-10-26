@@ -150,8 +150,9 @@ export class PreviewPedidoUseCase {
     const total = items.reduce((s, i) => s + i.subtotal, 0)
     const recargoDomicilio = canal === 'DOMICILIO'
       ? resueltos.reduce((acc, r) => {
+          // Solo el precio base lleva recargo; manual, especial y volumen son finales (#493).
           const cfg = pricingData.productosByCode[r.producto]
-          return acc + (cfg?.aplicaDomicilio ? cfg.sobreCostoDomicilio * r.cantidad : 0)
+          return acc + (r.origen === 'base' && cfg?.aplicaDomicilio ? cfg.sobreCostoDomicilio * r.cantidad : 0)
         }, 0)
       : 0
     const subtotal = total - recargoDomicilio

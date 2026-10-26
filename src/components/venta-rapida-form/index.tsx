@@ -89,8 +89,10 @@ export function VentaRapidaForm({ clientes, onSubmit }: VentaRapidaFormProps) {
   const getPrecioBase = (codigo: string): number => {
     if (preciosResueltos[codigo]) return preciosResueltos[codigo]
     const tiers = tablaPrecios[codigo]
-    let precio = tiers && tiers.length > 0 ? tiers[0].precio : (DEFAULT_PRICES[codigo] || 0)
-    if (canal === 'DOMICILIO') {
+    const hayTramo = !!tiers && tiers.length > 0
+    let precio = hayTramo ? tiers[0].precio : (DEFAULT_PRICES[codigo] || 0)
+    // El precio por volumen es final; solo el precio base lleva recargo (#493).
+    if (canal === 'DOMICILIO' && !hayTramo) {
       const prod = productosConfig.find(p => p.codigo === codigo)
       if (prod?.aplicaDomicilio) {
         precio += Number(prod.sobreCostoDomicilio)

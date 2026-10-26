@@ -103,21 +103,17 @@ export async function resolverPrecio(
     select: { aplicaDomicilio: true, sobreCostoDomicilio: true, precioBase: true },
   })
 
-  // Apply domicilio surcharge
-  if (canal === 'DOMICILIO' && precio > 0) {
-    if (producto?.aplicaDomicilio) {
-      precio += Number(producto.sobreCostoDomicilio)
-    }
-  }
-
-  if (tier) {
+  // El precio por volumen es final: ya incluye el domicilio (#493).
+  if (tier && precio > 0) {
     return { precio, origen: 'volumen' }
   }
 
-  // Fallback to producto.precioBase if no tier matched
+  // Fallback to producto.precioBase if no tier matched. Único origen que lleva
+  // el recargo de domicilio.
   const basePrice = Number(producto?.precioBase) || 0
   if (basePrice > 0) {
-    return { precio: basePrice, origen: 'base' }
+    const recargo = canal === 'DOMICILIO' && producto?.aplicaDomicilio ? Number(producto.sobreCostoDomicilio) : 0
+    return { precio: basePrice + recargo, origen: 'base' }
   }
 
   return { precio: 0, origen: 'base' }
@@ -244,8 +240,9 @@ export function resolverPreciosConContexto(
       }
     }
 
-    // 4. Apply domicilio surcharge
-    if (canal === 'DOMICILIO' && precio > 0) {
+    // 4. Recargo de domicilio: solo sobre el precio base. Manual, especial y
+    //    volumen son finales y ya incluyen el domicilio (#493).
+    if (canal === 'DOMICILIO' && precio > 0 && origen === 'base') {
       const prodConfig = productosByCode[item.codigo]
       if (prodConfig?.aplicaDomicilio) {
         precio += prodConfig.sobreCostoDomicilio
