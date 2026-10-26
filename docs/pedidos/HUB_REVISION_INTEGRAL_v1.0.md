@@ -388,6 +388,8 @@ La fila "Cliente nuevo rápido sin salir" se calificó ✅ porque `PedidoContext
 
 ### 12.5 Orden de trabajo (alineado con #345)
 
+> **Activación (Paso 8):** guía de encendido, vigilancia, reglas de parada y reversa en [`ACTIVACION_HUB_RUNBOOK.md`](ACTIVACION_HUB_RUNBOOK.md) (borrador, 2026-10-26).
+
 Cada paso es una rama y un PR, entra a `main` antes del siguiente, y para cada uno se entrega primero la explicación en lenguaje sencillo, ejemplos y maqueta (las 14 maquetas del §8 se producen ahora que D1 está decidido; primero las que bloquean P0), y después la implementación: P0-3 → B-19 → B-20 → P1-1 → P1-2 → P1-3 → P2 → activación gradual con rollback ensayado.
 
 ### 12.6 Decisiones del PO sobre las maquetas (2026-10-14)
