@@ -763,7 +763,7 @@ test.describe('Embarques — Fix #26: Ver últimos 30 días', () => {
     // Fuera del rango default: no debe aparecer.
     await expect(page.locator('[data-testid="embarque-card"]', { hasText: nombreUnico })).toHaveCount(0)
 
-    const boton = page.locator('[data-testid="ver-ultimos-30-dias"]')
+    const boton = appMain(page).locator('[data-testid="ver-ultimos-30-dias"]')
     await expect(boton).toBeVisible()
     await boton.click()
     await page.waitForTimeout(1000)
@@ -832,13 +832,14 @@ test.describe('Embarques — Fix #28: indicador "Mostrando: Hoy"', () => {
     await page.goto(`${BASE}/embarques`)
     await page.waitForLoadState('domcontentloaded')
 
-    const badge = page.locator('[data-testid="mostrando-hoy-badge"]')
+    // `appMain`: con streaming React deja una copia oculta del árbol fuera de <main> (strict mode, #506)
+    const badge = appMain(page).locator('[data-testid="mostrando-hoy-badge"]')
     await expect(badge).toBeVisible()
     await expect(badge).toHaveText('Mostrando: Hoy')
 
     // Activar un rango explícito ("Ver últimos 30 días") debe ocultar el
     // badge — ya no aplica el default implícito de "hoy".
-    await page.locator('[data-testid="ver-ultimos-30-dias"]').click()
+    await appMain(page).locator('[data-testid="ver-ultimos-30-dias"]').click()
     await page.waitForTimeout(500)
     await expect(badge).not.toBeVisible()
   })
@@ -883,7 +884,7 @@ test.describe('Embarques — Fix #29: fetches paralelos', () => {
     const start = Date.now()
     // Fase 3: los botones de filtro por fase se reemplazaron por el agrupado
     // del Command Center; cualquier cambio de rango dispara el mismo fetchData.
-    await page.locator('[data-testid="ver-ultimos-30-dias"]').click()
+    await appMain(page).locator('[data-testid="ver-ultimos-30-dias"]').click()
     await Promise.all([embarquesResponse, stockResponse])
     const elapsed = Date.now() - start
 
