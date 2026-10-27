@@ -85,7 +85,7 @@ describe('#513 — el cierre no duplica el cobro de un fiado (Postgres real)', (
     const factura = await testPrisma.factura.findFirstOrThrow({ where: { pedidoId: f.pedidoId } })
     const antes = await cierreDeHoy()
     await testPrisma.abono.create({
-      data: { numero: `ABO-${unico().slice(0, 8)}`, facturaId: factura.id, clienteId: f.clienteId, pedidoId: f.pedidoId, monto: 7000, metodoPago: 'EFECTIVO' },
+      data: { numero: `ABO-${unico().slice(0, 8)}`, facturaId: factura.id, clienteId: f.clienteId, pedidoId: f.pedidoId, monto: 7000, metodoPago: 'EFECTIVO', origenCobro: 'INDEPENDIENTE' },
     })
     const despues = await cierreDeHoy()
     expect(despues.cobroCartera - antes.cobroCartera).toBe(7000)

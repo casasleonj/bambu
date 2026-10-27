@@ -38,7 +38,7 @@ const ACTIVO = Prisma.sql`p.estado NOT IN ('ANULADO', 'CANCELADO')`
 
 /**
  * Abonos por pedido, excluyendo el `Abono` espejo que `pagar-fiado` crea junto
- * con su `Pago` (mismo pedido, monto y método, en la misma transacción). Un
+ * con su `Pago` (vínculo explícito #513; nunca coincidencia temporal). Un
  * abono suelto de `/api/abonos` puede no traer `pedidoId`: se resuelve por la
  * factura.
  */
@@ -46,13 +46,12 @@ const ABONOS_SIN_ESPEJO = Prisma.sql`
   SELECT COALESCE(a."pedidoId", f."pedidoId") AS "pedidoId", SUM(a.monto) AS s
   FROM "Abono" a
   JOIN "Factura" f ON f.id = a."facturaId"
-  WHERE NOT EXISTS (
-    SELECT 1 FROM "Pago" g
-    WHERE g."pedidoId" = COALESCE(a."pedidoId", f."pedidoId")
-      AND g.monto = a.monto
-      AND g.metodo::text = a."metodoPago"
-      AND ABS(EXTRACT(EPOCH FROM g."createdAt" - a."createdAt")) < 5
-  )
+  WHERE a."origenCobro" = 'INDEPENDIENTE'
+    OR (a."origenCobro" IS NULL AND a."pagoOrigenId" IS NULL AND (
+      a."offlineId" IS NOT NULL OR EXISTS (
+        SELECT 1 FROM "Historial" h WHERE h.entidad = 'Abono' AND h."registroId" = a.id AND h.accion = 'CREATE'
+      )
+    ))
   GROUP BY 1`
 
 const ITEMS_FIRMA = (alias: string) => Prisma.sql`(
@@ -333,4 +332,43 @@ export const REGLAS: readonly Regla[] = [
         AND ABS(n."comisionPagadaCaja" - COALESCE(p.s, 0)) > 0.005
       ORDER BY 1`,
   },
+  {
+    id: 'V17',
+    titulo: 'Abono sin procedencia verificada o con vínculo de pago inconsistente',
+    severidad: 'ALTA',
+    consulta: () => Prisma.sql`
+      SELECT a.id AS ref, p.numero,
+        json_build_object('origenCobro', a."origenCobro", 'pagoOrigenId', a."pagoOrigenId") AS detalle
+      FROM "Abono" a JOIN "Factura" f ON f.id = a."facturaId"
+      JOIN "Pedido" p ON p.id = COALESCE(a."pedidoId", f."pedidoId")
+      LEFT JOIN "Pago" g ON g.id = a."pagoOrigenId"
+      WHERE p."estadoEntrega" NOT IN ('ANULADO', 'CANCELADO') AND (
+        (a."pagoOrigenId" IS NULL AND (a."origenCobro" = 'INDEPENDIENTE'
+          OR (a."origenCobro" IS NULL AND (a."offlineId" IS NOT NULL OR EXISTS (
+            SELECT 1 FROM "Historial" h WHERE h.entidad = 'Abono' AND h."registroId" = a.id AND h.accion = 'CREATE'
+          )))))
+        OR (a."origenCobro" = 'ESPEJO_PAGO' AND g.id IS NOT NULL
+          AND g."pedidoId" = p.id AND g.monto = a.monto AND g.metodo::text = a."metodoPago")
+      ) IS NOT TRUE
+      ORDER BY a.id`,
+  },
+  {
+    id: 'V18',
+    titulo: 'Snapshot de cierre 2.1 distinto de sus columnas financieras canónicas',
+    severidad: 'CRITICA',
+    consulta: () => Prisma.sql`
+      SELECT c.id AS ref, NULL::int AS numero,
+        json_build_object('campo', v.campo, 'canonico', v.canonico, 'reporte', c.reporte->v.campo) AS detalle
+      FROM "CierreDia" c
+      CROSS JOIN LATERAL (VALUES
+        ('totalVentas', c."totalVentas"), ('cobrado', c.cobrado), ('fiado', c.fiado),
+        ('efectivo', c.efectivo), ('transferencia', c.transferencia), ('nequi', c.nequi),
+        ('daviplata', c.daviplata), ('bono', c.bono), ('totalGastos', c.gastos), ('netoCaja', c."netoCaja")
+      ) v(campo, canonico)
+      WHERE c.reporte->>'_version' = '2.1'
+        AND (CASE WHEN jsonb_typeof(c.reporte->v.campo) = 'number'
+          THEN (c.reporte->>v.campo)::numeric END) IS DISTINCT FROM v.canonico
+      ORDER BY c.id, v.campo`,
+  },
+
 ]

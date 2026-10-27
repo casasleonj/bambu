@@ -3,43 +3,19 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { CierreCreateSchema } from '@/lib/validators'
-import { EstadoEmbarque, EstadoEntrega, EstadoFactura, MetodoPago } from '@prisma/client'
+import { EstadoEmbarque, EstadoEntrega, Prisma } from '@prisma/client'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { getTodayString } from '@/lib/dates'
-import { startOfDayInBogota, endOfDayInBogota, nowInBogota } from '@/lib/date-helpers'
+import { startOfDayInBogota, nowInBogota } from '@/lib/date-helpers'
 import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { whereEmbarquesPendientesCierreDia } from '@/lib/cierre-dia-embarques'
-import { comisionesDelCierre } from '@/lib/comision-pagada'
-import { sumaAbonosDelDiaSinEspejo } from '@/lib/cobro-cartera'
-
-type PagoMetodoMonto = { metodo: MetodoPago; monto: unknown }
-type DiasPreviosAgg = { _count: number; _sum: { monto: unknown } }
-
-/**
- * ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 — desglose informativo de pagos sin
- * confirmar para el reporte de cierre. Una sola pasada sobre los pagos.
- */
-function buildPorConfirmar(pagosHoy: PagoMetodoMonto[], diasPrevios: DiasPreviosAgg) {
-  const porMetodo: Record<string, number> = {
-    EFECTIVO: 0, TRANSFERENCIA: 0, NEQUI: 0, DAVIPLATA: 0, BONO: 0,
-  }
-  let total = 0
-  for (const p of pagosHoy) {
-    const m = Number(p.monto)
-    total += m
-    if (p.metodo in porMetodo) porMetodo[p.metodo] += m
-  }
-  return {
-    total,
-    count: pagosHoy.length,
-    porMetodo,
-    diasPreviosCount: diasPrevios._count,
-    diasPreviosTotal: Number(diasPrevios._sum.monto ?? 0),
-  }
-}
+import { CobrosSinConciliarError } from '@/lib/cobro-cartera'
+import { construirResumenCierre } from '@/lib/cierre-resumen'
+import { calcularNetoCierre } from '@/lib/cierre-totales'
+import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -48,8 +24,7 @@ export async function GET(request: NextRequest) {
     const fechaParam = request.nextUrl.searchParams.get('fecha')
     const fechaStr = fechaParam || getTodayString()
     const startOfDay = startOfDayInBogota(fechaStr)
-    const endOfDay = endOfDayInBogota(fechaStr)
-    const dateRange = { gte: startOfDay, lt: endOfDay }
+    const endOfDay = new Date(startOfDay.getTime() + 86_400_000)
 
     // 1. Check for existing cierre FIRST
     const cierreExistente = await prisma.cierreDia.findUnique({
@@ -158,6 +133,13 @@ export async function GET(request: NextRequest) {
         embarquesPendientes: [],
         cierre: {
           ...reporte,
+          numPedidos: cierreExistente.numPedidos,
+          totalVentas: Number(cierreExistente.totalVentas),
+          cobrado: Number(cierreExistente.cobrado), fiado: Number(cierreExistente.fiado),
+          efectivo: Number(cierreExistente.efectivo), transferencia: Number(cierreExistente.transferencia),
+          nequi: Number(cierreExistente.nequi), daviplata: Number(cierreExistente.daviplata), bono: Number(cierreExistente.bono),
+          totalGastos: Number(cierreExistente.gastos), baseDia: Number(cierreExistente.baseDia),
+          salarios: Number(cierreExistente.salarios), comisiones: Number(cierreExistente.comisiones),
           fecha: fechaStr,
           postCierre,
           horaCierre: cierreExistente.horaCierre?.toISOString() ?? null,
@@ -166,353 +148,20 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // 2. Not found — calculate inside $transaction for consistency
-    const [
-      embarquesAbiertos,
-      pedidos,
-      produccion,
-      gastosAgg,
-      notasCredito,
-      facturas,
-      gastosDetalle,
-      embarquesDetalle,
-      pedidosCancelados,
-      pedidosNoEntregados,
-      pedidosAnulados,
-      clientesNuevos,
-      ventasPorOrigenRaw,
-      descuentos,
-      correccionesAbonoAgg,
-      pagosReportadosHoyRaw,
-      reportadosDiasPreviosAgg,
-      pagosCapturadosHoy,
-    ] = await prisma.$transaction([
-      prisma.embarque.findMany({
-        where: whereEmbarquesPendientesCierreDia(dateRange),
-        select: { id: true, numero: true, trabajador: { select: { nombre: true } } },
-      }),
-      prisma.pedido.findMany({
-        where: {
-          fecha: dateRange,
-          estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] },
-        },
-        // F-B: los métodos de pago ya no salen de aquí (ver `pagosCapturadosHoy`).
-      }),
-      prisma.produccion.findFirst({
-        where: { fecha: dateRange },
-        include: { items: true },
-      }),
-      prisma.gasto.aggregate({
-        where: { fecha: dateRange },
-        _sum: { monto: true },
-      }),
-      prisma.notaCredito.findMany({ where: { fecha: dateRange } }),
-      prisma.factura.findMany({
-        where: { fecha: dateRange },
-        include: { cliente: { select: { nombre: true } } },
-      }),
-      prisma.gasto.groupBy({
-        by: ['categoria'],
-        where: { fecha: dateRange },
-        orderBy: { categoria: 'asc' },
-        _sum: { monto: true },
-        _count: true,
-      }),
-      prisma.embarque.findMany({
-        where: { fecha: dateRange },
-        include: {
-          trabajador: { select: { nombre: true } },
-          ruta: { select: { nombre: true } },
-        },
-      }),
-      prisma.pedido.findMany({
-        where: { fecha: dateRange, estadoEntrega: EstadoEntrega.CANCELADO },
-      }),
-      prisma.pedido.findMany({
-        where: { fecha: dateRange, estadoEntrega: EstadoEntrega.NO_ENTREGADO },
-      }),
-      prisma.pedido.findMany({
-        where: { fecha: dateRange, estadoEntrega: EstadoEntrega.ANULADO },
-      }),
-      prisma.cliente.count({ where: { createdAt: dateRange } }),
-      prisma.pedido.groupBy({
-        by: ['origen'],
-        where: {
-          fecha: dateRange,
-          estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] },
-        },
-        orderBy: { origen: 'asc' },
-        _sum: { total: true },
-        _count: true,
-      }),
-      prisma.descuentoRepartidor.findMany({
-        where: { fecha: dateRange },
-        include: { trabajador: { select: { nombre: true } } },
-      }),
-      // ADR-CORRECCION-MONETARIA-001: las reversiones restan del cobro de
-      // cartera del día AL QUE PERTENECE EL ABONO (por `abono.fecha`, no por
-      // `createdAt` de la corrección). Así `cobroCartera` de hoy nunca queda
-      // negativo (corrección <= abono, ambos del mismo día) y una corrección
-      // de un abono viejo se refleja en el cierre de ESE día (al recomputarlo),
-      // no descuadra el de hoy.
-      prisma.correccionAbono.aggregate({
-        where: { abono: { fecha: dateRange } },
-        _sum: { montoRevertido: true },
-      }),
-      // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6: pagos REPORTADO cobrados HOY (por
-      // `pago.createdAt`, no por `pedido.fecha` — un pago de fiado de hoy sobre
-      // un pedido viejo también cuenta).
-      prisma.pago.findMany({
-        where: { confirmacion: 'REPORTADO', createdAt: dateRange, regularizacionId: null },
-        select: { metodo: true, monto: true },
-      }),
-      // ...y los REPORTADO de días anteriores (advertencia, no bloquea).
-      prisma.pago.aggregate({
-        where: { confirmacion: 'REPORTADO', createdAt: { lt: startOfDay } },
-        _sum: { monto: true },
-        _count: true,
-      }),
-      // F-B (auditoría #181): la CAJA del día se concilia por FECHA DE CAPTURA
-      // del pago (`Pago.createdAt`), no por `pedido.fecha`. Un efectivo cobrado
-      // hoy en un cierre de embarque sobre un pedido de días anteriores entró
-      // físicamente a la caja de hoy. Ventas/producto/facturas siguen por
-      // `pedido.fecha` (más abajo). Se excluyen los pagos de pedidos
-      // ANULADO/CANCELADO (efecto neto $0 — misma regla que el cierre de
-      // embarque).
-      prisma.pago.findMany({
-        where: {
-          createdAt: dateRange,
-          // #402: un pago de regularización describe un cobro de otro día; no
-          // entró a la caja del día en que se registró.
-          regularizacionId: null,
-          pedido: { estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
-        },
-        select: { metodo: true, monto: true },
-      }),
-    ])
-
-    // #499: comisiones del día calculadas por el servidor (repartidores con lo pagado/pendiente + sellador).
-    const comisionesAuto = await comisionesDelCierre(prisma, fechaStr, startOfDay, endOfDay)
-
-    const totalNC = notasCredito.reduce((sum, nc) => sum + Number(nc.monto), 0)
-    const totalVentas = pedidos.reduce((acc, p) => acc + Number(p.total), 0) - totalNC
-    const cobrado = pedidos.reduce((acc, p) => acc + Number(p.totalPagado), 0)
-    const fiado = pedidos.reduce((acc, p) => acc + Number(p.saldo), 0)
-
-    // F-B: métodos de pago = CAJA, por fecha de captura (`pagosCapturadosHoy`),
-    // no por `pedido.pagos` (que sería por `pedido.fecha`).
-    const cajaPorMetodo: Record<string, number> = {
-      [MetodoPago.EFECTIVO]: 0,
-      [MetodoPago.TRANSFERENCIA]: 0,
-      [MetodoPago.NEQUI]: 0,
-      [MetodoPago.DAVIPLATA]: 0,
-      [MetodoPago.BONO]: 0,
-    }
-    for (const pg of pagosCapturadosHoy) {
-      if (pg.metodo in cajaPorMetodo) cajaPorMetodo[pg.metodo] += Number(pg.monto)
-    }
-    const efectivo = cajaPorMetodo[MetodoPago.EFECTIVO]
-    const transferencia = cajaPorMetodo[MetodoPago.TRANSFERENCIA]
-    const nequi = cajaPorMetodo[MetodoPago.NEQUI]
-    const daviplata = cajaPorMetodo[MetodoPago.DAVIPLATA]
-    const bono = cajaPorMetodo[MetodoPago.BONO]
-
-    const aguaVendida = pedidos.reduce((acc, p) => acc + p.cPacaAguaEnt, 0)
-    const hieloVendido = pedidos.reduce((acc, p) => acc + p.cPacaHieloEnt, 0)
-    const botellonVendido = pedidos.reduce(
-      (acc, p) => acc + p.cBotellonFabEnt + p.cBotellonDomEnt,
-      0
+    const resumen = await prisma.$transaction(
+      tx => construirResumenCierre(tx, fechaStr),
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 15000 },
     )
-    const bolsaAguaVendida = pedidos.reduce((acc, p) => acc + p.cBolsaAguaEnt, 0)
-    const bolsaHieloVendida = pedidos.reduce((acc, p) => acc + p.cBolsaHieloEnt, 0)
-
-    // #513: el Abono espejo de pagar-fiado ya está en `cobroVentasHoy` (su Pago); no se cuenta dos veces.
-    const cobroCartera =
-      (await sumaAbonosDelDiaSinEspejo(prisma, startOfDay, endOfDay)) -
-      Number(correccionesAbonoAgg._sum.montoRevertido ?? 0)
-    const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
-
-    // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6: desglose INFORMATIVO de pagos aún
-    // REPORTADO cobrados HOY. NO altera netoCaja — el cierre suma todos los
-    // pagos por método como siempre.
-    const porConfirmar = buildPorConfirmar(pagosReportadosHoyRaw, reportadosDiasPreviosAgg)
-
-    const facturasPagadas = facturas.filter(f => f.estado === EstadoFactura.PAGADA)
-    const facturasParcial = facturas.filter(f => f.estado === EstadoFactura.PARCIAL)
-    const facturasPorCobrar = facturas.filter(f => f.estado === EstadoFactura.EMITIDA)
-    const facturasAnuladas = facturas.filter(f => f.estado === EstadoFactura.ANULADA)
-
-    const ventasPorOrigen = ventasPorOrigenRaw.map(v => ({
-      origen: v.origen,
-      total: Number(v._sum?.total) || 0,
-      count: v._count,
-    }))
-
-    const status = embarquesAbiertos.length > 0 ? 'INCOMPLETO' : 'COMPLETO'
-
-    // Transformar ProduccionItem a campos planos para el response (backward compat)
-    const produccionFlat = produccion
-      ? {
-          ...produccion,
-          items: undefined,
-          stockIniAgua:
-            produccion.items.find(i => i.producto === 'PACA_AGUA')?.stockIni ?? 0,
-          stockIniHielo:
-            produccion.items.find(i => i.producto === 'PACA_HIELO')?.stockIni ?? 0,
-          prodAgua: produccion.items.find(i => i.producto === 'PACA_AGUA')?.producido ?? 0,
-          prodHielo:
-            produccion.items.find(i => i.producto === 'PACA_HIELO')?.producido ?? 0,
-          stockFinAgua:
-            produccion.items.find(i => i.producto === 'PACA_AGUA')?.stockFinFisico ?? 0,
-          stockFinHielo:
-            produccion.items.find(i => i.producto === 'PACA_HIELO')?.stockFinFisico ?? 0,
-          comSelladorAgua: Number(
-            produccion.items.find(i => i.producto === 'PACA_AGUA')?.comSellador ?? 0
-          ),
-          comSelladorHielo: Number(
-            produccion.items.find(i => i.producto === 'PACA_HIELO')?.comSellador ?? 0
-          ),
-          comSellTotal: Number(
-            produccion.items.reduce((sum, i) => sum + Number(i.comSellador || 0), 0)
-          ),
-          // Comisiones de repartidor viven en Produccion.comRepartTotal
-          // (son agregación de Pedidos entregados por ese trabajador, no por item)
-          comRepartidorAgua: 0,
-          comRepartidorHielo: 0,
-          comRepartTotal: Number(produccion.comRepartTotal),
-        }
-      : null
-
-    return apiSuccess({
-      status,
-      embarquesPendientes: embarquesAbiertos.map(e => ({
-        id: e.id,
-        numero: e.numero,
-        repartidor: e.trabajador?.nombre,
-      })),
-      cierre: {
-        // Financiero
-        numPedidos: pedidos.length,
-        totalVentas,
-        cobrado,
-        cobroVentasHoy,
-        cobroCartera,
-        fiado,
-        totalNotasCredito: totalNC,
-
-        // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 — informativo, no altera netoCaja.
-        porConfirmar,
-
-        // Métodos de pago
-        efectivo,
-        transferencia,
-        nequi,
-        daviplata,
-        bono,
-
-        // Ventas por origen
-        ventasPorOrigen,
-
-        // Facturas
-        facturasEmitidas: facturas.length,
-        facturasPagadasCount: facturasPagadas.length,
-        facturasPagadasTotal: facturasPagadas.reduce((s, f) => s + Number(f.total), 0),
-        facturasPorCobrarCount: facturasPorCobrar.length,
-        facturasPorCobrarTotal: facturasPorCobrar.reduce((s, f) => s + Number(f.saldo), 0),
-        facturasParcialCount: facturasParcial.length,
-        facturasParcialTotal: facturasParcial.reduce((s, f) => s + Number(f.saldo), 0),
-        facturasAnuladasCount: facturasAnuladas.length,
-        facturas: facturas.map(f => ({
-          numero: f.numero,
-          cliente: f.cliente?.nombre,
-          total: Number(f.total),
-          saldo: Number(f.saldo),
-          estado: f.estado,
-        })),
-
-        // Gastos
-        totalGastos: Number(gastosAgg._sum.monto) || 0,
-        gastosPorCategoria: gastosDetalle.map(g => ({
-          categoria: g.categoria,
-          total: Number(g._sum?.monto) || 0,
-          cantidad: g._count,
-        })),
-
-        // Embarques
-        embarques: embarquesDetalle.map(e => ({
-          numero: e.numero,
-          repartidor: e.trabajador?.nombre,
-          ruta: e.ruta?.nombre,
-          pacasAgua: e.pacasAgua,
-          pacasHielo: e.pacasHielo,
-          devueltasAgua: e.devueltasAgua,
-          devueltasHielo: e.devueltasHielo,
-          rotasAgua: e.rotasAgua,
-          rotasHielo: e.rotasHielo,
-          estado: e.estado,
-        })),
-
-        // Pedidos perdidos
-        pedidosCanceladosCount: pedidosCancelados.length,
-        pedidosCanceladosTotal: pedidosCancelados.reduce((s, p) => s + Number(p.total), 0),
-        pedidosNoEntregadosCount: pedidosNoEntregados.length,
-        pedidosNoEntregadosTotal: pedidosNoEntregados.reduce((s, p) => s + Number(p.total), 0),
-        pedidosAnuladosCount: pedidosAnulados.length,
-        pedidosAnuladosTotal: pedidosAnulados.reduce((s, p) => s + Number(p.total), 0),
-
-        // Clientes
-        clientesNuevos,
-
-        // Descuentos
-        descuentosRepartidorTotal: descuentos.reduce((s, d) => s + Number(d.monto), 0),
-        descuentosRepartidorCount: descuentos.length,
-        descuentos: descuentos.map(d => ({
-          monto: Number(d.monto),
-          motivo: d.motivo,
-          repartidor: d.trabajador?.nombre,
-        })),
-
-        // Cierre
-        netoCaja: null,
-
-        // Stock
-        aguaVendida,
-        hieloVendido,
-        botellonVendido,
-        bolsaAguaVendida,
-        bolsaHieloVendida,
-        produccion: produccionFlat,
-        comisionesAuto: {
-          sellador: comisionesAuto.sellador,
-          pagadoRepartidores: comisionesAuto.pagadoRepartidores,
-          total: comisionesAuto.total,
-          repartidores: comisionesAuto.repartidores.map((r) => ({
-            trabajadorId: r.trabajadorId, nombre: r.nombre, total: r.total, pagado: r.pagado, pendiente: r.pendiente,
-          })),
-        },
-
-        // Fecha
-        fecha: fechaStr,
-
-        // Arqueo
-        arqueo: null,
-        totalContado: null,
-        diferenciaArqueo: null,
-
-        // Cierre metadata
-        horaCierre: null,
-
-        // Post-cierre transactions
-        postCierre: null,
-      },
-    })
+    return apiSuccess(resumen)
   } catch (error) {
+    if (error instanceof CobrosSinConciliarError) return apiError(error.message, 409, {
+      code: error.code, cobrosPendientes: error.cobros.map(({ referencia, importe }) => ({ referencia, importe })),
+    })
     console.error('[cierre] GET failed:', error)
     return apiError('Error interno del servidor', 500)
   }
 }
 
-import { Prisma } from '@prisma/client'
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
@@ -534,25 +183,9 @@ export async function POST(request: NextRequest) {
 
   const fechaStr = parsed.data.fecha || getTodayString()
   const startOfDay = startOfDayInBogota(fechaStr)
-  const nextDay = endOfDayInBogota(fechaStr)
+  const nextDay = new Date(startOfDay.getTime() + 86_400_000)
 
   const userId = (authResult.user as { id?: string } | undefined)?.id
-
-  // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6: info de pagos sin confirmar (solo
-  // warning) — lectura FUERA de la tx Serializable del cierre para no ampliar
-  // su predicate-lock set (esta consulta escanea todo el histórico REPORTADO).
-  const [pagosReportadosHoyRaw, reportadosDiasPreviosAgg] = await Promise.all([
-    prisma.pago.findMany({
-      where: { confirmacion: 'REPORTADO', createdAt: { gte: startOfDay, lt: nextDay }, regularizacionId: null },
-      select: { metodo: true, monto: true },
-    }),
-    prisma.pago.aggregate({
-      where: { confirmacion: 'REPORTADO', createdAt: { lt: startOfDay } },
-      _sum: { monto: true },
-      _count: true,
-    }),
-  ])
-  const porConfirmar = buildPorConfirmar(pagosReportadosHoyRaw, reportadosDiasPreviosAgg)
 
   const MAX_RETRIES = 3
   let lastError: Error | null = null
@@ -591,97 +224,27 @@ export async function POST(request: NextRequest) {
           throw new Error('EMBARQUES_ABIERTOS')
         }
 
-        // 5. Recalculate ALL totals server-side
-        const [pedidos, gastosAgg, notasCredito, correccionesAbonoAgg, pagosCapturadosHoy] = await Promise.all([
-          tx.pedido.findMany({
-            where: { fecha: { gte: startOfDay, lt: nextDay }, estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
-            // F-B: los métodos de pago ya no salen de aquí (ver `pagosCapturadosHoy`).
-          }),
-          tx.gasto.aggregate({ where: { fecha: { gte: startOfDay, lt: nextDay } }, _sum: { monto: true } }),
-          tx.notaCredito.findMany({ where: { fecha: { gte: startOfDay, lt: nextDay } } }),
-          // ADR-CORRECCION-MONETARIA-001: reversiones de abonos de ESTE día
-          // (por `abono.fecha`) → restan del cobro de cartera. Ver nota en el GET.
-          tx.correccionAbono.aggregate({
-            where: { abono: { fecha: { gte: startOfDay, lt: nextDay } } },
-            _sum: { montoRevertido: true },
-          }),
-          // F-B (auditoría #181): la CAJA se concilia por fecha de captura del
-          // pago (`Pago.createdAt`), no por `pedido.fecha`. Ver nota en el GET.
-          tx.pago.findMany({
-            where: {
-              createdAt: { gte: startOfDay, lt: nextDay },
-              regularizacionId: null, // #402: ver nota en el GET
-              pedido: { estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
-            },
-            select: { metodo: true, monto: true },
-          }),
-        ])
-
-        const totalNC = notasCredito.reduce((sum, nc) => sum + Number(nc.monto), 0)
-        const totalVentas = pedidos.reduce((acc, p) => acc + Number(p.total), 0) - totalNC
-        const cobrado = pedidos.reduce((acc, p) => acc + Number(p.totalPagado), 0)
-        const fiado = pedidos.reduce((acc, p) => acc + Number(p.saldo), 0)
-
-        // F-B: métodos de pago = CAJA, por fecha de captura (`pagosCapturadosHoy`).
-        const totalesPorMetodo: Record<string, number> = {
-          [MetodoPago.EFECTIVO]: 0,
-          [MetodoPago.TRANSFERENCIA]: 0,
-          [MetodoPago.NEQUI]: 0,
-          [MetodoPago.DAVIPLATA]: 0,
-          [MetodoPago.BONO]: 0,
-        }
-        for (const pago of pagosCapturadosHoy) {
-          if (pago.metodo in totalesPorMetodo) {
-            totalesPorMetodo[pago.metodo] = (totalesPorMetodo[pago.metodo] || 0) + Number(pago.monto)
-          }
-        }
-        const efectivo = totalesPorMetodo[MetodoPago.EFECTIVO]
-        const transferencia = totalesPorMetodo[MetodoPago.TRANSFERENCIA]
-        const nequi = totalesPorMetodo[MetodoPago.NEQUI]
-        const daviplata = totalesPorMetodo[MetodoPago.DAVIPLATA]
-        const bono = totalesPorMetodo[MetodoPago.BONO]
-        const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
-        // #513: ver nota en el GET.
-        const cobroCartera =
-          (await sumaAbonosDelDiaSinEspejo(tx, startOfDay, nextDay)) -
-          Number(correccionesAbonoAgg._sum.montoRevertido ?? 0)
-        const gastosTotal = Number(gastosAgg._sum.monto) || 0
-        // #499: las comisiones salen del servidor (sellador del día + repartidores que se pagaron de la
-        // caja hoy). La cifra que mande el cliente se ignora: nadie teclea ni suma comisiones.
-        const comisiones = await comisionesDelCierre(tx, fechaStr, startOfDay, nextDay)
-        // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 — `porConfirmar` calculado arriba,
-        // fuera de la tx (informativo, no altera netoCaja).
-
-        // 6. Calculate netoCaja server-side
-        const netoCaja = Number(parsed.data.baseDia) + cobroVentasHoy + cobroCartera - gastosTotal - comisiones.total - Number(parsed.data.salarios)
-
-        // 7. Parse and enrich reporte snapshot
-        let reporteData: Record<string, unknown> = {}
-        if (parsed.data.reporte) {
-          try {
-            reporteData = JSON.parse(parsed.data.reporte) as Record<string, unknown>
-          } catch { /* ignore invalid JSON */ }
-        }
-        reporteData._version = '2.0'
-        reporteData.cobroVentasHoy = cobroVentasHoy
-        reporteData.cobroCartera = cobroCartera
-        reporteData.porConfirmar = porConfirmar
-        reporteData.totalVentas = totalVentas
-        reporteData.totalNotasCredito = totalNC
-        reporteData.comisionesAuto = {
-          sellador: comisiones.sellador,
-          pagadoRepartidores: comisiones.pagadoRepartidores,
-          total: comisiones.total,
-          repartidores: comisiones.repartidores.map((r) => ({
-            trabajadorId: r.trabajadorId, nombre: r.nombre, total: r.total, pagado: r.pagado, pendiente: r.pendiente,
-          })),
+        // #511/#513: el snapshot completo sale del mismo resumen que el preview,
+        // dentro de esta transacción. No se guardan cifras aportadas por el navegador.
+        const { cierre: resumen } = await construirResumenCierre(tx, fechaStr)
+        const { totalVentas, cobrado, fiado, efectivo, transferencia, nequi, daviplata, bono, cobroVentasHoy, cobroCartera } = resumen
+        const gastosTotal = resumen.totalGastos
+        const comisiones = resumen.comisionesAuto
+        const netoCaja = calcularNetoCierre({
+          baseDia: parsed.data.baseDia, cobroVentasHoy, cobroCartera,
+          totalGastos: gastosTotal, comisiones: comisiones.total, salarios: parsed.data.salarios,
+        })
+        const arqueo = leerArqueoDeclarado(parsed.data.reporte, netoCaja)
+        const reporteData = {
+          ...resumen, ...arqueo, _version: '2.1', netoCaja,
+          baseDia: parsed.data.baseDia, salarios: parsed.data.salarios, comisiones: comisiones.total,
         }
 
         // 8. Create cierre
         const nuevoCierre = await tx.cierreDia.create({
           data: {
             fecha: startOfDay,
-            numPedidos: pedidos.length,
+            numPedidos: resumen.numPedidos,
             totalVentas,
             cobrado,
             fiado,
@@ -700,15 +263,15 @@ export async function POST(request: NextRequest) {
             stockIniHielo: parsed.data.stockIniHielo,
             prodHielo: parsed.data.prodHielo,
             stockFinHielo: parsed.data.stockFinHielo,
-            aguaVendida: pedidos.reduce((acc, p) => acc + p.cPacaAguaEnt, 0),
-            hieloVendido: pedidos.reduce((acc, p) => acc + p.cPacaHieloEnt, 0),
-            botellonVendido: pedidos.reduce((acc, p) => acc + p.cBotellonFabEnt + p.cBotellonDomEnt, 0),
-            bolsaAguaVendida: pedidos.reduce((acc, p) => acc + p.cBolsaAguaEnt, 0),
-            bolsaHieloVendida: pedidos.reduce((acc, p) => acc + p.cBolsaHieloEnt, 0),
+            aguaVendida: resumen.aguaVendida,
+            hieloVendido: resumen.hieloVendido,
+            botellonVendido: resumen.botellonVendido,
+            bolsaAguaVendida: resumen.bolsaAguaVendida,
+            bolsaHieloVendida: resumen.bolsaHieloVendida,
             netoCaja,
             cerradoPor: userId,
             horaCierre: nowInBogota(),
-            reporte: reporteData as Prisma.InputJsonValue,
+            reporte: JSON.parse(JSON.stringify(reporteData)) as Prisma.InputJsonValue,
           },
         })
 
@@ -741,6 +304,10 @@ export async function POST(request: NextRequest) {
       return apiSuccess({ cierre }, 201)
 
     } catch (error) {
+      if (error instanceof CobrosSinConciliarError) return apiError(error.message, 409, {
+        code: error.code, cobrosPendientes: error.cobros.map(({ referencia, importe }) => ({ referencia, importe })),
+      })
+      if (error instanceof Error && error.message.startsWith('Arqueo inválido')) return apiError(error.message, 400)
       lastError = error instanceof Error ? error : new Error(String(error))
 
       // P2034 = write conflict, retry

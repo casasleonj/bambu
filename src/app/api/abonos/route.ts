@@ -59,7 +59,13 @@ export async function POST(request: NextRequest) {
       // offlineId retorna el abono ya creado, sin re-aplicar dinero.
       if (offlineId) {
         const previo = await tx.abono.findUnique({ where: { offlineId } })
-        if (previo) return { abono: previo, deduped: true as const }
+        if (previo) {
+          if (previo.facturaId !== facturaId || previo.clienteId !== clienteId
+            || Number(previo.monto) !== monto || previo.metodoPago !== metodoPago) {
+            throw new Error('OFFLINE_ID_REUSADO')
+          }
+          return { abono: previo, deduped: true as const }
+        }
       }
 
       // Verificar que la factura existe
@@ -69,6 +75,9 @@ export async function POST(request: NextRequest) {
 
       if (!factura) {
         throw new Error('FACTURA_NOT_FOUND')
+      }
+      if (factura.clienteId !== clienteId || (pedidoId && pedidoId !== factura.pedidoId)) {
+        throw new Error('CONTEXTO_ABONO_INVALIDO')
       }
 
       // FIX: la Factura se crea al mismo tiempo que el Pedido (ver
@@ -99,6 +108,7 @@ export async function POST(request: NextRequest) {
           pedidoId,
           monto,
           metodoPago,
+          origenCobro: 'INDEPENDIENTE',
           // `|| null` (no `?? null`): un offlineId "" (string vacío, válido para
           // z.string().optional()) debe persistirse como NULL, no como "" —
           // si no, dos abonos con offlineId "" colisionan en el índice UNIQUE.
@@ -194,6 +204,12 @@ export async function POST(request: NextRequest) {
       result.deduped ? 200 : 201,
     )
   } catch (error) {
+    if (error instanceof Error && error.message === 'OFFLINE_ID_REUSADO') {
+      return apiError('Esta clave de reintento ya corresponde a otro abono.', 409)
+    }
+    if (error instanceof Error && error.message === 'CONTEXTO_ABONO_INVALIDO') {
+      return apiError('El cliente y el pedido deben corresponder a la factura del abono.', 400)
+    }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating abono:')
     if (error instanceof Error && error.message === 'FACTURA_NOT_FOUND') {
       return apiError('Factura no encontrada', 404)

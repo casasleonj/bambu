@@ -371,6 +371,8 @@ jobs:
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
           # #402: Pago.ocurridoAt/regularizacionId + tabla Regularizacion (CHECK no expresable en schema.prisma).
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261024_pago_tres_fechas_regularizacion/migration.sql
+          # #513: procedencia y vínculo de abonos (CHECK fuera de Prisma).
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261027_abono_procedencia_pago/migration.sql
 
       - name: Run integration tests
         run: npm run test:integration
@@ -532,6 +534,8 @@ jobs:
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
           # #402: Pago.ocurridoAt/regularizacionId + tabla Regularizacion (CHECK no expresable en schema.prisma).
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261024_pago_tres_fechas_regularizacion/migration.sql
+          # #513: procedencia y vínculo de abonos (CHECK fuera de Prisma).
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261027_abono_procedencia_pago/migration.sql
 
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts
@@ -738,6 +742,8 @@ jobs:
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
           # #402: Pago.ocurridoAt/regularizacionId + tabla Regularizacion (CHECK no expresable en schema.prisma).
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261024_pago_tres_fechas_regularizacion/migration.sql
+          # #513: procedencia y vínculo de abonos (CHECK fuera de Prisma).
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261027_abono_procedencia_pago/migration.sql
 
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts

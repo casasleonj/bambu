@@ -1,53 +1,51 @@
-// @tests cierre POST — cálculo de totales por método de pago (CAJA)
-// P-1: single-pass sobre los pagos (en vez de 5× flatMap+filter+reduce).
-// F-B (auditoría #181): la fuente pasó a ser `pagosCapturadosHoy` (pagos por
-// `Pago.createdAt`), no `pedido.pagos` (que era por `pedido.fecha`) — la CAJA
-// del día se concilia por fecha de captura del dinero.
+// @tests #511/#513: comportamiento del resumen compartido de GET y POST.
+// Sustituye comprobaciones regex del código por resultados y contratos de consulta.
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Prisma } from '@prisma/client'
+import { construirResumenCierre } from '@/lib/cierre-resumen'
 
-import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'fs'
-import { join } from 'path'
+vi.mock('@/lib/comision-pagada', () => ({ comisionesDelCierre: vi.fn(async () => ({ sellador: 0, pagadoRepartidores: 0, total: 0, repartidores: [] })) }))
+vi.mock('@/lib/cobro-cartera', () => ({ resumirAbonosDelDia: vi.fn(async () => ({ total: 0, abonosIndependientes: 0, ajustesDeCobros: 0 })) }))
+const pagos = [
+  { metodo: 'EFECTIVO', monto: '123.10' }, { metodo: 'TRANSFERENCIA', monto: '234.20' },
+  { metodo: 'NEQUI', monto: '345.30' }, { metodo: 'DAVIPLATA', monto: '456.40' }, { metodo: 'BONO', monto: '567.00' },
+]
+const pagoFind = vi.fn()
+const ventas = [{ total: 500, totalPagado: 120, saldo: 380, cPacaAguaEnt: 0, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }]
+const tx = {
+  embarque: { findMany: vi.fn(async () => []) },
+  pedido: { findMany: vi.fn(async ({ where }: { where: { estadoEntrega: unknown } }) => typeof where.estadoEntrega === 'string' ? [] : ventas), groupBy: vi.fn(async () => []) },
+  produccion: { findFirst: vi.fn(async () => null) },
+  gasto: { aggregate: vi.fn(async () => ({ _sum: { monto: 0 } })), groupBy: vi.fn(async () => []) },
+  notaCredito: { findMany: vi.fn(async () => []) }, factura: { findMany: vi.fn(async () => []) },
+  cliente: { count: vi.fn(async () => 0) }, descuentoRepartidor: { findMany: vi.fn(async () => []) },
+  pago: { findMany: pagoFind, aggregate: vi.fn(async () => ({ _count: 0, _sum: { monto: 0 } })) },
+} as unknown as Prisma.TransactionClient
 
-const routePath = join(process.cwd(), 'src/app/api/cierre/route.ts')
-const source = readFileSync(routePath, 'utf-8')
+beforeEach(() => {
+  vi.clearAllMocks()
+  pagoFind.mockImplementation(async ({ where }: { where: { confirmacion?: string } }) => where.confirmacion ? [] : pagos)
+})
 
-describe('cierre POST: totales por método de pago (single-pass, F-B)', () => {
-  const postStart = source.indexOf('export async function POST')
-  const postSource = source.substring(postStart)
-
-  it('declara totalesPorMetodo con los 5 métodos', () => {
-    const objectMatch = postSource.match(/totalesPorMetodo:\s*Record<string,\s*number>\s*=\s*\{[\s\S]+?\}/)
-    expect(objectMatch).not.toBeNull()
-    for (const m of ['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']) {
-      expect(objectMatch![0]).toMatch(new RegExp(m))
-    }
+describe('cierre: ventas y caja mantienen sus fuentes', () => {
+  it('suma los cinco métodos sin confundirlos con lo pagado en pedidos de esa fecha', async () => {
+    const { cierre } = await construirResumenCierre(tx, '2026-03-10')
+    expect(cierre).toMatchObject({ efectivo: 123.1, transferencia: 234.2, nequi: 345.3, daviplata: 456.4, bono: 567, cobrado: 120, totalVentas: 500, fiado: 380 })
+    expect(cierre.cobroVentasHoy).toBeCloseTo(1726, 2)
   })
-
-  it('F-B: itera `pagosCapturadosHoy` una sola vez, no `pedido.pagos`', () => {
-    expect(postSource).toMatch(/for\s*\(const pago of pagosCapturadosHoy\)/)
-    expect(postSource).not.toMatch(/for\s*\(const pago of pedido\.pagos\)/)
-    expect(postSource).not.toMatch(/pedidos\.flatMap\(p => p\.pagos\)/)
+  it('consulta los cobros por registro en Bogotá con límite exclusivo del día siguiente', async () => {
+    await construirResumenCierre(tx, '2026-03-10')
+    expect(pagoFind).toHaveBeenCalledWith({
+      where: {
+        createdAt: { gte: new Date('2026-03-10T05:00:00Z'), lt: new Date('2026-03-11T05:00:00Z') },
+        regularizacionId: null, pedido: { estadoEntrega: { notIn: ['CANCELADO', 'ANULADO'] } },
+      }, select: { metodo: true, monto: true },
+    })
   })
-
-  it('F-B: `pagosCapturadosHoy` se consulta por `Pago.createdAt` del día', () => {
-    expect(postSource).toMatch(/tx\.pago\.findMany\(\{\s*where:\s*\{\s*createdAt:\s*\{\s*gte:\s*startOfDay,\s*lt:\s*nextDay\s*\}/)
-    // excluye pagos de pedidos ANULADO/CANCELADO (efecto neto $0)
-    expect(postSource).toMatch(/pedido:\s*\{\s*estadoEntrega:\s*\{\s*notIn:\s*\[EstadoEntrega\.CANCELADO,\s*EstadoEntrega\.ANULADO\]/)
-  })
-
-  it('las constantes efectivo/... vienen de totalesPorMetodo', () => {
-    expect(postSource).toMatch(/const efectivo = totalesPorMetodo\[MetodoPago\.EFECTIVO\]/)
-    expect(postSource).toMatch(/const transferencia = totalesPorMetodo\[MetodoPago\.TRANSFERENCIA\]/)
-    expect(postSource).toMatch(/const nequi = totalesPorMetodo\[MetodoPago\.NEQUI\]/)
-    expect(postSource).toMatch(/const daviplata = totalesPorMetodo\[MetodoPago\.DAVIPLATA\]/)
-    expect(postSource).toMatch(/const bono = totalesPorMetodo\[MetodoPago\.BONO\]/)
-  })
-
-  it('cobroVentasHoy sigue sumando los 5 métodos', () => {
-    expect(postSource).toMatch(/const cobroVentasHoy = efectivo \+ transferencia \+ nequi \+ daviplata \+ bono/)
-  })
-
-  it('`cobrado` (métrica de ventas) sigue por `pedido.totalPagado` / `pedido.fecha`', () => {
-    expect(postSource).toMatch(/const cobrado = pedidos\.reduce\(\(acc, p\) => acc \+ Number\(p\.totalPagado\), 0\)/)
+  it('no inventa cobros cuando no hay movimientos de pago', async () => {
+    pagoFind.mockResolvedValue([])
+    const { cierre } = await construirResumenCierre(tx, '2026-03-10')
+    expect(cierre.cobroVentasHoy).toBe(0)
+    expect(cierre.cobrado).toBe(120)
   })
 })
