@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Modal } from '@/components/modal'
 import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
@@ -19,9 +20,14 @@ export function CierreConfirmacion({ resumen, onResolver }: {
     const opener = document.activeElement as HTMLElement | null
     return () => { opener?.focus() }
   }, [])
+  // Fuera de `space-y`: sus márgenes recortaban 24px del backdrop fijo.
+  const portalRoot = typeof document === 'undefined' ? null : document.body
+  if (!portalRoot) return null
   const fecha = new Date(`${resumen.fecha}T12:00:00-05:00`).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Bogota' })
-  return (
-    <Modal open onClose={() => onResolver(false)} title="Confirmar cierre del día" className="bg-white rounded-2xl p-6 w-full max-w-[470px] max-h-[90vh] overflow-y-auto mx-auto mt-10 md:mt-0 shadow-2xl">
+  return createPortal(
+    <Modal open onClose={() => onResolver(false)} title="Confirmar cierre del día"
+      overlayClassName="fixed inset-0 z-[80] flex items-start md:items-center justify-center overflow-y-auto bg-black/50 p-4"
+      className="bg-white rounded-2xl p-6 w-full max-w-[470px] max-h-[90vh] overflow-y-auto mx-auto mt-10 md:mt-0 shadow-2xl">
       <div ref={bodyRef} onKeyDown={event => {
         if (event.key !== 'Tab') return
         const elements = bodyRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)')
@@ -35,7 +41,8 @@ export function CierreConfirmacion({ resumen, onResolver }: {
         <dl className="mt-5 divide-y divide-slate-100 text-sm">
           {[
             ['Ventas netas', resumen.ventas], ['Cobros de la fecha', resumen.cobros], ['Base del día', resumen.base],
-            ['Gastos y comisiones pagadas', -resumen.gastos - resumen.comisiones - resumen.salarios],
+            ['Gastos y comisiones pagadas', -resumen.gastos - resumen.comisiones],
+            ...(resumen.salarios > 0 ? [['Salarios', -resumen.salarios]] : []),
             ['Neto de movimientos', resumen.neto],
           ].map(([label, value]) => <div key={label} className={`flex justify-between gap-4 py-3 ${label === 'Neto de movimientos' ? 'font-bold text-blue-900' : ''}`}>
             <dt className="text-slate-500">{label}</dt><dd className="font-semibold tabular-nums whitespace-nowrap">{formatCurrency(Number(value))}</dd>
@@ -51,7 +58,7 @@ export function CierreConfirmacion({ resumen, onResolver }: {
           <Button disabled={!revisado} onClick={() => { if (revisado) onResolver(true) }}>Confirmar cierre</Button>
         </div>
       </div>
-    </Modal>
+    </Modal>, portalRoot,
   )
 }
 

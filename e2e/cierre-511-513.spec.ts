@@ -1,16 +1,24 @@
 // @tests #511 #513 — pantalla → API → snapshot y columnas de PostgreSQL.
 import { PrismaClient } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
+import type { Page, TestInfo } from '@playwright/test'
 import { test, expect, goto, loginAs, resetTestDatabase } from './fixtures'
 
 const prisma = new PrismaClient()
 const fecha = '2001-01-07'
 const instante = new Date(`${fecha}T12:00:00-05:00`)
 
+async function capturar(page: Page, info: TestInfo, nombre: string) {
+  await info.attach(nombre, { body: await page.screenshot({ fullPage: nombre !== 'confirmacion' }), contentType: 'image/png' })
+}
+
 test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
   test.describe.configure({ mode: 'serial' })
   test.beforeEach(() => { resetTestDatabase() })
   test.afterAll(async () => { await prisma.$disconnect() })
+  test.afterEach(async ({}, info) => {
+    console.info('CIERRE_511_513_E2E', JSON.stringify({ project: info.project.name, title: info.title, status: info.status, expectedStatus: info.expectedStatus }))
+  })
 
   async function preparar(legado = false) {
     const cliente = await prisma.cliente.create({ data: { nombre: 'Cliente sintético cierre', telefono: randomUUID(), direccion: 'Prueba' } })
@@ -41,9 +49,10 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     await expect(page.getByTestId('cierre-kpi-ventas')).toContainText('20.000')
     await expect(page.getByTestId('cierre-kpi-cobros')).toContainText('10.000')
     await page.getByLabel('Base de Caja', { exact: true }).fill('10000')
-    await expect(page.getByTestId('cierre-kpi-neto')).toContainText('20.000')
+    await page.getByLabel('Salarios', { exact: true }).fill('5000')
+    await expect(page.getByTestId('cierre-kpi-neto')).toContainText('15.000')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
-    await page.screenshot({ path: testInfo.outputPath('revision.png'), fullPage: true })
+    await capturar(page, testInfo, 'revision')
 
     await page.getByRole('button', { name: 'Contar Efectivo Físico' }).click()
     await page.getByRole('button', { name: 'Sumar 1 a $10.000', exact: true }).click()
@@ -52,7 +61,21 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     const dialog = page.getByRole('dialog', { name: 'Confirmar cierre del día' })
     await expect(dialog.getByRole('button', { name: 'Confirmar cierre', exact: true })).toBeDisabled()
     await expect(dialog.getByText(/incluye pagos digitales/)).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('confirmacion.png'), fullPage: true })
+    await expect(dialog.locator('dl > div').filter({ hasText: 'Salarios' })).toContainText('5.000')
+    // El backdrop debe interceptar también la barra fija inferior, sin dejar
+    // controles de la página por encima de una confirmación financiera.
+    const cobertura = await page.evaluate(() => {
+      const overlay = document.querySelector('[role="dialog"]')
+      const hit = document.elementFromPoint(5, innerHeight - 5)
+      return {
+        intercepta: !!hit?.closest('[role="dialog"]'),
+        hit: hit?.outerHTML.slice(0, 350),
+        viewport: { width: innerWidth, height: innerHeight },
+        overlay: overlay ? { clase: overlay.className, rect: overlay.getBoundingClientRect().toJSON(), z: getComputedStyle(overlay).zIndex } : null,
+      }
+    })
+    expect(cobertura).toEqual(expect.objectContaining({ intercepta: true }))
+    await capturar(page, testInfo, 'confirmacion')
     await dialog.getByRole('checkbox').check()
     const respuesta = page.waitForResponse(r => r.url().endsWith('/api/cierre') && r.request().method() === 'POST')
     await dialog.getByRole('button', { name: 'Confirmar cierre', exact: true }).click()
@@ -61,10 +84,11 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
 
     const guardado = await prisma.cierreDia.findUniqueOrThrow({ where: { fecha: new Date(`${fecha}T00:00:00-05:00`) } })
     expect(Number(guardado.totalVentas)).toBe(20000)
-    expect(Number(guardado.netoCaja)).toBe(20000)
-    expect(guardado.reporte).toMatchObject({ _version: '2.1', cobroVentasHoy: 5000, cobroCartera: 5000, totalContado: 10000, netoCaja: 20000 })
+    expect(Number(guardado.netoCaja)).toBe(15000)
+    expect(guardado.reporte).toMatchObject({ _version: '2.1', cobroVentasHoy: 5000, cobroCartera: 5000, salarios: 5000, totalContado: 10000, netoCaja: 15000 })
     await page.reload()
-    await expect(page.getByTestId('cierre-kpi-neto')).toContainText('20.000')
+    await expect(page.getByTestId('cierre-kpi-neto')).toContainText('15.000')
+    await capturar(page, testInfo, 'registrado')
     expect(await prisma.cierreDia.count()).toBe(1)
     await goto(page, `/cierre/reporte?fecha=${fecha}`)
     await expect(page.getByRole('button', { name: 'Imprimir / Guardar como PDF' })).toBeVisible()
@@ -78,7 +102,7 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     await expect(page.getByText('AB-INDEPENDIENTE', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Confirmar cierre' })).toBeDisabled()
     await expect(page.getByTestId('cierre-kpi-neto')).toHaveCount(0)
-    await page.screenshot({ path: testInfo.outputPath('conciliacion.png'), fullPage: true })
+    await capturar(page, testInfo, 'conciliacion')
     await page.getByLabel('Fecha del cierre').fill('2001-01-08')
     await expect(page.getByTestId('cierre-kpi-cobros')).toBeVisible()
     expect(await prisma.cierreDia.count()).toBe(0)
@@ -91,7 +115,7 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     await goto(page, `/cierre?fecha=${fecha}`)
     await expect(page.getByRole('button', { name: 'Reintentar' })).toBeVisible()
     await expect(page.getByTestId('cierre-kpi-neto')).toHaveCount(0)
-    await page.screenshot({ path: testInfo.outputPath('error.png'), fullPage: true })
+    await capturar(page, testInfo, 'error')
     await page.unroute('**/api/cierre?*')
     await page.getByRole('button', { name: 'Reintentar' }).click()
     await expect(page.getByTestId('cierre-kpi-cobros')).toBeVisible()

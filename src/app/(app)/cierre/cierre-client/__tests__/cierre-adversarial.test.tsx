@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import CierreClient from '../index'
+import { CierreConfirmacion } from '@/components/cierre/cierre-confirmacion'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 vi.mock('next-auth/react', () => ({ useSession: () => ({ data: { user: { role: 'ADMIN' } } }) }))
@@ -63,6 +64,19 @@ async function abrirConfirmacion() {
 const envios = () => fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')
 
 describe('maqueta aprobada: confirmación y recuperación', () => {
+  it('separa salarios de gastos y comisiones sin alterar el neto', () => {
+    render(<CierreConfirmacion resumen={{ fecha: '2026-03-14', ventas: 260000, cobros: 270000, base: 50000, gastos: 30000, comisiones: 10000, salarios: 5000, neto: 275000 }} onResolver={vi.fn()} />)
+    expect(screen.getByText('Gastos y comisiones pagadas').closest('div')).toHaveTextContent(/-\$\s*40\.000/)
+    expect(screen.getByText('Salarios').closest('div')).toHaveTextContent(/-\$\s*5\.000/)
+    expect(screen.getByText('Neto de movimientos').closest('div')).toHaveTextContent(/\$\s*275\.000/)
+  })
+
+  it('no inventa salarios cuando no están declarados', () => {
+    render(<CierreConfirmacion resumen={{ fecha: '2026-03-14', ventas: 260000, cobros: 270000, base: 50000, gastos: 30000, comisiones: 10000, salarios: 0, neto: 280000 }} onResolver={vi.fn()} />)
+    expect(screen.queryByText('Salarios')).not.toBeInTheDocument()
+    expect(screen.getByText('Gastos y comisiones pagadas').closest('div')).toHaveTextContent(/-\$\s*40\.000/)
+  })
+
   it('exige revisión explícita y cancelar conserva los datos sin enviar', async () => {
     const dialog = await abrirConfirmacion()
     expect(within(dialog).getByRole('button', { name: 'Confirmar cierre' })).toBeDisabled()
