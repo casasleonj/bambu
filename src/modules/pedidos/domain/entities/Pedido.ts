@@ -368,7 +368,7 @@ export class Pedido {
   }
 
   /**
-   * Mark as ANULADO (only from ENTREGADO). Resets totals.
+   * Mark as ANULADO (only from ENTREGADO). Resets total, saldo and totalPagado to 0 (#512).
    */
   anular(offlineId?: string): { tuvoPagos: boolean; totalPagado: number } {
     if (!this.puedeAnular()) {
@@ -383,6 +383,9 @@ export class Pedido {
       estadoEntrega: EstadoEntregaVO.create('ANULADO'),
       estadoPago: EstadoPagoVO.create('ANULADO'),
       totalPagado: new Money(0),
+      // #512: igual que `cancelar()`, un pedido anulado queda con todos sus montos en 0
+      // (el saldo es `total − totalPagado`). Lo cobrado ya se capturó arriba para la nota de crédito.
+      total: new Money(0),
       ...(offlineId ? { anulacionOfflineId: offlineId } : {}),
     }
 

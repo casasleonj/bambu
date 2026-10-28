@@ -147,14 +147,16 @@ export async function POST(request: NextRequest) {
         ocurridoAt = diaBogota(fechaCobro) !== todayStringBogota() ? fechaCobro : null
       }
 
-      // 1. Buscar pedidos fiados del cliente, ordenados por fecha ASC (FIFO)
+      // #514: cobrar cartera solo aplica a pedidos ENTREGADOS. Un sobrante
+      // conserva el saldo a favor de D.6; no elige por el usuario otro pedido
+      // sin entregar para convertirlo automáticamente en anticipo.
       const pedidosFiados = await tx.pedido.findMany({
         where: {
           clienteId,
           saldo: { gt: 0 },
-          estadoEntrega: { not: 'ANULADO' },
+          estadoEntrega: 'ENTREGADO',
         },
-        orderBy: { fecha: 'asc' },
+        orderBy: [{ fecha: 'asc' }, { numero: 'asc' }],
         include: { factura: true },
       })
 
@@ -205,8 +207,8 @@ export async function POST(request: NextRequest) {
           Money.fromDecimal(Number(pedido.total)),
           Money.fromDecimal(nuevoTotalPagado)
         ).toDecimal()
-        // G5.1: si el pedido fiado aún no se entregó y este cobro lo deja
-        // pagado completo → ANTICIPADO (no PAGADO).
+        // G5.1: usar la proyección común. Este cobro solo selecciona entregados;
+        // los anticipos explícitos conservan su regla en el registro de ventas.
         const nuevoEstadoPago = calcularEstadoPago(Number(pedido.total), nuevoTotalPagado, pedido.estadoEntrega)
 
         // Actualizar pedido
