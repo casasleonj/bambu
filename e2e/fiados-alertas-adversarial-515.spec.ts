@@ -26,7 +26,7 @@ async function escenario() {
 async function abrirFiados(page: Page, nombre: string) {
   await goto(page, '/pedidos?tab=fiados')
   await appMain(page).getByLabel('Buscar cliente', { exact: true }).fill(nombre)
-  await expect(appMain(page).getByText(nombre, { exact: true }).locator('visible=true').first()).toBeVisible()
+  await expect(appMain(page).getByText(nombre, { exact: true }).locator('visible=true').first()).toBeVisible({ timeout: 35000 })
 }
 const pagoDialog = (page: Page) => page.getByTestId('cobro-fiado-dialog')
 async function llenarCobro(page: Page, monto = '10000') {
@@ -113,14 +113,16 @@ test('respuesta perdida tras registrar: reintenta con la misma referencia y cons
   }, { times: 1 })
   await pagoDialog(page).getByRole('button', { name: /Registrar.*10/ }).click()
   await expect(pagoDialog(page).getByRole('button', { name: 'Reintentar con la misma referencia', exact: true })).toBeVisible()
-  expect(await db.pago.count({ where: { offlineId: referencia } })).toBe(1)
+  // El estado pendiente aparece antes del acuse. Esperar el COMMIT real
+  // antes de exigir idempotencia ante una respuesta de red perdida.
+  await expect.poll(() => db.pago.count({ where: { offlineId: referencia } }), { timeout: 15000 }).toBe(1)
   await pagoDialog(page).getByRole('button', { name: 'Reintentar con la misma referencia', exact: true }).click()
   await expect(pagoDialog(page).getByRole('heading', { name: 'Pago registrado', exact: true })).toBeVisible()
   expect(await db.pago.count({ where: { offlineId: referencia } })).toBe(1)
   expect(await cola(page, 'requestQueue')).toBe(0)
 })
 
-test('Todos consulta más de 200 pedidos, sin limitarse a la primera página', async ({ page }) => {
+test('Todos consulta más de 200 pedidos, sin limitarse a la primera página', async ({ page }, info) => {
   test.setTimeout(90000)
   const { cliente } = await escenario()
   await db.pedido.createMany({ data: Array.from({ length: 201 }, () => ({ clienteId: cliente.id, canal: 'PUNTO' as const,
@@ -128,11 +130,13 @@ test('Todos consulta más de 200 pedidos, sin limitarse a la primera página', a
     estadoPago: 'PENDIENTE' as const, total: 1000, saldo: 1000, totalPagado: 0 })) })
   const paginas: string[] = []
   page.on('response', r => { const u = new URL(r.url()); if (u.pathname === '/api/pedidos' && u.searchParams.get('scope') === 'fiados') paginas.push(u.searchParams.get('page') || '1') })
+  try {
   await loginAs(page, 'admin'); await abrirFiados(page, cliente.nombre)
   const consulta = appMain(page).getByTestId(page.viewportSize()!.width < 768 ? 'fiados-mobile' : 'fiados-desktop')
   await expect(consulta).toContainText('203')
   await expect(consulta).toContainText(/231[.,]000/)
   expect(paginas).toContain('2')
+  } finally { await info.attach('paginas-consultadas', { body: JSON.stringify(paginas), contentType: 'application/json' }) }
 })
 
 test('fallo de consulta no se presenta como ausencia de deuda, y permite reintentar', async ({ page }) => {
@@ -148,7 +152,7 @@ test('fallo de consulta no se presenta como ausencia de deuda, y permite reinten
   await expect(appMain(page).getByText('No hay deuda pendiente de pedidos entregados', { exact: true })).toHaveCount(0)
   await page.unroute('**/api/pedidos?*')
   await appMain(page).getByRole('button', { name: 'Reintentar', exact: true }).click()
-  await expect(appMain(page).getByText(cliente.nombre, { exact: true }).locator('visible=true').first()).toBeVisible()
+  await expect(appMain(page).getByText(cliente.nombre, { exact: true }).locator('visible=true').first()).toBeVisible({ timeout: 35000 })
 })
 
 test('Alertas ignora Ayer, enlaza pedido y factura reales y conserva búsqueda y severidad', async ({ page }) => {

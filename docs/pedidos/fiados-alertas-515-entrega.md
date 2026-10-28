@@ -1,6 +1,6 @@
 # Fiados y Alertas: reconciliación de acceso y cobro (#515)
 
-Estado: implementación aprobada por el PO; validación e integración en curso. Base técnica: `main@be4b65522259df38a48f5ff50fe3eb10fb57b1b9`. Este documento describe esta entrega; los originales privados del proyecto no se copian ni se reconstruyen.
+Estado: implementación aprobada por el PO. La validación final, integración y SHA de merge se consultan en el [PR #525](https://github.com/casasleonj/bambu/pull/525). Base técnica: `main@be4b65522259df38a48f5ff50fe3eb10fb57b1b9`. Este documento describe esta entrega; los originales privados del proyecto no se copian ni se reconstruyen.
 
 ## Autoridad, evidencia y alcance
 
@@ -41,3 +41,11 @@ Referencias técnicas: documentación instalada Next.js **16.2.4** (navegación,
 - Regresión: suites completas unitarias/integración, tipos/lint/build y recorridos Hub/legacy. No se considera éxito un retry que oculta un fallo; registrar primer resultado y causa. Los resultados ejecutados y el SHA final se completan al cerrar el PR.
 
 Fuera de esta fase: cobro mixto en RegistrarEntrega (#498), filtros adicionales del Hub (#516), anulación/cancelación y reconciliación global de permisos (#517), nómina/horarios (#523), automatización de migraciones (#522) y procedencia histórica (#521). #515/#498/#517 no se cierran automáticamente por esta entrega parcial. No se crean pagos sintéticos en producción ni se aplican reparaciones históricas.
+
+### Evidencia de verificación durante la entrega
+
+- PostgreSQL local: **696/696** en la suite completa; después, **22/22** de cobro repetidas al añadir el caso de centavos. Este último detectó `0.30 - 0.10` representado como `0.19999999999999998` en el resultado; el cálculo guardado ahora usa centavos. No se alteraron pagos de producción.
+- CI de código `fbc8e8fc`: **4.281/4.281** unitarias y tipos/lint aprobados; Hub **56 aprobadas, 1 omitida por su condición existente, 0 flaky**. Los cambios posteriores de esta revisión son pruebas y documentación; el PR conserva los resultados del commit final.
+- Se sustituyeron las comprobaciones antiguas basadas en nombres internos de variables de `pagar-fiado` por contratos de entrada y pruebas PG del handler: deduplicación concurrente, replay original, crédito único, espejo 1:1 y rollback real de auditoría. No se considera un regex una prueba de integridad monetaria.
+- Se registraron y corrigieron problemas de las propias pruebas: etiqueta anidada con opciones de select, selección de copia desktop oculta en móvil, fixture que desactiva auto-sync, lectura de la base antes de terminar el commit y espera de 5 s frente a una consulta completa con presupuesto de 30 s. Las aserciones de dinero y de cantidad de registros se conservan.
+- Baseline anterior de `main@be4b6552`: [CI 40639070963](https://github.com/casasleonj/bambu/actions/runs/40639070963), 65 fallos E2E ya presentes. El PR debe comparar por proyecto, spec y caso, investigar cada fallo adicional y conservar la distinción entre fallo, flaky y aprobado. Ese baseline no exime fallos nuevos.

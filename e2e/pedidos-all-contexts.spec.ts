@@ -410,9 +410,7 @@ test.describe('Pedidos — Tab Fiados', () => {
     await p.waitForTimeout(500)
     await expect(p.locator('text=Control de Fiados')).toBeVisible()
     // Banner explicativo
-    await expect(p.locator('text=aquí ves todos los clientes que tienen saldo pendiente').or(
-      p.locator('text=clientes que tienen saldo pendiente')
-    )).toBeVisible()
+    await expect(p.getByText(/Consulta la deuda de pedidos entregados, agrupada por cliente/)).toBeVisible()
   })
 
   test('filtros de Fiados estan disponibles', async () => {
@@ -443,7 +441,7 @@ test.describe('Pedidos — Tab Fiados', () => {
     await p.waitForTimeout(500)
     const bodyText = await p.locator('body').textContent()
     // Either shows empty state or has data
-    const hasEmptyState = bodyText?.includes('No hay fiados') || bodyText?.includes('No hay deudas')
+    const hasEmptyState = bodyText?.includes('No hay deuda pendiente de pedidos entregados')
     const hasData = bodyText?.includes('$') && bodyText?.includes('días')
     expect(hasEmptyState || hasData).toBe(true)
   })
@@ -501,52 +499,28 @@ test.describe('Pedidos — Tab Fiados', () => {
     }
   })
 
-  test('formulario de pago en Fiados', async () => {
-    const c = await createCliente(p)
-    const clienteId = c.cliente?.id || c.data?.id
-    if (!clienteId) { test.skip(); return }
-    await apiPost(p, '/api/pedidos', {
-      clienteId,
-      canal: 'PUNTO',
-      entregado: true,
-      items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
+  for (const nombreTest of ['formulario de pago en Fiados', 'metodos de pago disponibles en Fiados']) {
+    test(nombreTest, async () => {
+      const c = await createCliente(p)
+      const clienteId = c.cliente?.id || c.data?.id
+      expect(clienteId).toBeTruthy()
+      const creado = await apiPost(p, '/api/pedidos', {
+        clienteId, canal: 'PUNTO', entregado: true,
+        items: [{ producto: 'PACA_AGUA', cantidad: 2 }], pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
+      })
+      expect(creado.ok()).toBe(true)
+      await gotoPedidos(p)
+      await p.goto(`${PEDIDOS_URL}?tab=fiados&fiadosCliente=${encodeURIComponent(clienteId)}`)
+      await p.getByRole('button', { name: 'Registrar pago', exact: true }).locator('visible=true').click()
+      const cobro = p.getByTestId('cobro-fiado-dialog')
+      await expect(cobro.getByLabel('Monto 1', { exact: true })).toBeVisible()
+      await expect(cobro.getByRole('button', { name: 'Revisar reparto', exact: true })).toBeVisible()
+      const medios = cobro.getByLabel('Medio 1', { exact: true })
+      await expect(medios.getByRole('option')).toHaveText(['Seleccionar…', 'Efectivo', 'Transferencia', 'Nequi', 'Daviplata', 'Bono'])
+      await cobro.getByRole('button', { name: 'Cancelar', exact: true }).click()
+      await expect(cobro).toHaveCount(0)
     })
-    await gotoPedidos(p)
-    await p.waitForTimeout(500)
-    await tabButton(p, 'Fiados').click()
-    await p.waitForTimeout(1000)
-    // Click "Pagar" button
-    const pagarBtn = p.locator('button:has-text("Pagar")').first()
-    if (await pagarBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await pagarBtn.click()
-      await p.waitForTimeout(500)
-      // Payment form should appear — the Monto input signals the form opened
-      const montoInput = p.locator('input[placeholder*="Monto" i]').first()
-      if (await montoInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await expect(montoInput).toBeVisible()
-      }
-      // Confirm button — scoped: the dialog shows "Confirmar pago", table rows show "Pagar"
-      const confirmBtn = p.locator('button:has-text("Confirmar pago")').first()
-      if (await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await expect(confirmBtn).toBeVisible()
-      }
-    }
-  })
-
-  test('metodos de pago disponibles en Fiados', async () => {
-    await gotoPedidos(p)
-    await tabButton(p, 'Fiados').click()
-    await p.waitForTimeout(500)
-    const pagarBtn = p.locator('button:has-text("Pagar")').first()
-    if (await pagarBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await pagarBtn.click()
-      await p.waitForTimeout(500)
-      // Payment methods are shown as buttons/chips, not just a select
-      const bodyText = await p.locator('body').textContent()
-      expect(bodyText?.includes('EFECTIVO') || bodyText?.includes('efectivo')).toBe(true)
-    }
-  })
+  }
 
   test('filtro de dias fiado funciona', async () => {
     await gotoPedidos(p)
