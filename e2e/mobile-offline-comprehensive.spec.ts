@@ -251,15 +251,17 @@ test.describe('Mobile Offline Comprehensive', () => {
     const clienteId = c.cliente?.id || c.data?.id
     expect(clienteId).toBeTruthy()
 
-    // Crear deuda pendiente
+    // #514: el cobro offline también necesita deuda ya entregada.
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId,
-      canal: 'DOMICILIO',
+      canal: 'PUNTO', origen: 'VENTA_RAPIDA', entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [],
     })
     expect(pedidoRes.status()).toBeGreaterThanOrEqual(200)
     expect(pedidoRes.status()).toBeLessThan(300)
+    const creado = await pedidoRes.json()
+    expect((creado.pedido ?? creado.data?.pedido).estadoEntrega).toBe('ENTREGADO')
 
     const pedidoBefore = await page.evaluate(async (cid) => {
       const r = await fetch(`/api/pedidos?clienteId=${cid}&estadoPago=PENDIENTE&all=true`, { credentials: 'include' })

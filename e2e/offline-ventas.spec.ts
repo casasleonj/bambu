@@ -10,25 +10,32 @@
  */
 
 import { test, expect, loginAs, apiPost, createCliente } from './fixtures'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
 
 test.describe('Offline resilience — Ventas dedup', () => {
+  test.afterAll(async () => { await prisma.$disconnect() })
 
   test('Doble POST a /api/pedidos/pagar-fiado con mismo offlineId → server deduplica', async ({ page }) => {
     await loginAs(page, 'admin')
 
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
-    if (!clienteId) { test.skip(); return }
+    expect(clienteId).toBeTruthy()
 
-    // Crear una deuda pendiente para que el pago de fiado tenga dónde aplicarse
+    // #514: el cobro de fiados prueba deuda entregada, no un anticipo implícito.
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId,
-      canal: 'DOMICILIO',
+      canal: 'PUNTO', origen: 'VENTA_RAPIDA', entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [],
     })
     expect(pedidoRes.status()).toBeGreaterThanOrEqual(200)
     expect(pedidoRes.status()).toBeLessThan(300)
+    const pedidoBody = await pedidoRes.json()
+    const pedido = pedidoBody.pedido ?? pedidoBody.data?.pedido
+    expect(pedido.estadoEntrega).toBe('ENTREGADO')
 
     const offlineId = crypto.randomUUID()
     const payload = {
@@ -48,6 +55,7 @@ test.describe('Offline resilience — Ventas dedup', () => {
 
     // Segundo envío con MISMO offlineId → server debe deduplicar
     const r2 = await apiPost(page, '/api/pedidos/pagar-fiado', payload)
+    expect(r2.status()).toBe(200)
     const d2 = await r2.json()
     const pagosAplicados2 = d2.pagosAplicados || []
     const montoAplicado2 = d2.montoAplicado || 0
@@ -56,6 +64,13 @@ test.describe('Offline resilience — Ventas dedup', () => {
     expect(montoAplicado1).toBe(montoAplicado2)
     // Y el response debe indicar dedup o ser estructuralmente equivalente
     expect(pagosAplicados1.length).toBe(pagosAplicados2.length)
+    expect(d2.deduped).toBe(true)
+    expect(montoAplicado1).toBe(1000)
+    const pagos = await prisma.pago.findMany({ where: { pedidoId: pedido.id, offlineId } })
+    expect(pagos).toHaveLength(1)
+    expect(Number(pagos[0].monto)).toBe(1000)
+    const despues = await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+    expect(Number(despues.saldo)).toBe(Number(pedido.saldo) - 1000)
   })
 
   test('POST a /api/pedidos/venta-libre con offlineId persiste el campo', async ({ page }) => {
