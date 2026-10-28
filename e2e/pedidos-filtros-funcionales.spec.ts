@@ -1,4 +1,4 @@
-import { test, expect, loginAs, apiPost, apiGet, createCliente, createClienteFull, goto, resetDatabase, responsiveContainer } from './fixtures'
+import { test, expect, loginAs, apiPost, apiGet, createCliente, createClienteFull, goto, resetDatabase, responsiveContainer, appMain } from './fixtures'
 import { execSync } from 'child_process'
 import { resolve } from 'path'
 
@@ -268,7 +268,7 @@ test.describe('Pedidos: tab Fiados', () => {
     await expect(responsiveContainer(page, 'fiados-mobile', 'fiados-desktop').getByText('Pedro Pinilla')).toBeVisible({ timeout: 10000 })
   })
 
-  test('tab Fiados con periodo Hoy oculta fiados de ayer y muestra hint', async ({ page }) => {
+  test('tab Fiados con periodo Hoy oculta fiados de ayer y Todos los recupera', async ({ page }) => {
     await loginAs(page, 'admin')
     const c = await createCliente(page, { nombre: 'Sandra Leon', telefono: '3007654321' })
     const yesterday = getYesterdayStr()
@@ -282,8 +282,12 @@ test.describe('Pedidos: tab Fiados', () => {
     // Sandra no debe aparecer (fiado de ayer)
     await expect(responsiveContainer(page, 'fiados-mobile', 'fiados-desktop').getByText('Sandra Leon')).not.toBeVisible({ timeout: 5000 })
 
-    // El hint debe ser visible
-    await expect(page.locator('text=Mostrando solo fiados de hoy').first()).toBeVisible()
+    // La maqueta aprobada #515 identifica el período propio y conserva
+    // la consulta global sin heredar la fecha de Pedidos.
+    await expect(appMain(page).getByRole('button', { name: 'Hoy', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByText('Todas las fechas por defecto. Este período es independiente del filtro de Pedidos.')).toBeVisible()
+    await appMain(page).getByRole('button', { name: 'Todos', exact: true }).click()
+    await expect(responsiveContainer(page, 'fiados-mobile', 'fiados-desktop').getByText('Sandra Leon')).toBeVisible()
   })
 
   test('boton Limpiar en FiadosTable resetea filtros locales', async ({ page }) => {

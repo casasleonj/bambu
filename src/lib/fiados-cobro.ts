@@ -11,7 +11,7 @@ export interface DeudaFiado {
 }
 export interface AplicacionFiado {
   pedidoId: string; numero: number; facturaId?: string; facturaNumero?: string
-  montoAplicado: number; saldoRestante: number
+  montoAplicado: number; saldoRestante: number; abonoCreado?: boolean
 }
 export interface ResultadoCobroFiado {
   referencia: string | null

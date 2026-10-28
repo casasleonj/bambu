@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
         }
         if (aplicado > 0) {
           pagosAplicados.push({ pedidoId: pedido.id, numero: pedido.numero, montoAplicado: aplicado / 100,
-            saldoRestante: saldo / 100, facturaId: pedido.factura?.id, facturaNumero: pedido.factura?.numero })
+            saldoRestante: saldo / 100, facturaId: pedido.factura?.id, facturaNumero: pedido.factura?.numero, abonoCreado: !!pedido.factura })
           if (shouldFireCulminado('ENTREGADO', calcularEstadoPago(pedido.total, pagado / 100, 'ENTREGADO'))) culminados.push({ pedidoId: pedido.id, numero: pedido.numero })
         }
         if (fondos.every(f => f.restante <= 0)) break
