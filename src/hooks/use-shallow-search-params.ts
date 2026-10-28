@@ -13,6 +13,7 @@ export interface ShallowSearchParams {
   get: (key: string) => string | null
   getAll: (key: string) => string[]
   set: (params: ShallowParams, options?: SetShallowParamsOptions) => void
+  toString: () => string
 }
 
 type Listener = () => void
@@ -158,5 +159,7 @@ export function useShallowSearchParams(): ShallowSearchParams {
     [searchParams],
   )
 
-  return useMemo(() => ({ get, getAll, set }), [get, getAll, set])
+  const toString = useCallback(() => typeof window !== 'undefined' && useRealParamsRef.current
+    ? window.location.search.replace(/^\?/, '') : searchParams?.toString() ?? '', [searchParams])
+  return useMemo(() => ({ get, getAll, set, toString }), [get, getAll, set, toString])
 }

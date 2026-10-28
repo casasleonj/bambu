@@ -21,6 +21,8 @@ import { PedidoFilters } from './pedido-filters'
 import { PedidoTable } from './pedido-table'
 import { FiadosTable } from './fiados-table'
 import { AlertasTable } from './alertas-table'
+import { FacturaConsultaModal } from './factura-consulta-modal'
+import { CobroFiadoDialog } from './cobro-fiado-dialog'
 import { PedidoHub } from '../pedido-hub'
 import { EstoSeRepite, type EstoSeRepiteContexto } from '../pedido-hub/esto-se-repite'
 import { PedidosWorkspace, type WorkspacePedidoInicial } from '@/components/pedido-workspace'
@@ -149,6 +151,9 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [preciosActuales, setPreciosActuales] = useState<Record<string, { precio: number; origen: string }>>({})
   const [clientes, setClientes] = useState<Cliente[]>([])
+  const [clienteCobro, setClienteCobro] = useState<{ id: string; nombre: string } | null>(null)
+  const [facturaConsulta, setFacturaConsulta] = useState<{ id: string; volver: string } | null>(null)
+  const [pedidoDocumento, setPedidoDocumento] = useState<{ id: string; volver: string; loading: boolean; error: string | null } | null>(null)
 
   // Pedidos creados offline (2G/3G rural) que siguen encolados en IndexedDB
   // esperando sync. Mismo mecanismo que clientes-client/index.tsx (bug
@@ -236,8 +241,14 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const [pedidoEditando, setPedidoEditando] = useState<Pedido | null>(null)
   const [selectedEmbarqueId, setSelectedEmbarqueId] = useState('')
   const tabFromUrl = shallowParams.get('tab')
-  const initialTab = tabFromUrl === 'fiados' || tabFromUrl === 'alertas' ? tabFromUrl : 'hoy'
-  const [activeTab, setActiveTab] = useState<'hoy' | 'fiados' | 'alertas'>(initialTab)
+  const activeTab = tabFromUrl === 'fiados' || tabFromUrl === 'alertas' ? tabFromUrl : 'hoy'
+  const volverConsulta = activeTab === 'alertas' ? 'Volver a Alertas' : 'Volver a Fiados'
+  const setActiveTab = (tab: 'hoy' | 'fiados' | 'alertas') => {
+    shallowParams.set({ tab: tab === 'hoy' ? undefined : tab, atrasados: undefined, enRiesgo: undefined,
+      ...(activeTab === 'hoy' && tab !== 'hoy' ? { pedidosCliente: shallowParams.get('clienteId') ?? undefined, clienteId: undefined } : {}),
+      ...(activeTab !== 'hoy' && tab === 'hoy' ? { clienteId: shallowParams.get('pedidosCliente') ?? undefined, pedidosCliente: undefined } : {}),
+    }, { history: 'push' })
+  }
   // Clientes con alertas tras descontar las ignoradas (el contador del servidor no las conoce).
   const [alertasVisibles, setAlertasVisibles] = useState<number | null>(null)
   const [fabOpen, setFabOpen] = useState(false)
@@ -454,6 +465,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     loading: loadingFiados,
     error: errorFiados,
     refetch: refetchFiados,
+    hasLoadedOnce: fiadosCargados,
+    refetching: actualizandoFiados,
   } = usePedidos({ scope: 'fiados' }, { all: true, autoFetch: false, refetchOnParamsChange: true })
   const pedidosFiados = pedidosFiadosRaw as Pedido[]
 
@@ -462,6 +475,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     loading: loadingAlertas,
     error: errorAlertas,
     refetch: refetchAlertas,
+    hasLoadedOnce: alertasCargadas,
   } = usePedidos({ scope: 'alertas' }, { all: true, autoFetch: false, refetchOnParamsChange: true })
   const pedidosAlertas = pedidosAlertasRaw as Pedido[]
 
@@ -939,19 +953,6 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       }
     })()
   }, [])
-
-  // Sync activeTab con el query param ?tab= en la URL.
-  // Los tests E2E y el deep-linking dependen de este comportamiento.
-  useEffect(() => {
-    const currentTab = shallowParams.get('tab')
-    if (activeTab === 'hoy') {
-      if (currentTab) {
-        syncUrl({ tab: undefined })
-      }
-    } else if (currentTab !== activeTab) {
-      syncUrl({ tab: activeTab })
-    }
-  }, [activeTab, shallowParams, syncUrl])
 
   // true si el último envío de creación quedó encolado offline (lo marca
   // `onOffline`, que corre antes de que `crearPedido` devuelva null).
@@ -1652,25 +1653,29 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   }
 
   /** Abre el detalle de un pedido que no está en la lista cargada (GET /api/pedidos/[id]). */
-  async function abrirPedidoPorId(id: string) {
+  async function abrirPedidoPorId(id: string, onError?: (message: string) => void) {
     const toastId = toast.loading('Abriendo pedido…')
     try {
       const res = await fetch(`/api/pedidos/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(8_000) })
       if (res.status === 404) {
+        onError?.('Ese pedido no existe o ya no está disponible.')
         toast.error('Ese pedido no existe o ya no está disponible.', { id: toastId })
         return
       }
       if (res.status === 403) {
+        onError?.('No tienes acceso a ese pedido.')
         toast.error('No tienes acceso a ese pedido.', { id: toastId })
         return
       }
       if (!res.ok) {
+        onError?.('No se pudo abrir el pedido. Intenta de nuevo.')
         toast.error('No se pudo abrir el pedido. Intenta de nuevo.', { id: toastId })
         return
       }
       const data = await res.json()
       const pedido = data.pedido as Pedido | undefined
-      if (!pedido || !Array.isArray(pedido.items)) {
+      if (!pedido || !Array.isArray(pedido.items) || pedido.id !== id && String(pedido.numero) !== id) {
+        onError?.('No se pudo identificar el pedido solicitado.')
         toast.error('No se pudo abrir el pedido. Intenta de nuevo.', { id: toastId })
         return
       }
@@ -1678,8 +1683,15 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       // el detalle ya viene completo: handleDetail no lo vuelve a pedir
       await handleDetail(pedido, { yaCompleto: true })
     } catch {
+      onError?.('Sin conexión. No se pudo abrir el pedido.')
       toast.error('Sin conexión. No se pudo abrir el pedido.', { id: toastId })
     }
+  }
+
+  function abrirDocumentoPedido(id: string, volver = volverConsulta) {
+    setPedidoDocumento({ id, volver, loading: true, error: null })
+    void abrirPedidoPorId(id, error => setPedidoDocumento(prev => prev ? { ...prev, error } : prev))
+      .finally(() => setPedidoDocumento(prev => prev ? { ...prev, loading: false } : prev))
   }
 
   async function handleDetail(pedido: Pedido, opts?: { yaCompleto?: boolean }) {
@@ -1845,7 +1857,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         {/* Pedidos pendientes de días anteriores sin asignar a un viaje —
             ver src/lib/pedidos-sin-asignar.ts. Visible sin importar el tab
             activo: es una advertencia operativa, no un filtro de la vista. */}
-        {atrasadosCount > 0 && (
+        {activeTab === 'hoy' && atrasadosCount > 0 && (
           <div data-testid="banner-atrasados-sin-asignar">
             <InfoBanner type="tip" className="mb-4">
               <span>
@@ -1869,7 +1881,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             su ruta, o por horas hábiles transcurridas) + pedidos EN_RUTA
             atascados sin entregar de CUALQUIER día — ver
             findPedidosHoyEnRiesgoIds en pedidos-sin-asignar.ts. */}
-        {enRiesgoCount > 0 && (
+        {activeTab === 'hoy' && enRiesgoCount > 0 && (
           <div data-testid="banner-hoy-en-riesgo">
             <InfoBanner type="tip" className="mb-4">
               <span>
@@ -1891,7 +1903,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         )}
 
         {/* Banner explicativo para nuevos usuarios */}
-        {pedidosVisibles.length === 0 && !hasActiveFilters && (
+        {activeTab === 'hoy' && pedidosVisibles.length === 0 && !hasActiveFilters && (
           <InfoBanner type="tip" title="¿Cómo funciona el flujo de pedidos?" className="mb-4">
             <ol className="list-decimal list-inside space-y-1 mt-1">
               <li><strong>Crea un pedido</strong> con los productos y cliente</li>
@@ -1916,9 +1928,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           </h1>
         </div>
 
-        {/* Tabs — ocultas en hubMode (los focos del Hub reemplazan Fiados/Alertas) */}
-        {!hubMode && (
-        <div className="flex border-b border-gray-200">
+        {/* #515: los focos operativos no sustituyen la consulta por cliente. */}
+        <div className="flex border-b border-gray-200" role="tablist" aria-label="Vistas de Pedidos">
           {[
             { key: 'hoy', label: 'Pedidos', count: pedidosVisibles.length },
             { key: 'fiados', label: 'Fiados', count: fiadosCount },
@@ -1926,6 +1937,21 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           ].map((tab) => (
             <button
               key={tab.key}
+              type="button"
+              role="tab"
+              id={`pedidos-tab-${tab.key}`}
+              aria-controls={`pedidos-panel-${tab.key}`}
+              aria-selected={activeTab === tab.key}
+              tabIndex={activeTab === tab.key ? 0 : -1}
+              onKeyDown={e => {
+                if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return
+                e.preventDefault()
+                const keys = ['hoy', 'fiados', 'alertas'] as const
+                const index = keys.indexOf(tab.key as typeof keys[number])
+                const next = keys[e.key === 'Home' ? 0 : e.key === 'End' ? 2 : (index + (e.key === 'ArrowRight' ? 1 : 2)) % 3]
+                setActiveTab(next)
+                requestAnimationFrame(() => document.getElementById(`pedidos-tab-${next}`)?.focus())
+              }}
               data-testid={`tab-${tab.key}`}
               onClick={() => setActiveTab(tab.key as 'hoy' | 'fiados' | 'alertas')}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${
@@ -1943,12 +1969,12 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             </button>
           ))}
         </div>
-        )}
       </div>
 
+      <div role="tabpanel" id={`pedidos-panel-${activeTab}`} aria-labelledby={`pedidos-tab-${activeTab}`} tabIndex={0}>
       {/* Fase 4a — Pedido Hub (flag ON). Reemplaza la vista "hoy" de tabs;
           atrasados/enRiesgo y todos los modales siguen compartidos. */}
-      {hubMode && !atrasadosParam && !enRiesgoParam && (
+      {hubMode && activeTab === 'hoy' && !atrasadosParam && !enRiesgoParam && (
         <PedidoHub
           pedidos={pedidosVisiblesConPendientes}
           counts={{ porPlanificarCount, atrasadosCount, enRutaCount, esperandoPagoCount, esperandoPagoTotal, pendientesN2Count }}
@@ -2146,28 +2172,42 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           />
         )
       )}
-      {!hubMode && activeTab === 'fiados' && (
+      <CobroFiadoDialog key={session?.user?.id ?? 'sin-sesion'} cliente={clienteCobro} onClose={() => setClienteCobro(null)} userRole={userRole}
+        actorId={session?.user?.id ?? null} visible={activeTab === 'fiados'}
+        onRegistrado={() => { refetchFiados(); refetchCounts(); refreshPedidos() }}
+        onOpenPedido={abrirDocumentoPedido}
+        onOpenFactura={(id, volver) => setFacturaConsulta({ id, volver: volver ?? volverConsulta })} />
+      {activeTab === 'fiados' && (
         <FiadosTable
           clientes={clientes}
           limiteGlobal={limiteGlobalFiados}
           pedidos={pedidosFiados}
-          loading={loadingFiados}
+          loading={loadingFiados || !fiadosCargados && !errorFiados}
+          refetching={actualizandoFiados}
           error={errorFiados}
           activeTab={activeTab}
           onPedidosChange={refetchFiados}
           userRole={userRole}
+          onCobrar={setClienteCobro}
+          onOpenPedido={abrirDocumentoPedido}
+          onOpenFactura={(id, volver) => setFacturaConsulta({ id, volver: volver ?? volverConsulta })}
         />
       )}
-      {!hubMode && activeTab === 'alertas' && (
+      {activeTab === 'alertas' && (
         <AlertasTable
           pedidos={pedidosAlertas}
-          loading={loadingAlertas}
+          loading={loadingAlertas || !alertasCargadas && !errorAlertas}
           error={errorAlertas}
           activeTab={activeTab}
           onCountChange={setAlertasVisibles}
+          onRetry={refetchAlertas}
+          userRole={userRole}
+          onOpenPedido={abrirDocumentoPedido}
+          onOpenFactura={(id, volver) => setFacturaConsulta({ id, volver: volver ?? volverConsulta })}
         />
       )}
 
+      </div>
       {/* Modal Formulario Unificado */}
       <Modal open={showModal || showVentaRapida} onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setNuevaDemanda(null) }} className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[95vh] overflow-hidden flex flex-col">
         <div className={`p-4 border-b flex justify-between items-center ${showVentaRapida ? 'bg-green-50' : 'bg-blue-50'}`}>
@@ -2413,7 +2453,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       {/* Detalle del pedido (P1-1 PR B, #379): cajón lateral en escritorio, pantalla completa en móvil */}
       <Modal
         open={showDetailModal && !!selectedPedido}
-        onClose={() => setShowDetailModal(false)}
+        onClose={() => { setShowDetailModal(false); setPedidoDocumento(null) }}
         overlayClassName="fixed inset-0 bg-black/50 flex justify-end z-50"
         className="bg-white w-full h-[100dvh] md:max-w-3xl md:shadow-xl flex flex-col"
         title={selectedPedido ? `Pedido #${selectedPedido.numero}` : 'Detalle del pedido'}
@@ -2429,8 +2469,11 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             nombreRepartidor={gestionAdmin.repartidores.find((r) => r.id === selectedPedido.entregadoPorId)?.nombre ?? null}
             estadoBadge={getEstadoEntregaBadge(selectedPedido.estadoEntrega)}
             canalBadge={getCanalBadge(selectedPedido.canal)}
-            onClose={() => setShowDetailModal(false)}
+            volverLabel={pedidoDocumento?.volver}
+            onOpenFactura={id => setFacturaConsulta({ id, volver: 'Volver al pedido' })}
+            onClose={() => { setShowDetailModal(false); setPedidoDocumento(null) }}
             onAccion={(key) => {
+              setPedidoDocumento(null)
               switch (key) {
                 case 'editar':
                   setPedidoEditando(selectedPedido)
@@ -2607,6 +2650,13 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       })()}
 
       {/* Confirm Modal */}
+      <FacturaConsultaModal documento={facturaConsulta} onClose={() => setFacturaConsulta(null)}
+        onOpenPedido={id => abrirDocumentoPedido(id, pedidoDocumento?.volver ?? volverConsulta)} />
+      <Modal open={!!pedidoDocumento && (pedidoDocumento.loading || !!pedidoDocumento.error)} onClose={() => setPedidoDocumento(null)}
+        title="Consulta de pedido" overlayClassName="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+        {pedidoDocumento?.loading ? <p role="status">Abriendo pedido…</p> : <div role="alert"><p>{pedidoDocumento?.error}</p><button className="mt-3 min-h-11 rounded border px-4" onClick={() => pedidoDocumento && abrirDocumentoPedido(pedidoDocumento.id, pedidoDocumento.volver)}>Reintentar</button></div>}
+        <button className="mt-4 min-h-11 rounded bg-blue-600 px-4 text-white" onClick={() => setPedidoDocumento(null)}>{pedidoDocumento?.volver}</button>
+      </Modal>
       {confirmModal}
 
       {/* FAB Unificado — solo para quien puede crear pedidos (B-17, #434) */}

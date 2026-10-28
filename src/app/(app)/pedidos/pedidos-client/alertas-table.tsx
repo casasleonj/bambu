@@ -9,14 +9,17 @@ import { CasoGuiaModal, type Caso } from '@/components/caso-guia-modal'
 import type { AlertaTipo, AlertaItem, SeveridadAlerta } from '@/lib/alertas-config'
 import { ignorarAlerta, getGuiaAlerta } from '@/lib/alertas-config'
 import type { Pedido } from './types'
+import { PedidoDocumentLinks, type AccesoDocumentosPedido } from './pedido-document-links'
+import { useParametroConsulta } from './use-consulta-contexto'
 
-interface AlertasTableProps {
+interface AlertasTableProps extends AccesoDocumentosPedido {
   pedidos: Pedido[]
   loading: boolean
   error: string | null
   activeTab: 'hoy' | 'fiados' | 'alertas'
   /** Clientes con alertas visibles (ya sin las ignoradas), para el contador de la pestaña. */
   onCountChange?: (count: number) => void
+  onRetry?: () => void
 }
 
 const SEVERIDAD_ORDER = { ALTA: 3, MEDIA: 2, BAJA: 1 }
@@ -27,10 +30,11 @@ export function AlertasTable({
   error,
   activeTab,
   onCountChange,
+  onRetry, onOpenPedido, onOpenFactura, userRole,
 }: AlertasTableProps) {
-  const [expandedCliente, setExpandedCliente] = useState<string | null>(null)
-  const [filtroSeveridad, setFiltroSeveridad] = useState<'TODAS' | 'ALTA' | 'MEDIA' | 'BAJA'>('TODAS')
-  const [searchTerm, setSearchTerm] = useState('')
+  const [expandedCliente, setExpandedCliente] = useParametroConsulta<string>('alertasExpandido', '')
+  const [filtroSeveridad, setFiltroSeveridad] = useParametroConsulta<'TODAS' | 'ALTA' | 'MEDIA' | 'BAJA'>('alertasSeveridad', 'TODAS', ['TODAS', 'ALTA', 'MEDIA', 'BAJA'])
+  const [searchTerm, setSearchTerm] = useParametroConsulta<string>('alertasBuscar', '')
   const [guiaTipo, setGuiaTipo] = useState<AlertaTipo | null>(null)
   const [guiaOpen, setGuiaOpen] = useState(false)
   const [guiaContexto, setGuiaContexto] = useState<{ pedidoId?: string; clienteId?: string }>({})
@@ -68,9 +72,9 @@ export function AlertasTable({
   )
 
   useEffect(() => {
-    if (loading && pedidosAlertas.length === 0) return
+    if (error || loading && pedidosAlertas.length === 0) return
     onCountChange?.(alertaRows.length)
-  }, [alertaRows, loading, pedidosAlertas.length, onCountChange])
+  }, [alertaRows, loading, error, pedidosAlertas.length, onCountChange])
 
   const handleIgnorar = (clienteId: string, tipo: AlertaTipo) => {
     ignorarAlerta(clienteId, tipo)
@@ -79,11 +83,13 @@ export function AlertasTable({
   }
 
   const filtrados = alertaRows
+    .map(row => filtroSeveridad === 'TODAS' ? row : { ...row,
+      alertas: row.alertas.filter(a => a.severidad === filtroSeveridad), severidadMasAlta: filtroSeveridad })
     .filter((row) => {
       const matchSearch = !searchTerm ||
         row.nombreCli.toLowerCase().includes(searchTerm.toLowerCase()) ||
         row.telefonoCli?.includes(searchTerm)
-      const matchSeveridad = filtroSeveridad === 'TODAS' || row.severidadMasAlta === filtroSeveridad
+      const matchSeveridad = row.alertas.length > 0
       return matchSearch && matchSeveridad
     })
     .sort((a, b) => SEVERIDAD_ORDER[b.severidadMasAlta] - SEVERIDAD_ORDER[a.severidadMasAlta])
@@ -185,7 +191,15 @@ export function AlertasTable({
     }
   }
 
-  if (error) {
+  const documentos = (clienteId: string, alerta: AlertaItem) => {
+    const pedido = pedidosAlertas.find(p => p.id === alerta.pedidoId)
+    return alerta.pedidoId ? <PedidoDocumentLinks pedidoId={alerta.pedidoId} numero={pedido?.numero}
+      facturaId={pedido?.factura?.id} facturaNumero={pedido?.factura?.numero} userRole={userRole}
+      onOpenPedido={onOpenPedido} onOpenFactura={onOpenFactura} volver="Volver a Alertas" />
+      : <p className="mt-2 text-sm text-gray-600">Esta señal no tiene un pedido específico asociado. <a className="inline-flex min-h-11 items-center text-blue-700 underline" href={`/clientes?openCliente=${encodeURIComponent(clienteId)}`}>Ver cliente</a></p>
+  }
+
+  if (error && pedidosAlertas.length === 0) {
     return (
       <div className="space-y-4">
         <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
@@ -193,6 +207,8 @@ export function AlertasTable({
         </div>
         <div className="bg-white rounded-xl shadow p-8 text-center">
           <p className="text-sm text-red-600 mb-3">{error}</p>
+          <p className="text-sm text-gray-600">No podemos confirmar si hay alertas.</p>
+          <button className="mt-3 min-h-11 rounded border px-4" onClick={onRetry}>Reintentar</button>
         </div>
       </div>
     )
@@ -213,6 +229,7 @@ export function AlertasTable({
 
   return (
     <div className="space-y-4">
+      {error && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">No se pudo actualizar. Se conservan los datos anteriores. <button className="min-h-11 px-3 underline" onClick={onRetry}>Reintentar</button></div>}
       {/* Header explicativo */}
       <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
         <div className="flex items-start gap-3">
@@ -223,6 +240,7 @@ export function AlertasTable({
               Detectamos automáticamente comportamientos inusuales: pedidos múltiples, montos anómalos,
               fiados frecuentes, pagos vencidos, disputas abiertas y más. Haz clic en ℹ️ para ver la guía de cada alerta.
             </p>
+            <p className="mt-2 text-sm text-amber-800">Esta consulta es independiente de las fechas de Pedidos. Las alertas son señales para revisar; no demuestran fraude ni registran pagos.</p>
           </div>
         </div>
       </div>
@@ -309,9 +327,9 @@ export function AlertasTable({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Sin alertas activas</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{searchTerm || filtroSeveridad !== 'TODAS' ? 'Sin resultados con estos filtros' : 'No hay alertas visibles'}</h3>
           <p className="text-sm text-gray-500 max-w-md mx-auto mb-4">
-            No se detectaron comportamientos inusuales en el período analizado.
+            {searchTerm || filtroSeveridad !== 'TODAS' ? 'Revisa la búsqueda y la severidad. Puede haber otras alertas fuera de esta consulta.' : 'Las alertas ignoradas conservan su tiempo de ocultación.'}
           </p>
           <div className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 max-w-md mx-auto text-left">
             <p className="font-medium mb-1">¿Por qué no veo alertas?</p>
@@ -363,7 +381,7 @@ export function AlertasTable({
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button
-                        onClick={() => setExpandedCliente(expandedCliente === row.clienteId ? null : row.clienteId)}
+                        onClick={() => setExpandedCliente(expandedCliente === row.clienteId ? '' : row.clienteId)}
                         className="text-sm text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition"
                       >
                         {expandedCliente === row.clienteId ? 'Ocultar' : 'Ver detalle'}
@@ -386,13 +404,13 @@ export function AlertasTable({
                             </div>
                           )}
                           {row.alertas.map((alerta, idx) => (
-                            <div key={idx} className="flex items-center justify-between py-2 border-b last:border-b-0">
+                            <div key={idx} className="flex flex-wrap items-center justify-between gap-2 py-2 border-b last:border-b-0">
                               <div className="flex items-center gap-2 flex-1 min-w-0">
                                 <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium border ${getBadgeColorLocal(alerta.severidad)}`}>
                                   {alerta.severidad}
                                 </span>
                                 <span className="text-sm font-medium">{getTipoLabel(alerta.tipo)}</span>
-                                <span className="text-xs text-gray-500 truncate">{alerta.detalle}</span>
+                                <span className="text-xs text-gray-500">{alerta.detalle}</span>
                               </div>
                                 <div className="flex items-center gap-2 shrink-0">
                                   <button
@@ -424,6 +442,7 @@ export function AlertasTable({
                                   {new Date(alerta.fecha).toLocaleDateString('es-CO')}
                                 </span>
                               </div>
+                              <div className="w-full">{documentos(row.clienteId, alerta)}</div>
                             </div>
                           ))}
                         </div>
@@ -453,7 +472,7 @@ export function AlertasTable({
                 </div>
               </div>
               <button
-                onClick={() => setExpandedCliente(expandedCliente === row.clienteId ? null : row.clienteId)}
+                onClick={() => setExpandedCliente(expandedCliente === row.clienteId ? '' : row.clienteId)}
                 className="w-full text-sm text-blue-600 bg-blue-50 py-2 rounded-lg"
               >
                 {expandedCliente === row.clienteId ? 'Ocultar' : 'Ver detalle'}
@@ -470,7 +489,7 @@ export function AlertasTable({
                     </button>
                   )}
                   {row.alertas.map((alerta, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-sm py-1 border-b last:border-b-0">
+                    <div key={idx} className="flex flex-wrap items-center justify-between gap-2 text-sm py-1 border-b last:border-b-0">
                       <div className="flex items-center gap-2 flex-1 min-w-0">
                         <span className={`px-1.5 py-0.5 rounded text-[10px] border ${getBadgeColorLocal(alerta.severidad)}`}>
                           {alerta.severidad}
@@ -492,6 +511,8 @@ export function AlertasTable({
                           )}
                         <span className="text-xs text-gray-400">{new Date(alerta.fecha).toLocaleDateString('es-CO')}</span>
                       </div>
+                      <p className="w-full text-xs text-gray-600">{alerta.detalle}</p>
+                      <div className="w-full">{documentos(row.clienteId, alerta)}</div>
                     </div>
                   ))}
                 </div>

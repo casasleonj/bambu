@@ -32,7 +32,7 @@ export class ListarPedidosUseCase {
       ? Math.min(Math.max(input.pageSize || 200, 1), 1000)
       : (input.pageSize || 20)
     const options = input.all
-      ? { take: takeLimit }
+      ? { take: takeLimit, ...(input.scope ? { skip: ((input.page || 1) - 1) * takeLimit } : {}) }
       : { take: takeLimit, skip: ((input.page || 1) - 1) * takeLimit }
 
     const pedidos = await this.pedidoRepo.findMany(filter, { ...options, orderBy: 'desc' })
@@ -41,7 +41,9 @@ export class ListarPedidosUseCase {
     // truncado en el tope (pedidos.length === takeLimit); en ese caso, y solo
     // en ese caso, se paga un COUNT(*) para saber el total real. Evita pagar
     // el costo de COUNT(*) en el caso común (no truncado).
-    const total = input.all
+    const total = input.scope
+      ? await this.pedidoRepo.count(filter)
+      : input.all
       ? (pedidos.length === takeLimit ? await this.pedidoRepo.count(filter) : pedidos.length)
       : await this.pedidoRepo.count(filter)
 

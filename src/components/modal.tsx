@@ -44,7 +44,7 @@ export function Modal({ open, onClose, children, className, overlayClassName, ti
       e.stopPropagation()
       onClose()
     }
-    if (e.key === 'Tab' && contentRef.current) {
+    if (e.key === 'Tab' && isTopModal(id) && contentRef.current) {
       const focusable = contentRef.current.querySelectorAll<HTMLElement>(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
       )
@@ -68,10 +68,8 @@ export function Modal({ open, onClose, children, className, overlayClassName, ti
       if (wasOpen.current) {
         wasOpen.current = false
         removeModal(id)
-        // Always clear the body overflow when this modal closes.
-        // The previous useEffect cleanup already restored the exact
-        // previous value; this branch is a defensive fallback.
-        document.body.style.overflow = ''
+        // El cleanup restaura el valor previo: al cerrar un detalle,
+        // el diálogo de revisión que queda debajo sigue bloqueando el fondo.
       }
       return
     }
@@ -82,6 +80,7 @@ export function Modal({ open, onClose, children, className, overlayClassName, ti
       // This prevents the body from getting stuck with overflow='hidden'
       // when a non-Modal overlay (e.g. a side panel via useEscapeGuard)
       // participates in the modalStack without touching overflow itself.
+      const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
       const prevOverflow = document.body.style.overflow
       document.body.style.overflow = 'hidden'
       const timer = setTimeout(() => {
@@ -96,6 +95,7 @@ export function Modal({ open, onClose, children, className, overlayClassName, ti
         removeModal(id)
         document.body.style.overflow = prevOverflow
         clearTimeout(timer)
+        if (previousFocus?.isConnected) previousFocus.focus()
       }
     }
   }, [open, id])
@@ -113,8 +113,8 @@ export function Modal({ open, onClose, children, className, overlayClassName, ti
       ref={overlayRef}
       role="dialog"
       aria-modal="true"
-      aria-labelledby={title ? 'modal-title' : undefined}
-      aria-describedby={description ? 'modal-description' : undefined}
+      aria-labelledby={title ? `${id}-title` : undefined}
+      aria-describedby={description ? `${id}-description` : undefined}
       data-testid={dataTestId}
       className={overlayClassName || 'fixed inset-0 bg-black/50 flex items-start md:items-center justify-center z-50 overflow-y-auto p-4'}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
@@ -124,8 +124,8 @@ export function Modal({ open, onClose, children, className, overlayClassName, ti
         className={className || 'bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto mx-auto mt-10 md:mt-0'}
         onClick={(e) => e.stopPropagation()}
       >
-        {title && <h2 id="modal-title" className="sr-only">{title}</h2>}
-        {description && <p id="modal-description" className="sr-only">{description}</p>}
+        {title && <h2 id={`${id}-title`} className="sr-only">{title}</h2>}
+        {description && <p id={`${id}-description`} className="sr-only">{description}</p>}
         {children}
       </div>
     </div>

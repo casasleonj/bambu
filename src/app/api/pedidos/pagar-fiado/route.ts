@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server'
-import { requireAuth as _requireAuth, requireRole } from '@/lib/auth-check'
-import { ROLES } from '@/lib/constants'
+import { requireRole } from '@/lib/auth-check'
 import { PagarFiadoSchema } from '@/lib/validators'
 import { calcularEstadoPago, shouldFireCulminado } from '@/lib/pedido-utils'
 import { withAdvisoryLock } from '@/lib/locks'
@@ -12,406 +11,187 @@ import { publishRealtimeEvent } from '@/lib/realtime'
 import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
 import { prisma } from '@/lib/prisma'
-import { Money, calcularSaldo } from '@/shared/domain'
-import { registrarReceivableEntry, detectarDivergencia, registrarDivergencia } from '@/lib/receivable-entry'
-import { datosConfirmacionInicial, parseMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
-import { getConfig } from '@/lib/config'
+import { registrarReceivableEntry } from '@/lib/receivable-entry'
+import { datosConfirmacionInicial } from '@/lib/pago-confirmacion'
 import { isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
 import { gestionAdminSinEmbarqueActiva } from '@/lib/gestion-admin'
 import { diaBogota, validarFechaHechoOficina } from '@/lib/gestion-admin-fecha'
 import { nominaQueCubre } from '@/lib/nomina-cobertura'
 import { todayStringBogota } from '@/lib/dates'
 import { EntregaOficinaError, ESTADO_HTTP_OFICINA } from '@/modules/pedidos/domain/services/entrega-oficina.errors'
+import { idResultadoFiado, huellaCobroFiado, prepararCobroFiado, leerResultadoFiado } from '@/lib/fiados-cobro-server'
+import type { AplicacionFiado, ResultadoCobroFiado } from '@/lib/fiados-cobro'
+
+/** #515: revisión y resultados originales, independientes de la fecha de Pedidos. */
+export async function GET(request: NextRequest) {
+  const auth = await requireRole(['ADMIN', 'ASISTENTE', 'CONTADOR'])
+  if (auth instanceof Response) return auth
+  const q = request.nextUrl.searchParams
+  try {
+    if (q.get('recientes') === 'true') {
+      const rows = await prisma.historial.findMany({ where: { entidad: 'Pedido', id: { startsWith: 'cobro-fiado:' } },
+        orderBy: { fecha: 'desc' }, take: 10, select: { datos: true } })
+      return apiSuccess({ resultados: rows.flatMap(row => {
+        const registro = leerResultadoFiado(row.datos)
+        return registro ? [registro.resultado] : []
+      }) })
+    }
+    const clienteId = q.get('clienteId')
+    if (!clienteId) return apiError('Indica el cliente', 400)
+    const offlineId = q.get('offlineId')
+    if (offlineId) {
+      const row = await prisma.historial.findUnique({ where: { id: idResultadoFiado(offlineId) } })
+      if (row?.registroId === clienteId) {
+        const registro = leerResultadoFiado(row.datos)
+        if (registro) return apiSuccess({ estado: 'REGISTRADO', ...registro.resultado, deduped: true })
+      }
+      const previos = await prisma.pago.findMany({ where: { offlineId, pedido: { clienteId } },
+        select: { pedidoId: true, pedido: { select: { numero: true } } } })
+      return apiSuccess({ estado: previos.length ? 'REGISTRADO_LEGACY' : 'NO_ENCONTRADO',
+        pedidos: previos.map(p => ({ id: p.pedidoId, numero: p.pedido.numero })) })
+    }
+    const preparacion = await prepararCobroFiado(clienteId)
+    return preparacion ? apiSuccess({ preparacion }) : apiError('Cliente no encontrado', 404)
+  } catch (error) {
+    logger.error({ err: error }, 'Error consultando cobro de fiado')
+    return apiError('No se pudo consultar el cobro. Conserva su referencia y reintenta.', 500)
+  }
+}
 
 export async function POST(request: NextRequest) {
-  // FIX C-1: solo ADMIN/ASISTENTE pueden registrar pagos de fiado.
-  // Antes, CUALQUIER usuario autenticado (incluso REPARTIDOR) podía mover
-  // dinero aplicando abonos a cualquier cliente. Riesgo de fraude interno
-  // y robo de caja. Ahora se valida el rol explícitamente.
-  const authResult = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE])
-  if (authResult instanceof Response) return authResult
-
+  const auth = await requireRole(['ADMIN', 'ASISTENTE'])
+  if (auth instanceof Response) return auth
   try {
-    const body = await request.json()
-    const parsed = PagarFiadoSchema.safeParse(body)
-    if (!parsed.success) {
-      return apiError('Datos inválidos', 400)
-    }
-
-    const { clienteId, monto, metodo, offlineId, recibioDinero, repartidorId, fechaRecepcion } = parsed.data
-
-    // TEMPORAL-SIN-EMBARQUE(#472): «quién recibió» y «cuándo» solo los acepta el
-    // ADMIN con la gestión temporal encendida. Sin estos campos el cobro no cambia.
-    const gestionOficina = recibioDinero !== undefined || repartidorId !== undefined || fechaRecepcion !== undefined
-    if (gestionOficina) {
-      if ((authResult.user as { role?: string } | undefined)?.role !== ROLES.ADMIN) {
-        return apiError('Solo el administrador puede registrar quién recibió el dinero y cuándo.', 403, { code: 'SOLO_ADMIN' })
-      }
-      if (!(await gestionAdminSinEmbarqueActiva())) {
-        return apiError(
-          'Esta función está desactivada por ahora. Consulta con el administrador del sistema.',
-          403,
-          { code: 'FUNCION_DESACTIVADA' },
-        )
-      }
-    }
-
-    // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: métodos que nacen REPORTADO.
-    const metodosConfirmacion = parseMetodosRequierenConfirmacion(
-      await getConfig('METODOS_REQUIEREN_CONFIRMACION'),
-    )
-
-    // FIX F-N11: dedup por offlineId DENTRO del lock ABONO.
-    // Antes: el check de pagos previos estaba AQUÍ (líneas 30-61 antes
-    // del fix), FUERA del lock. Dos requests idénticos (mismo offlineId)
-    // llegaban casi simultáneos, ambos pasaban el findMany ([]), ambos
-    // entraban al lock. El lock serializa, pero el segundo request
-    // re-lee pedidos fiados que el primero YA PAGÓ. Aplica más pagos
-    // sobre los pedidos restantes o con saldo > 0 → doble descuento.
-    //
-    // Ahora: el check corre DENTRO del lock. Si los pagos ya existen,
-    // se reconstruye el response y se retorna deduped: true sin hacer
-    // trabajo wasted.
-    const resultado = await withAdvisoryLock('CARTERA', clienteId, async (tx) => {
-      // DEDUP DENTRO DEL LOCK
+    const parsed = PagarFiadoSchema.safeParse(await request.json())
+    if (!parsed.success) return apiError('Revisa los medios y montos del cobro', 400)
+    const { clienteId, monto, pagos, offlineId, versionDeuda, recibioDinero, repartidorId, fechaRecepcion } = parsed.data
+    const oficina = recibioDinero !== undefined || repartidorId !== undefined || fechaRecepcion !== undefined
+    const huella = huellaCobroFiado({ clienteId, pagos, recibioDinero: recibioDinero ?? null,
+      repartidorId: repartidorId ?? null, fechaRecepcion: fechaRecepcion ?? null })
+    const outcome = await withAdvisoryLock('CARTERA', clienteId, async tx => {
+      // Dedup antes de la versión: el pago registrado ya cambió la deuda.
       if (offlineId) {
-        const pagosPrevios = await tx.pago.findMany({
-          where: { offlineId },
-          orderBy: { createdAt: 'asc' },
-        })
-        if (pagosPrevios.length > 0) {
-          const montoAplicadoPrevio = pagosPrevios.reduce(
-            (sum: number, p: { monto: unknown }) => sum + Number(p.monto),
-            0,
-          )
-          const pedidosInvolucrados = await tx.pedido.findMany({
-            where: { id: { in: pagosPrevios.map((p: { pedidoId: string }) => p.pedidoId) } },
-            select: { id: true, numero: true, saldo: true, factura: { select: { id: true, numero: true } } },
-          })
-          return {
-            deduped: true as const,
-            pagosAplicados: pedidosInvolucrados.map((p: { id: string; numero: number; saldo: unknown; factura: { id: string; numero: string } | null }) => ({
-              pedidoId: p.id,
-              numero: p.numero,
-              facturaId: p.factura?.id,
-              facturaNumero: p.factura?.numero,
-              montoAplicado: pagosPrevios.find((pg: { pedidoId: string }) => pg.pedidoId === p.id)
-                ? Number(pagosPrevios.find((pg: { pedidoId: string }) => pg.pedidoId === p.id)!.monto)
-                : 0,
-              saldoRestante: Number(p.saldo),
-              abonoCreado: !!p.factura,
-            })),
-            montoAplicado: montoAplicadoPrevio,
-            montoSobrante: Math.max(0, monto - montoAplicadoPrevio),
-            saldoFavorAcreditado: isConsumidorFinalCanonical(clienteId)
-              ? 0
-              : Math.round(Math.max(0, monto - montoAplicadoPrevio) * 100) / 100,
-            mensaje: 'Pago ya aplicado previamente (dedup offline)',
-          }
+        const row = await tx.historial.findUnique({ where: { id: idResultadoFiado(offlineId) } })
+        if (row) {
+          const registro = leerResultadoFiado(row.datos)
+          if (!registro || row.registroId !== clienteId || registro.huella !== huella) return apiError(
+            'Esta referencia corresponde a otro cobro. Consulta su resultado.', 409, { code: 'REFERENCIA_COBRO_DISTINTA' })
+          return { resultado: { ...registro.resultado, deduped: true }, culminados: [] }
+        }
+        // No reconstruir un resumen histórico original ausente desde saldos actuales.
+        const previos = await tx.pago.findMany({ where: { offlineId },
+          select: { pedidoId: true, pedido: { select: { clienteId: true, numero: true } } } })
+        if (previos.length) {
+          if (previos.some(p => p.pedido.clienteId !== clienteId)) return apiError(
+            'Esta referencia corresponde a otro cobro.', 409, { code: 'REFERENCIA_COBRO_DISTINTA' })
+          return apiSuccess({ deduped: true, estado: 'REGISTRADO_LEGACY',
+            mensaje: 'El cobro ya existe. Consulta sus pedidos; no vuelvas a registrarlo.',
+            pedidos: previos.map(p => ({ id: p.pedidoId, numero: p.pedido.numero })) })
         }
       }
-
-      // TEMPORAL-SIN-EMBARQUE(#472): quién recibió el dinero y cuándo. Va DESPUÉS del
-      // dedup (un reintento ya aplicado no se re-valida) y ANTES de tocar saldos.
+      // TEMPORAL-SIN-EMBARQUE(#472): mismos permisos, responsabilidad y fechas.
       let recibidoPorId: string | null = null
       let ocurridoAt: Date | null = null
-      if (gestionOficina) {
-        if (!recibioDinero) {
-          throw new EntregaOficinaError('QUIEN_RECIBIO_REQUERIDO', 'Indica quién recibió el dinero.')
-        }
-        const fechaCobro = fechaRecepcion ? new Date(fechaRecepcion) : new Date()
-        await validarFechaHechoOficina(tx, fechaCobro, 'cobro')
+      let recepcion: ResultadoCobroFiado['recepcion']
+      if (oficina) {
+        if (auth.user?.role !== 'ADMIN') return apiError('Solo el administrador puede registrar quién recibió el dinero y cuándo.', 403, { code: 'SOLO_ADMIN' })
+        if (!(await gestionAdminSinEmbarqueActiva())) return apiError('Esta función está desactivada por ahora. Consulta con el administrador del sistema.', 403, { code: 'FUNCION_DESACTIVADA' })
+        if (!recibioDinero) throw new EntregaOficinaError('QUIEN_RECIBIO_REQUERIDO', 'Indica quién recibió el dinero.')
+        const fecha = fechaRecepcion ? new Date(fechaRecepcion) : new Date()
+        await validarFechaHechoOficina(tx, fecha, 'cobro')
+        let nombreReceptor = 'Oficina'
         if (recibioDinero === 'REPARTIDOR') {
-          if (!repartidorId) {
-            throw new EntregaOficinaError('QUIEN_RECIBIO_REQUERIDO', 'Para decir que lo recibió el repartidor, elige primero quién fue.')
-          }
-          const t = await tx.trabajador.findUnique({
-            where: { id: repartidorId },
-            select: { activo: true, usaMoto: true },
-          })
-          if (!t || !t.activo || !t.usaMoto) {
-            throw new EntregaOficinaError(
-              'REPARTIDOR_INVALIDO',
-              'Ese trabajador no aparece en la lista: solo se pueden elegir trabajadores activos con moto.',
-            )
-          }
-          if (await nominaQueCubre(tx, repartidorId, fechaCobro)) {
-            throw new EntregaOficinaError(
-              'NOMINA_EXISTENTE',
-              'La nómina de ese repartidor para esa fecha ya está hecha. Elige una fecha de un período abierto o habla con quien liquida la nómina.',
-            )
-          }
+          if (!repartidorId) throw new EntregaOficinaError('QUIEN_RECIBIO_REQUERIDO', 'Para decir que lo recibió el repartidor, elige primero quién fue.')
+          const trabajador = await tx.trabajador.findUnique({ where: { id: repartidorId }, select: { activo: true, usaMoto: true, nombre: true } })
+          if (!trabajador?.activo || !trabajador.usaMoto) throw new EntregaOficinaError('REPARTIDOR_INVALIDO', 'Ese trabajador no aparece en la lista: solo se pueden elegir trabajadores activos con moto.')
+          if (await nominaQueCubre(tx, repartidorId, fecha)) throw new EntregaOficinaError('NOMINA_EXISTENTE', 'La nómina de ese repartidor para esa fecha ya está hecha. Elige una fecha de un período abierto o habla con quien liquida la nómina.')
           recibidoPorId = repartidorId
+          nombreReceptor = trabajador.nombre
         }
-        // La fecha del hecho solo se guarda si difiere del registro (#402).
-        ocurridoAt = diaBogota(fechaCobro) !== todayStringBogota() ? fechaCobro : null
+        ocurridoAt = diaBogota(fecha) !== todayStringBogota() ? fecha : null
+        recepcion = { quien: recibioDinero, nombre: nombreReceptor, fecha: fecha.toISOString() }
       }
+      const preparacion = await prepararCobroFiado(clienteId, tx)
+      if (!preparacion) return apiError('Cliente no encontrado', 404)
+      if (versionDeuda && versionDeuda !== preparacion.version) return apiError(
+        'La deuda cambió desde que la revisaste. Actualiza el reparto antes de registrar el pago.', 409, { code: 'DEUDA_CAMBIO' })
+      if (!preparacion.pedidos.length) return apiError('El cliente no tiene deudas pendientes de pedidos entregados', 400, { code: 'SIN_DEUDA' })
 
-      // #514: cobrar cartera solo aplica a pedidos ENTREGADOS. Un sobrante
-      // conserva el saldo a favor de D.6; no elige por el usuario otro pedido
-      // sin entregar para convertirlo automáticamente en anticipo.
-      const pedidosFiados = await tx.pedido.findMany({
-        where: {
-          clienteId,
-          saldo: { gt: 0 },
-          estadoEntrega: 'ENTREGADO',
-        },
-        orderBy: [{ fecha: 'asc' }, { numero: 'asc' }],
-        include: { factura: true },
-      })
-
-      if (pedidosFiados.length === 0) {
-        throw new Error('SIN_DEUDA')
-      }
-
-      let montoRestante = monto
-      const pagosAplicados: Array<{
-        pedidoId: string
-        numero: number
-        facturaId?: string
-        facturaNumero?: string
-        montoAplicado: number
-        saldoRestante: number
-        abonoCreado?: boolean
-      }> = []
-      // Pedidos que este abono deja ENTREGADO + PAGADO por primera vez.
-      // El query FIFO solo trae pedidos con saldo > 0, así que si un
-      // pedido sale PAGADO del loop es una transición recién ocurrida
-      // (nunca "ya estaba así") — dispara PEDIDO_CULMINADO sin riesgo
-      // de doble aviso.
+      const fondos = pagos.map(p => ({ ...p, restante: Math.round(p.monto * 100), aplicado: 0 }))
+      const pagosAplicados: AplicacionFiado[] = []
       const culminados: Array<{ pedidoId: string; numero: number }> = []
-
-      // 2. Aplicar monto FIFO
-      for (const pedido of pedidosFiados) {
-        if (montoRestante <= 0) break
-
-        const saldoPedido = Number(pedido.saldo)
-        const montoAplicar = Math.min(montoRestante, saldoPedido)
-
-        // Crear pago
-        // ADR-PAGO-REPORTADO-CONFIRMADO-001: pago de fiado digital nace
-        // REPORTADO hasta que el escritorio verifica que el dinero entró.
-        const pagoOrigen = await tx.pago.create({
-          data: {
-            pedidoId: pedido.id,
-            metodo,
-            monto: montoAplicar,
-            offlineId: offlineId || null, // dedup offline-first
-            ...(gestionOficina ? { recibidoPorId, ocurridoAt } : {}),
-            ...datosConfirmacionInicial(metodo, metodosConfirmacion),
-          },
-        })
-
-        const nuevoTotalPagado = Number(pedido.totalPagado) + montoAplicar
-        const nuevoSaldo = calcularSaldo(
-          Money.fromDecimal(Number(pedido.total)),
-          Money.fromDecimal(nuevoTotalPagado)
-        ).toDecimal()
-        // G5.1: usar la proyección común. Este cobro solo selecciona entregados;
-        // los anticipos explícitos conservan su regla en el registro de ventas.
-        const nuevoEstadoPago = calcularEstadoPago(Number(pedido.total), nuevoTotalPagado, pedido.estadoEntrega)
-
-        // Actualizar pedido
-        await tx.pedido.update({
-          where: { id: pedido.id },
-          data: {
-            totalPagado: nuevoTotalPagado,
-            saldo: nuevoSaldo,
-            estadoPago: nuevoEstadoPago,
-          },
-        })
-
-        // FASE 5 (ADR-MONETARIO-001, §12): proyección de auditoría en la MISMA tx.
-        await registrarReceivableEntry(tx, {
-          pedidoId: pedido.id,
-          facturaId: pedido.factura?.id ?? null,
-          clienteId,
-          tipo: 'PAGO',
-          monto: montoAplicar,
-          saldoResultante: nuevoSaldo,
-          totalPagadoResultante: nuevoTotalPagado,
-          offlineId,
-        })
-
-        // Contrato §12: verifica que Pedido.saldo (canónico) y la proyección
-        // recién escrita realmente coincidan -- guarda contra un bug futuro
-        // que desincronice el `tx.pedido.update` de arriba de lo que se
-        // registró en ReceivableEntry.
-        const pedidoActualizado = await tx.pedido.findUnique({
-          where: { id: pedido.id },
-          select: { saldo: true },
-        })
-        const { divergencia, diferencia } = detectarDivergencia(
-          Number(pedidoActualizado?.saldo ?? 0),
-          nuevoSaldo,
-        )
-        if (divergencia) {
-          registrarDivergencia({
-            pedidoId: pedido.id,
-            canonico: Number(pedidoActualizado?.saldo ?? 0),
-            proyeccion: nuevoSaldo,
-            diferencia,
-          })
+      for (const pedido of preparacion.pedidos) {
+        let saldo = Math.round(pedido.saldo * 100)
+        let pagado = Math.round(pedido.totalPagado * 100)
+        let aplicado = 0
+        for (const fondo of fondos) {
+          const centavos = Math.min(saldo, fondo.restante)
+          if (centavos <= 0) continue
+          const montoAplicar = centavos / 100
+          const pago = await tx.pago.create({ data: { pedidoId: pedido.id, metodo: fondo.metodo,
+            monto: montoAplicar, offlineId: offlineId ?? null, ...(oficina ? { recibidoPorId, ocurridoAt } : {}),
+            ...datosConfirmacionInicial(fondo.metodo, preparacion.metodosPorConfirmar) } })
+          saldo -= centavos; pagado += centavos; aplicado += centavos
+          fondo.restante -= centavos; fondo.aplicado += centavos
+          await tx.pedido.update({ where: { id: pedido.id }, data: { totalPagado: pagado / 100,
+            saldo: saldo / 100, estadoPago: calcularEstadoPago(pedido.total, pagado / 100, 'ENTREGADO') } })
+          await registrarReceivableEntry(tx, { pedidoId: pedido.id, facturaId: pedido.factura?.id,
+            clienteId, tipo: 'PAGO', monto: montoAplicar, saldoResultante: saldo / 100,
+            totalPagadoResultante: pagado / 100, offlineId })
+          if (pedido.factura) {
+            const factura = await tx.factura.update({ where: { id: pedido.factura.id },
+              data: { saldo: { decrement: montoAplicar }, montoPagado: { increment: montoAplicar } } })
+            await tx.factura.update({ where: { id: factura.id }, data: {
+              estado: Number(factura.saldo) <= 0 ? 'PAGADA' : Number(factura.montoPagado) > 0 ? 'PARCIAL' : 'EMITIDA' } })
+            const numero = await getNextNumero(tx, { model: 'abono', field: 'numero' })
+            await tx.abono.create({ data: { numero: `ABO-${numero.toString().padStart(5, '0')}`,
+              facturaId: factura.id, clienteId, pedidoId: pedido.id, monto: montoAplicar,
+              metodoPago: fondo.metodo, origenCobro: 'ESPEJO_PAGO', pagoOrigenId: pago.id } })
+          }
         }
-
-        if (shouldFireCulminado(pedido.estadoEntrega, nuevoEstadoPago)) {
-          culminados.push({ pedidoId: pedido.id, numero: pedido.numero })
+        if (aplicado > 0) {
+          pagosAplicados.push({ pedidoId: pedido.id, numero: pedido.numero, montoAplicado: aplicado / 100,
+            saldoRestante: saldo / 100, facturaId: pedido.factura?.id, facturaNumero: pedido.factura?.numero })
+          if (shouldFireCulminado('ENTREGADO', calcularEstadoPago(pedido.total, pagado / 100, 'ENTREGADO'))) culminados.push({ pedidoId: pedido.id, numero: pedido.numero })
         }
-
-        // Actualizar factura con el abono (siempre, no solo cuando saldo llega a 0)
-        if (pedido.factura) {
-          const updatedFactura = await tx.factura.update({
-            where: { id: pedido.factura.id },
-            data: {
-              saldo: { decrement: montoAplicar },
-              montoPagado: { increment: montoAplicar },
-            },
-          })
-
-          const facturaSaldo = Number(updatedFactura.saldo)
-          const facturaMontoPagado = Number(updatedFactura.montoPagado)
-          await tx.factura.update({
-            where: { id: pedido.factura.id },
-            data: {
-              estado: facturaSaldo <= 0 ? 'PAGADA' : (facturaMontoPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
-            },
-          })
-        }
-
-        // Crear abono contable si existe factura
-        if (pedido.factura) {
-          const nextNum = await getNextNumero(tx, { model: 'abono', field: 'numero' })
-          await tx.abono.create({
-            data: {
-              numero: `ABO-${nextNum.toString().padStart(5, '0')}`,
-              facturaId: pedido.factura.id,
-              clienteId,
-              pedidoId: pedido.id,
-              monto: montoAplicar,
-              metodoPago: metodo,
-              origenCobro: 'ESPEJO_PAGO',
-              pagoOrigenId: pagoOrigen.id,
-            },
-          })
-        }
-
-        pagosAplicados.push({
-          pedidoId: pedido.id,
-          numero: pedido.numero,
-          facturaId: pedido.factura?.id,
-          facturaNumero: pedido.factura?.numero,
-          montoAplicado: montoAplicar,
-          saldoRestante: nuevoSaldo,
-          abonoCreado: !!pedido.factura,
-        })
-
-        montoRestante -= montoAplicar
+        if (fondos.every(f => f.restante <= 0)) break
       }
-
-      // ADR-CORRECCION-MONETARIA-001 D.6 / Fase 2 §3.4: el sobrante tras aplicar
-      // FIFO deja de "reportarse y perderse" — se acredita al `Cliente.saldoFavor`
-      // dentro de la misma transacción, así queda disponible para el próximo
-      // pedido (lo consume `CrearPedidoUseCase` vía `getSaldoFavor`).
-      //
-      // Redondeo a centavos: el loop resta Numbers de 2 decimales y puede dejar
-      // un residuo de coma flotante (~1e-13) cuando el pago cubre la deuda exacta.
-      // Sin redondear, `> 0` dispararía un increment de sub-centavo y un mensaje
-      // "Sobrante $0".
-      //
-      // Nota de trazabilidad de caja: este crédito NO genera fila `Pago`/`Abono`,
-      // así que el efectivo extra recibido no aparece en `CierreDia` (mismo
-      // comportamiento que el sobrante de un pedido normal, "FIX Fase 2 §3.4").
-      // Cerrar ese gap es parte del rediseño de cartera (PR-B), no de PR-A.
+      // D.6 se conserva. #524 sigue abierto: el crédito no crea un ingreso en cierre.
+      const sobrante = fondos.reduce((sum, f) => sum + f.restante, 0) / 100
       let saldoFavorAcreditado = 0
-      const sobrante = Math.round(montoRestante * 100) / 100
-      // El canónico CONSUMIDOR_FINAL es compartido por todas las ventas anónimas
-      // — acreditarle saldo a favor lo filtraría a la próxima venta anónima ajena.
       if (sobrante > 0 && !isConsumidorFinalCanonical(clienteId)) {
-        await tx.cliente.update({
-          where: { id: clienteId },
-          data: { saldoFavor: { increment: sobrante } },
-        })
+        await tx.cliente.update({ where: { id: clienteId }, data: { saldoFavor: { increment: sobrante } } })
         saldoFavorAcreditado = sobrante
       }
-
-      // F1 (ADR-CONCURRENCIA-001 / contrato §51): la auditoría del hecho
-      // financiero se escribe en la MISMA transacción que aplicó los pagos.
-      // Antes corría post-commit, sin `await` y tragando el error → un fallo
-      // de auditoría dejaba dinero movido sin evidencia. Ahora, si la
-      // auditoría falla, todo el pago hace rollback atómico.
-      await logAudit({
-        entidad: 'Pedido',
-        registroId: clienteId,
-        accion: 'UPDATE',
-        datos: {
-          monto, metodo, pagosAplicados, saldoFavorAcreditado,
-          ...(gestionOficina ? { recibioDinero, repartidorId: recibidoPorId, fechaRecepcion: ocurridoAt?.toISOString() ?? null } : {}),
-        },
-        usuarioId: authResult.user?.id,
-      }, tx)
-
-      return { pagosAplicados, montoRestante, culminados, saldoFavorAcreditado }
+      const resultado: ResultadoCobroFiado = { referencia: offlineId ?? null, clienteId,
+        clienteNombre: preparacion.clienteNombre, registradoAt: new Date().toISOString(), pagosAplicados, ...(recepcion ? { recepcion } : {}),
+        montoRecibido: monto, montoAplicado: monto - sobrante, montoSobrante: sobrante, saldoFavorAcreditado,
+        medios: fondos.map(f => ({ metodo: f.metodo, monto: f.monto, montoAplicado: f.aplicado / 100,
+          saldoFavor: f.restante / 100, confirmacion: f.aplicado > 0 ? datosConfirmacionInicial(f.metodo, preparacion.metodosPorConfirmar).confirmacion : null })) }
+      await logAudit({ ...(offlineId ? { id: idResultadoFiado(offlineId) } : {}), entidad: 'Pedido', registroId: clienteId,
+        accion: 'UPDATE', usuarioId: auth.user?.id, datos: { operacion: 'COBRO_FIADO_V2', huella, resultado,
+          monto, pagos, pagosAplicados, saldoFavorAcreditado,
+          ...(oficina ? { recibioDinero, repartidorId: recibidoPorId, fechaRecepcion: ocurridoAt?.toISOString() ?? null } : {}) } }, tx)
+      return { resultado, culminados }
     })
-
-    if (!resultado.deduped && resultado.pagosAplicados.length > 0) {
-      publishRealtimeEvent('pago.created', clienteId).catch(() => {})
-      const afectados = new Set(resultado.pagosAplicados.map((p) => p.pedidoId))
-      afectados.forEach((pedidoId) => {
-        publishRealtimeEvent('pedido.updated', pedidoId).catch(() => {})
-      })
-
-      void (async () => {
-        const clienteInfo = await prisma.cliente
-          .findUnique({ where: { id: clienteId }, select: { nombre: true } })
-          .catch(() => null)
-
-        void notifyEvent(NotificationEventType.ABONO_APLICADO, {
-          title: 'Abono aplicado',
-          body: `Se aplicó un abono de $${(monto - resultado.montoRestante).toLocaleString()}${clienteInfo ? ` a ${clienteInfo.nombre}` : ''}.`,
-          url: `/clientes?openCliente=${clienteId}`,
-          tag: offlineId ?? `abono-${clienteId}-${Date.now()}`,
-        })
-      })()
-
-      resultado.culminados.forEach((c) => {
-        void notifyEvent(NotificationEventType.PEDIDO_CULMINADO, {
-          title: 'Pedido culminado',
-          body: `Pedido #${c.numero} fue entregado y pagado en su totalidad.`,
-          url: `/pedidos?openPedido=${c.pedidoId}`,
-          tag: `pedido-culminado-${c.pedidoId}`,
-        })
-      })
+    if (outcome instanceof Response) return outcome
+    const { resultado, culminados } = outcome
+    if (!resultado.deduped) {
+      void publishRealtimeEvent('pago.created', clienteId).catch(() => {})
+      for (const pedido of resultado.pagosAplicados) void publishRealtimeEvent('pedido.updated', pedido.pedidoId).catch(() => {})
+      void notifyEvent(NotificationEventType.ABONO_APLICADO, { title: 'Abono aplicado',
+        body: `Se aplicó un abono de $${resultado.montoAplicado.toLocaleString()} a ${resultado.clienteNombre}.`,
+        url: `/clientes?openCliente=${clienteId}`, tag: offlineId ?? `abono-${clienteId}-${Date.now()}` }).catch(() => {})
+      for (const pedido of culminados) void notifyEvent(NotificationEventType.PEDIDO_CULMINADO, {
+        title: 'Pedido culminado', body: `Pedido #${pedido.numero} fue entregado y pagado en su totalidad.`,
+        url: `/pedidos?openPedido=${pedido.pedidoId}`, tag: `pedido-culminado-${pedido.pedidoId}` }).catch(() => {})
     }
-
-    return apiSuccess({
-      // Si fue deduped, propagar la respuesta original; si no, la nueva
-      ...(resultado.deduped
-        ? {
-            deduped: true,
-            pagosAplicados: resultado.pagosAplicados,
-            montoAplicado: resultado.montoAplicado,
-            montoSobrante: resultado.montoSobrante,
-            saldoFavorAcreditado: resultado.saldoFavorAcreditado,
-            mensaje: resultado.mensaje,
-          }
-        : {
-            pagosAplicados: resultado.pagosAplicados,
-            montoAplicado: monto - resultado.montoRestante,
-            montoSobrante: resultado.montoRestante,
-            saldoFavorAcreditado: resultado.saldoFavorAcreditado,
-            mensaje: resultado.saldoFavorAcreditado > 0
-              ? `Pagado $${(monto - resultado.saldoFavorAcreditado).toLocaleString()}. Sobrante $${resultado.saldoFavorAcreditado.toLocaleString()} acreditado a saldo a favor.`
-              : `Pagado completo $${monto.toLocaleString()}`,
-          }),
-    })
+    return apiSuccess({ ...resultado, mensaje: resultado.deduped ? 'Pago ya registrado; se conserva el resultado original.' : 'Pago registrado.' })
   } catch (error) {
-    if (error instanceof EntregaOficinaError) {
-      return apiError(error.message, ESTADO_HTTP_OFICINA[error.codigo], { code: error.codigo })
-    }
-    if (error instanceof Error && error.message === 'SIN_DEUDA') {
-      return apiError('El cliente no tiene deudas pendientes', 400)
-    }
-    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error pagando fiado')
-    return apiError('Error procesando el pago', 500)
+    if (error instanceof EntregaOficinaError) return apiError(error.message, ESTADO_HTTP_OFICINA[error.codigo], { code: error.codigo })
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') return apiError(
+      'La referencia de cobro ya existe. Consulta su estado antes de continuar.', 409, { code: 'REFERENCIA_COBRO_DISTINTA' })
+    logger.error({ err: error }, 'Error pagando fiado')
+    return apiError('No se pudo confirmar el resultado del registro. Conserva la referencia y consulta su estado antes de repetirlo.', 500)
   }
 }

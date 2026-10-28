@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
     // G6: filtro por `canal`; acepta el param legacy `?tipo=ENVIO|PUNTO`.
     const canalFilter = normalizeCanalFilter([...searchParams.getAll('canal'), ...searchParams.getAll('tipo')])
     const scopeFilter = searchParams.get('scope')
+    const scoped = scopeFilter === 'fiados' || scopeFilter === 'alertas'
     // Fase 8 F8-i — faceta "Solo habituales": solo pedidos que SON realmente
     // recurrentes (`origen='RECURRENTE'`). Misma autoridad que el SSR
     // (`pedidos/page.tsx`) y el dominio (`PrismaPedidoRepository.buildWhere`).
@@ -48,10 +49,10 @@ export async function GET(request: NextRequest) {
     // "Sin asignar de días anteriores" — ver src/lib/pedidos-sin-asignar.ts.
     // No aplica a REPARTIDOR (solo ve pedidos ya asignados a él por diseño,
     // más arriba se fuerza embarqueId: { not: null } para ese rol).
-    const atrasadosMode = searchParams.get('atrasados') === 'true' && session.user?.role !== 'REPARTIDOR'
+    const atrasadosMode = !scoped && searchParams.get('atrasados') === 'true' && session.user?.role !== 'REPARTIDOR'
     // "En riesgo de hoy" — ver findPedidosHoyEnRiesgoIds en pedidos-sin-asignar.ts.
     // Mismo motivo que atrasadosMode: no aplica a REPARTIDOR.
-    const enRiesgoMode = searchParams.get('enRiesgo') === 'true' && session.user?.role !== 'REPARTIDOR'
+    const enRiesgoMode = !scoped && searchParams.get('enRiesgo') === 'true' && session.user?.role !== 'REPARTIDOR'
 
     // Build filter for use case
     const filter: Record<string, unknown> = {}
@@ -174,7 +175,7 @@ export async function GET(request: NextRequest) {
     const negocioIds = [
       ...new Set(result.pedidos.map(p => p.negocioId).filter((id): id is string => Boolean(id))),
     ]
-    const [clientes, negocios, embarquesPorId] = await Promise.all([
+    const [clientes, negocios, embarquesPorId, facturas] = await Promise.all([
       prisma.cliente.findMany({
         where: { id: { in: clienteIds } },
         include: { ruta: { select: { nombre: true } } },
@@ -186,9 +187,13 @@ export async function GET(request: NextRequest) {
           })
         : Promise.resolve([]),
       cargarEmbarquesLista(prisma, result.pedidos.map(p => p.embarqueId)),
+      scoped && ['ADMIN', 'CONTADOR'].includes(session.user?.role ?? '')
+        ? prisma.factura.findMany({ where: { pedidoId: { in: result.pedidos.map(p => p.id) } },
+          select: { id: true, numero: true, estado: true, pedidoId: true } }) : Promise.resolve([]),
     ])
     const clienteById = new Map(clientes.map(c => [c.id, c]))
     const negocioById = new Map(negocios.map(n => [n.id, n]))
+    const facturaByPedido = new Map(facturas.map(f => [f.pedidoId, f]))
 
     const enriched = result.pedidos.map(p => {
       const cliente = clienteById.get(p.clienteId)
@@ -210,6 +215,7 @@ export async function GET(request: NextRequest) {
 
       return {
         ...p,
+        ...(scoped ? { factura: facturaByPedido.get(p.id) ?? null } : {}),
         nombreCli: getAnonymousClientDisplayName(p.clienteId, 'short') ?? (cliente?.nombre || 'Desconocido'),
         apellidoCli: cliente?.apellido || null,
         telefonoCli: cliente?.telefono || '',

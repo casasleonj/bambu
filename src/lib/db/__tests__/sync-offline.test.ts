@@ -295,6 +295,27 @@ describe('syncWithServer', () => {
     )
   })
 
+  it('#515: DEUDA_CAMBIO409 conserva el cobro para revisión y no anuncia pago aplicado', async () => {
+    const req = { id: 51, url: '/api/pedidos/pagar-fiado', method: 'POST',
+      body: JSON.stringify({ clienteId: 'cliente', offlineId: 'cobro-51', versionDeuda: 'anterior', pagos: [{ metodo: 'EFECTIVO', monto: 1000 }] }),
+      offlineId: 'cobro-51', localEndpoint: 'pagar-fiado', createdAt: new Date(), attempts: 0 }
+    mockOrderByToArray(mockDb.requestQueue, [req])
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 409,
+      json: async () => ({ success: false, error: { code: 'DEUDA_CAMBIO', message: 'Actualiza el reparto antes de registrar.' } }) })
+    const events: unknown[] = []
+    const listener = (event: Event) => events.push((event as CustomEvent).detail)
+    window.addEventListener('bambu:sync-item-done', listener)
+    try {
+      const result = await syncWithServer()
+      expect(result.synced).toBe(0)
+      expect(result.conflicts).toBe(0)
+      expect(result.failedPermanently).toBe(1)
+      expect(mockDb.failedItems.add).toHaveBeenCalledWith(expect.objectContaining({
+        body: req.body, offlineId: req.offlineId, lastError: 'Actualiza el reparto antes de registrar.' }))
+      expect(events).toContainEqual(expect.objectContaining({ offlineId: 'cobro-51', status: 'dlq' }))
+    } finally { window.removeEventListener('bambu:sync-item-done', listener) }
+  })
+
   // Fix pedidos offline (post bug Aponte): un rechazo permanente (ej.
   // límite de fiado) debe llevar el motivo real del servidor en el evento
   // bambu:sync-item-done, para que la fila pendiente pueda mostrar POR QUÉ

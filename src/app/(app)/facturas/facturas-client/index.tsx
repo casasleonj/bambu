@@ -19,6 +19,7 @@ import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import { generateUUID } from '@/lib/uuid'
 import type { Factura, EmpresaConfig } from './types'
 import { SkeletonPage } from '@/components/skeleton'
+import { vueltaAPedidos } from '@/lib/pedidos-contexto'
 
 const DEFAULT_EMPRESA: EmpresaConfig = {
   nombre: 'Agua Bambú SAS',
@@ -93,12 +94,14 @@ export default function FacturasPage() {
 
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
   const [highlightedFactura, setHighlightedFactura] = useState<string | null>(null)
-  const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null)
   const [facturaDetail, setFacturaDetail] = useState<Factura | null>(null)
   const [empresaConfig, setEmpresaConfig] = useState<EmpresaConfig>(DEFAULT_EMPRESA)
   const [loading, setLoading] = useState(true)
   const [loadingDetail, setLoadingDetail] = useState(false)
-  const [hasAutoOpened, setHasAutoOpened] = useState(false)
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const [detailError, setDetailError] = useState<string | null>(null)
+  const detailSeq = useRef(0)
+  const openedFromUrl = useRef<string | null>(null)
   const [selection, setSelection] = useState<UnifiedSelection>(null)
   const [selectedLabel, setSelectedLabel] = useState('')
   const [clienteSeleccionado, setClienteSeleccionado] = useState<{ id: string; nombre: string } | null>(null)
@@ -114,6 +117,7 @@ export default function FacturasPage() {
   const [conteos, setConteos] = useState<Record<EstadoFilter, number>>(CONTEOS_VACIOS)
   const cardRefs = useRef<Map<string, HTMLElement>>(new Map())
   const openFacturaParam = params.get('openFactura')
+  const volver = vueltaAPedidos(params.get('volver'))
 
   const [estadoFilter, setEstadoFilter] = useState<EstadoFilter>('TODAS')
   const [sortField, setSortField] = useState<SortField>('fecha')
@@ -147,35 +151,37 @@ export default function FacturasPage() {
   }, [])
 
   const openFacturaDetail = useCallback(async (id: string) => {
-    setLoadingDetail(true)
-    setSelectedFactura(facturas.find(f => f.id === id) || null)
+    const seq = ++detailSeq.current
+    setDetailId(id); setDetailError(null); setLoadingDetail(true); setFacturaDetail(null)
+    if (params.get('openFactura') !== id) params.set({ openFactura: id }, { history: 'push' })
     try {
-      const res = await fetch(`/api/facturas/${id}`)
+      const res = await fetch(`/api/facturas/${encodeURIComponent(id)}`)
+      if (seq !== detailSeq.current) return
       if (res.ok) {
         const data = await res.json()
+        if (seq !== detailSeq.current) return
+        if (data.factura?.id !== id) throw new Error('No se pudo identificar la factura solicitada.')
         setFacturaDetail(data.factura)
         setHighlightedFactura(id)
       } else {
-        toast.error('No se pudo cargar el detalle de la factura')
+        setDetailError(res.status === 404 ? 'Factura no encontrada.' : res.status === 403
+          ? 'Tu perfil no tiene acceso a esta factura.' : 'No se pudo cargar el detalle de la factura.')
       }
-    } catch {
-      toast.error('Error cargando detalle')
+    } catch (error) {
+      if (seq === detailSeq.current) setDetailError(error instanceof Error ? error.message : 'No se pudo consultar la factura.')
     }
-    setLoadingDetail(false)
-  }, [facturas])
+    if (seq === detailSeq.current) setLoadingDetail(false)
+  }, [params])
 
   useEffect(() => {
-    if (!openFacturaParam || facturas.length === 0 || hasAutoOpened) return
+    if (!openFacturaParam) return
     const factura = facturas.find(f => f.id === openFacturaParam || f.numero === openFacturaParam)
-    if (factura) {
-      // Abre el detalle de la factura desde el query param — dispara un
-      // fetch real (side effect de red), no derivable durante el render.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      openFacturaDetail(factura.id)
-      setHasAutoOpened(true)
-      params.set({ openFactura: undefined }, { history: 'replace' })
-    }
-  }, [openFacturaParam, facturas, hasAutoOpened, params, openFacturaDetail])
+    const target = factura?.id ?? openFacturaParam
+    if (openedFromUrl.current === target) return
+    openedFromUrl.current = target
+    // La factura objetivo puede no estar en la página, período o filtro actual.
+    void openFacturaDetail(target)
+  }, [openFacturaParam, facturas, openFacturaDetail])
 
   const selectedClienteId = selection?.type === 'cliente' ? selection.id : null
   const selectedFacturaId = selection?.type === 'factura' ? selection.id : null
@@ -227,7 +233,10 @@ export default function FacturasPage() {
   }, [fetchFacturas])
 
   const closeFacturaDetail = () => {
-    setSelectedFactura(null)
+    detailSeq.current++
+    openedFromUrl.current = null
+    setDetailId(null); setDetailError(null); setLoadingDetail(false)
+    params.set({ openFactura: undefined }, { history: 'replace' })
     setFacturaDetail(null)
     setHighlightedFactura(null)
   }
@@ -900,10 +909,10 @@ export default function FacturasPage() {
       )}
 
       {/* Modal de detalle de factura */}
-      <Modal open={!!selectedFactura} onClose={closeFacturaDetail} className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto mx-auto mt-10 md:mt-0 p-0">
+      <Modal open={!!detailId} onClose={closeFacturaDetail} className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto mx-auto mt-10 md:mt-0 p-0">
         {loadingDetail ? (
           <div className="p-8 text-center text-gray-500">Cargando detalle...</div>
-        ) : facturaDetail ? (
+        ) : detailError ? <div role="alert" className="p-6"><h2 className="font-semibold">No se pudo abrir la factura</h2><p className="mt-2">{detailError}</p><button className="mt-4 min-h-11 rounded border px-4" onClick={() => detailId && void openFacturaDetail(detailId)}>Reintentar</button><button className="ml-2 min-h-11 rounded border px-4" onClick={closeFacturaDetail}>Cerrar</button></div> : facturaDetail ? (
           <div className="p-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-semibold">Detalle de Factura</h2>
@@ -926,6 +935,7 @@ export default function FacturasPage() {
             />
           </div>
         ) : null}
+        {volver && <div className="border-t p-4"><a className="inline-flex min-h-11 items-center rounded-lg bg-blue-600 px-4 text-white" href={volver}>Volver a {new URL(volver, 'https://contexto.invalid').searchParams.get('tab') === 'fiados' ? 'Fiados' : new URL(volver, 'https://contexto.invalid').searchParams.get('tab') === 'alertas' ? 'Alertas' : 'Pedidos'}</a></div>}
       </Modal>
 
       {/* Modal de abono standalone */}

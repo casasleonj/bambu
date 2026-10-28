@@ -28,7 +28,7 @@ const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
 test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
   test.skip(!HUB_ON, 'requiere NEXT_PUBLIC_PEDIDOS_V2=true + webServer fresco')
 
-  test('shell: focos visibles, sin tabs (G2), lista con microcopy y acción destacada', async ({ browser }) => {
+  test('shell: focos visibles y acceso independiente a Fiados/Alertas (#515)', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
     const app = appMain(page)
     const nombreCli = `Hub Shell ${Date.now()}`
@@ -42,9 +42,10 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await page.goto(`${BASE}/pedidos?all=true`)
     await expect(app.getByTestId('pedido-hub')).toBeVisible()
     await expect(app.getByTestId('foco-strip')).toBeVisible()
-    // G2: sin tabs Fiados/Alertas
-    await expect(app.getByTestId('tab-hoy')).toHaveCount(0)
-    await expect(app.getByTestId('tab-fiados')).toHaveCount(0)
+    // #515: G2 reconciliado por aprobación del PO: focos dentro de Pedidos, pestañas independientes.
+    await expect(app.getByTestId('tab-hoy')).toBeVisible()
+    await expect(app.getByTestId('tab-fiados')).toBeVisible()
+    await expect(app.getByTestId('tab-alertas')).toBeVisible()
 
     // La fila de ESTE test: la lista trae datos de seed + otros tests del
     // shard, `.first()` no garantiza que sea la recién creada.
