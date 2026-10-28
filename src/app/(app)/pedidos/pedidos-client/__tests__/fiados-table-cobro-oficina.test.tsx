@@ -20,7 +20,7 @@ async function llenar() {
   fireEvent.change(screen.getByLabelText('Monto 1'), { target: { value: '60000' } })
 }
 async function registrar() {
-  fireEvent.click(screen.getByRole('button', { name: 'Revisar reparto', exact: true }))
+  fireEvent.click(screen.getByRole('button', { name: 'Revisar reparto' }))
   fireEvent.click(await screen.findByRole('button', { name: /Registrar.*60/ }))
   await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1))
 }
@@ -34,7 +34,7 @@ describe('CobroFiadoDialog — quién recibió (#472)', () => {
     mockGestion.mockReturnValue({ activa: true, repartidores: REPARTIDORES })
     montar('ADMIN'); await llenar()
     expect((screen.getByTestId('cobro-recibio-oficina') as HTMLInputElement).checked).toBe(false)
-    fireEvent.click(screen.getByRole('button', { name: 'Revisar reparto', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar reparto' }))
     expect(screen.getAllByText('Indica quién recibió el dinero.').length).toBeGreaterThan(0)
     expect(mockFetch).not.toHaveBeenCalled()
   })
@@ -42,7 +42,7 @@ describe('CobroFiadoDialog — quién recibió (#472)', () => {
     mockGestion.mockReturnValue({ activa: true, repartidores: REPARTIDORES })
     montar('ADMIN'); await llenar()
     fireEvent.click(screen.getByTestId('cobro-recibio-repartidor'))
-    fireEvent.click(screen.getByRole('button', { name: 'Revisar reparto', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar reparto' }))
     expect(screen.getAllByText('Elige qué repartidor recibió el dinero.').length).toBeGreaterThan(0)
     expect(mockFetch).not.toHaveBeenCalled()
     fireEvent.change(screen.getByLabelText(/¿Qué repartidor\?/), { target: { value: 'r1' } })

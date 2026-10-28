@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
       }
       const resultado: ResultadoCobroFiado = { referencia: offlineId ?? null, clienteId,
         clienteNombre: preparacion.clienteNombre, registradoAt: new Date().toISOString(), pagosAplicados, ...(recepcion ? { recepcion } : {}),
-        montoRecibido: monto, montoAplicado: monto - sobrante, montoSobrante: sobrante, saldoFavorAcreditado,
+        montoRecibido: monto, montoAplicado: (Math.round(monto * 100) - Math.round(sobrante * 100)) / 100, montoSobrante: sobrante, saldoFavorAcreditado,
         medios: fondos.map(f => ({ metodo: f.metodo, monto: f.monto, montoAplicado: f.aplicado / 100,
           saldoFavor: f.restante / 100, confirmacion: f.aplicado > 0 ? datosConfirmacionInicial(f.metodo, preparacion.metodosPorConfirmar).confirmacion : null })) }
       await logAudit({ ...(offlineId ? { id: idResultadoFiado(offlineId) } : {}), entidad: 'Pedido', registroId: clienteId,

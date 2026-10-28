@@ -303,11 +303,13 @@ export function AlertasTable({
           <input
             type="text"
             placeholder="Buscar cliente..."
+            aria-label="Buscar cliente en Alertas"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="flex-1 min-w-0 px-4 py-2 border border-gray-300 rounded-lg text-sm"
           />
           <select
+            aria-label="Severidad de las alertas"
             value={filtroSeveridad}
             onChange={(e) => setFiltroSeveridad(e.target.value as 'TODAS' | 'ALTA' | 'MEDIA' | 'BAJA')}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm"

@@ -68,6 +68,8 @@ export interface UsePedidosResult {
   appliedKeyRef: React.MutableRefObject<string>
 }
 
+class ConsultaPedidosIncompletaError extends Error {}
+
 export function usePedidos(
   params?: PedidoFilterParams,
   options?: UsePedidosOptions,
@@ -175,15 +177,15 @@ export function usePedidos(
             const response = await fetchPage(next.toString())
             const more = await response.json()
             if (!isCurrent()) return
-            if (!response.ok || !more.success) throw new Error('No se pudo completar la consulta')
+            if (!response.ok || !more.success) throw new ConsultaPedidosIncompletaError('No se pudo completar la consulta')
             const items: unknown[] = more.pedidos || more.data || []
-            if (items.length === 0) throw new Error('La consulta cambió. Reintenta para actualizarla.')
+            if (items.length === 0) throw new ConsultaPedidosIncompletaError('La consulta cambió. Reintenta para actualizarla.')
             rows = rows.concat(items)
             total = Number(more.total || 0)
           }
           const identities = rows.map(row => row && typeof row === 'object' && 'id' in row ? row.id : row)
           if (new Set(identities).size !== rows.length || rows.length !== total) {
-            throw new Error('La consulta cambió. Reintenta para actualizarla.')
+            throw new ConsultaPedidosIncompletaError('La consulta cambió. Reintenta para actualizarla.')
           }
         }
         // Guardar la key de los parámetros de este fetch para que el consumidor
@@ -209,7 +211,7 @@ export function usePedidos(
         return
       }
       console.error('Error fetching pedidos:', err)
-      setError('No se pudieron cargar los pedidos')
+      setError(err instanceof ConsultaPedidosIncompletaError ? err.message : 'No se pudieron cargar los pedidos')
     } finally {
       clearTimeout(timeoutId)
       // Guardado por isCurrent(): una respuesta stale/cancelada no puede
