@@ -258,6 +258,19 @@ export class PrismaPedidoRepository implements IPedidoRepository {
 
   private buildWhere(filter?: PedidoFilter): Record<string, unknown> {
     const where: Record<string, unknown> = {}
+    // #515: las consultas de Fiados/Alertas tienen alcance propio. Una fecha,
+    // canal o estado conservados en la URL de Pedidos no limitan estas vistas.
+    // Se conserva el cliente solicitado y cualquier restricción de ownership.
+    if (filter?.scope) {
+      if (filter.clienteId) where.clienteId = filter.clienteId
+      if (filter.embarqueId !== undefined) where.embarqueId = filter.embarqueId
+      if (filter.scope === 'fiados') {
+        where.estadoEntrega = 'ENTREGADO'
+        where.saldo = { gt: 0 }
+        if (!filter.clienteId) where.clienteId = { not: CANONICAL_CONSUMIDOR_FINAL_ID }
+      }
+      return where
+    }
     if (filter?.id && filter.id.length > 0) where.id = { in: filter.id }
     if (filter?.clienteId) where.clienteId = filter.clienteId
     if (filter?.pedidoOrigenId) where.pedidoOrigenId = filter.pedidoOrigenId
@@ -265,13 +278,6 @@ export class PrismaPedidoRepository implements IPedidoRepository {
     if (filter?.estadoEntrega && filter.estadoEntrega.length > 0) where.estadoEntrega = { in: filter.estadoEntrega }
     if (filter?.estadoPago && filter.estadoPago.length > 0) where.estadoPago = { in: filter.estadoPago }
     if (filter?.origen && filter.origen.length > 0) where.origen = { in: filter.origen }
-    if (filter?.scope === 'fiados') {
-      where.estadoEntrega = 'ENTREGADO'
-      where.saldo = { gt: 0 }
-      if (!filter.clienteId) {
-        where.clienteId = { not: CANONICAL_CONSUMIDOR_FINAL_ID }
-      }
-    }
     // G6: filtro por `canal` canónico. `filter.tipo` (legacy) se normaliza con
     // el mismo helper que usan los callers (evita divergencia).
     const canalValues = normalizeCanalFilter([...(filter?.canal ?? []), ...(filter?.tipo ?? [])])

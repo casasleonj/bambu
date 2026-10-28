@@ -30,7 +30,7 @@ async function crearPedidoPendiente(page: PaginaAdmin, nombre: string) {
   const body = await res.json()
   const p = body.data?.pedido ?? body.pedido
   const fila = await prisma.pedido.findUniqueOrThrow({ where: { id: p.id as string } })
-  return { id: p.id as string, numero: p.numero as number, total: Number(fila.total) }
+  return { id: p.id as string, numero: p.numero as number, total: Number(fila.total), clienteId: fila.clienteId }
 }
 
 test.describe('Gestión temporal sin embarque (#472)', () => {
@@ -138,22 +138,25 @@ test.describe('Gestión temporal sin embarque (#472)', () => {
     })
     expect(entrega.ok()).toBeTruthy()
 
-    await page.goto(`${BASE}/pedidos?tab=fiados`)
+    await page.goto(`${BASE}/pedidos?tab=fiados&fiadosCliente=${encodeURIComponent(ped.clienteId)}`)
     const fiados = responsiveContainer(page, 'fiados-mobile', 'fiados-desktop')
     const fila = fiados.getByText(/GE cobro/).first()
     await expect(fila).toBeVisible({ timeout: 20000 })
-    await fiados.getByRole('button', { name: /^(Pagar)$/ }).last().click()
-    await fiados.getByPlaceholder(/Máx|Monto a pagar/).fill(String(ped.total))
+    await fiados.getByRole('button', { name: 'Registrar pago', exact: true }).last().click()
+    const cobro = page.getByTestId('cobro-fiado-dialog')
+    await cobro.getByLabel('Medio 1', { exact: true }).selectOption('EFECTIVO')
+    await cobro.getByLabel('Monto 1', { exact: true }).fill(String(ped.total))
 
     // Sin decir quién recibió NO se cobra.
-    await fiados.getByRole('button', { name: /Confirmar pago|^Pagar$/ }).last().click()
-    await expect(fiados.getByText('Indica quién recibió el dinero.')).toBeVisible()
+    await cobro.getByRole('button', { name: 'Revisar reparto', exact: true }).click()
+    await expect(cobro.getByText('Indica quién recibió el dinero.')).toBeVisible()
     expect(await prisma.pago.count({ where: { pedidoId: ped.id } })).toBe(0)
 
-    await fiados.getByTestId('cobro-recibio-repartidor').check()
-    await fiados.getByLabel(/¿Qué repartidor\?/).selectOption({ label: repartidor.nombre })
-    await fiados.getByRole('button', { name: /Confirmar pago|^Pagar$/ }).last().click()
-    await expect(page.getByText(/Pago aplicado/)).toBeVisible({ timeout: 20000 })
+    await cobro.getByTestId('cobro-recibio-repartidor').check()
+    await cobro.getByLabel(/¿Qué repartidor\?/).selectOption({ label: repartidor.nombre })
+    await cobro.getByRole('button', { name: 'Revisar reparto', exact: true }).click()
+    await cobro.getByRole('button', { name: /^Registrar \$/ }).click()
+    await expect(cobro.getByRole('heading', { name: 'Pago registrado', exact: true })).toBeVisible({ timeout: 20000 })
 
     const pagos = await prisma.pago.findMany({ where: { pedidoId: ped.id } })
     expect(pagos).toHaveLength(1)

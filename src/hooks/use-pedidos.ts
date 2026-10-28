@@ -68,6 +68,8 @@ export interface UsePedidosResult {
   appliedKeyRef: React.MutableRefObject<string>
 }
 
+class ConsultaPedidosIncompletaError extends Error {}
+
 export function usePedidos(
   params?: PedidoFilterParams,
   options?: UsePedidosOptions,
@@ -88,6 +90,7 @@ export function usePedidos(
   const lastParamsKeyRef = useRef<string>('')
   const requestIdRef = useRef(0)
   const appliedKeyRef = useRef<string>('')
+  const fetchEntireScope = Boolean(options?.all && params?.scope)
 
   const paramsKey = useMemo(() => JSON.stringify({
     ...params,
@@ -153,21 +156,44 @@ export function usePedidos(
 
     try {
       const url = buildUrl()
-      const res = await fetch(url, {
+      const fetchPage = (target: string) => fetch(target, {
         credentials: 'include',
         signal: controller.signal,
       })
-      clearTimeout(timeoutId)
+      const res = await fetchPage(url)
       if (!isCurrent()) return
       const data = await res.json()
       if (!isCurrent()) return
       if (data.success) {
+        let rows: unknown[] = data.pedidos || data.data || []
+        let total = Number(data.total || 0)
+        // #515: "Todos" no puede ser solo los 200 más recientes. Los scopes
+        // se paginan sin fechas; no se presenta un resultado truncado como completo.
+        if (fetchEntireScope) {
+          let page = 1
+          while (rows.length < total) {
+            const next = new URL(url)
+            next.searchParams.set('page', String(++page))
+            const response = await fetchPage(next.toString())
+            const more = await response.json()
+            if (!isCurrent()) return
+            if (!response.ok || !more.success) throw new ConsultaPedidosIncompletaError('No se pudo completar la consulta')
+            const items: unknown[] = more.pedidos || more.data || []
+            if (items.length === 0) throw new ConsultaPedidosIncompletaError('La consulta cambió. Reintenta para actualizarla.')
+            rows = rows.concat(items)
+            total = Number(more.total || 0)
+          }
+          const identities = rows.map(row => row && typeof row === 'object' && 'id' in row ? row.id : row)
+          if (new Set(identities).size !== rows.length || rows.length !== total) {
+            throw new ConsultaPedidosIncompletaError('La consulta cambió. Reintenta para actualizarla.')
+          }
+        }
         // Guardar la key de los parámetros de este fetch para que el consumidor
         // pueda descartar respuestas stale que lleguen tras un cambio de URL.
         // paramsKey ya serializa { ...params, all: options?.all }.
         appliedKeyRef.current = paramsKey
-        setPedidos(data.pedidos || data.data || [])
-        setTotal(data.total || 0)
+        setPedidos(rows)
+        setTotal(total)
         hasLoadedOnceRef.current = true
         setHasLoadedOnce(true)
         setError(null)
@@ -185,8 +211,9 @@ export function usePedidos(
         return
       }
       console.error('Error fetching pedidos:', err)
-      setError('No se pudieron cargar los pedidos')
+      setError(err instanceof ConsultaPedidosIncompletaError ? err.message : 'No se pudieron cargar los pedidos')
     } finally {
+      clearTimeout(timeoutId)
       // Guardado por isCurrent(): una respuesta stale/cancelada no puede
       // resetear el estado visual de actualización de un request más nuevo.
       if (isCurrent()) {
@@ -194,7 +221,7 @@ export function usePedidos(
         setRefetching(false)
       }
     }
-  }, [buildUrl, paramsKey])
+  }, [buildUrl, paramsKey, fetchEntireScope])
 
   const refetch = useCallback(async () => {
     await fetchPedidos()

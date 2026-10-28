@@ -86,6 +86,11 @@ export function canCreatePedidos(role: string | null | undefined): boolean {
   return role === ROLES.ADMIN || role === ROLES.ASISTENTE
 }
 
+/** #517: misma restricción que GET /api/facturas y /api/facturas/[id]. */
+export function canReadFacturas(role: string | null | undefined): boolean {
+  return role === ROLES.ADMIN || role === ROLES.CONTADOR
+}
+
 export function getUserPermissions(role: Role | undefined): Permission[] {
   if (!role) return []
   return ROLE_PERMISSIONS[role] || []

@@ -31,9 +31,9 @@ describe('F1: pagar-fiado audita dentro del lock CARTERA', () => {
   it('logAudit está DENTRO de withAdvisoryLock (antes del cierre del callback)', () => {
     const lockOpen = source.indexOf("withAdvisoryLock('CARTERA'")
     const auditCall = source.indexOf('await logAudit({')
-    // el `return { pagosAplicados, montoRestante, culminados }` marca el fin
+    // el `return { resultado, culminados }` marca el fin
     // del trabajo dentro del lock
-    const lockReturn = source.indexOf('return { pagosAplicados, montoRestante, culminados')
+    const lockReturn = source.indexOf('return { resultado, culminados }')
 
     expect(lockOpen).toBeGreaterThan(-1)
     expect(auditCall).toBeGreaterThan(lockOpen)

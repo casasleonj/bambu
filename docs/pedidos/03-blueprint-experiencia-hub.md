@@ -139,6 +139,8 @@ Los umbrales temporales usan **solo reglas operacionales que ya existen**. No se
 
 ### 2.3 Fiados, Alertas, Recurrentes dejan de ser destinos
 
+> **DECISIÓN POSTERIOR — #515, 2026-10-28:** el PO aprobó recuperar las pestañas de **Fiados** y **Alertas** junto a **Pedidos**, con consultas independientes. «Esperando pago» y «Excepciones» continúan siendo focos de Pedidos; no sustituyen la consulta global de cartera o alertas. El reporte «Pedidos/Ayer → Fiados vacío» confirmó la necesidad de separar los alcances. La tabla que sigue conserva la propuesta original como evidencia histórica; para Fiados/Alertas prevalece [la reconciliación aprobada](./fiados-alertas-515-entrega.md). No se cambia aquí el tratamiento de Recurrentes.
+
 | Hoy | Nuevo | Qué se mantiene aparte |
 |---|---|---|
 | tab "Fiados" | foco **Esperando pago** + factura/cartera en el peek | `/cartera` (corrección de abonos G2) — tarea contable, no faceta de la operación |
@@ -519,7 +521,7 @@ Los siguientes son **gates de aceptación (pass/fail)**, no métricas. Fase N **
 | # | Gate | Cómo se comprueba |
 |---|---|---|
 | G1 | No existe formulario monolítico como experiencia principal | inspección: el workspace se compone de zonas que aparecen por contexto, no un form con `if` |
-| G2 | El usuario nunca navega a "Recurrentes" / "Únicos" / "Alertas" / "Fiados" como destinos | `nav-data.tsx` no los tiene como ítems; E2E no los visita |
+| G2 | Recurrentes/Únicos permanecen integrados. **Revisión #515 aprobada:** Fiados y Alertas se consultan mediante pestañas propias; los focos se mantienen dentro de Pedidos. | E2E verifica las tres pestañas con Hub ON y OFF, independencia de fechas y regreso desde documentos. No añade destinos al menú principal. |
 | G3 | Repetir un pedido habitual no reintroduce datos que el sistema ya sabe | E2E: contar campos con input manual en el flujo "Repetir" == 0 para un cliente con patrón |
 | G4 | Para las tareas frecuentes, toda la información de una operación es accesible desde su peek sin cambiar de ruta | E2E: crear/cobrar/planificar/resolver-excepción sin `page.goto` intermedio |
 | G5 | Origen / canal / entrega / pago nunca aparecen colapsados en un "tipo" | inspección de UI + `grep` sin un control único "tipo" |

@@ -30,9 +30,10 @@ interface FacturaDetailProps {
   factura: Factura
   empresaConfig: EmpresaConfig
   onRegistrarAbono?: () => void
+  onOpenPedido?: (id: string) => void
 }
 
-export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: FacturaDetailProps) {
+export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpenPedido }: FacturaDetailProps) {
   const [printReady, setPrintReady] = useState(false)
 
   useEffect(() => {
@@ -409,8 +410,8 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
                   <span className="font-medium text-gray-700">Pedido:</span>{' '}
                   <a
                     href={`/pedidos?openPedido=${factura.pedido.id}`}
+                    onClick={e => { e.stopPropagation(); if (onOpenPedido && factura.pedido && !e.ctrlKey && !e.metaKey) { e.preventDefault(); onOpenPedido(factura.pedido.id) } }}
                     className="text-blue-600 hover:underline"
-                    onClick={(e) => e.stopPropagation()}
                   >
                     #{factura.pedido.numero}
                   </a>

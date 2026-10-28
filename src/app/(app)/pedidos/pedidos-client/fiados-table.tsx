@@ -1,821 +1,150 @@
 'use client'
 
-import { generateUUID } from '@/lib/uuid'
-import React, { useState, useEffect, useMemo } from 'react'
-import { formatCurrency } from '@/lib/utils'
-import { toast } from 'sonner'
-import { filtrarPorPeriodo, PERIODOS, type PeriodoFiltro } from './date-utils'
-import type { Pedido, Cliente } from './types'
+import { useMemo, useState } from 'react'
+import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import { getEstadoFiados, resolverLimiteFiados } from '@/lib/pedido-utils'
-import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
+import { generateUUID } from '@/lib/uuid'
 import { fetchResilient } from '@/lib/fetch-resilient'
+import { toast } from 'sonner'
 import { MoneyDisplay } from '@/components/money-display'
 import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
-import { useGestionAdmin } from '@/hooks/use-gestion-admin'
-import { CobroOficinaCampos } from '../registrar-entrega/cobro-oficina-campos'
-import { camposCobro, datosCobroIniciales, hayErroresCobro, validarCobro, type DatosCobroOficina } from '../registrar-entrega/logica-cobro'
+import { filtrarPorPeriodo, PERIODOS, type PeriodoFiltro } from './date-utils'
+import { PedidoDocumentLinks, type AccesoDocumentosPedido } from './pedido-document-links'
+import { useParametroConsulta } from './use-consulta-contexto'
+import type { Pedido, Cliente } from './types'
 
-interface FiadoRow {
-  clienteId: string
-  nombreCli: string
-  apellidoCli?: string | null
-  negocioId?: string | null
-  nombreNegocioCli?: string | null
-  telefonoCli: string
-  deudaTotal: number
-  pedidosFiados: Pedido[]
-  masAntiguoFecha: Date
-  ultimoPedido: Date
-  limitePedidosFiados?: number | null
-}
-
-/** Días transcurridos desde `fecha`. Se calcula en cada render (no
- *  memoizado) para que nunca quede stale mientras la pestaña sigue
- *  abierta -- calcularlo dentro de un useMemo dependiente solo de los
- *  datos del pedido lo congelaría en el valor del momento del cálculo. */
 export function diasFiadoDesde(fecha: Date): number {
-  return Math.floor((Date.now() - fecha.getTime()) / (1000 * 60 * 60 * 24))
+  return Math.floor((Date.now() - fecha.getTime()) / 86400000)
 }
-
-interface FiadosTableProps {
+interface FiadoRow {
+  clienteId: string; nombreCli: string; apellidoCli?: string | null; telefonoCli: string
+  negocioId?: string | null; nombreNegocioCli?: string | null; pedidos: Pedido[]; deuda: number; antigua: Date
+}
+interface Props extends AccesoDocumentosPedido {
   clientes: Cliente[]
   limiteGlobal?: number
   pedidos: Pedido[]
   loading: boolean
+  refetching?: boolean
   error: string | null
   activeTab: 'hoy' | 'fiados' | 'alertas'
   onPedidosChange?: () => void
-  userRole?: string | null
+  onCobrar?: (cliente: { id: string; nombre: string }) => void
 }
 
-export function FiadosTable({
-  clientes,
-  limiteGlobal,
-  pedidos: pedidosFiados,
-  loading,
-  error,
-  activeTab,
-  onPedidosChange,
-  userRole,
-}: FiadosTableProps) {
-  const [expandedCliente, setExpandedCliente] = useState<string | null>(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [minDeuda, setMinDeuda] = useState('')
-  const [maxDeuda, setMaxDeuda] = useState('')
-  const [diasFiado, setDiasFiado] = useState<'todos' | '0-7' | '8-30' | '30+' | string>('todos')
-  const [periodo, setPeriodo] = useState<PeriodoFiltro>('todos')
-  const [pagandoClienteId, setPagandoClienteId] = useState<string | null>(null)
-  const [montoPago, setMontoPago] = useState('')
-  const [metodoPago, setMetodoPago] = useState('EFECTIVO')
-  const [submitting, setSubmitting] = useState(false)
-  // TEMPORAL-SIN-EMBARQUE(#472): quién recibió el dinero y cuándo (solo ADMIN con la función encendida).
-  const gestionAdmin = useGestionAdmin(userRole === 'ADMIN')
-  const [cobro, setCobro] = useState<DatosCobroOficina>(() => datosCobroIniciales())
-  const [intentoCobro, setIntentoCobro] = useState(false)
-  const abrirPago = (clienteId: string) => {
-    setCobro(datosCobroIniciales())
-    setIntentoCobro(false)
-    setPagandoClienteId(clienteId)
-  }
+export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetching, error, onPedidosChange, onCobrar,
+  userRole, onOpenPedido, onOpenFactura }: Props) {
+  const params = useShallowSearchParams()
+  const [periodo, setPeriodo] = useParametroConsulta<PeriodoFiltro>('fiadosPeriodo', 'todos', PERIODOS.map(p => p.key))
+  const [search, setSearch] = useParametroConsulta<string>('fiadosBuscar', '')
+  const [min, setMin] = useParametroConsulta<string>('fiadosMin', '')
+  const [max, setMax] = useParametroConsulta<string>('fiadosMax', '')
+  const [dias, setDias] = useParametroConsulta<string>('fiadosDias', 'todos', ['todos', '0-7', '8-30', '30+'])
+  const [expandido, setExpandido] = useParametroConsulta<string>('fiadosExpandido', '')
+  // clienteId legacy solo aparece en enlaces directos: el cambio de pestaña
+  // guarda el cliente de Pedidos en pedidosCliente antes de salir de esa vista.
+  const clienteSolicitado = params.get('fiadosCliente') || params.get('clienteId')
+  const [convertir, setConvertir] = useState<FiadoRow | null>(null)
   const [trabajadores, setTrabajadores] = useState<Array<{ id: string; nombre: string; rol: string }>>([])
-  const [convirtiendoClienteId, setConvirtiendoClienteId] = useState<string | null>(null)
-  const [trabajadorDeudaId, setTrabajadorDeudaId] = useState('')
+  const [trabajadorId, setTrabajadorId] = useState('')
   const [montoDeuda, setMontoDeuda] = useState('')
-  const [descripcionDeuda, setDescripcionDeuda] = useState('')
+  const [descripcion, setDescripcion] = useState('')
+  const [guardandoDeuda, setGuardandoDeuda] = useState(false)
+  const puedeCobrar = userRole === 'ADMIN' || userRole === 'ASISTENTE'
 
-  useEffect(() => {
-    fetch('/api/trabajadores')
-      .then(r => r.ok ? r.json() : { trabajadores: [] })
-      .then(data => setTrabajadores(data.trabajadores || data.data || []))
-      .catch(() => setTrabajadores([]))
-  }, [])
-
-  // Pedidos filtrados por período local (independiente de URL)
-  const pedidosFiltrados = useMemo(() => filtrarPorPeriodo(pedidosFiados, periodo), [pedidosFiados, periodo])
-
-  // Agrupar pedidos por cliente
-  const fiadoRows = useMemo(() => {
-    const clientesMap = new Map<string, FiadoRow>()
-
-    pedidosFiltrados
-      .filter((p) => p.estadoEntrega === 'ENTREGADO' && Number(p.saldo) > 0 && p.clienteId !== 'CONSUMIDOR_FINAL')
-      .forEach((p) => {
-        const existing = clientesMap.get(p.clienteId)
-        const cliente = clientes.find((c) => c.id === p.clienteId)
-        if (existing) {
-          existing.deudaTotal += Number(p.saldo)
-          existing.pedidosFiados.push(p)
-          if (new Date(p.fecha) > existing.ultimoPedido) {
-            existing.ultimoPedido = new Date(p.fecha)
-          }
-        } else {
-          clientesMap.set(p.clienteId, {
-            clienteId: p.clienteId,
-            nombreCli: p.nombreCli,
-            apellidoCli: p.apellidoCli,
-            negocioId: p.negocioId,
-            nombreNegocioCli: p.nombreNegocioCli,
-            telefonoCli: p.telefonoCli,
-            deudaTotal: Number(p.saldo),
-            pedidosFiados: [p],
-            masAntiguoFecha: new Date(p.fecha),
-            ultimoPedido: new Date(p.fecha),
-            limitePedidosFiados: cliente?.limitePedidosFiados,
-          })
-        }
-      })
-
-    // Fecha del pedido más antiguo (para calcular días fiado en cada render)
-    clientesMap.forEach((row) => {
-      row.masAntiguoFecha = row.pedidosFiados.reduce((min, p) =>
-        new Date(p.fecha) < min ? new Date(p.fecha) : min,
-        new Date(row.pedidosFiados[0].fecha)
-      )
-    })
-
-    return Array.from(clientesMap.values())
-  }, [pedidosFiltrados, clientes])
-
-  const filtrados = fiadoRows.filter((row) => {
-    const matchSearch = !searchTerm ||
-      row.nombreCli.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (row.apellidoCli || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (row.nombreNegocioCli || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      row.telefonoCli?.includes(searchTerm)
-    const matchMin = !minDeuda || row.deudaTotal >= Number(minDeuda)
-    const matchMax = !maxDeuda || row.deudaTotal <= Number(maxDeuda)
-    const rowDiasFiado = diasFiadoDesde(row.masAntiguoFecha)
-    const matchDias = diasFiado === 'todos' ||
-      (diasFiado === '0-7' && rowDiasFiado <= 7) ||
-      (diasFiado === '8-30' && rowDiasFiado > 7 && rowDiasFiado <= 30) ||
-      (diasFiado === '30+' && rowDiasFiado > 30)
-    return matchSearch && matchMin && matchMax && matchDias
+  const rows = useMemo(() => {
+    const grouped = new Map<string, FiadoRow>()
+    for (const p of filtrarPorPeriodo(pedidos, periodo)) {
+      if (p.estadoEntrega !== 'ENTREGADO' || Number(p.saldo) <= 0 || p.clienteId === 'CONSUMIDOR_FINAL') continue
+      const row = grouped.get(p.clienteId)
+      if (row) { row.pedidos.push(p); row.deuda += Number(p.saldo); if (new Date(p.fecha) < row.antigua) row.antigua = new Date(p.fecha) }
+      else grouped.set(p.clienteId, { clienteId: p.clienteId, nombreCli: p.nombreCli, apellidoCli: p.apellidoCli,
+        telefonoCli: p.telefonoCli, negocioId: p.negocioId, nombreNegocioCli: p.nombreNegocioCli,
+        pedidos: [p], deuda: Number(p.saldo), antigua: new Date(p.fecha) })
+    }
+    return [...grouped.values()]
+  }, [pedidos, periodo])
+  const filtrados = rows.filter(row => {
+    const nombre = [row.nombreCli, row.apellidoCli, row.nombreNegocioCli, row.telefonoCli].filter(Boolean).join(' ').toLocaleLowerCase('es')
+    const edad = diasFiadoDesde(row.antigua)
+    return (!clienteSolicitado || row.clienteId === clienteSolicitado) && nombre.includes(search.trim().toLocaleLowerCase('es'))
+      && (!min || row.deuda >= Number(min)) && (!max || row.deuda <= Number(max))
+      && (dias === 'todos' || dias === '0-7' && edad <= 7 || dias === '8-30' && edad > 7 && edad <= 30 || dias === '30+' && edad > 30)
   })
-
-  async function handleConvertirDeuda(row: FiadoRow) {
-    if (!trabajadorDeudaId || !montoDeuda || Number(montoDeuda) <= 0) {
-      toast.error('Selecciona un trabajador y un monto válido')
-      return
-    }
-    setSubmitting(true)
+  const hayFiltros = periodo !== 'todos' || Boolean(search || min || max || clienteSolicitado) || dias !== 'todos'
+  const limpiar = () => params.set({ fiadosPeriodo: undefined, fiadosBuscar: undefined, fiadosMin: undefined,
+    fiadosMax: undefined, fiadosDias: undefined, fiadosCliente: undefined, clienteId: undefined }, { history: 'replace' })
+  const abrirConversion = async (row: FiadoRow) => {
+    setConvertir(row); setTrabajadorId(''); setMontoDeuda(String(row.deuda))
+    setDescripcion(`Fiado convertido: ${row.nombreCli}${row.nombreNegocioCli ? ' - ' + row.nombreNegocioCli : ''}`)
+    try { const res = await fetch('/api/trabajadores'); if (res.ok) { const data = await res.json(); setTrabajadores(data.trabajadores || data.data || []) } }
+    catch { toast.error('No se pudieron consultar los trabajadores') }
+  }
+  const crearDeuda = async () => {
+    if (!convertir || !trabajadorId || !(Number(montoDeuda) > 0)) { toast.error('Selecciona un trabajador y un monto válido'); return }
+    setGuardandoDeuda(true)
     try {
-      const result = await fetchResilient<{ deuda?: { id: string } }>(
-        '/api/deudas',
-        {
-          method: 'POST',
-          body: {
-            trabajadorId: trabajadorDeudaId,
-            tipo: 'FIADO',
-            monto: Number(montoDeuda),
-            descripcion: descripcionDeuda || `Fiado convertido: ${row.nombreCli}${row.nombreNegocioCli ? ` - ${row.nombreNegocioCli}` : ''}`,
-            offlineId: generateUUID(),
-          },
-          localEndpoint: 'deudas',
-        }
-      )
-
-      if (result.status === 'offline') {
-        toast.info('Sin conexión. Deuda guardada, se sincronizará al recuperar la red.')
-        setConvirtiendoClienteId(null)
-        setTrabajadorDeudaId('')
-        setMontoDeuda('')
-        setDescripcionDeuda('')
-        return
-      }
-
-      if (result.status === 'error') {
-        toast.error(result.error || 'Error creando deuda')
-        return
-      }
-
-      toast.success('Deuda de trabajador creada')
-      setConvirtiendoClienteId(null)
-      setTrabajadorDeudaId('')
-      setMontoDeuda('')
-      setDescripcionDeuda('')
-      onPedidosChange?.()
-    } finally {
-      setSubmitting(false)
-    }
+      const r = await fetchResilient('/api/deudas', { method: 'POST', body: { trabajadorId, tipo: 'FIADO',
+        monto: Number(montoDeuda), descripcion, offlineId: generateUUID() }, localEndpoint: 'deudas' })
+      if (r.status === 'error') { toast.error(r.error); return }
+      toast[r.status === 'offline' ? 'info' : 'success'](r.status === 'offline' ? 'Sin conexión. Deuda guardada, pendiente de sincronizar.' : 'Deuda de trabajador creada')
+      setConvertir(null); onPedidosChange?.()
+    } finally { setGuardandoDeuda(false) }
   }
-
-  async function handlePagar(clienteId: string) {
-    if (!montoPago || Number(montoPago) <= 0) {
-      toast.error('Ingresa un monto válido')
-      return
-    }
-    // TEMPORAL-SIN-EMBARQUE(#472): con la función encendida el ADMIN debe decir quién recibió.
-    if (gestionAdmin.activa) {
-      setIntentoCobro(true)
-      if (hayErroresCobro(validarCobro(cobro))) return
-    }
-    setSubmitting(true)
-    try {
-      const result = await fetchResilient<{
-        success: boolean
-        pagosAplicados: Array<{ pedidoId: string; numero: number; montoAplicado: number; saldoRestante: number; facturaId?: string; facturaNumero?: string }>
-        montoAplicado: number
-        montoSobrante: number
-        saldoFavorAcreditado?: number
-        deduped?: boolean
-      }>(
-        '/api/pedidos/pagar-fiado',
-        {
-          method: 'POST',
-          body: {
-            clienteId,
-            monto: Number(montoPago),
-            metodo: metodoPago,
-            offlineId: generateUUID(),
-            ...(gestionAdmin.activa ? camposCobro(cobro) : {}),
-          },
-          localEndpoint: 'pagar-fiado',
-        }
-      )
-
-      if (result.status === 'offline') {
-        toast.info('Sin conexión. Pago guardado, se aplicará al recuperar la red.')
-        setPagandoClienteId(null)
-        setMontoPago('')
-        return
-      }
-
-      if (result.status === 'error') {
-        toast.error(result.error || 'Error registrando pago')
-        return
-      }
-
-      // status === 'ok' — proceder con el resumen
-      const data = result.data
-      const pagosAplicados = data.pagosAplicados || []
-      const montoSobrante = data.saldoFavorAcreditado ?? data.montoSobrante ?? 0
-      const montoAplicado = data.montoAplicado || Number(montoPago)
-
-      let resumenHtml = `<div class="space-y-1">`
-      pagosAplicados.forEach((p) => {
-        const estado = p.saldoRestante <= 0 ? '✅ Pagado completo' : `⏳ Saldo restante: ${formatCurrency(p.saldoRestante)}`
-        resumenHtml += `<div class="text-sm">Pedido <a href="/pedidos?openPedido=${p.pedidoId}" class="text-blue-600 hover:underline font-medium">#${p.numero}</a>: <b>${formatCurrency(p.montoAplicado)}</b> <span class="text-xs text-gray-500">${estado}</span></div>`
-      })
-      if (montoSobrante > 0) {
-        resumenHtml += `<div class="text-sm text-blue-600">💰 Sobrante ${formatCurrency(montoSobrante)} acreditado a saldo a favor del cliente</div>`
-      }
-      const facturaIds = [...new Set(pagosAplicados.filter((p) => p.facturaId).map((p) => p.facturaId))]
-      if (facturaIds.length > 0) {
-        resumenHtml += `<div class="text-sm text-green-600">📄 ${facturaIds.length} abono(s) generado(s) en <a href="/facturas?openFactura=${facturaIds[0]}" class="text-green-700 hover:underline font-medium">factura(s)</a></div>`
-      }
-      resumenHtml += `</div>`
-
-      toast.success(
-        <div className="space-y-2">
-          <div className="font-semibold">💰 Pago aplicado: ${formatCurrency(montoAplicado)}</div>
-          <div dangerouslySetInnerHTML={{ __html: resumenHtml }} />
-        </div>,
-        { duration: 6000 }
-      )
-
-      setPagandoClienteId(null)
-      setMontoPago('')
-      // Notify parent to refetch the fiados dataset.
-      onPedidosChange?.()
-    } finally {
-      setSubmitting(false)
-    }
+  const limiteBadge = (row: FiadoRow) => {
+    const cliente = clientes.find(c => c.id === row.clienteId)
+    const limite = resolverLimiteFiados(cliente ?? {}, limiteGlobal == null ? null : String(limiteGlobal))
+    const todos = pedidos.filter(p => p.clienteId === row.clienteId && p.estadoEntrega === 'ENTREGADO' && Number(p.saldo) > 0)
+    const estado = getEstadoFiados(todos.map(p => ({ id: p.id, numero: p.numero, saldo: Number(p.saldo) })), limite)
+    const color = estado.nivel === 'limite' ? 'bg-red-100 text-red-700' : estado.nivel === 'cerca' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+    return <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${color}`} title="Pedidos entregados con deuda de todas las fechas / límite configurado">{estado.count}/{estado.limite} fiados en total</span>
   }
-
-  if (error) {
-    return (
-      <div className="space-y-4">
-        <div className="bg-red-50 border border-red-200 p-4 rounded-xl">
-          <h2 className="text-lg font-bold text-red-900">Control de Fiados</h2>
-        </div>
-        <div className="bg-white rounded-xl shadow p-8 text-center">
-          <p className="text-sm text-red-600 mb-3">{error}</p>
-          <button
-            type="button"
-            onClick={() => onPedidosChange?.()}
-            className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition"
-          >
-            Reintentar
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  if (activeTab === 'fiados' && loading && pedidosFiados.length === 0) {
-    return (
-      <div className="space-y-4">
-        <div className="bg-red-50 border border-red-200 p-4 rounded-xl">
-          <h2 className="text-lg font-bold text-red-900">Control de Fiados</h2>
-        </div>
-        <div className="bg-white rounded-xl shadow p-8 text-center text-sm text-gray-500">
-          Cargando fiados...
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Header explicativo */}
-      <div className="bg-red-50 border border-red-200 p-4 rounded-xl">
-        <div className="flex items-start gap-3">
-          <div className="text-2xl shrink-0">💰</div>
-          <div className="flex-1">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-lg font-bold text-red-900">Control de Fiados</h2>
-              <span className="text-sm font-medium text-red-700 bg-red-100 px-3 py-1 rounded-full">
-                {filtrados.length} cliente{filtrados.length !== 1 ? 's' : ''} con deuda
-              </span>
-            </div>
-            <p className="text-sm text-red-700">
-              Aquí ves todos los clientes que tienen saldo pendiente. Selecciona un cliente para ver
-              sus pedidos fiados y registrar un pago. Los pagos se aplican automáticamente a los pedidos más antiguos.
-              {periodo !== 'todos' && (
-                <span className="block mt-1 font-medium">
-                  Mostrando solo fiados de {PERIODOS.find(p => p.key === periodo)?.label.toLowerCase()}.{' '}
-                  Click en &quot;Todos&quot; para ver el histórico.
-                </span>
-              )}
-            </p>
-            {/* Período independiente */}
-            <div className="flex flex-wrap gap-2 mt-3">
-              {PERIODOS.map((p) => (
-                <button
-                  key={p.key}
-                  onClick={() => setPeriodo(p.key)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition ${
-                    periodo === p.key
-                      ? 'bg-red-600 text-white'
-                      : 'bg-white text-red-700 hover:bg-red-100 border border-red-200'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filtros de fiados */}
-      <div className="bg-white p-4 rounded-xl shadow">
-        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-          <input
-            type="text"
-            placeholder="Buscar cliente..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 min-w-0 px-4 py-2 border border-gray-300 rounded-lg text-sm"
-          />
-          <div className="flex gap-2">
-            <input
-              type="number"
-              placeholder="Deuda min"
-              value={minDeuda}
-              onChange={(e) => setMinDeuda(e.target.value)}
-              className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            />
-            <input
-              type="number"
-              placeholder="Deuda max"
-              value={maxDeuda}
-              onChange={(e) => setMaxDeuda(e.target.value)}
-              className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            />
-          </div>
-          <select
-            value={diasFiado}
-            onChange={(e) => setDiasFiado(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-          >
-            <option value="todos">Todos los días</option>
-            <option value="0-7">0-7 días</option>
-            <option value="8-30">8-30 días</option>
-            <option value="30+">30+ días</option>
-          </select>
-          {(searchTerm || minDeuda || maxDeuda || diasFiado !== 'todos') && (
-            <button
-              onClick={() => {
-                setSearchTerm('')
-                setMinDeuda('')
-                setMaxDeuda('')
-                setDiasFiado('todos')
-              }}
-              className="px-3 py-2 text-sm font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition"
-            >
-              Limpiar
-            </button>
-          )}
-        </div>
-      </div>
-
-      {filtrados.length === 0 ? (
-        <div className="bg-white rounded-xl shadow p-8 text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No hay fiados pendientes</h3>
-          <p className="text-sm text-gray-500 max-w-md mx-auto">
-            {periodo === 'todos' 
-              ? 'Todos los clientes están al día con sus pagos. No hay saldos pendientes en ningún pedido.'
-              : 'No hay deudas pendientes en el período seleccionado. Intenta con "Todos" para ver el historial completo.'
-            }
-          </p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow overflow-hidden">
-          <div className="hidden md:block overflow-x-auto" data-testid="fiados-desktop">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Cliente</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Deuda Total</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Pedidos</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Días Fiado</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Acción</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-              {filtrados.map((row) => (
-                <React.Fragment key={row.clienteId}>
-                  <tr className="hover:bg-gray-50 transition">
-                    <td className="px-4 py-3">
-                      <PedidoClienteDisplay
-                        clienteId={row.clienteId}
-                        nombreCli={row.nombreCli}
-                        apellidoCli={row.apellidoCli}
-                        negocioId={row.negocioId}
-                        nombreNegocioCli={row.nombreNegocioCli}
-                        variant="row"
-                      />
-                      <div className="text-xs text-gray-400">{row.telefonoCli}</div>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="font-bold text-red-600"><MoneyDisplay value={row.deudaTotal} userRole={userRole} /></span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {(() => {
-                        const limite = resolverLimiteFiados(row, String(limiteGlobal ?? LIMITE_FIADOS_DEFAULT))
-                        const estado = getEstadoFiados(row.pedidosFiados, limite)
-                        const badgeColor = estado.nivel === 'limite'
-                          ? 'bg-red-100 text-red-700 border-red-200'
-                          : estado.nivel === 'cerca'
-                            ? 'bg-amber-100 text-amber-700 border-amber-200'
-                            : 'bg-gray-100 text-gray-600 border-gray-200'
-                        return (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${badgeColor}`}>
-                            {estado.count}/{estado.limite}
-                          </span>
-                        )
-                      })()}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`text-sm font-medium ${diasFiadoDesde(row.masAntiguoFecha) > 30 ? 'text-red-600' : diasFiadoDesde(row.masAntiguoFecha) > 7 ? 'text-amber-600' : 'text-green-600'}`}>
-                        {diasFiadoDesde(row.masAntiguoFecha)} días
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex gap-2 justify-end">
-                        <button
-                          onClick={() => setExpandedCliente(expandedCliente === row.clienteId ? null : row.clienteId)}
-                          className="text-sm text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition"
-                        >
-                          {expandedCliente === row.clienteId ? 'Ocultar' : 'Ver pedidos'}
-                        </button>
-                        <button
-                          onClick={() => abrirPago(row.clienteId)}
-                          className="text-sm bg-blue-600 text-white hover:bg-blue-700 px-3 py-1.5 rounded-lg transition"
-                        >
-                          Pagar
-                        </button>
-                        {(userRole === 'ADMIN' || userRole === 'ASISTENTE') && (
-                          <button
-                            onClick={() => {
-                              setConvirtiendoClienteId(row.clienteId)
-                              setTrabajadorDeudaId('')
-                              setMontoDeuda(String(row.deudaTotal))
-                              setDescripcionDeuda(`Fiado convertido: ${row.nombreCli}${row.nombreNegocioCli ? ` - ${row.nombreNegocioCli}` : ''}`)
-                            }}
-                            className="text-sm bg-amber-600 text-white hover:bg-amber-700 px-3 py-1.5 rounded-lg transition"
-                          >
-                            Convertir
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                  {expandedCliente === row.clienteId && (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-3 bg-gray-50">
-                        <div className="space-y-2">
-                          {row.pedidosFiados.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime()).map((p) => (
-                            <div key={p.id} className="flex justify-between items-center py-2 border-b last:border-b-0">
-                              <div>
-                                <span className="text-sm font-medium">#{p.numero}</span>
-                                <span className="text-xs text-gray-400 ml-2">{new Date(p.fecha).toLocaleDateString('es-CO')}</span>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-sm font-semibold text-red-600"><MoneyDisplay value={Number(p.saldo)} userRole={userRole} /></span>
-                                <span className="text-xs text-gray-400 ml-2">de <MoneyDisplay value={Number(p.total)} userRole={userRole} /></span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                  {convirtiendoClienteId === row.clienteId && (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-4 bg-amber-50 border-t border-amber-200">
-                        <div className="flex flex-col sm:flex-row gap-3 items-end">
-                          <div className="flex-1">
-                            <label className="text-xs font-medium text-gray-600 block mb-1">Trabajador responsable</label>
-                            <select
-                              value={trabajadorDeudaId}
-                              onChange={(e) => setTrabajadorDeudaId(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                            >
-                              <option value="">Seleccionar...</option>
-                              {trabajadores.map((t) => (
-                                <option key={t.id} value={t.id}>{t.nombre} - {t.rol}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-gray-600 block mb-1">Monto</label>
-                            <input
-                              type="number"
-                              value={montoDeuda}
-                              onChange={(e) => setMontoDeuda(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                            />
-                          </div>
-                          <div className="flex-[2]">
-                            <label className="text-xs font-medium text-gray-600 block mb-1">Descripción</label>
-                            <input
-                              type="text"
-                              value={descripcionDeuda}
-                              onChange={(e) => setDescripcionDeuda(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                            />
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => setConvirtiendoClienteId(null)}
-                              className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
-                            >
-                              Cancelar
-                            </button>
-                            <button
-                              onClick={() => handleConvertirDeuda(row)}
-                              disabled={submitting}
-                              className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 disabled:opacity-50"
-                            >
-                              {submitting ? 'Procesando...' : 'Crear deuda'}
-                            </button>
-                          </div>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-2">
-                          Se creará una deuda de trabajador tipo FIADO por el monto indicado. Se descontará de nómina según el plan configurado.
-                        </p>
-                      </td>
-                    </tr>
-                  )}
-                  {pagandoClienteId === row.clienteId && (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-4 bg-green-50 border-t border-green-200">
-                        <div className="flex flex-col sm:flex-row gap-3 items-end">
-                          <div className="flex-1">
-                            <label className="text-xs font-medium text-gray-600 block mb-1">Monto a pagar</label>
-                            <input
-                              type="number"
-                              value={montoPago}
-                              onChange={(e) => setMontoPago(e.target.value)}
-                              placeholder={`Máx: ${formatCurrency(row.deudaTotal)}`}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                              autoFocus
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-gray-600 block mb-1">Método</label>
-                            <select
-                              value={metodoPago}
-                              onChange={(e) => setMetodoPago(e.target.value)}
-                              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                            >
-                              <option value="EFECTIVO">💵 Efectivo</option>
-                              <option value="TRANSFERENCIA">🏦 Transferencia</option>
-                              <option value="NEQUI">📱 Nequi</option>
-                              <option value="DAVIPLATA">💳 Daviplata</option>
-                              <option value="BONO">🎁 Bono</option>
-                            </select>
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => setPagandoClienteId(null)}
-                              className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
-                            >
-                              Cancelar
-                            </button>
-                            <button
-                              onClick={() => handlePagar(row.clienteId)}
-                              disabled={submitting}
-                              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
-                            >
-                              {submitting ? 'Procesando...' : 'Confirmar pago'}
-                            </button>
-                          </div>
-                        </div>
-                        {gestionAdmin.activa && (
-                          <div className="mt-3">
-                            <CobroOficinaCampos
-                              datos={cobro}
-                              errores={validarCobro(cobro)}
-                              intento={intentoCobro}
-                              repartidores={gestionAdmin.repartidores}
-                              onChange={(c) => setCobro((d) => ({ ...d, ...c }))}
-                            />
-                          </div>
-                        )}
-                        <p className="text-xs text-gray-500 mt-2">
-                          El pago se aplicará automáticamente a los pedidos más antiguos primero (FIFO).
-                        </p>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile cards */}
-        <div className="md:hidden space-y-3" data-testid="fiados-mobile">
-          {filtrados.map((row) => (
-            <div key={row.clienteId} className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <PedidoClienteDisplay
-                    clienteId={row.clienteId}
-                    nombreCli={row.nombreCli}
-                    apellidoCli={row.apellidoCli}
-                    negocioId={row.negocioId}
-                    nombreNegocioCli={row.nombreNegocioCli}
-                    variant="card"
-                  />
-                  <p className="text-xs text-gray-400">{row.telefonoCli}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold text-red-600"><MoneyDisplay value={row.deudaTotal} userRole={userRole} /></p>
-                  {(() => {
-                    const limite = resolverLimiteFiados(row, String(limiteGlobal ?? LIMITE_FIADOS_DEFAULT))
-                    const estado = getEstadoFiados(row.pedidosFiados, limite)
-                    const badgeColor = estado.nivel === 'limite'
-                      ? 'text-red-600'
-                      : estado.nivel === 'cerca'
-                        ? 'text-amber-600'
-                        : 'text-gray-500'
-                    return <p className={`text-xs ${badgeColor}`}>{estado.count}/{estado.limite} fiados</p>
-                  })()}
-                  <p className={`text-xs ${diasFiadoDesde(row.masAntiguoFecha) > 30 ? 'text-red-600' : diasFiadoDesde(row.masAntiguoFecha) > 7 ? 'text-amber-600' : 'text-green-600'}`}>
-                    {diasFiadoDesde(row.masAntiguoFecha)} días
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-2 mt-2">
-                <button
-                  onClick={() => setExpandedCliente(expandedCliente === row.clienteId ? null : row.clienteId)}
-                  className="flex-1 text-sm text-blue-600 bg-blue-50 py-2 rounded-lg"
-                >
-                  {expandedCliente === row.clienteId ? 'Ocultar' : `Ver ${row.pedidosFiados.length} pedidos`}
-                </button>
-                <button
-                  onClick={() => abrirPago(row.clienteId)}
-                  className="flex-1 text-sm bg-blue-600 text-white py-2 rounded-lg"
-                >
-                  Pagar
-                </button>
-                {(userRole === 'ADMIN' || userRole === 'ASISTENTE') && (
-                  <button
-                    onClick={() => {
-                      setConvirtiendoClienteId(row.clienteId)
-                      setTrabajadorDeudaId('')
-                      setMontoDeuda(String(row.deudaTotal))
-                      setDescripcionDeuda(`Fiado convertido: ${row.nombreCli}${row.nombreNegocioCli ? ` - ${row.nombreNegocioCli}` : ''}`)
-                    }}
-                    className="flex-1 text-sm bg-amber-600 text-white py-2 rounded-lg"
-                  >
-                    Convertir
-                  </button>
-                )}
-              </div>
-              {expandedCliente === row.clienteId && (
-                <div className="mt-3 space-y-2 bg-gray-50 p-3 rounded-lg">
-                  {row.pedidosFiados.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime()).map((p) => (
-                    <div key={p.id} className="flex justify-between text-sm py-1 border-b last:border-b-0">
-                      <span>#{p.numero} - {new Date(p.fecha).toLocaleDateString('es-CO')}</span>
-                      <span className="font-semibold text-red-600"><MoneyDisplay value={Number(p.saldo)} userRole={userRole} /></span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {convirtiendoClienteId === row.clienteId && (
-                <div className="mt-3 space-y-2 bg-amber-50 p-3 rounded-lg border border-amber-200">
-                  <select
-                    value={trabajadorDeudaId}
-                    onChange={(e) => setTrabajadorDeudaId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  >
-                    <option value="">Seleccionar trabajador...</option>
-                    {trabajadores.map((t) => (
-                      <option key={t.id} value={t.id}>{t.nombre} - {t.rol}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    value={montoDeuda}
-                    onChange={(e) => setMontoDeuda(e.target.value)}
-                    placeholder="Monto de deuda"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  />
-                  <input
-                    type="text"
-                    value={descripcionDeuda}
-                    onChange={(e) => setDescripcionDeuda(e.target.value)}
-                    placeholder="Descripción"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setConvirtiendoClienteId(null)}
-                      className="flex-1 py-2 border rounded-lg text-sm"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={() => handleConvertirDeuda(row)}
-                      disabled={submitting}
-                      className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-sm disabled:opacity-50"
-                    >
-                      {submitting ? '...' : 'Crear deuda'}
-                    </button>
-                  </div>
-                </div>
-              )}
-              {pagandoClienteId === row.clienteId && (
-                <div className="mt-3 space-y-2 bg-green-50 p-3 rounded-lg border border-green-200">
-                  <input
-                    type="number"
-                    value={montoPago}
-                    onChange={(e) => setMontoPago(e.target.value)}
-                    placeholder="Monto a pagar"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  />
-                  <select
-                    value={metodoPago}
-                    onChange={(e) => setMetodoPago(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  >
-                    <option value="EFECTIVO">💵 Efectivo</option>
-                    <option value="TRANSFERENCIA">🏦 Transferencia</option>
-                    <option value="NEQUI">📱 Nequi</option>
-                    <option value="DAVIPLATA">💳 Daviplata</option>
-                    <option value="BONO">🎁 Bono</option>
-                  </select>
-                  {gestionAdmin.activa && (
-                    <CobroOficinaCampos
-                      datos={cobro}
-                      errores={validarCobro(cobro)}
-                      intento={intentoCobro}
-                      repartidores={gestionAdmin.repartidores}
-                      onChange={(c) => setCobro((d) => ({ ...d, ...c }))}
-                    />
-                  )}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setPagandoClienteId(null)}
-                      className="flex-1 py-2 border rounded-lg text-sm"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={() => handlePagar(row.clienteId)}
-                      disabled={submitting}
-                      className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50"
-                    >
-                      {submitting ? '...' : 'Pagar'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    )}
+  const detalle = (row: FiadoRow) => <div className="space-y-3 rounded-lg bg-gray-50 p-3">
+    {[...row.pedidos].sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero - b.numero).map(p => <div key={p.id} className="border-b py-2 last:border-0">
+      <p className="text-sm font-medium">Pedido #{p.numero} · {new Date(p.fecha).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}</p>
+      <p className="text-sm text-gray-600">Saldo <MoneyDisplay value={Number(p.saldo)} userRole={userRole} /> · Total <MoneyDisplay value={Number(p.total)} userRole={userRole} /></p>
+      <PedidoDocumentLinks pedidoId={p.id} numero={p.numero} facturaId={p.factura?.id} facturaNumero={p.factura?.numero}
+        userRole={userRole} onOpenPedido={onOpenPedido} onOpenFactura={onOpenFactura} />
+    </div>)}
+  </div>
+  const acciones = (row: FiadoRow) => <div className="flex flex-wrap gap-2">
+    <button type="button" className="min-h-11 rounded-lg border px-3 text-sm text-blue-700" aria-expanded={expandido === row.clienteId}
+      onClick={() => setExpandido(expandido === row.clienteId ? '' : row.clienteId)}>{expandido === row.clienteId ? 'Ocultar' : 'Ver pedidos'}</button>
+    {puedeCobrar && <button type="button" className="min-h-11 rounded-lg bg-blue-600 px-3 text-sm text-white" onClick={() => onCobrar?.({ id: row.clienteId, nombre: row.nombreCli })}>Registrar pago</button>}
+    {puedeCobrar && <button type="button" className="min-h-11 rounded-lg bg-amber-600 px-3 text-sm text-white" onClick={() => void abrirConversion(row)}>Convertir</button>}
+  </div>
+  return <section className="space-y-4" aria-label="Consulta de Fiados">
+    <div className="rounded-xl border border-red-200 bg-red-50 p-4"><h2 className="text-lg font-bold text-red-900">Control de Fiados</h2>
+      <p className="mt-1 text-sm text-red-800">Consulta la deuda de pedidos entregados, agrupada por cliente. Los pedidos sin entregar no se cobran automáticamente desde Fiados.</p>
+      <p className="mt-1 text-sm text-red-700">Todas las fechas por defecto. Este período es independiente del filtro de Pedidos.</p>
+      <div className="mt-3 flex flex-wrap gap-2" aria-label="Período de Fiados">{PERIODOS.map(p => <button key={p.key} type="button" aria-pressed={periodo === p.key}
+        className={`min-h-11 rounded-lg border px-3 text-sm ${periodo === p.key ? 'border-red-600 bg-red-600 text-white' : 'border-red-200 bg-white text-red-700'}`}
+        onClick={() => setPeriodo(p.key)}>{p.label}</button>)}</div>
     </div>
-  )
+    {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+      <p>{pedidos.length ? 'No se pudo actualizar. Se conservan los datos anteriores.' : 'No se pudieron cargar los fiados. No podemos confirmar si hay deudas.'}</p>
+      <button className="min-h-11 px-3 font-medium underline" onClick={onPedidosChange}>Reintentar</button>
+    </div>}
+    {refetching && <p role="status" className="text-sm text-gray-500">Actualizando fiados…</p>}
+    <div className="grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-2 lg:grid-cols-5">
+      <label className="text-xs font-medium text-gray-600 sm:col-span-2 lg:col-span-2">Buscar cliente<input aria-label="Buscar cliente" placeholder="Buscar cliente..." value={search} onChange={e => setSearch(e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border p-2 text-sm" /></label>
+      <label className="text-xs font-medium text-gray-600">Deuda mínima<input type="number" min="0" placeholder="Deuda min" value={min} onChange={e => setMin(e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border p-2 text-sm" /></label>
+      <label className="text-xs font-medium text-gray-600">Deuda máxima<input type="number" min="0" placeholder="Deuda max" value={max} onChange={e => setMax(e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border p-2 text-sm" /></label>
+      <label className="text-xs font-medium text-gray-600">Antigüedad<select value={dias} onChange={e => setDias(e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border p-2 text-sm"><option value="todos">Todos los días</option><option value="0-7">0–7 días</option><option value="8-30">8–30 días</option><option value="30+">Más de 30 días</option></select></label>
+      {hayFiltros && <button className="min-h-11 text-sm text-blue-700 underline" onClick={limpiar}>Limpiar filtros</button>}
+    </div>
+    {loading && !pedidos.length ? <p role="status" className="rounded-xl border bg-white p-8 text-center">Cargando fiados…</p>
+      : error && !pedidos.length ? null : filtrados.length === 0 ? <div className="rounded-xl border bg-white p-8 text-center">
+        <h3 className="font-semibold">{hayFiltros ? 'Sin resultados con estos filtros' : 'No hay deuda pendiente de pedidos entregados'}</h3>
+        <p className="mt-2 text-sm text-gray-500">{hayFiltros ? 'Revisa la búsqueda y los filtros. Puede haber otros fiados fuera de esta consulta.' : 'Los pedidos sin entregar se consultan en Pedidos.'}</p>
+        {hayFiltros && <button className="mt-3 min-h-11 text-blue-700 underline" onClick={limpiar}>Limpiar filtros</button>}
+      </div> : <div className="rounded-xl border bg-white p-4">
+        <p className="mb-3 text-sm font-semibold">{filtrados.length} cliente{filtrados.length === 1 ? '' : 's'} con deuda entregada{periodo !== 'todos' ? ' en el período elegido' : ''}</p>
+        <div className="hidden overflow-x-auto md:block" data-testid="fiados-desktop"><table className="w-full text-sm"><thead><tr className="border-b bg-gray-50 text-left text-gray-600"><th className="p-3">Cliente</th><th className="p-3">{periodo === 'todos' ? 'Deuda total' : 'Deuda en el período'}</th><th className="p-3">Pedidos</th><th className="p-3">Días fiado</th><th className="p-3">Acción</th></tr></thead>
+          {filtrados.map(row => <tbody key={row.clienteId}><tr className="border-b"><td className="p-3"><PedidoClienteDisplay {...row} variant="row" /><small className="text-gray-500">{row.telefonoCli}</small></td><td className="p-3 font-bold text-red-600"><MoneyDisplay value={row.deuda} userRole={userRole} /></td><td className="p-3">{row.pedidos.length} en consulta<div>{limiteBadge(row)}</div></td><td className="p-3">{diasFiadoDesde(row.antigua)}</td><td className="p-3">{acciones(row)}</td></tr>{expandido === row.clienteId && <tr><td colSpan={5} className="p-3">{detalle(row)}</td></tr>}</tbody>)}
+        </table></div>
+        <div className="space-y-4 md:hidden" data-testid="fiados-mobile">{filtrados.map(row => <article key={row.clienteId} className="space-y-3 border-b pb-4 last:border-0"><div className="flex justify-between gap-2"><div><PedidoClienteDisplay {...row} variant="row" /><small className="text-gray-500">{row.telefonoCli}</small></div><strong className="text-red-600"><MoneyDisplay value={row.deuda} userRole={userRole} /></strong></div><p className="text-sm text-gray-600">{row.pedidos.length} pedidos · {diasFiadoDesde(row.antigua)} días</p>{limiteBadge(row)}{acciones(row)}{expandido === row.clienteId && detalle(row)}</article>)}</div>
+      </div>}
+    {convertir && <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4"><h3 className="font-semibold">Crear deuda de trabajador</h3><p className="text-sm">Se creará una deuda de trabajador tipo FIADO. Se descontará de nómina según el plan configurado.</p><label className="block text-sm">Trabajador responsable<select value={trabajadorId} onChange={e => setTrabajadorId(e.target.value)} className="mt-1 min-h-11 w-full rounded border p-2"><option value="">Seleccionar…</option>{trabajadores.map(t => <option key={t.id} value={t.id}>{t.nombre} · {t.rol}</option>)}</select></label><label className="block text-sm">Monto<input type="number" value={montoDeuda} onChange={e => setMontoDeuda(e.target.value)} className="mt-1 min-h-11 w-full rounded border p-2" /></label><label className="block text-sm">Descripción<input value={descripcion} onChange={e => setDescripcion(e.target.value)} className="mt-1 min-h-11 w-full rounded border p-2" /></label><div className="flex gap-2"><button className="min-h-11 rounded border px-4" onClick={() => setConvertir(null)}>Cancelar</button><button className="min-h-11 rounded bg-amber-600 px-4 text-white" disabled={guardandoDeuda} onClick={() => void crearDeuda()}>{guardandoDeuda ? 'Procesando…' : 'Crear deuda'}</button></div></div>}
+  </section>
 }

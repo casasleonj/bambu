@@ -14,6 +14,8 @@ export type AuditAction =
   | 'GENERACION'
 
 export interface AuditEntry {
+  /** #515: identidad estable para el resultado de un cobro reintentable. */
+  id?: string
   entidad: string
   registroId: string
   accion: AuditAction
@@ -53,6 +55,7 @@ export async function logAudit(entry: AuditEntry, tx?: { historial: Prisma.Histo
 
     await client.historial.create({
       data: {
+        ...(entry.id ? { id: entry.id } : {}),
         entidad: entry.entidad,
         registroId: entry.registroId,
         accion: entry.accion,

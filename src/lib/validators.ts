@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { importeFiadoSchema, metodoFiadoSchema, sumarCobroFiado } from './fiados-cobro'
 import { normalizarTelefono } from "./telefono";
 
 const TelefonoRequeridoSchema = z.preprocess(
@@ -1018,18 +1019,31 @@ export const TrabajadorUpdateSchema = TrabajadorBaseObject.partial()
 // PAGAR FIADO
 // ====================
 
-export const PagarFiadoSchema = z.object({
+const PagarFiadoBaseSchema = z.object({
   clienteId: z.string().min(1),
-  monto: z.coerce.number().positive('El monto debe ser mayor a 0'),
-  metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
   // Offline-first: dedup por batchId (compartido por todos los Pagos del batch)
-  offlineId: z.string().optional(),
+  offlineId: z.string().min(1).max(200).optional(),
+  versionDeuda: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   // TEMPORAL-SIN-EMBARQUE(#472): quién recibió el dinero y cuándo. Solo los acepta
   // el ADMIN con la gestión temporal encendida; sin estos campos el cobro es el de siempre.
   recibioDinero: z.enum(['OFICINA', 'REPARTIDOR']).optional(),
   repartidorId: z.string().min(1).optional(),
   fechaRecepcion: z.string().datetime().optional(),
 })
+
+// #515/#498: un cobro mixto es UNA transacción, no varios POST independientes.
+// El cuerpo legacy sigue admitido para clientes offline que ya estaban en cola.
+export const PagarFiadoSchema = z.union([
+  PagarFiadoBaseSchema.extend({
+    monto: importeFiadoSchema, metodo: metodoFiadoSchema, pagos: z.never().optional(),
+  }).transform(v => ({ ...v, pagos: [{ monto: v.monto, metodo: v.metodo }] })),
+  PagarFiadoBaseSchema.extend({
+    pagos: z.array(z.object({ monto: importeFiadoSchema, metodo: metodoFiadoSchema })).min(1).max(10),
+    offlineId: z.string().min(1).max(200),
+    versionDeuda: z.string().regex(/^[a-f0-9]{64}$/),
+    monto: z.never().optional(), metodo: z.never().optional(),
+  }).transform(v => ({ ...v, monto: sumarCobroFiado(v.pagos), metodo: undefined, pagos: v.pagos })),
+])
 
 // ====================
 // USUARIOS / PERFIL

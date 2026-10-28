@@ -2,6 +2,7 @@
 
 import { CorreccionPrecioPanel } from '@/components/correccion-precio/correccion-precio-panel'
 import { cierreV2Enabled } from '@/lib/flags'
+import { canReadFacturas } from '@/lib/permissions'
 import Link from 'next/link'
 import { useState } from 'react'
 import { formatCurrency } from '@/lib/utils'
@@ -32,6 +33,8 @@ interface Props {
   canalBadge: React.ReactNode
   onClose: () => void
   onAccion: (key: AccionDetalleKey) => void
+  volverLabel?: string
+  onOpenFactura?: (id: string) => void
 }
 
 const ITEM_BG: Record<string, string> = {
@@ -83,7 +86,7 @@ const TONO_BOTON: Record<AccionDetalle['tone'], string> = {
 }
 
 export function PedidoDetalle({
-  pedido, embarqueNumeroDia, preciosActuales, updatingId, userRole, gestionAdmin, nombreRepartidor, estadoBadge, canalBadge, onClose, onAccion,
+  pedido, embarqueNumeroDia, preciosActuales, updatingId, userRole, gestionAdmin, nombreRepartidor, estadoBadge, canalBadge, onClose, onAccion, volverLabel, onOpenFactura,
 }: Props) {
   const [relacionadoAbierto, setRelacionadoAbierto] = useState(false)
   const total = Number(pedido.total)
@@ -310,9 +313,10 @@ export function PedidoDetalle({
                       {pedido.factura.estado}
                     </span>
                   </div>
-                  <a href={`/facturas?openFactura=${pedido.factura.id}`} className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                  {canReadFacturas(userRole) && <a href={`/facturas?openFactura=${pedido.factura.id}`} className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                    onClick={e => { if (onOpenFactura && pedido.factura && !e.ctrlKey && !e.metaKey) { e.preventDefault(); onOpenFactura(pedido.factura.id) } }}>
                     → Ver factura #{pedido.factura.numero}
-                  </a>
+                  </a>}
                   {pedido.factura.abonos && pedido.factura.abonos.length > 0 && (
                     <div className="mt-2">
                       <p className="text-xs font-medium text-gray-500 mb-1">Abonos ({pedido.factura.abonos.length}):</p>
@@ -382,6 +386,7 @@ export function PedidoDetalle({
       </div>
 
       <footer data-testid="detalle-acciones" className="sticky bottom-0 border-t bg-white p-3 flex gap-2 flex-wrap pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {volverLabel && <button type="button" className="min-h-11 rounded-lg border px-4 text-sm" onClick={onClose}>{volverLabel}</button>}
         {acciones.primaria && boton(acciones.primaria, true)}
         {acciones.secundarias.map((a) => boton(a, !acciones.primaria && acciones.secundarias.length === 1))}
         {acciones.sinAcciones && (

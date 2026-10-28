@@ -302,13 +302,20 @@ async function doSyncWithServer(): Promise<SyncResult> {
         )
       } else if (res.status === 409) {
         const data = await res.json().catch(() => ({}))
-        await finalizeRequestQueueItem(req, data, 'synced')
-        dispatchSyncItemDone(req.offlineId, req.localEndpoint, 'conflict')
-        conflicts++
-        logger.warn(
-          { localId: req.offlineId, endpoint: req.localEndpoint, status: 409 },
-          'Sync: conflict resuelto por server (dedup)',
-        )
+        // #515: una revisión de deuda caducada no es un pago aplicado. Conservar
+        // el cuerpo en la DLQ existente para revisión humana, no anunciar éxito.
+        if (req.url.split('?')[0].endsWith('/api/pedidos/pagar-fiado') && data.deduped !== true) {
+          const reason = data.error?.message || 'El cobro requiere revisión antes de registrarse.'
+          await moveToDLQ({ ...req, attempts: newAttempts, lastAttemptAt: new Date() }, reason)
+          dispatchSyncItemDone(req.offlineId, req.localEndpoint, 'dlq', reason)
+          failedPermanently++
+        } else {
+          await finalizeRequestQueueItem(req, data, 'synced')
+          dispatchSyncItemDone(req.offlineId, req.localEndpoint, 'conflict')
+          conflicts++
+          logger.warn({ localId: req.offlineId, endpoint: req.localEndpoint, status: 409 },
+            'Sync: conflict resuelto por server (dedup)')
+        }
       } else if (res.status === 429) {
         const retryAfter = Number(res.headers.get('Retry-After') || 60)
         await offlineDb.requestQueue.update(req.id!, {

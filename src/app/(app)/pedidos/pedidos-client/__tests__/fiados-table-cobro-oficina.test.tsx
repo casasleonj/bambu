@@ -1,85 +1,63 @@
-// TEMPORAL-SIN-EMBARQUE(#472): el cobro de un fiado pide «quién recibió el dinero»
-// y «cuándo» solo al ADMIN con la función encendida. Componente real, red simulada.
+// #472/#515: el flujo compartido conserva autoridad, responsable y fecha.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
-import { FiadosTable } from '../fiados-table'
-import type { Pedido, Cliente } from '../types'
-
-const mockGestion = vi.fn()
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { CobroFiadoDialog } from '../cobro-fiado-dialog'
+const mockGestion = vi.fn(), mockFetch = vi.fn()
 vi.mock('@/hooks/use-gestion-admin', () => ({ useGestionAdmin: (esAdmin: boolean) => mockGestion(esAdmin) }))
-const mockFetch = vi.fn()
 vi.mock('@/lib/fetch-resilient', () => ({ fetchResilient: (...a: unknown[]) => mockFetch(...a) }))
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
-
+vi.mock('@/hooks/use-shallow-search-params', () => ({ useShallowSearchParams: () => ({ toString: () => 'tab=fiados' }) }))
+vi.mock('@/lib/db/offline', () => ({ offlineDb: {} }))
+vi.mock('@/lib/db/sync', () => ({ syncWithServer: vi.fn(), SYNC_ITEM_DONE_EVENT: 'sync-item-done' }))
 const REPARTIDORES = [{ id: 'r1', nombre: 'Andrés' }]
-const PEDIDO = {
-  id: 'p1', numero: 351, clienteId: 'c1', nombreCli: 'Tienda La Esquina', telefonoCli: '3001112233',
-  estadoEntrega: 'ENTREGADO', saldo: 60000, total: 60000, fecha: new Date().toISOString(), items: [],
-} as unknown as Pedido
-
+const preparacion = { clienteId: 'c1', clienteNombre: 'Tienda', version: 'a'.repeat(64), deudaTotal: 60000,
+  pedidos: [{ id: 'p1', numero: 351, saldo: 60000, total: 60000, totalPagado: 0, fecha: new Date().toISOString(), factura: null }], metodosPorConfirmar: [] }
 function montar(userRole: string) {
-  return render(
-    <FiadosTable
-      clientes={[{ id: 'c1', limitePedidosFiados: 5 } as unknown as Cliente]}
-      pedidos={[PEDIDO]}
-      loading={false}
-      error={null}
-      activeTab="fiados"
-      userRole={userRole}
-    />,
-  )
+  return render(<CobroFiadoDialog cliente={{ id: 'c1', nombre: 'Tienda' }} actorId="u1" visible userRole={userRole} onClose={vi.fn()} onRegistrado={vi.fn()} />)
 }
-const escritorio = () => within(screen.getByTestId('fiados-desktop'))
-
-function abrirPago() {
-  fireEvent.click(escritorio().getByRole('button', { name: 'Pagar' }))
-  fireEvent.change(escritorio().getByPlaceholderText(/Máx/), { target: { value: '60000' } })
+async function llenar() {
+  await screen.findByLabelText('Medio 1')
+  fireEvent.change(screen.getByLabelText('Medio 1'), { target: { value: 'EFECTIVO' } })
+  fireEvent.change(screen.getByLabelText('Monto 1'), { target: { value: '60000' } })
 }
-
+async function registrar() {
+  fireEvent.click(screen.getByRole('button', { name: 'Revisar reparto' }))
+  fireEvent.click(await screen.findByRole('button', { name: /Registrar.*60/ }))
+  await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1))
+}
 beforeEach(() => {
-  vi.clearAllMocks()
-  global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ trabajadores: [] }) }) as unknown as typeof fetch
-  mockFetch.mockResolvedValue({ status: 'ok', data: { pagosAplicados: [], montoAplicado: 60000, montoSobrante: 0 } })
+  vi.clearAllMocks(); sessionStorage.clear()
+  global.fetch = vi.fn().mockImplementation(async (url: string) => ({ ok: true, json: async () => url.includes('recientes') ? { resultados: [] } : { preparacion } })) as unknown as typeof fetch
+  mockFetch.mockResolvedValue({ status: 'offline', reason: 'network' })
 })
-
-describe('FiadosTable — cobro con «quién recibió» (#472)', () => {
+describe('CobroFiadoDialog — quién recibió (#472)', () => {
   it('con la función encendida pide quién recibió y no cobra hasta decirlo', async () => {
     mockGestion.mockReturnValue({ activa: true, repartidores: REPARTIDORES })
-    montar('ADMIN')
-    abrirPago()
-    expect((screen.getAllByTestId('cobro-recibio-oficina')[0] as HTMLInputElement).checked).toBe(false) // no viene marcado
-
-    fireEvent.click(escritorio().getByRole('button', { name: 'Confirmar pago' }))
+    montar('ADMIN'); await llenar()
+    expect((screen.getByTestId('cobro-recibio-oficina') as HTMLInputElement).checked).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar reparto' }))
     expect(screen.getAllByText('Indica quién recibió el dinero.').length).toBeGreaterThan(0)
     expect(mockFetch).not.toHaveBeenCalled()
   })
-
-  it('si lo recibió un repartidor, exige elegirlo y lo envía junto con el pago', async () => {
+  it('si lo recibió un repartidor exige elegirlo y envía la identidad junto con el pago revisado', async () => {
     mockGestion.mockReturnValue({ activa: true, repartidores: REPARTIDORES })
-    montar('ADMIN')
-    abrirPago()
-    fireEvent.click(screen.getAllByTestId('cobro-recibio-repartidor')[0])
-    fireEvent.click(escritorio().getByRole('button', { name: 'Confirmar pago' }))
+    montar('ADMIN'); await llenar()
+    fireEvent.click(screen.getByTestId('cobro-recibio-repartidor'))
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar reparto' }))
     expect(screen.getAllByText('Elige qué repartidor recibió el dinero.').length).toBeGreaterThan(0)
     expect(mockFetch).not.toHaveBeenCalled()
-
-    fireEvent.change(screen.getAllByLabelText(/¿Qué repartidor\?/)[0], { target: { value: 'r1' } })
-    fireEvent.click(escritorio().getByRole('button', { name: 'Confirmar pago' }))
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1))
-    const [url, opciones] = mockFetch.mock.calls[0] as [string, { body: Record<string, unknown> }]
+    fireEvent.change(screen.getByLabelText(/¿Qué repartidor\?/), { target: { value: 'r1' } })
+    await registrar()
+    const [url, opciones] = mockFetch.mock.calls[0]
     expect(url).toBe('/api/pedidos/pagar-fiado')
-    expect(opciones.body).toMatchObject({ clienteId: 'c1', monto: 60000, recibioDinero: 'REPARTIDOR', repartidorId: 'r1' })
-    expect(opciones.body).not.toHaveProperty('fechaRecepcion') // hoy: el servidor usa el instante actual
+    expect(opciones.body).toMatchObject({ clienteId: 'c1', pagos: [{ monto: 60000, metodo: 'EFECTIVO' }], recibioDinero: 'REPARTIDOR', repartidorId: 'r1', versionDeuda: preparacion.version })
+    expect(opciones.body).not.toHaveProperty('fechaRecepcion')
   })
-
-  it('con la función apagada (o sin ser ADMIN) el cobro es el de siempre: sin preguntas y sin campos nuevos', async () => {
+  it('con la función apagada no añade responsable ni fechas al registro', async () => {
     mockGestion.mockReturnValue({ activa: false, repartidores: [] })
-    montar('ASISTENTE')
-    abrirPago()
+    montar('ASISTENTE'); await llenar()
     expect(screen.queryByTestId('cobro-oficina')).toBeNull()
-    fireEvent.click(escritorio().getByRole('button', { name: 'Confirmar pago' }))
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1))
-    const [, opciones] = mockFetch.mock.calls[0] as [string, { body: Record<string, unknown> }]
+    await registrar()
+    const [, opciones] = mockFetch.mock.calls[0]
     expect(opciones.body).not.toHaveProperty('recibioDinero')
     expect(opciones.body).not.toHaveProperty('repartidorId')
     expect(opciones.body).not.toHaveProperty('fechaRecepcion')
