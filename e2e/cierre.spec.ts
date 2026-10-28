@@ -20,7 +20,7 @@ test.describe('Cierre', () => {
   test('page loads', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/cierre')
-    await expect(page.locator('h1:has-text("Cierre del Día")')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('heading', { name: /^Cierre del día$/i, level: 1 })).toBeVisible({ timeout: 10000 })
     await expect(page.locator('text=Resumen Financiero').first()).toBeVisible({ timeout: 5000 })
   })
 

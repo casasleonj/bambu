@@ -89,9 +89,9 @@ describe('verificador de integridad (solo lectura)', () => {
 
     // Legítimo: pagar-fiado escribe Pago + Abono espejo por el mismo dinero.
     const espejo = await crearPedido({ clienteId: cliente.id, total: 10000, totalPagado: 10000, canal: 'DOMICILIO' })
-    await testPrisma.pago.create({ data: { pedidoId: espejo.pedido.id, metodo: 'EFECTIVO', monto: 10000, confirmacion: 'CONFIRMADO' } })
+    const pagoEspejo = await testPrisma.pago.create({ data: { pedidoId: espejo.pedido.id, metodo: 'EFECTIVO', monto: 10000, confirmacion: 'CONFIRMADO' } })
     await testPrisma.abono.create({
-      data: { numero: `ABO-${uniqueId('a')}`, facturaId: espejo.factura!.id, clienteId: cliente.id, pedidoId: espejo.pedido.id, monto: 10000, metodoPago: 'EFECTIVO' },
+      data: { numero: `ABO-${uniqueId('a')}`, facturaId: espejo.factura!.id, clienteId: cliente.id, pedidoId: espejo.pedido.id, monto: 10000, metodoPago: 'EFECTIVO', origenCobro: 'ESPEJO_PAGO', pagoOrigenId: pagoEspejo.id },
     })
     await testPrisma.receivableEntry.create({
       data: { pedidoId: espejo.pedido.id, clienteId: cliente.id, tipo: 'PAGO', monto: 10000, saldoResultante: 0, totalPagadoResultante: 10000 },
@@ -101,7 +101,7 @@ describe('verificador de integridad (solo lectura)', () => {
     // Legítimo: abono suelto de /api/abonos sin pedidoId (solo factura), con su ReceivableEntry por factura.
     const suelto = await crearPedido({ clienteId: cliente.id, total: 7000, totalPagado: 7000, canal: 'DOMICILIO' })
     const abonoSuelto = await testPrisma.abono.create({
-      data: { numero: `ABO-${uniqueId('a')}`, facturaId: suelto.factura!.id, clienteId: cliente.id, monto: 7000, metodoPago: 'EFECTIVO' },
+      data: { numero: `ABO-${uniqueId('a')}`, facturaId: suelto.factura!.id, clienteId: cliente.id, monto: 7000, metodoPago: 'EFECTIVO', origenCobro: 'INDEPENDIENTE' },
     })
     await testPrisma.receivableEntry.create({
       data: { facturaId: suelto.factura!.id, clienteId: cliente.id, tipo: 'ABONO', monto: 7000, saldoResultante: 0, totalPagadoResultante: 7000 },

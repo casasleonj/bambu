@@ -60,6 +60,7 @@ async function seedAbono(monto: number, opts?: { estadoEntrega?: string; total?:
       pedidoId: pedido.id,
       monto,
       metodoPago: 'NEQUI',
+      origenCobro: 'INDEPENDIENTE',
     },
   })
   return { cliente, pedido, factura, abono }

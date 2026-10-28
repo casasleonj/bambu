@@ -4,14 +4,16 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
-import { useConfirm } from '@/components/confirm-modal'
+import { useConfirmacionCierre } from '@/components/cierre/cierre-confirmacion'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn, formatCurrency } from '@/lib/utils'
 import { getTodayString } from '@/lib/dates'
+import { calcularNetoCierre } from '@/lib/cierre-totales'
 import { CheckCircle2, AlertTriangle, Receipt, Droplets, Snowflake, ArrowRight, Check } from 'lucide-react'
 import ArqueoCaja, { type ArqueoData, DENOMINACIONES } from '@/components/arqueo-caja'
 import CierreHeader from '@/components/cierre/cierre-header'
+import { CierreEstadoConsulta, type ErrorConsultaCierre } from '@/components/cierre/cierre-estado-consulta'
 import CierreKpiGrid from '@/components/cierre/cierre-kpi-grid'
 import CierreSection from '@/components/cierre/cierre-section'
 import CierreStockBlock from '@/components/cierre/cierre-stock-block'
@@ -24,12 +26,13 @@ const formatMoney = (val: number) => formatCurrency(val)
 
 export default function CierreClient({ initialFecha }: { initialFecha: string | null }) {
   const router = useRouter()
-  const { confirm, modal } = useConfirm()
+  const { confirm, modal } = useConfirmacionCierre()
   const [data, setData] = useState<CierreData | null>(null)
   const [statusCierre, setStatusCierre] = useState<'COMPLETO' | 'INCOMPLETO' | null>(null)
   const [embarquesPendientes, setEmbarquesPendientes] = useState<{ id: string; numero: number; repartidor?: string }[]>([])
   const [loading, setLoading] = useState(true)
-  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [errorConsulta, setErrorConsulta] = useState<ErrorConsultaCierre | null>(null)
+  const fetchError = errorConsulta?.message ?? null
   const [cerrando, setCerrando] = useState(false)
   const [yaCerrado, setYaCerrado] = useState(false)
   const [lastCierreDate, setLastCierreDate] = useState<string | null>(null)
@@ -64,7 +67,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   })()
   const [netoEnArqueo, setNetoEnArqueo] = useState(0)
   const abortControllerRef = useRef<AbortController | null>(null)
-  const fetchedDateRef = useRef<string | null>(null)
+  const cierreSolicitadoRef = useRef(false)
 
   const { data: session } = useSession()
   const userRole = (session?.user as { role?: string } | undefined)?.role
@@ -83,6 +86,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       ])
       if (res.ok) {
         const data = await res.json()
+        if (signal.aborted) return
         if (data.config) {
           setBaseDia(Number(data.config.valor))
           return
@@ -90,19 +94,20 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       }
       if (defaultRes.ok) {
         const defaultData = await defaultRes.json()
+        if (signal.aborted) return
         if (defaultData.config?.valor) setBaseDia(Number(defaultData.config.valor))
       }
     } catch { /* ignore */ }
   }, [])
 
-  const checkLastCierre = useCallback(async (dateStr: string, signal: AbortSignal) => {
+  const checkLastCierre = useCallback(async (signal: AbortSignal) => {
     try {
       const res = await fetch('/api/cierre/last', { signal })
       if (res.ok) {
         const json = await res.json()
+        if (signal.aborted) return
         if (json.cierre) {
           const cierreDate = new Date(json.cierre.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-          if (cierreDate === dateStr) setYaCerrado(true)
           setLastCierreDate(cierreDate)
         } else {
           setLastCierreDate(null)
@@ -112,13 +117,21 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   }, [])
 
   const fetchCierre = useCallback(async (dateStr: string, signal: AbortSignal) => {
-    setFetchError(null)
     try {
       const res = await fetch(`/api/cierre?fecha=${dateStr}`, { signal })
       const json = await res.json()
+      if (signal.aborted) return
+      if (!res.ok || !json.cierre || json.cierre.fecha !== dateStr) {
+        const message = json.error?.message || 'No se pudieron cargar los datos del cierre'
+        setData(null)
+        setErrorConsulta({ message, code: json.error?.code, cobros: json.error?.cobrosPendientes })
+        return
+      }
       if (json.cierre) {
+        setErrorConsulta(null)
         setData(json.cierre)
         setStatusCierre(json.status || 'COMPLETO')
+        setYaCerrado(json.status === 'CERRADO')
         setEmbarquesPendientes(json.embarquesPendientes || [])
         if (json.cierre.produccion) {
           setProdAgua(json.cierre.produccion.prodAgua || 0)
@@ -129,12 +142,14 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           setStockFinHielo(json.cierre.produccion.stockFinHielo || 0)
         }
       }
-    } catch {
+    } catch (error) {
       if (signal.aborted) return
-      setFetchError('No se pudieron cargar los datos del cierre')
-      toast.error('Error cargando datos del cierre')
+      setData(null)
+      const message = error instanceof Error ? error.message : 'No se pudieron cargar los datos del cierre'
+      setErrorConsulta({ message })
+      toast.error(message)
     } finally {
-      setLoading(false)
+      if (!signal.aborted) setLoading(false)
     }
   }, [])
 
@@ -143,17 +158,22 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     setFecha(newFecha)
     setLoading(true)
     setYaCerrado(false)
-    if (abortControllerRef.current) abortControllerRef.current.abort()
-    const ctrl = new AbortController()
-    abortControllerRef.current = ctrl
-    fetchCierre(newFecha, ctrl.signal)
-    loadBaseDia(newFecha, ctrl.signal)
-    checkLastCierre(newFecha, ctrl.signal)
+    setData(null)
+    setErrorConsulta(null)
+    setStatusCierre(null)
+    setBaseDia(0)
+    setSalarios(0)
+    setArqueoData({ arqueo: {}, totalContado: 0, diferencia: 0 })
+    setStockIniAgua(0); setStockIniHielo(0)
+    setProdAgua(0); setProdHielo(0)
+    setStockFinAgua(0); setStockFinHielo(0)
   }
 
   const calcularNetoCaja = useCallback(() => {
-    const totalCobros = (data?.efectivo || 0) + (data?.transferencia || 0) + (data?.nequi || 0) + (data?.daviplata || 0) + (data?.bono || 0)
-    return baseDia + totalCobros - (data?.totalGastos || 0) - comisiones - salarios
+    return calcularNetoCierre({
+      baseDia, cobroVentasHoy: data?.cobroVentasHoy ?? 0, cobroCartera: data?.cobroCartera ?? 0,
+      totalGastos: data?.totalGastos ?? 0, comisiones, salarios,
+    })
   }, [data, baseDia, comisiones, salarios])
 
   const handleArqueoChange = useCallback((d: { arqueo: ArqueoData; totalContado: number; diferencia: number }) => {
@@ -162,25 +182,32 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   }, [calcularNetoCaja])
 
   useEffect(() => {
-    if (fetchedDateRef.current === fecha) return
-    fetchedDateRef.current = fecha
     if (abortControllerRef.current) abortControllerRef.current.abort()
     const ctrl = new AbortController()
     abortControllerRef.current = ctrl
-    fetchCierre(fecha, ctrl.signal)
-    loadBaseDia(fecha, ctrl.signal)
-    checkLastCierre(fecha, ctrl.signal)
+    // La suscripción puede desmontarse en StrictMode antes de iniciar la red.
+    void Promise.resolve().then(() => {
+      if (ctrl.signal.aborted) return
+      void fetchCierre(fecha, ctrl.signal)
+      void loadBaseDia(fecha, ctrl.signal)
+      void checkLastCierre(ctrl.signal)
+    })
     return () => ctrl.abort()
   }, [fecha, fetchCierre, loadBaseDia, checkLastCierre])
 
   // Polling: refetch base de caja every 60s (replaces config.updated SSE).
   usePollingRefetch(() => {
-    const ctrl = new AbortController()
-    void loadBaseDia(fecha, ctrl.signal)
+    const signal = abortControllerRef.current?.signal
+    if (signal && !cerrando) void loadBaseDia(fecha, signal)
   }, 60_000)
 
   const handleCerrar = async (e?: React.FormEvent) => {
     e?.preventDefault()
+    if (cierreSolicitadoRef.current || cerrando) return
+    if (!canClose || !data || loading || fetchError || data.fecha !== fecha || diaCerrado) {
+      toast.error('Carga y revisa los datos de esta fecha antes de confirmar el cierre.')
+      return
+    }
     if (statusCierre === 'INCOMPLETO') {
       toast.error(`No se puede cerrar: ${embarquesPendientes.length} embarque(s) abierto(s). Ciérralos primero.`)
       return
@@ -196,38 +223,13 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       return
     }
     const neto = calcularNetoCaja()
+    cierreSolicitadoRef.current = true
+    setCerrando(true)
     const ok = await confirm({
-      message: '¿Confirmar cierre del día?',
-      description: 'Esta acción es irreversible. Verifica que todos los datos sean correctos antes de continuar.',
-      variant: 'destructive',
-      requireTyping: 'CERRAR',
-      confirmLabel: 'Cerrar Día',
-      details: (
-        <div className="space-y-1 text-sm">
-          <div className="flex justify-between"><span className="text-muted-foreground">Ventas</span><span className="font-medium">{formatMoney(data?.totalVentas || 0)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Base</span><span className="font-medium">{formatMoney(baseDia)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Gastos</span><span className="font-medium text-red-600">-{formatMoney(data?.totalGastos || 0)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Comisiones</span><span className="font-medium text-red-600">-{formatMoney(comisiones)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Salarios</span><span className="font-medium text-red-600">-{formatMoney(salarios)}</span></div>
-          <div className="border-t pt-1 mt-1 flex justify-between font-bold text-base">
-            <span>Neto Caja</span>
-            <span>{formatMoney(neto)}</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">Contado físico</span>
-            <span className={currentArqueo.diferencia === 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-              {formatMoney(currentArqueo.totalContado)} {currentArqueo.diferencia === 0 ? '(Cuadrado)' : currentArqueo.diferencia > 0 ? `(Sobrante ${formatMoney(currentArqueo.diferencia)})` : `(Faltante ${formatMoney(Math.abs(currentArqueo.diferencia))})`}
-            </span>
-          </div>
-        </div>
-      ),
-      consequences: [
-        'No podrás editar pedidos, gastos ni embarques de este día',
-        'No podrás modificar el arqueo de caja',
-        'El reporte quedará almacenado como evidencia permanente',
-      ],
+      fecha, ventas: data.totalVentas, cobros: data.cobroVentasHoy + data.cobroCartera,
+      base: baseDia, gastos: data.totalGastos, comisiones, salarios, neto,
     })
-    if (!ok) return
+    if (!ok) { cierreSolicitadoRef.current = false; setCerrando(false); return }
     setCerrando(true)
     try {
       const cierreData = {
@@ -263,30 +265,52 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       })
       const json = await res.json()
       if (res.status === 201 && json.cierre) {
-        toast.success('Día cerrado correctamente')
-        router.push('/')
+        toast.success(Number(json.cierre.netoCaja) !== neto
+          ? 'Cierre registrado con importes actualizados. Revisa el resultado guardado.'
+          : 'Día cerrado correctamente')
+        const ctrl = new AbortController()
+        abortControllerRef.current = ctrl
+        await fetchCierre(fecha, ctrl.signal)
       } else if (res.status === 409) {
-        toast.error('Ya existe un cierre para esta fecha')
-        router.refresh()
-      } else if (res.status === 400 && json.error?.includes('embarque')) {
-        toast.error(json.error, {
+        toast.error(json.error?.message || 'No se pudo confirmar el cierre. Revisa los datos de esta fecha.')
+        const ctrl = new AbortController()
+        await fetchCierre(fecha, ctrl.signal)
+      } else if (res.status === 400 && json.error?.message?.includes('embarque')) {
+        toast.error(json.error.message, {
           description: 'Cierra los embarques pendientes antes de cerrar el día',
           action: { label: 'Ir a Embarques', onClick: () => router.push('/embarques') },
         })
-      } else if (res.status === 400 && json.error?.includes('día(s) sin cerrar')) {
-        toast.error(json.error)
+      } else if (res.status === 400 && json.error?.message?.includes('días sin cerrar')) {
+        toast.error(json.error.message)
       } else {
-        toast.error(json.error || 'Error al cerrar')
+        toast.error(json.error?.message || 'Error al cerrar')
       }
     } catch {
-      toast.error('Error al cerrar')
+      toast.error('No pudimos confirmar el resultado. Consulta el cierre antes de reintentar.')
+      const ctrl = new AbortController()
+      await fetchCierre(fecha, ctrl.signal)
     } finally {
+      cierreSolicitadoRef.current = false
       setCerrando(false)
     }
   }
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" /></div>
+  }
+
+  if (fetchError || !data) {
+    return <CierreEstadoConsulta
+      error={errorConsulta ?? { message: 'No hay datos disponibles para esta fecha.' }}
+      fecha={fecha} maxFecha={getTodayString()} onFechaChange={handleDateChange}
+      onRetry={() => {
+        setLoading(true)
+        abortControllerRef.current?.abort()
+        const ctrl = new AbortController()
+        abortControllerRef.current = ctrl
+        void fetchCierre(fecha, ctrl.signal)
+      }}
+    />
   }
 
   const netoTeorico = calcularNetoCaja()
@@ -305,7 +329,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       <div className="p-4 max-w-5xl mx-auto space-y-6 pb-32">
         {modal}
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Cierre del Día</h1>
+          <CierreHeader fecha={fecha} totalVentas={data.totalVentas} status={null} embarquesPendientes={0} paso={3} />
           <p className="text-sm text-muted-foreground mt-1">Resumen y cierre de operaciones del día</p>
         </div>
 
@@ -322,25 +346,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           <p className="text-green-700 text-sm">El cierre para este día ya fue registrado. No se puede volver a cerrar.</p>
         </div>
 
-        {/* Resumen del cierre */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-            <div className="text-xs text-emerald-700 font-medium">Total Ventas</div>
-            <div className="text-xl font-bold text-emerald-900">{formatMoney(data.totalVentas)}</div>
-          </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-            <div className="text-xs text-blue-700 font-medium">Total Cobrado</div>
-            <div className="text-xl font-bold text-blue-900">{formatMoney(data.cobrado)}</div>
-          </div>
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-            <div className="text-xs text-red-700 font-medium">Total Gastos</div>
-            <div className="text-xl font-bold text-red-900">{formatMoney(data.totalGastos)}</div>
-          </div>
-          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-            <div className="text-xs text-purple-700 font-medium">Neto Caja</div>
-            <div className="text-xl font-bold text-purple-900">{formatMoney(Number(data.netoCaja || 0))}</div>
-          </div>
-        </div>
+        <CierreKpiGrid data={data} netoTeorico={Number(data.netoCaja)} />
 
         {/* Arqueo */}
         {data.totalContado != null && (
@@ -520,19 +526,13 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         </div>
       )}
 
-      {/* Fetch error */}
-      {fetchError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between">
-          <p className="text-red-700 text-sm">{fetchError}</p>
-          <Button size="sm" variant="destructive" onClick={() => { setLoading(true); const ctrl = new AbortController(); abortControllerRef.current = ctrl; fetchCierre(fecha, ctrl.signal) }}>Reintentar</Button>
-        </div>
-      )}
-
       {/* Date selector */}
       <div className="flex items-center justify-end gap-2">
-        <label className="text-sm text-muted-foreground">Fecha:</label>
+        <label htmlFor="cierre-fecha" className="text-sm text-muted-foreground">Fecha del cierre:</label>
         <input
+          id="cierre-fecha"
           type="date"
+          disabled={cerrando}
           max={todayStr}
           value={fecha}
           onChange={handleDateChange}
@@ -553,9 +553,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         number={1}
         title="Resumen Financiero"
         description="Revisa que los números del día cuadren. Los datos vienen del sistema."
-        status="completo"
+        status={data && !fetchError ? 'completo' : 'pendiente'}
       >
-        <CierreKpiGrid data={data} netoTeorico={netoTeorico} />
+        <CierreKpiGrid data={data} netoTeorico={netoTeorico} baseDia={baseDia} comisiones={comisiones} salarios={salarios} />
       </CierreSection>
 
       {/* Section 2: Stock y Base de Caja */}
@@ -591,7 +591,10 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
               repartidores={data?.comisionesAuto?.repartidores ?? []}
               puedePagar={puedePagarComision}
               diaCerrado={diaCerrado}
-              onPagado={() => { void fetchCierre(fecha, new AbortController().signal) }}
+              onPagado={() => {
+                const signal = abortControllerRef.current?.signal
+                if (signal) void fetchCierre(fecha, signal)
+              }}
             />
           </div>
 
@@ -629,7 +632,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         title="Arqueo de Caja"
         description="Cuenta el efectivo físico y compara con lo que dice el sistema."
       >
-        <ArqueoCaja netoTeorico={netoTeorico} onChange={handleArqueoChange} onClose={() => {
+        <ArqueoCaja key={fecha} netoTeorico={netoTeorico} onChange={handleArqueoChange} onClose={() => {
           const latest = arqueoRef.current
           if (latest.totalContado > 0) {
             toast.success(`Conteo guardado: ${formatCurrency(latest.totalContado)}`, {

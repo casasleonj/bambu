@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { DollarSign, CreditCard, TrendingDown, Calculator } from 'lucide-react'
+import { formatCurrency } from '@/lib/utils'
 import type { CierreData } from '@/app/(app)/cierre/cierre-client/types'
 
 const ORIGEN_LABELS: Record<string, string> = {
@@ -10,37 +10,59 @@ const ORIGEN_LABELS: Record<string, string> = {
   VENTA_LIBRE: 'Venta Libre',
 }
 
-const formatMoney = (val: number) => `$${val.toLocaleString()}`
+const formatMoney = formatCurrency
 
-export default function CierreKpiGrid({ data, netoTeorico }: { data: CierreData | null; netoTeorico: number }) {
+export default function CierreKpiGrid({ data, netoTeorico, baseDia, comisiones, salarios }: {
+  data: CierreData | null; netoTeorico: number; baseDia?: number; comisiones?: number; salarios?: number;
+}) {
   const [expanded, setExpanded] = useState(false)
-
+  if (!data) return null
+  const cards = [
+    { key: 'ventas', label: 'Ventas de la fecha (netas)', amount: data.totalVentas, detail: 'Después del ajuste de ventas anteriores.' },
+    { key: 'cobros', label: 'Cobros de la fecha', amount: data.cobroVentasHoy + data.cobroCartera, detail: 'Incluye cobros de pedidos de otros días.' },
+    { key: 'gastos', label: 'Gastos de la fecha', amount: data.totalGastos, detail: 'Egresos registrados en el sistema.' },
+    { key: 'neto', label: 'Neto de movimientos', amount: netoTeorico, detail: 'Incluye la base y los pagos digitales.' },
+  ]
   return (
     <div>
-      {/* 4 KPIs principales */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-4">
-          <DollarSign className="w-6 h-6 text-emerald-600 mb-1" />
-          <div className="text-xs text-emerald-700 font-medium">Total Ventas</div>
-          <div className="text-xl font-bold text-emerald-900">{formatMoney(data?.totalVentas || 0)}</div>
-        </div>
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-4">
-          <CreditCard className="w-6 h-6 text-blue-600 mb-1" />
-          <div className="text-xs text-blue-700 font-medium">Total Cobrado</div>
-          <div className="text-xl font-bold text-blue-900">{formatMoney(data?.cobrado || 0)}</div>
-        </div>
-        <div className="bg-gradient-to-br from-red-50 to-red-100/50 border border-red-200 rounded-xl p-4">
-          <TrendingDown className="w-6 h-6 text-red-600 mb-1" />
-          <div className="text-xs text-red-700 font-medium">Total Gastos</div>
-          <div className="text-xl font-bold text-red-900">{formatMoney(data?.totalGastos || 0)}</div>
-        </div>
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-4">
-            <Calculator className="w-6 h-6 text-purple-600 mb-1" />
-            <div className="text-xs text-purple-700 font-medium">Neto Caja</div>
-            <div className="text-xl font-bold text-purple-900">{formatMoney(netoTeorico)}</div>
-          </div>
+        {cards.map(card => <div key={card.key} data-testid={`cierre-kpi-${card.key}`} className={`rounded-xl border p-4 min-w-0 ${card.key === 'cobros' ? 'bg-blue-50 border-blue-100' : 'bg-white border-slate-200'}`}>
+          <div className="min-h-9 text-xs leading-relaxed text-slate-500">{card.label}</div>
+          <div className={`text-xl lg:text-2xl font-bold tracking-tight tabular-nums whitespace-nowrap ${card.key === 'cobros' ? 'text-blue-700' : 'text-slate-800'}`}>{formatMoney(card.amount)}</div>
+          <p className="mt-2 text-xs leading-relaxed text-slate-500">{card.detail}</p>
+        </div>)}
       </div>
-
+      <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">Los pedidos anulados o cancelados de esta fecha ya están excluidos de las ventas. Un mismo cobro no se suma otra vez por aparecer también como abono.</p>
+      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <details open className="rounded-xl border border-slate-200 p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-800">Cómo se calculan las ventas</summary>
+          {data.notasCreditoVentasAnteriores !== undefined ? <dl className="mt-3 divide-y divide-slate-100 text-xs">
+            <FinancialRow label="Pedidos activos de la fecha" value={data.ventasDePedidosDelDia ?? 0} />
+            <FinancialRow label="Ajuste de ventas de días anteriores" value={-data.notasCreditoVentasAnteriores} />
+            <FinancialRow label="Ventas netas" value={data.totalVentas} total />
+            <FinancialRow label="Notas de crédito emitidas" value={data.totalNotasCredito} />
+            <FinancialRow label="Sin nueva resta de ventas: ya excluidos" value={data.notasCreditoSinAjusteVentas ?? 0} />
+            <FinancialRow label="De días anteriores: ajuste incluido arriba" value={data.notasCreditoVentasAnteriores} />
+          </dl> : <p className="mt-3 text-xs text-slate-500">El desglose de notas no está disponible para este cierre histórico. Se conserva el total registrado.</p>}
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">Una nota de crédito no significa, por sí sola, que se haya devuelto dinero en efectivo.</p>
+        </details>
+        <details open className="rounded-xl border border-slate-200 p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-800">Cómo se calcula el neto</summary>
+          <dl className="mt-3 divide-y divide-slate-100 text-xs">
+            <FinancialRow label="Base del día" value={baseDia ?? data.baseDia ?? 0} />
+            <FinancialRow label="Pagos registrados en la fecha" value={data.cobroVentasHoy} sign />
+            {data.abonosIndependientes !== undefined ? <>
+              <FinancialRow label="Abonos independientes" value={data.abonosIndependientes} sign />
+              <FinancialRow label="Ajustes de cobros" value={-(data.ajustesDeCobros ?? 0)} />
+            </> : <FinancialRow label="Abonos y ajustes de cobros" value={data.cobroCartera} sign />}
+            <FinancialRow label="Gastos" value={-data.totalGastos} />
+            <FinancialRow label="Comisiones pagadas" value={-(comisiones ?? data.comisiones ?? 0)} />
+            {(salarios ?? data.salarios ?? 0) > 0 && <FinancialRow label="Salarios" value={-(salarios ?? data.salarios ?? 0)} />}
+            <FinancialRow label="Neto de movimientos" value={netoTeorico} total />
+          </dl>
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">Este neto incluye pagos digitales. No equivale al efectivo físico contado.</p>
+        </details>
+      </div>
       {/* Toggle detalles */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -52,6 +74,7 @@ export default function CierreKpiGrid({ data, netoTeorico }: { data: CierreData 
       {/* Detalles expandibles */}
       {expanded && data && (
         <div className="mt-4 space-y-4 pt-4 border-t">
+          <p className="text-sm">Pagado sobre pedidos de esta fecha: {formatMoney(data.cobrado)}. Puede incluir pagos registrados en otros días.</p>
           {/* Métodos de Pago */}
           {(data.efectivo || data.transferencia || data.nequi || data.daviplata || data.bono) > 0 && (
             <div>
@@ -182,4 +205,10 @@ export default function CierreKpiGrid({ data, netoTeorico }: { data: CierreData 
       )}
     </div>
   )
+}
+
+function FinancialRow({ label, value, total = false, sign = false }: { label: string; value: number; total?: boolean; sign?: boolean }) {
+  return <div className={`flex justify-between gap-4 py-2.5 ${total ? 'font-bold text-blue-900' : ''}`}>
+    <dt className={total ? '' : 'text-slate-500'}>{label}</dt><dd className="whitespace-nowrap font-semibold tabular-nums">{sign && value > 0 ? '+ ' : ''}{formatMoney(value)}</dd>
+  </div>
 }

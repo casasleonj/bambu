@@ -1156,6 +1156,8 @@ model Pago {
   pedido    Pedido     @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
   metodo    MetodoPago
   monto     Decimal    @db.Decimal(10, 2)
+  // #513: identidad del Abono que refleja este mismo cobro; no se infiere por tiempo.
+  abonoEspejo Abono? @relation("AbonoPagoOrigen")
   // FIX LOW (C-VAL-8): offlineId actualmente es solo @index, no @unique.
   // Esto es por diseño: múltiples pagos del mismo batch offline comparten
   // offlineId para reconstruir el resumen "pagosAplicados" en el cliente.
@@ -2075,6 +2077,10 @@ model Abono {
   monto      Decimal  @db.Decimal(10, 2)
   metodoPago String
   fecha      DateTime @default(now()) @db.Timestamptz()
+  // #513: NULL conserva legado sin clasificar. Nunca asumir que NULL significa independiente.
+  origenCobro String?
+  pagoOrigenId String? @unique
+  pagoOrigen Pago? @relation("AbonoPagoOrigen", fields: [pagoOrigenId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   // G1 (docs/pedidos/INVENTARIO_PEDIDOS_OPERACION_COMERCIAL.md): clave
   // idempotente de POST /api/abonos. Retry/doble-submit con el mismo

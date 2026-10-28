@@ -44,8 +44,13 @@ export interface CierreData {
   cobrado: number
   cobroVentasHoy: number
   cobroCartera: number
+  abonosIndependientes?: number
+  ajustesDeCobros?: number
   fiado: number
   totalNotasCredito: number
+  ventasDePedidosDelDia?: number
+  notasCreditoVentasAnteriores?: number
+  notasCreditoSinAjusteVentas?: number
   // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 — informativo, no altera netoCaja.
   porConfirmar?: {
     total: number
@@ -130,6 +135,9 @@ export interface CierreData {
 
   // Cierre
   netoCaja: number
+  baseDia?: number
+  comisiones?: number
+  salarios?: number
 
   // Fecha
   fecha: string

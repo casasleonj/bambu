@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
         // Crear pago
         // ADR-PAGO-REPORTADO-CONFIRMADO-001: pago de fiado digital nace
         // REPORTADO hasta que el escritorio verifica que el dinero entró.
-        await tx.pago.create({
+        const pagoOrigen = await tx.pago.create({
           data: {
             pedidoId: pedido.id,
             metodo,
@@ -287,6 +287,8 @@ export async function POST(request: NextRequest) {
               pedidoId: pedido.id,
               monto: montoAplicar,
               metodoPago: metodo,
+              origenCobro: 'ESPEJO_PAGO',
+              pagoOrigenId: pagoOrigen.id,
             },
           })
         }

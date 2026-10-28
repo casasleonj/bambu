@@ -1,6 +1,5 @@
 'use client'
 
-import { ClipboardList, CheckCircle2, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface CierreHeaderProps {
@@ -8,56 +7,24 @@ interface CierreHeaderProps {
   totalVentas: number
   status: 'COMPLETO' | 'INCOMPLETO' | null
   embarquesPendientes: number
+  paso?: 1 | 2 | 3
 }
 
-export default function CierreHeader({ fecha, totalVentas, status, embarquesPendientes }: CierreHeaderProps) {
-  const fechaLabel = new Date(fecha + 'T12:00:00').toLocaleDateString('es-CO', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
+export default function CierreHeader({ fecha, status, embarquesPendientes, paso = 1 }: CierreHeaderProps) {
+  const fechaLabel = new Date(`${fecha}T12:00:00-05:00`).toLocaleDateString('es-CO', {
+    year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Bogota',
   })
-
-  return (
-    <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-6 text-white">
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <ClipboardList className="w-7 h-7" />
-            <h1 className="text-2xl font-bold">Cierre del Día</h1>
-          </div>
-          <p className="text-blue-100 capitalize text-sm">{fechaLabel}</p>
-          <p className="text-blue-200 text-sm mt-2 max-w-lg">
-            Revisa los números y cerrá el día. Después no podrás editar pedidos ni embarques.
-          </p>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-blue-200">Total Ventas</div>
-          <div className="text-3xl font-bold">${totalVentas.toLocaleString()}</div>
-          {status && (
-            <div className={cn(
-              'mt-2 inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold',
-              status === 'COMPLETO'
-                ? 'bg-green-500/20 text-green-200 border border-green-400/30'
-                : 'bg-red-500/20 text-red-200 border border-red-400/30'
-            )}>
-              {status === 'COMPLETO' ? (
-                <>
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Listo para cerrar
-                </>
-              ) : (
-                <>
-                  <XCircle className="w-3.5 h-3.5" />
-                  {embarquesPendientes} embarque(s) abierto(s)
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+  return <header className="space-y-5">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><h1 className="text-2xl font-bold tracking-tight text-slate-800">Cierre del día</h1>
+        <p className="mt-1 text-sm text-slate-500">Revisa las ventas y los cobros antes de confirmar.</p></div>
+      <p className="rounded-lg border bg-white px-3 py-2 text-sm text-slate-600">{fechaLabel}</p>
     </div>
-  )
+    <ol aria-label="Etapas del cierre" className="flex gap-5 text-xs">
+      {['Revisar', 'Confirmar', 'Registrado'].map((label, index) => <li key={label} aria-current={index + 1 === paso ? 'step' : undefined} className={cn('flex items-center gap-2', index + 1 === paso ? 'font-semibold text-blue-700' : 'text-slate-400')}>
+        <span className={cn('grid h-5 w-5 place-items-center rounded-full', index + 1 === paso ? 'bg-blue-600 text-white' : 'bg-slate-100')}>{index + 1}</span>{label}
+      </li>)}
+    </ol>
+    {status === 'INCOMPLETO' && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Hay {embarquesPendientes} embarque(s) pendiente(s). Deben cerrarse antes de confirmar el día.</p>}
+  </header>
 }
-
-

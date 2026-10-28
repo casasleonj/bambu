@@ -78,10 +78,14 @@ function ReporteContent() {
           <tbody>
             <tr><td className="py-1 font-medium">Pedidos</td><td className="text-right">{data.numPedidos}</td></tr>
             <tr><td className="py-1 font-medium">Ventas Totales</td><td className="text-right">{formatMoney(data.totalVentas)}</td></tr>
-            <tr><td className="py-1 font-medium">Cobrado (ventas de hoy)</td><td className="text-right">{formatMoney(data.cobroVentasHoy)}</td></tr>
-            <tr><td className="py-1 font-medium">Recaudo Cartera</td><td className="text-right">{formatMoney(data.cobroCartera)}</td></tr>
+            <tr><td className="py-1 font-medium">Pagos registrados en la fecha (incluye pedidos anteriores)</td><td className="text-right">{formatMoney(data.cobroVentasHoy)}</td></tr>
+            <tr><td className="py-1 font-medium">Abonos independientes y ajustes de cobros</td><td className="text-right">{formatMoney(data.cobroCartera)}</td></tr>
+            <tr><td className="py-1 font-medium">Total cobros de la fecha</td><td className="text-right">{formatMoney(data.cobroVentasHoy + data.cobroCartera)}</td></tr>
             <tr><td className="py-1 font-medium">Fiado</td><td className="text-right">{formatMoney(data.fiado)}</td></tr>
-            <tr><td className="py-1 font-medium">Notas Crédito</td><td className="text-right">{formatMoney(data.totalNotasCredito)}</td></tr>
+            <tr><td className="py-1 font-medium">Notas de crédito emitidas (no se restan otra vez)</td><td className="text-right">{formatMoney(data.totalNotasCredito)}</td></tr>
+            {data.notasCreditoVentasAnteriores !== undefined && (
+              <tr><td className="py-1 font-medium">De ellas, ajuste de ventas anteriores ya incluido en ventas netas</td><td className="text-right">{formatMoney(data.notasCreditoVentasAnteriores)}</td></tr>
+            )}
             {process.env.NEXT_PUBLIC_PAGO_CONFIRMACION === 'true' && (data.porConfirmar?.count ?? 0) > 0 && (
               <tr className="text-amber-700">
                 <td className="py-1 font-medium">Pagos sin confirmar (informativo)</td>
