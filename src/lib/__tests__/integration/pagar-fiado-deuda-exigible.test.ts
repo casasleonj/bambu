@@ -21,6 +21,11 @@ vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn().mockResolvedValue(undefin
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { POST as pagarFiado } from '@/app/api/pedidos/pagar-fiado/route'
 import { crearPedidoUseCase } from '@/modules/pedidos'
+import { AnularPedidoUseCase } from '@/modules/pedidos/application/use-cases/AnularPedidoUseCase'
+import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
+import { PrismaFacturaRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaFacturaRepository'
+import { PrismaNotaCreditoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaNotaCreditoRepository'
+import { PrismaTransactionManager } from '@/modules/pedidos/infrastructure/transactions/PrismaTransactionManager'
 
 let adminId: string
 let contador = 0
@@ -199,5 +204,27 @@ describe('#514 — pagar-fiado cobra únicamente deuda exigible (Postgres real)'
     expect(await saldoDe(entregado)).toBe(0)
     const pagos = await testPrisma.pago.findMany({ where: { pedidoId: entregado } })
     expect(pagos.reduce((s, p) => s + Number(p.monto), 0)).toBe(total)
+  })
+
+  it('tras cobrar parcialmente y anular una deuda, el siguiente cobro paga solo la deuda que sigue vigente', async () => {
+    const c = await nuevoCliente()
+    const anterior = await pedidoDebido(c.id, 'ENTREGADO', 5)
+    const vigente = await pedidoDebido(c.id, 'ENTREGADO', 1)
+    const pendiente = await pedidoDebido(c.id, 'PENDIENTE', 6)
+    await cobrar(c.id, 10000)
+    const anular = new AnularPedidoUseCase(
+      new PrismaPedidoRepository(), new PrismaFacturaRepository(),
+      new PrismaNotaCreditoRepository(), new PrismaTransactionManager(),
+    )
+    await anular.execute({ pedidoId: anterior, motivo: 'Prueba sintética', offlineId: unico() })
+    const resultado = await cobrar(c.id, 6000)
+    expect(resultado.pagosAplicados).toEqual([expect.objectContaining({ pedidoId: vigente, montoAplicado: 6000 })])
+    expect(await saldoDe(anterior)).toBe(0)
+    expect(await saldoDe(vigente)).toBe((await totalDe(vigente)) - 6000)
+    expect(await saldoDe(pendiente)).toBe(await totalDe(pendiente))
+    const nota = await testPrisma.notaCredito.findFirstOrThrow({ where: { pedidoId: anterior } })
+    expect(Number(nota.monto)).toBe(10000)
+    expect(await testPrisma.pago.count({ where: { pedidoId: anterior } })).toBe(1)
+    expect(await testPrisma.pago.count({ where: { pedidoId: pendiente } })).toBe(0)
   })
 })
