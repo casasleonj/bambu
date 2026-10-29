@@ -256,6 +256,27 @@ describe('#499 — comisión del repartidor por día (Postgres real)', () => {
     expect(legado?.revisiones[0].motivo).toContain('otra misión')
   })
 
+  it.each(['CIERRE', 'VENTA_RUTA'] as const)('%s: cancelar sin entregar no bloquea; una anulación con cantidades agregadas exige revisar', async (origen) => {
+    const anterior = process.env.EMBARQUE_ENTREGA_VIVA_DESDE
+    process.env.EMBARQUE_ENTREGA_VIVA_DESDE = '2000-01-01T00:00:00Z'
+    try {
+      const id = await repartidor(`Anulación agregada ${origen}`)
+      const e = await embarqueCerrado(id, bogota('09:00:00'))
+      const p = await pedidoEntregado({ repartidorId: id, agua: 1, embarqueId: e.id, entregadoAt: bogota('10:00:00') })
+      await testPrisma.pedido.update({ where: { id: p }, data: { cPacaAguaEnt: 0, estadoEntrega: 'CANCELADO', estado: 'CANCELADO', estadoPago: 'ANULADO', items: { updateMany: { where: { producto: 'PACA_AGUA' }, data: { cantEntrega: 0 } } } } })
+      await testPrisma.embarqueMovimiento.create({ data: { embarqueId: e.id, tipo: origen === 'CIERRE' ? 'ENTREGA' : 'VENTA_RUTA', producto: 'PACA_AGUA', cantidad: 2, metadata: origen === 'CIERRE' ? { captura: 'CIERRE' } : {} } })
+      const antes = (await comisionRepartidoresDelDia(testPrisma, DIA)).find(r => r.trabajadorId === id)
+      expect(antes?.total).toBe(800)
+      expect(antes?.revisiones).toHaveLength(0)
+      await testPrisma.pedido.update({ where: { id: p }, data: { cPacaAguaEnt: 1, items: { updateMany: { where: { producto: 'PACA_AGUA' }, data: { cantEntrega: 1 } } } } })
+      const despues = (await comisionRepartidoresDelDia(testPrisma, DIA)).find(r => r.trabajadorId === id)
+      expect(despues?.revisiones).toHaveLength(1)
+    } finally {
+      if (anterior === undefined) delete process.env.EMBARQUE_ENTREGA_VIVA_DESDE
+      else process.env.EMBARQUE_ENTREGA_VIVA_DESDE = anterior
+    }
+  })
+
   it('permisos: ADMIN y CONTADOR leen; ASISTENTE y REPARTIDOR reciben 403; sin sesión 401', async () => {
     mockAuth.mockResolvedValue({ user: { id: adminId, role: 'CONTADOR' }, expires: '2099-01-01T00:00:00.000Z' })
     expect((await pedirDia(DIA)).status).toBe(200)

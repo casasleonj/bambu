@@ -54,7 +54,7 @@ async function fuentesDeMisiones(tx: Pick<TxComision, 'pedido' | 'embarque'>, mi
       if (!revisiones.some(r => r.embarqueId === e.id && r.motivo === motivo)) revisiones.push({ embarqueId: e.id, motivo })
     }
     if (vivo) {
-      if (e.movimientos.length === 0 && e.pedidos.some(p => p.canal === 'DOMICILIO' && Object.values(unidades(p)).some(n => n > 0))) {
+      if (e.movimientos.length === 0 && e.pedidos.some(p => p.canal === 'DOMICILIO' && !invalido(p.estadoEntrega) && !invalido(p.estado) && Object.values(unidades(p)).some(n => n > 0))) {
         revision('Hay cantidades entregadas sin eventos de esta misión; no se atribuye el acumulado al último repartidor.')
       }
       for (const m of e.movimientos) {
@@ -74,7 +74,7 @@ async function fuentesDeMisiones(tx: Pick<TxComision, 'pedido' | 'embarque'>, mi
           revision('Hay entregas sin identidad verificable; no se emparejan por cantidad.');
         }
       }
-      if (e.movimientos.some(m => leerMetadata(m.metadata).captura === CAPTURA_CIERRE) && e.pedidos.some(p => invalido(p.estadoEntrega) || invalido(p.estado))) {
+      if (e.movimientos.some(m => m.tipo === 'VENTA_RUTA' || leerMetadata(m.metadata).captura === CAPTURA_CIERRE) && e.pedidos.some(p => (invalido(p.estadoEntrega) || invalido(p.estado)) && Object.values(unidades(p)).some(n => n > 0))) {
         revision('Un pedido anulado afecta cantidades agregadas del cierre.');
       }
     } else {
