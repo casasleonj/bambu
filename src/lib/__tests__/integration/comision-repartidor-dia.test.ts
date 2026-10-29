@@ -20,6 +20,7 @@ import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { GET as comisionDelDia } from '@/app/api/nomina/dia/route'
 import { POST as crearNomina } from '@/app/api/nomina/route'
 import { crearPedidoUseCase } from '@/modules/pedidos'
+import { nominaQueCubre } from '@/lib/nomina-cobertura'
 import { comisionRepartidoresDelDia } from '@/lib/comision-repartidor'
 
 const TARIFA_AGUA = 400
@@ -141,6 +142,34 @@ describe('#499 — comisión del repartidor por día (Postgres real)', () => {
     expect(siguiente?.entregasAgua).toBe(5)
   })
 
+  it('#523: período Bogotá incluye antes/después de 19:00 y medianoche; deduce solo los pagos de ese período', async () => {
+    const id = await repartidor('Nómina nocturna')
+    await pedidoEntregado({ repartidorId: id, agua: 4, entregadoAt: bogota('23:30:00') })
+    await pedidoEntregado({ repartidorId: id, agua: 2, entregadoAt: bogota('18:59:00') })
+    await pedidoEntregado({ repartidorId: id, agua: 3, entregadoAt: bogota('19:01:00') })
+    await pedidoEntregado({ repartidorId: id, agua: 1, entregadoAt: bogota('00:00:00') })
+    await pedidoEntregado({ repartidorId: id, agua: 7, entregadoAt: bogota('23:59:59', '2026-03-09') })
+    await pedidoEntregado({ repartidorId: id, agua: 5, entregadoAt: bogota('00:30:00', '2026-03-11') })
+    const e = await embarqueCerrado(id, bogota('23:59:59'))
+    await pedidoEntregado({ repartidorId: id, agua: 2, embarqueId: e.id, entregadoAt: bogota('23:59:59') })
+    await testPrisma.pagoComisionRepartidor.createMany({ data: [
+      { trabajadorId: id, fecha: bogota('00:00:00'), monto: 400, offlineId: unico() },
+      { trabajadorId: id, fecha: bogota('00:00:00', '2026-03-09'), monto: 700, offlineId: unico() },
+      { trabajadorId: id, fecha: bogota('00:00:00', '2026-03-11'), monto: 1000, offlineId: unico() },
+    ] })
+    const res = await crearNomina(new NextRequest('http://localhost/api/nomina', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trabajadorId: id, fechaInicio: DIA, fechaFin: DIA, tipoCalculo: 'AUTO' }) }))
+    expect(res.status).toBe(200)
+    const n = await testPrisma.nomina.findFirstOrThrow({ where: { trabajadorId: id } })
+    expect(n.entregasAgua).toBe(12)
+    expect(Number(n.totalComisiones)).toBe(4800)
+    expect(Number(n.comisionPagadaCaja)).toBe(400)
+    expect(Number(n.total)).toBe(4400)
+    expect(n.fechaInicio).toEqual(bogota('00:00:00'))
+    expect(n.fechaFin).toEqual(bogota('23:59:59.999'))
+    expect(await nominaQueCubre(testPrisma, id, bogota('23:30:00'))).not.toBeNull()
+    expect(await nominaQueCubre(testPrisma, id, bogota('00:00:00', '2026-03-11'))).toBeNull()
+  })
+
   it('lista solo a quien cobra comisión: activo, con moto y COMISION/MIXTO; aparece con $0 si no entregó', async () => {
     const sinEntregas = await repartidor('Cero Día')
     const mixto = await repartidor('Mixto Día', { tipoPago: 'MIXTO' })
@@ -177,6 +206,39 @@ describe('#499 — comisión del repartidor por día (Postgres real)', () => {
 
     const fila = (await comisionRepartidoresDelDia(testPrisma, DIA)).find((f) => f.trabajadorId === id)
     expect(fila?.entregasAgua).toBe(0)
+  })
+
+  it('no convierte Punto legado en reparto ni acredita un evento de pedido anulado', async () => {
+    const id = await repartidor('Canales y anulación')
+    const e = await embarqueCerrado(id, bogota('09:00:00'))
+    const p = await pedidoEntregado({ repartidorId: id, agua: 6, embarqueId: e.id, entregadoAt: bogota('10:00:00') })
+    await testPrisma.pedido.update({ where: { id: p }, data: { canal: 'PUNTO' } })
+    expect((await comisionRepartidoresDelDia(testPrisma, DIA)).find(r => r.trabajadorId === id)?.total).toBe(0)
+    await testPrisma.embarqueMovimiento.create({ data: { embarqueId: e.id, tipo: 'ENTREGA', producto: 'PACA_AGUA', cantidad: 6, metadata: { captura: 'ENTREGA_PEDIDO', pedidoId: p } } })
+    expect((await comisionRepartidoresDelDia(testPrisma, DIA)).find(r => r.trabajadorId === id)?.total).toBe(2400)
+    await testPrisma.pedido.update({ where: { id: p }, data: { estadoEntrega: 'ANULADO', estado: 'ANULADO', estadoPago: 'ANULADO' } })
+    expect((await comisionRepartidoresDelDia(testPrisma, DIA)).find(r => r.trabajadorId === id)?.total).toBe(0)
+  })
+
+  it('cuenta delta y venta de ruta una vez; excluye promoción, sustitución y entrega tardía', async () => {
+    const id = await repartidor('Fuentes físicas distintas')
+    const e = await embarqueCerrado(id, bogota('09:00:00'))
+    await testPrisma.embarqueMovimiento.createMany({ data: [
+      { embarqueId: e.id, tipo: 'ENTREGA', producto: 'PACA_AGUA', cantidad: 2, metadata: { captura: 'CIERRE' } },
+      { embarqueId: e.id, tipo: 'VENTA_RUTA', producto: 'PACA_AGUA', cantidad: 3 },
+      { embarqueId: e.id, tipo: 'PROMOCION', producto: 'PACA_AGUA', cantidad: 8 },
+    ] })
+    const entrada = await testPrisma.embarqueMovimiento.create({ data: { embarqueId: e.id, tipo: 'RETORNO', producto: 'PACA_AGUA', cantidad: 4 } })
+    const salida = await testPrisma.embarqueMovimiento.create({ data: { embarqueId: e.id, tipo: 'ENTREGA', producto: 'PACA_AGUA', cantidad: 4 } })
+    await testPrisma.sustitucion.create({ data: { embarqueId: e.id, movimientoEntregaId: salida.id, movimientoRecepcionId: entrada.id } })
+    const fila = (await comisionRepartidoresDelDia(testPrisma, DIA)).find(r => r.trabajadorId === id)
+    expect(fila?.entregasAgua).toBe(5)
+    expect(fila?.total).toBe(2000)
+    expect(fila?.revisiones).toHaveLength(0)
+    await testPrisma.embarqueMovimiento.create({ data: { embarqueId: e.id, tipo: 'ENTREGA', producto: 'PACA_AGUA', cantidad: 9, metadata: { captura: 'ENTREGA_PEDIDO', posCierre: true } } })
+    const tarde = (await comisionRepartidoresDelDia(testPrisma, DIA)).find(r => r.trabajadorId === id)
+    expect(tarde?.total).toBe(2000)
+    expect(tarde?.revisiones).toHaveLength(1)
   })
 
   it('permisos: ADMIN y CONTADOR leen; ASISTENTE y REPARTIDOR reciben 403; sin sesión 401', async () => {

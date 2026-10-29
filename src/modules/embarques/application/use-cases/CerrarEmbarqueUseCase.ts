@@ -18,6 +18,7 @@
  * kept intentionally compact by delegating responsibilities to domain services.
  */
 
+import { comisionDeEmbarque } from '@/lib/comision-repartidor'
 import { prisma } from '@/lib/prisma'
 import { logAudit } from '@/lib/audit'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
@@ -313,6 +314,7 @@ export class CerrarEmbarqueUseCase {
         usuarioId: this.userId,
       }, tx)
 
+      const comisionDetalle = await comisionDeEmbarque(client, input.id)
       const finalResult: CierreResultadoDTO = {
         embarqueId: input.id,
         estado: 'CERRADO',
@@ -342,7 +344,8 @@ export class CerrarEmbarqueUseCase {
         ],
         gastosCreados: gastosCount,
         totalVentas,
-        comision: totalVentas * 0.05,
+        comision: comisionDetalle.total,
+        comisionDetalle,
         // FIX HIGH (C-BIZ-2): Calcular caja con la función de dominio.
         // Reutilizamos el objeto `caja` calculado en el paso 9.
         caja,

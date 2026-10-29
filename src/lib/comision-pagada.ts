@@ -1,3 +1,4 @@
+import { calcularPorFuentes, tarifasRepartidor } from './comision-repartidor-calculo'
 import type { Prisma } from '@prisma/client'
 import { comisionRepartidoresDelDia, type ComisionRepartidorDia, type TxComision } from '@/lib/comision-repartidor'
 import { startOfDayBogota } from '@/lib/dates'
@@ -63,8 +64,8 @@ export async function comisionDiaConEstado(tx: TxPagoComision, fecha: string): P
   const conteo = new Map(filas.map((f) => [f.trabajadorId, f]))
   const resultado: ComisionDiaConEstado[] = filas.map((f) => {
     const lista = porTrabajador.get(f.trabajadorId) ?? []
-    const pagado = lista.reduce((s, p) => s + p.monto, 0)
-    return { ...f, pagado, pendiente: Math.max(0, f.total - pagado), pagos: lista }
+    const pagado = lista.reduce((s, p) => s + Math.round(p.monto * 100), 0) / 100
+    return { ...f, pagado, pendiente: Math.max(0, Math.round((f.total - pagado) * 100) / 100), pagos: lista }
   })
   for (const [trabajadorId, lista] of porTrabajador) {
     if (conteo.has(trabajadorId)) continue
@@ -72,10 +73,8 @@ export async function comisionDiaConEstado(tx: TxPagoComision, fecha: string): P
     resultado.push({
       trabajadorId,
       nombre: t?.nombre ?? 'Trabajador',
-      entregasAgua: 0, entregasHielo: 0, entregasBotellon: 0,
-      comAgua: 0, comHielo: 0, comBotellon: 0, total: 0,
-      porOrigen: { embarque: 0, sinEmbarque: 0 },
-      pagado: lista.reduce((s, p) => s + p.monto, 0),
+      ...calcularPorFuentes([], tarifasRepartidor({ comRepartAgua: null, comRepartHielo: null, comRepartBotellon: null })),
+      pagado: lista.reduce((s, p) => s + Math.round(p.monto * 100), 0) / 100,
       pendiente: 0,
       pagos: lista,
     })

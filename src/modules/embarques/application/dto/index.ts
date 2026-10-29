@@ -201,6 +201,7 @@ export interface CierreResultadoDTO {
   gastosCreados: number
   totalVentas: number
   comision: number
+  comisionDetalle?: import('@/lib/comision-repartidor-calculo').ComisionRepartidor
   caja: {
     efectivoEsperado: number
     efectivoReal: number

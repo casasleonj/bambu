@@ -1,155 +1,130 @@
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { endOfDayBogota, startOfDayBogota } from '@/lib/dates'
+import { embarqueUsaEntregaVivaPorFlag, leerMetadata, CAPTURA_ENTREGA_PEDIDO, CAPTURA_CIERRE } from '@/lib/entrega-fisica-viva'
+import { calcularPorFuentes, tarifasRepartidor, type TarifasRepartidor, type ComisionRepartidor, type FuenteComision, type RevisionComision, type UnidadesReparto } from './comision-repartidor-calculo'
+export { tarifasRepartidor } from './comision-repartidor-calculo'
+export type { TarifasRepartidor, ComisionRepartidor } from './comision-repartidor-calculo'
 
-/**
- * Comisión del repartidor por entregas. FUENTE ÚNICA (#499): la usan la nómina
- * del período, la vista de «Nómina del día» y, más adelante, el cierre de caja.
- * Así las tres cifras no pueden discrepar.
- *
- * Dos orígenes, sin doble conteo (`embarqueId` los separa):
- *  - Embarque CERRADO del trabajador, en el rango por `Embarque.fecha`: cuenta lo
- *    entregado de sus pedidos `ENTREGADO`.
- *  - TEMPORAL-SIN-EMBARQUE(#472): pedidos a domicilio que la oficina entregó sin
- *    embarque con el trabajador como responsable, en el rango por `entregadoAt`.
+/** Fuente única de cierre, comisión diaria y nómina (#499).
+ * El día sigue siendo Embarque.fecha; oficina sin embarque usa entregadoAt.
+ * Un pago, su medio o el precio de venta no acreditan ninguna entrega.
  */
-
 export type TxComision = Pick<Prisma.TransactionClient, 'embarque' | 'pedido' | 'config' | 'trabajador'>
+const seleccion = Prisma.validator<Prisma.EmbarqueInclude>()({
+  pedidos: true,
+  actividades: { where: { cantidadCumplida: { gt: 0 } }, select: { id: true, modo: true } },
+  movimientos: {
+    where: { tipo: { in: ['ENTREGA', 'VENTA_RUTA'] } },
+    select: { id: true, tipo: true, producto: true, cantidad: true, metadata: true, sustitucionEntrega: { select: { id: true } } },
+  },
+})
+type Mision = Prisma.EmbarqueGetPayload<{ include: typeof seleccion }>
+type Entregado = { cPacaAguaEnt: number; cPacaHieloEnt: number; cBotellonFabEnt: number | null; cBotellonDomEnt: number | null }
+const unidades = (p: Entregado): UnidadesReparto => ({ agua: p.cPacaAguaEnt, hielo: p.cPacaHieloEnt, botellon: (p.cBotellonFabEnt ?? 0) + (p.cBotellonDomEnt ?? 0) })
+const vacio = (): UnidadesReparto => ({ agua: 0, hielo: 0, botellon: 0 })
+const producto = (p: string) => p === 'PACA_AGUA' ? 'agua' : p === 'PACA_HIELO' ? 'hielo' : p === 'BOTELLON' ? 'botellon' : null
+const invalido = (estado: string) => estado === 'ANULADO' || estado === 'CANCELADO'
 
-/** Tarifa por unidad entregada. */
-export interface TarifasRepartidor {
-  agua: number
-  hielo: number
-  botellon: number
-}
-
-export interface ComisionRepartidor {
-  entregasAgua: number
-  entregasHielo: number
-  entregasBotellon: number
-  comAgua: number
-  comHielo: number
-  comBotellon: number
-  total: number
-  /** Cuánto de `total` viene de cada origen. */
-  porOrigen: { embarque: number; sinEmbarque: number }
-}
-
-type DatosTarifa = {
-  comRepartAgua: Prisma.Decimal | number | null
-  comRepartHielo: Prisma.Decimal | number | null
-  comRepartBotellon: Prisma.Decimal | number | null
-}
-
-const TARIFA_DEFECTO = 200
-
-/**
- * Tarifa del trabajador; si está en 0 («no definida»), la general `COM_REPARTIDOR`; si no existe, 200
- * (botellón: 200). Un 0 significa «sin tarifa puesta», no «no cobra»: quien no cobra comisión tiene
- * `tipoPago` FIJO y ni siquiera entra a este cálculo (#500). Antes un `Decimal` en 0 era «verdadero»
- * y la tarifa general nunca se aplicaba.
- */
-export function tarifasRepartidor(t: DatosTarifa, comRepartidorConfig?: number): TarifasRepartidor {
-  const base = comRepartidorConfig || TARIFA_DEFECTO
-  const propia = (v: DatosTarifa['comRepartAgua']) => (v && Number(v) > 0 ? Number(v) : null)
-  return {
-    agua: propia(t.comRepartAgua) ?? base,
-    hielo: propia(t.comRepartHielo) ?? base,
-    botellon: propia(t.comRepartBotellon) ?? TARIFA_DEFECTO,
+async function fuentesDeMisiones(tx: Pick<TxComision, 'pedido'>, misiones: Mision[]) {
+  // La asignación actual de Pedido puede ser otra misión. Resolver la identidad
+  // del evento por su pedidoId, sin exigir que siga vinculado al embarque original.
+  const ids = [...new Set(misiones.flatMap(e => e.movimientos.map(m => leerMetadata(m.metadata).pedidoId).filter((id): id is string => !!id)))]
+  const pedidos = ids.length ? await tx.pedido.findMany({ where: { id: { in: ids } }, select: { id: true, estadoEntrega: true, estado: true } }) : []
+  const porId = new Map(pedidos.map(p => [p.id, p]))
+  const fuentes: FuenteComision[] = []
+  const revisiones: RevisionComision[] = []
+  for (const e of misiones) {
+    // Un CIERRE etiquetado conserva su procedencia aun después de apagar el flag.
+    const vivo = embarqueUsaEntregaVivaPorFlag(e.createdAt) || e.movimientos.some(m => [CAPTURA_ENTREGA_PEDIDO, CAPTURA_CIERRE].includes(leerMetadata(m.metadata).captura ?? ''))
+    const u = vacio()
+    const revision = (motivo: string) => {
+      if (!revisiones.some(r => r.embarqueId === e.id && r.motivo === motivo)) revisiones.push({ embarqueId: e.id, motivo })
+    }
+    if (vivo) {
+      if (e.movimientos.length === 0 && e.pedidos.some(p => p.canal === 'DOMICILIO' && Object.values(unidades(p)).some(n => n > 0))) {
+        revision('Hay cantidades entregadas sin eventos de esta misión; no se atribuye el acumulado al último repartidor.')
+      }
+      for (const m of e.movimientos) {
+        const prod = producto(m.producto)
+        if (!prod || m.sustitucionEntrega.length > 0) continue // cambios no son ventas entregadas
+        const meta = leerMetadata(m.metadata)
+        if (meta.posCierre) { revision('Hay entregas posteriores al cierre que requieren conciliación.'); continue }
+        if (m.tipo === 'VENTA_RUTA' || meta.captura === CAPTURA_CIERRE) {
+          // El cierre escribe solo su delta + ventas libres previas, separado de
+          // los eventos ya atribuidos. VENTA_RUTA son las nuevas ventas del cierre.
+          u[prod] += m.cantidad
+        } else if (meta.captura === CAPTURA_ENTREGA_PEDIDO) {
+          const pedido = meta.pedidoId ? porId.get(meta.pedidoId) : undefined
+          if (!pedido) { revision('Una entrega no tiene un pedido verificable.'); continue }
+          if (!invalido(pedido.estadoEntrega) && !invalido(pedido.estado)) u[prod] += m.cantidad
+        } else {
+          revision('Hay entregas sin identidad verificable; no se emparejan por cantidad.');
+        }
+      }
+      if (e.movimientos.some(m => leerMetadata(m.metadata).captura === CAPTURA_CIERRE) && e.pedidos.some(p => invalido(p.estadoEntrega) || invalido(p.estado))) {
+        revision('Un pedido anulado afecta cantidades agregadas del cierre.');
+      }
+    } else {
+      if (e.actividades.length > 0) revision('La misión histórica tiene actividades cumplidas sin eventos que permitan separar el reparto del retiro en punto.')
+      // Excepción histórica explícita: no fabricar eventos a partir del acumulado.
+      // Punto sin evidencia de reparto no acredita una entrega domiciliaria.
+      for (const p of e.pedidos) {
+        if (p.canal !== 'DOMICILIO' || p.estadoEntrega !== 'ENTREGADO' || invalido(p.estado)) continue
+        const n = unidades(p)
+        u.agua += n.agua; u.hielo += n.hielo; u.botellon += n.botellon
+      }
+    }
+    fuentes.push({ id: e.id, numero: e.numero, href: `/embarques/${e.id}`, origen: vivo ? 'EMBARQUE_VIVO' : 'EMBARQUE_LEGADO', unidades: u })
   }
+  return { fuentes, revisiones }
 }
 
-type Entregado = {
-  cPacaAguaEnt: number
-  cPacaHieloEnt: number
-  cBotellonFabEnt: number | null
-  cBotellonDomEnt: number | null
+/** Una misión, misma regla que la nómina; también dentro del dry-run transaccional. */
+export async function comisionDeEmbarque(tx: TxComision, embarqueId: string): Promise<ComisionRepartidor> {
+  const e = await tx.embarque.findUniqueOrThrow({ where: { id: embarqueId }, include: { ...seleccion, trabajador: true } })
+  const config = await tx.config.findUnique({ where: { clave: 'COM_REPARTIDOR' } })
+  const tarifas = tarifasRepartidor(e.trabajador, config ? Number(config.valor) : undefined)
+  if (!e.trabajador.usaMoto || !['COMISION', 'MIXTO'].includes(e.trabajador.tipoPago)) return calcularPorFuentes([], tarifas)
+  const { fuentes, revisiones } = await fuentesDeMisiones(tx, [e])
+  return calcularPorFuentes(fuentes, tarifas, revisiones)
 }
 
-const botellones = (p: Entregado) => (p.cBotellonFabEnt || 0) + (p.cBotellonDomEnt || 0)
-
-const SELECT_ENTREGADO = {
-  cPacaAguaEnt: true,
-  cPacaHieloEnt: true,
-  cBotellonFabEnt: true,
-  cBotellonDomEnt: true,
-} as const
-
-/** Comisión de un trabajador en `[ini, fin]`. No decide si el trabajador cobra comisión: eso lo decide quien llama. */
-export async function calcularComisionRepartidor(
-  tx: Pick<TxComision, 'embarque' | 'pedido'>,
-  trabajadorId: string,
-  ini: Date,
-  fin: Date,
-  tarifas: TarifasRepartidor,
-): Promise<ComisionRepartidor> {
-  const embarques = await tx.embarque.findMany({
-    where: { trabajadorId, fecha: { gte: ini, lte: fin }, estado: 'CERRADO' },
-    include: { pedidos: { where: { estado: 'ENTREGADO' } } },
-  })
-
-  // TEMPORAL-SIN-EMBARQUE(#472): al retirar la función temporal, borrar esta consulta
-  // y el segundo bucle. `embarqueId: null` evita contar un pedido que sí está en un embarque.
-  const sinEmbarque = await tx.pedido.findMany({
-    where: {
-      entregadoPorId: trabajadorId,
-      embarqueId: null,
-      canal: 'DOMICILIO',
-      estadoEntrega: 'ENTREGADO',
-      entregadoAt: { gte: ini, lte: fin },
-    },
-    select: SELECT_ENTREGADO,
-  })
-
-  const suma = (lista: Entregado[]) => ({
-    agua: lista.reduce((s, p) => s + p.cPacaAguaEnt, 0),
-    hielo: lista.reduce((s, p) => s + p.cPacaHieloEnt, 0),
-    botellon: lista.reduce((s, p) => s + botellones(p), 0),
-  })
-  const dinero = (u: { agua: number; hielo: number; botellon: number }) =>
-    u.agua * tarifas.agua + u.hielo * tarifas.hielo + u.botellon * tarifas.botellon
-
-  const uEmbarque = suma(embarques.flatMap((e) => e.pedidos))
-  const uSin = suma(sinEmbarque)
-  const entregasAgua = uEmbarque.agua + uSin.agua
-  const entregasHielo = uEmbarque.hielo + uSin.hielo
-  const entregasBotellon = uEmbarque.botellon + uSin.botellon
-
-  return {
-    entregasAgua,
-    entregasHielo,
-    entregasBotellon,
-    comAgua: entregasAgua * tarifas.agua,
-    comHielo: entregasHielo * tarifas.hielo,
-    comBotellon: entregasBotellon * tarifas.botellon,
-    total: dinero({ agua: entregasAgua, hielo: entregasHielo, botellon: entregasBotellon }),
-    porOrigen: { embarque: dinero(uEmbarque), sinEmbarque: dinero(uSin) },
+/** Comisión en [ini, fin]; quien llama decide la elegibilidad COMISION/MIXTO. */
+export async function calcularComisionRepartidor(tx: Pick<TxComision, 'embarque' | 'pedido'>, trabajadorId: string, ini: Date, fin: Date, tarifas: TarifasRepartidor): Promise<ComisionRepartidor> {
+  const embarques = await tx.embarque.findMany({ where: { trabajadorId, fecha: { gte: ini, lte: fin }, estado: 'CERRADO' }, include: seleccion })
+  const { fuentes, revisiones } = await fuentesDeMisiones(tx, embarques)
+  // TEMPORAL-SIN-EMBARQUE (#472). No volver a contar un Pedido con evento
+  // atribuido en otra misión después de su reasignación/desvinculación.
+  const sinEmbarque = await tx.pedido.findMany({ where: {
+    entregadoPorId: trabajadorId, embarqueId: null, canal: 'DOMICILIO',
+    estadoEntrega: 'ENTREGADO', estado: { notIn: ['ANULADO', 'CANCELADO'] }, entregadoAt: { gte: ini, lte: fin },
+  } })
+  if (sinEmbarque.length) {
+    const conEventos = await tx.embarque.findMany({ where: { movimientos: { some: {
+      tipo: 'ENTREGA', OR: sinEmbarque.map(p => ({ metadata: { path: ['pedidoId'], equals: p.id } })),
+    } } }, select: { movimientos: { where: { tipo: 'ENTREGA', metadata: { path: ['captura'], equals: CAPTURA_ENTREGA_PEDIDO } }, select: { metadata: true } } } })
+    const yaAtribuidos = new Set(conEventos.flatMap(e => e.movimientos.map(m => leerMetadata(m.metadata).pedidoId)))
+    for (const p of sinEmbarque) {
+      if (yaAtribuidos.has(p.id)) {
+        revisiones.push({ embarqueId: '', motivo: `El pedido #${p.numero} tiene entregas de embarque y fue desvinculado; concilia el reparto antes de pagar.` })
+        continue
+      }
+      fuentes.push({ id: p.id, numero: p.numero, href: `/pedidos/${p.id}`, origen: 'SIN_EMBARQUE', unidades: unidades(p) })
+    }
   }
+  return calcularPorFuentes(fuentes, tarifas, revisiones)
 }
 
-export interface ComisionRepartidorDia extends ComisionRepartidor {
-  trabajadorId: string
-  nombre: string
-}
-
-/**
- * Comisión de cada repartidor en un día de Bogotá (`YYYY-MM-DD`). Incluye a todos los
- * trabajadores activos con moto que cobran comisión (aunque hoy lleven $0), ordenados por nombre.
- */
+export interface ComisionRepartidorDia extends ComisionRepartidor { trabajadorId: string; nombre: string }
 export async function comisionRepartidoresDelDia(tx: TxComision, fecha: string): Promise<ComisionRepartidorDia[]> {
-  const ini = startOfDayBogota(fecha)
-  const fin = endOfDayBogota(fecha)
+  const ini = startOfDayBogota(fecha), fin = endOfDayBogota(fecha)
   const [config, trabajadores] = await Promise.all([
     tx.config.findUnique({ where: { clave: 'COM_REPARTIDOR' } }),
-    tx.trabajador.findMany({
-      where: { activo: true, usaMoto: true, tipoPago: { in: ['COMISION', 'MIXTO'] } },
-      select: { id: true, nombre: true, comRepartAgua: true, comRepartHielo: true, comRepartBotellon: true },
-      orderBy: { nombre: 'asc' },
-    }),
+    tx.trabajador.findMany({ where: { activo: true, usaMoto: true, tipoPago: { in: ['COMISION', 'MIXTO'] } }, select: { id: true, nombre: true, comRepartAgua: true, comRepartHielo: true, comRepartBotellon: true }, orderBy: { nombre: 'asc' } }),
   ])
-  const porDefecto = config ? parseFloat(config.valor) : undefined
   const filas: ComisionRepartidorDia[] = []
   for (const t of trabajadores) {
-    const c = await calcularComisionRepartidor(tx, t.id, ini, fin, tarifasRepartidor(t, porDefecto))
+    const c = await calcularComisionRepartidor(tx, t.id, ini, fin, tarifasRepartidor(t, config ? Number(config.valor) : undefined))
     filas.push({ trabajadorId: t.id, nombre: t.nombre, ...c })
   }
   return filas

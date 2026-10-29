@@ -4,19 +4,6 @@ import { describe, it, expect } from 'vitest'
 import { CierreEmbarqueService } from '../domain/services/cierre-embarque.service'
 import { Carga } from '../domain/value-objects/Carga'
 
-describe('CierreEmbarqueService.calcularComision', () => {
-  it('5% de 200,000 = 10,000', () => {
-    const result = new CierreEmbarqueService().calcularComision(200000)
-    expect(result.tasa).toBe(0.05)
-    expect(result.monto).toBe(10000)
-  })
-
-  it('5% de 0 = 0', () => {
-    const result = new CierreEmbarqueService().calcularComision(0)
-    expect(result.monto).toBe(0)
-  })
-})
-
 describe('CierreEmbarqueService.calcularCaja — REGRESIÓN C-4', () => {
   it('efectivoReal = base + efectivo cobrado - gastos', () => {
     const service = new CierreEmbarqueService()

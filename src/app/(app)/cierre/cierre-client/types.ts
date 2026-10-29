@@ -130,7 +130,7 @@ export interface CierreData {
     sellador: number
     pagadoRepartidores: number
     total: number
-    repartidores: { trabajadorId: string; nombre: string; total: number; pagado: number; pendiente: number }[]
+    repartidores: ({ trabajadorId: string; nombre: string; total: number; pagado: number; pendiente: number } & Partial<import('@/lib/comision-repartidor-calculo').ComisionRepartidor>)[]
   }
 
   // Cierre

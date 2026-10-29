@@ -42,6 +42,16 @@ test.describe('Comisión del repartidor en el cierre (#499)', () => {
     const fila = page.getByTestId(`comision-${r.id}`)
     await expect(fila).toBeVisible({ timeout: 30000 })
     await expect(fila.getByTestId('comision-pendiente')).toContainText('800')
+    await fila.getByText('Ver entregas y cálculo').click()
+    await expect(fila).toContainText('2 unidades ×')
+    const fuente = fila.getByRole('link', { name: /Ver pedido sin embarque/ })
+    await expect(fuente).toHaveAttribute('href', /\/pedidos\/[^/]+$/)
+    const enlace = await fuente.getAttribute('href')
+    const detalle = await page.request.get(enlace!)
+    expect(detalle.status()).toBe(200)
+    const ancho = await page.evaluate(() => ({ ventana: innerWidth, contenido: document.documentElement.scrollWidth }))
+    expect(ancho.contenido).toBeLessThanOrEqual(ancho.ventana + 1)
+    await fila.screenshot({ path: test.info().outputPath('comision-detalle.png') })
 
     // Cancelar no paga nada.
     await fila.getByTestId(`pagar-comision-${r.id}`).click()
@@ -84,4 +94,25 @@ test.describe('Comisión del repartidor en el cierre (#499)', () => {
     expect(res.status()).toBe(403)
     expect(await prisma.pagoComisionRepartidor.count({ where: { trabajadorId: r.id } })).toBe(0)
   })
+  test('las entregas por conciliar se explican, enlazan al embarque y no permiten pagar', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const r = await repartidorConEntrega(page, `Conciliación E2E ${Date.now()}`, 1)
+    const e = await prisma.embarque.create({ data: { trabajadorId: r.id, fecha: new Date(), estado: 'CERRADO' } })
+    await prisma.embarqueMovimiento.createMany({ data: [
+      { embarqueId: e.id, tipo: 'ENTREGA', producto: 'PACA_AGUA', cantidad: 1, metadata: { captura: 'CIERRE' } },
+      { embarqueId: e.id, tipo: 'ENTREGA', producto: 'PACA_AGUA', cantidad: 1 },
+    ] })
+    await goto(page, '/cierre')
+    const fila = page.getByTestId(`comision-${r.id}`)
+    await expect(fila).toContainText('Por conciliar')
+    await expect(fila.getByTestId(`pagar-comision-${r.id}`)).toHaveCount(0)
+    await fila.getByText('Ver entregas y cálculo').click()
+    await expect(fila).toContainText('sin identidad verificable')
+    await expect(fila.getByRole('link', { name: 'Revisar embarque' })).toHaveAttribute('href', `/embarques/${e.id}`)
+    const res = await apiPost(page, '/api/nomina/dia/pagar', { trabajadorId: r.id, fecha: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }), offlineId: `no-pagar-${Date.now()}` })
+    expect(res.status()).toBe(409)
+    expect(await prisma.pagoComisionRepartidor.count({ where: { trabajadorId: r.id } })).toBe(0)
+    await fila.screenshot({ path: test.info().outputPath('comision-conciliacion.png') })
+  })
+
 })

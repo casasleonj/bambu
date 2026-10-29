@@ -8,6 +8,8 @@
 // idempotente sin re-ejecutar el cierre.
 
 import { describe, it, expect, vi } from 'vitest'
+vi.mock('@/lib/comision-repartidor', () => ({ comisionDeEmbarque: vi.fn().mockResolvedValue({ total: 600 }) }))
+import { comisionDeEmbarque } from '@/lib/comision-repartidor'
 import { CierreDedupService } from '../cierre-dedup.service'
 
 describe('CierreDedupService.esReplay', () => {
@@ -45,6 +47,9 @@ describe('CierreDedupService.buildResult', () => {
     const result = await service.buildResult(client, 'emb_1')
 
     expect(result.deduped).toBe(true)
+    expect(comisionDeEmbarque).toHaveBeenCalledWith(client, 'emb_1')
+    expect(result.comision).toBe(600)
+    expect(result.comisionDetalle).toEqual({ total: 600 })
     expect(result.estado).toBe('CERRADO')
     expect(result.embarqueId).toBe('emb_1')
     expect(result.pedidosHijosCreados).toEqual([])

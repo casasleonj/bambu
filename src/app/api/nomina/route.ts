@@ -1,4 +1,5 @@
 import { formatZodError } from '@/lib/utils'
+import { startOfDayBogota, endOfDayBogota } from '@/lib/dates'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
@@ -46,9 +47,9 @@ export async function POST(request: NextRequest) {
     }
     const { trabajadorId, fechaInicio, fechaFin, tipoCalculo } = parsed.data
 
-    const ini = new Date(fechaInicio)
-    const fin = new Date(fechaFin)
-    fin.setUTCHours(23, 59, 59, 999)
+    // #523: la comisión diaria y el período usan el mismo día comercial.
+    const ini = startOfDayBogota(fechaInicio)
+    const fin = endOfDayBogota(fechaFin)
 
     const userId = (authResult.user as { id?: string } | undefined)?.id
 
@@ -140,6 +141,7 @@ export async function POST(request: NextRequest) {
             fin,
             tarifasRepartidor(trabajador, configMap.COM_REPARTIDOR),
           )
+          if (com.revisiones.length > 0) throw new Error('COMISION_POR_CONCILIAR')
           entregasAgua = com.entregasAgua
           entregasHielo = com.entregasHielo
           entregasBotellon = com.entregasBotellon
@@ -333,6 +335,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown'
     logger.error({ err: msg }, 'Error creating nomina:')
+    if (msg === 'COMISION_POR_CONCILIAR') return apiError('Hay entregas por conciliar de este trabajador. Revisa su comisión antes de generar la nómina automática.', 409, { code: msg })
     if (msg === 'Ya existe una nómina para este trabajador en el período seleccionado') {
       return apiError(msg, 409)
     }
