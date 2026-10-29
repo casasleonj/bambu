@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
       const filas = await comisionDiaConEstado(tx, fecha)
       const fila = filas.find((f) => f.trabajadorId === trabajadorId)
       if (!fila) throw new PagoComisionError(404, 'Ese trabajador no cobra comisión de repartidor', 'TRABAJADOR_SIN_COMISION')
+      if (fila.revisiones.length > 0) throw new PagoComisionError(409, 'Hay entregas por conciliar de este repartidor. Revisa su detalle antes de pagar.', 'COMISION_POR_CONCILIAR')
       if (fila.pendiente <= 0) throw new PagoComisionError(409, 'No hay comisión pendiente de pagar ese día', 'NADA_PENDIENTE', { total: fila.total, pagado: fila.pagado })
       if (montoEsperado !== undefined && Math.abs(montoEsperado - fila.pendiente) > 0.001) {
         throw new PagoComisionError(409, 'La comisión cambió mientras mirabas la pantalla. Revisa el valor nuevo', 'MONTO_CAMBIO', { pendiente: fila.pendiente, total: fila.total, pagado: fila.pagado })

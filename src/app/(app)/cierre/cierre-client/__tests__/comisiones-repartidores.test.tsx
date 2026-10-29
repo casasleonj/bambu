@@ -104,3 +104,13 @@ describe('ComisionesRepartidores', () => {
     expect(ids[0]).toBe(ids[1])
   })
 })
+
+it('la revisión es visible incluso con subtotal cero; no permite pagar al afectado', () => {
+  montar({ repartidores: [
+    { ...germain, total: 0, pendiente: 0, revisiones: [{ embarqueId: 'e1', motivo: 'Entrega sin identidad' }] }, yesid,
+  ] })
+  expect(screen.getByTestId('comision-g1')).toHaveTextContent('Por conciliar')
+  expect(screen.queryByTestId('pagar-comision-g1')).toBeNull()
+  expect(screen.getByTestId('comision-y1')).toHaveTextContent('Pagado')
+  expect(screen.queryByTestId('comisiones-vacio')).toBeNull()
+})

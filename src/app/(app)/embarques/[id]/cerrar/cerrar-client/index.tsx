@@ -1,5 +1,7 @@
 'use client'
 
+import { ComisionRepartidorDetalle } from '@/components/comision-repartidor-detalle'
+import type { ComisionRepartidor } from '@/lib/comision-repartidor-calculo'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { toast } from 'sonner'
@@ -88,6 +90,7 @@ export default function CerrarEmbarqueClient() {
   const [activeSection, setActiveSection] = useState(0)
   // A.3.4: preview autoritativo del cierre (dry-run del backend).
   const [preview, setPreview] = useState<{
+    comisionDetalle?: ComisionRepartidor
     caja: { efectivoEsperado: number; efectivoReal: number; diferencia: number; otrosPagos: number; sobranteFaltante: number }
     conciliacion: { totalDiscrepancy: number }
     responsibilityCases: Array<{ id: string; tipo: string; montoEstimado: number }>
@@ -461,11 +464,6 @@ export default function CerrarEmbarqueClient() {
 
     const totalEntregadoUnidades = Object.values(entregado).reduce((s, v) => s + v, 0)
 
-    const comAgua = entregado.PACA_AGUA * Number(embarque.trabajador.comRepartAgua || embarque.trabajador.comPacaAgua || 0)
-    const comHielo = entregado.PACA_HIELO * Number(embarque.trabajador.comRepartHielo || embarque.trabajador.comPacaHielo || 0)
-    const comBotellon = entregado.BOTELLON * Number(embarque.trabajador.comRepartBotellon || embarque.trabajador.comBotellon || 0)
-    const totalComision = comAgua + comHielo + comBotellon
-
     const pagosPorMetodo: Record<string, number> = {}
     for (const cuadre of Object.values(cuadres)) {
       for (const pago of cuadre.pagos) {
@@ -485,7 +483,7 @@ export default function CerrarEmbarqueClient() {
       discrepancias, totalDiscrepancia,
       totalCobrado, totalFiado, totalGastos,
       totalEfectivoRecibido, efectivoEsperado, debeEntregar, faltanteSobrante, faltanteEfectivo, generaraDeuda,
-      totalEntregadoUnidades, totalComision,
+      totalEntregadoUnidades,
       pagosPorMetodo,
       noEntregados, parciales,
     }
@@ -556,7 +554,7 @@ export default function CerrarEmbarqueClient() {
         if (cancelled) return
         if (res.ok) {
           const json = await res.json()
-          setPreview({ caja: json.caja, conciliacion: json.conciliacion, responsibilityCases: json.responsibilityCases || [], senales: json.senales || [] })
+          setPreview({ comisionDetalle: json.comisionDetalle, caja: json.caja, conciliacion: json.conciliacion, responsibilityCases: json.responsibilityCases || [], senales: json.senales || [] })
           setPreviewError(false)
           setPreviewRechazo(null)
         } else {
@@ -1214,10 +1212,11 @@ export default function CerrarEmbarqueClient() {
                   <p className="text-lg font-bold text-blue-700">{ventasLibres.filter(v => v.clienteId).length}</p>
                 </div>
                 <div>
-                  <p className="text-gray-600">Comisión est.</p>
-                  <p className="text-lg font-bold text-amber-700">{formatCurrency(calculos.totalComision)}</p>
+                  <p className="text-gray-600">Comisión de esta ruta</p>
+                  <p className="text-lg font-bold text-amber-700" aria-live="polite">{previewLoading ? 'Calculando…' : preview?.comisionDetalle ? preview.comisionDetalle.revisiones.length ? 'Por conciliar' : formatCurrency(preview.comisionDetalle.total) : 'Sin cálculo verificado'}</p>
                 </div>
               </div>
+              {!previewLoading && preview?.comisionDetalle && <ComisionRepartidorDetalle calculo={preview.comisionDetalle} />}
               <div className="mt-3 pt-3 border-t border-blue-200 text-xs text-blue-800 flex flex-wrap gap-x-4">
                 <span>↩️ Devueltas: {calculos.totalDevueltas}</span>
                 <span>🔄 Cambios: {calculos.totalCambios}</span>

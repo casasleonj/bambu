@@ -20,6 +20,7 @@ vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn().mockResolvedValue(undefin
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { POST as entregaOficina } from '@/app/api/pedidos/[id]/gestion-admin/entrega/route'
 import { POST as crearNomina } from '@/app/api/nomina/route'
+import { comisionRepartidoresDelDia } from '@/lib/comision-repartidor'
 import { crearPedidoUseCase } from '@/modules/pedidos'
 import { CLAVE_GESTION_ADMIN_SIN_EMBARQUE } from '@/lib/gestion-admin'
 
@@ -165,5 +166,24 @@ describe('#472 — comisión de nómina por entregas sin embarque (Postgres real
     const n = await nominaAuto(repartidorId)
     expect(n.entregasAgua).toBe(0)
     expect(Number(n.totalComisiones)).toBe(0)
+  })
+  it('la oficina ya fija al responsable: rechaza cambiarlo durante un parcial y no atribuye comisión al segundo', async () => {
+    const a = await nuevoRepartidor('Oficina parcial A')
+    const b = await nuevoRepartidor('Oficina parcial B')
+    const id = await crearPedido({ cant: 5 })
+    await entregarDesdeOficina(id, a, 3)
+    const rechazada = await entregaOficina(new NextRequest(`http://localhost/api/pedidos/${id}/gestion-admin/entrega`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ offlineId: unico(), itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 2 }], repartidorId: b, promesaPagoFecha: diaBogota(-3) }),
+    }), { params: Promise.resolve({ id }) })
+    expect(rechazada.status).toBe(409)
+    const parcial = await testPrisma.pedido.findUniqueOrThrow({ where: { id } })
+    expect(parcial.cPacaAguaEnt).toBe(3)
+    expect(parcial.entregadoPorId).toBe(a)
+    await entregarDesdeOficina(id, a, 2)
+    const filas = await comisionRepartidoresDelDia(testPrisma, hoyBogota())
+    expect(filas.find(r => r.trabajadorId === a)?.total).toBe(5 * TARIFA_AGUA)
+    expect(filas.find(r => r.trabajadorId === b)?.total).toBe(0)
+    const eventos = await testPrisma.historial.findMany({ where: { entidad: 'Pedido', registroId: id, accion: 'UPDATE' } })
+    expect(eventos.map(e => JSON.parse(e.datos)).filter(e => e.accion === 'ENTREGA_OFICINA').map(e => e.repartidorId)).toEqual([a, a])
   })
 })

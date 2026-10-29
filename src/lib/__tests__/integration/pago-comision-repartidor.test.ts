@@ -219,4 +219,42 @@ describe('#499 — pago de la comisión del repartidor (Postgres real)', () => {
     const c = await testPrisma.cierreDia.findFirstOrThrow({ orderBy: { fecha: 'asc' } })
     expect(Number(c.comisiones)).toBe(700)
   })
+  it('por conciliar bloquea solo al repartidor afectado y conserva el replay de un pago anterior', async () => {
+    const id = await repartidor('Conciliar propia')
+    await entrega(id, 2)
+    const offlineId = unico()
+    expect((await pagar(id, { offlineId })).status).toBe(201)
+    const e = await testPrisma.embarque.create({ data: { trabajadorId: id, fecha: new Date(), estado: 'CERRADO' } })
+    await testPrisma.embarqueMovimiento.createMany({ data: [
+      { embarqueId: e.id, tipo: 'ENTREGA', producto: 'PACA_AGUA', cantidad: 1, metadata: { captura: 'CIERRE' } },
+      { embarqueId: e.id, tipo: 'ENTREGA', producto: 'PACA_AGUA', cantidad: 1, metadata: { tipoEnvase: 'ENTREGADO' } },
+    ] })
+    const bloquear = await pagar(id)
+    expect(bloquear.status).toBe(409)
+    expect((await bloquear.json()).error.code).toBe('COMISION_POR_CONCILIAR')
+    expect((await pagar(id, { offlineId })).status).toBe(200)
+    expect(await filas(id)).toHaveLength(1)
+    const otro = await repartidor('No afectado por conciliación ajena')
+    await entrega(otro, 1)
+    expect((await pagar(otro)).status).toBe(201)
+    const nomina = await crearNomina(json('/api/nomina', { trabajadorId: id, fechaInicio: HOY, fechaFin: HOY, tipoCalculo: 'AUTO' }))
+    expect(nomina.status).toBe(409)
+    expect(await testPrisma.nomina.count({ where: { trabajadorId: id } })).toBe(0)
+  })
+
+
+  it('comisión fraccionaria totalmente pagada no crea un pago fantasma por redondeo', async () => {
+    const id = await repartidor('Centavos exactos')
+    await testPrisma.trabajador.update({ where: { id }, data: { comRepartAgua: 0.1 } })
+    await entrega(id, 8)
+    await testPrisma.pagoComisionRepartidor.createMany({ data: [
+      { trabajadorId: id, fecha: new Date(`${HOY}T00:00:00-05:00`), monto: 0.7, offlineId: unico() },
+      { trabajadorId: id, fecha: new Date(`${HOY}T00:00:00-05:00`), monto: 0.1, offlineId: unico() },
+    ] })
+    const r = await pagar(id)
+    expect(r.status).toBe(409)
+    expect((await r.json()).error.code).toBe('NADA_PENDIENTE')
+    expect(await filas(id)).toHaveLength(2)
+  })
+
 })

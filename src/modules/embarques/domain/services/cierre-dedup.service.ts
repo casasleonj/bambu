@@ -16,6 +16,7 @@
  * libres ya se procesaron en la ejecución original).
  */
 
+import { comisionDeEmbarque } from '@/lib/comision-repartidor'
 import type { CierreResultadoDTO } from '../../application/dto'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,6 +49,7 @@ export class CierreDedupService {
       select: { id: true, tipo: true, montoEstimado: true },
     })
 
+    const comisionDetalle = await comisionDeEmbarque(client, embarqueId)
     return {
       embarqueId,
       estado: 'CERRADO',
@@ -63,7 +65,8 @@ export class CierreDedupService {
       })),
       gastosCreados: 0,
       totalVentas: 0,
-      comision: 0,
+      comision: comisionDetalle.total,
+      comisionDetalle,
       caja: {
         efectivoEsperado: 0,
         efectivoReal: 0,

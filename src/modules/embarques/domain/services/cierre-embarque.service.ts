@@ -44,12 +44,6 @@ export interface DiscrepanciaResult {
   justificacion?: string
 }
 
-export interface ComisionResult {
-  base: number
-  tasa: number
-  monto: number
-}
-
 export interface CajaResult {
   efectivoEsperado: number
   efectivoReal: number
@@ -58,11 +52,6 @@ export interface CajaResult {
 }
 
 export class CierreEmbarqueService {
-  /**
-   * Tasa de comision para repartidores (5%).
-   */
-  private readonly TASA_COMISION = 0.05
-
   /**
    * Tolerancia de pagos: 1% sobre el total.
    */
@@ -140,17 +129,6 @@ export class CierreEmbarqueService {
       discrepanciasPorProducto: conciliacion,
       justificado,
       justificacion,
-    }
-  }
-
-  /**
-   * Calcula la comision del repartidor sobre ventas efectivas.
-   */
-  calcularComision(totalVentas: number): ComisionResult {
-    return {
-      base: totalVentas,
-      tasa: this.TASA_COMISION,
-      monto: totalVentas * this.TASA_COMISION,
     }
   }
 

@@ -45,6 +45,7 @@ export interface CierreLegacyResponse {
   responsibilityCases: Array<{ id: string; tipo: string; montoEstimado: number }>
   /** ADR-CIERRE-002 §5: avisos para revisar; nunca bloquean el cierre. */
   senales: Array<{ codigo: string; mensaje: string }>
+  comisionDetalle?: CierreResultadoDTO['comisionDetalle']
   deduped?: boolean
 }
 
@@ -81,6 +82,7 @@ export class CierrePresenter {
       deudaCreada: null,
       responsibilityCases: result.responsibilityCases,
       senales: result.senales ?? [],
+      comisionDetalle: result.comisionDetalle,
       deduped: result.deduped,
     }
   }

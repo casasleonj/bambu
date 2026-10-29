@@ -30,7 +30,6 @@ export {
   CierreEmbarqueService,
   type ProductoConciliacion,
   type DiscrepanciaResult,
-  type ComisionResult,
   type CajaResult,
 } from './services/cierre-embarque.service'
 export {

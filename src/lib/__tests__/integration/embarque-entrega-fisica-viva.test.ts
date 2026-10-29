@@ -28,6 +28,8 @@ vi.mock('@/lib/audit', () => ({ logAudit: vi.fn(async () => {}) }))
 vi.mock('@/lib/realtime', () => ({ publishRealtimeEvent: vi.fn(async () => ({})) }))
 vi.mock('@/lib/notifications/notify-event', () => ({ notifyEvent: vi.fn(async () => {}) }))
 
+import { comisionRepartidoresDelDia } from '@/lib/comision-repartidor'
+import { todayStringBogota } from '@/lib/dates'
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { CerrarEmbarqueUseCase } from '@/modules/embarques/application/use-cases/CerrarEmbarqueUseCase'
 import { PrismaEmbarqueRepository } from '@/modules/embarques/infrastructure/repositories/PrismaEmbarqueRepository'
@@ -158,6 +160,47 @@ describe('PR-1B/1C — evento físico vivo atribuido + cierre por misión', () =
   beforeEach(() => { process.env[FLAG] = FLAG_ON })
   afterEach(() => { delete process.env[FLAG] })
   afterAll(async () => { await disconnect() })
+
+  it('#499: parcial en dos misiones conserva 3/2, tarifa propia, preview sin efectos y replay sin duplicación', async () => {
+    const a = await crearEmbarque({ PACA_AGUA: 3 })
+    const b = await crearEmbarque({ PACA_AGUA: 2 })
+    await testPrisma.trabajador.update({ where: { id: a.trabajadorId }, data: { tipoPago: 'COMISION', comRepartAgua: 200 } })
+    await testPrisma.trabajador.update({ where: { id: b.trabajadorId }, data: { tipoPago: 'COMISION', comRepartAgua: 400 } })
+    const pedido = await crearPedidoPrepago({ embarqueId: a.id, producto: 'PACA_AGUA', cantPedido: 5 })
+    expect((await entregar(pedido.id, { itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 3 }], embarqueEntregaId: a.id, offlineId: 'com-a-parcial' })).status).toBe(200)
+    // La asignación actual cambia; la evidencia de las primeras 3 queda en A.
+    await testPrisma.pedido.update({ where: { id: pedido.id }, data: { embarqueId: b.id, estadoEntrega: 'EN_RUTA', estado: 'EN_RUTA' } })
+    const entregaB = await entregar(pedido.id, { itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 2 }], embarqueEntregaId: b.id, offlineId: 'com-b-final' })
+    expect(entregaB.status, JSON.stringify(entregaB.body)).toBe(200)
+    const cierreA = { id: a.id, pedidos: [], gastos: [], dineroEntregado: 0, offlineId: 'com-cierre-a' }
+    const preview = await buildUseCase().execute({ ...cierreA, dryRun: true })
+    expect(preview.comision).toBe(600)
+    expect((await testPrisma.embarque.findUniqueOrThrow({ where: { id: a.id } })).estado).toBe('EN_RUTA')
+    const ra = await buildUseCase().execute(cierreA)
+    const rb = await buildUseCase().execute({ id: b.id, pedidos: [{ pedidoId: pedido.id, entregado: 'COMPLETO', productosEntregados: entregaDe('PACA_AGUA', 0), pagos: [] }], gastos: [], dineroEntregado: 0 })
+    expect(ra.comision).toBe(600)
+    expect(rb.comision).toBe(800)
+    expect(ra.comisionDetalle?.entregasAgua).toBe(3)
+    expect(rb.comisionDetalle?.entregasAgua).toBe(2)
+    expect((await buildUseCase().execute(cierreA)).comision).toBe(600)
+    // El rollback del flag no vuelve a atribuir el acumulado 5 al último trabajador.
+    delete process.env[FLAG]
+    const dia = await comisionRepartidoresDelDia(testPrisma, todayStringBogota())
+    expect(dia.find(r => r.trabajadorId === a.trabajadorId)?.total).toBe(600)
+    expect(dia.find(r => r.trabajadorId === b.trabajadorId)?.total).toBe(800)
+    expect(suma(await movimientos(a.id))).toBe(3)
+    expect(suma(await movimientos(b.id))).toBe(2)
+  })
+
+  it('#499: botellón de pedido PUNTO entregado por vehículo sí usa la evidencia física, no cambia el canal comercial', async () => {
+    const emb = await crearEmbarque({ BOTELLON: 2 })
+    await testPrisma.trabajador.update({ where: { id: emb.trabajadorId }, data: { tipoPago: 'COMISION', comRepartBotellon: 350 } })
+    const p = await crearPedidoPrepago({ embarqueId: emb.id, producto: 'BOTELLON', cantPedido: 2, botellonCanal: 'FAB' })
+    const r = await buildUseCase().execute({ id: emb.id, pedidos: [{ pedidoId: p.id, entregado: 'COMPLETO', productosEntregados: entregaDe('BOTELLON', 2), pagos: [] }], gastos: [], dineroEntregado: 0 })
+    expect(r.comision).toBe(700)
+    expect(r.comisionDetalle?.revisiones).toHaveLength(0)
+    expect((await testPrisma.pedido.findUniqueOrThrow({ where: { id: p.id } })).canal).toBe('PUNTO')
+  })
 
   // ── Prueba 1 (caso #331 / B-01) ─────────────────────────────────────────
   it('prueba 1: carga 2 BOTELLON, cierre recién entregado 2 → 2 salidas efectivas y discrepancia 0', async () => {
