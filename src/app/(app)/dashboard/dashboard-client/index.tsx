@@ -1,9 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { getTodayString } from '@/lib/dates'
 import type { DashboardData } from './types'
-import { useBaseCaja } from '@/hooks/use-base-caja'
+import {
+  CobrosDashboard,
+  pendienteMedio,
+  IconoEfectivo,
+} from './cobros-dashboard'
+import { ShoppingBag, ClipboardList, Receipt } from 'lucide-react'
 import { MoneyDisplay } from '@/components/money-display'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { PRODUCT_LABELS } from '@/shared/domain'
@@ -68,29 +75,181 @@ function IconEspera() {
   )
 }
 
-function RefreshBadge() {
-  const [minutes, setMinutes] = useState(0)
+export function DashboardClient({
+  data: initialData,
+  userRole,
+}: {
+  data: DashboardData | null
+  userRole?: string | null
+}) {
+  const [lecturaLocal, setData] = useState<DashboardData | null>(null)
+  // Una nueva respuesta SSR también puede traer una base más reciente.
+  const data = !lecturaLocal
+    ? initialData
+    : initialData &&
+        Date.parse(initialData.consultadoAt ?? '') >
+          Date.parse(lecturaLocal.consultadoAt ?? '')
+      ? initialData
+      : lecturaLocal
+  const temporizadorBase = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const vivo = useRef(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
+  const [offline, setOffline] = useState(false)
+  const [detalleCobros, setDetalleCobros] = useState<string | null>(null)
+  const solicitud = useRef<{ seq: number; controller: AbortController | null }>(
+    { seq: 0, controller: null },
+  )
   useEffect(() => {
-    const interval = setInterval(() => setMinutes(m => m + 1), 60000)
-    return () => clearInterval(interval)
+    vivo.current = true
+    const actualizarConexion = () => setOffline(!navigator.onLine)
+    actualizarConexion()
+    window.addEventListener('online', actualizarConexion)
+    window.addEventListener('offline', actualizarConexion)
+    const ref = solicitud.current
+    return () => {
+      window.removeEventListener('online', actualizarConexion)
+      window.removeEventListener('offline', actualizarConexion)
+      vivo.current = false
+      ref.seq++
+      if (temporizadorBase.current) clearTimeout(temporizadorBase.current)
+      ref.controller?.abort()
+    }
   }, [])
-  const label = minutes === 0 ? 'Actualizado ahora' : minutes === 1 ? 'Actualizado hace 1 min' : `Actualizado hace ${minutes} min`
-  return (
+  const actualizar = useCallback(async () => {
+    if (!navigator.onLine) {
+      setOffline(true)
+      return
+    }
+    solicitud.current.controller?.abort()
+    const controller = new AbortController(),
+      seq = ++solicitud.current.seq
+    solicitud.current.controller = controller
+    setRefreshing(true)
+    setRefreshError(null)
+    const timer = setTimeout(() => controller.abort(), 15000)
+    try {
+      const res = await fetch('/api/dashboard', {
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+      if (!res.ok) throw new Error('No se pudo actualizar')
+      const resultado = await res.json()
+      if (
+        !resultado.success ||
+        !resultado.dashboard?.consultadoAt ||
+        !Number.isFinite(Date.parse(resultado.dashboard.consultadoAt)) ||
+        !Array.isArray(resultado.dashboard?.cobros?.medios) ||
+        !Array.isArray(resultado.dashboard?.cobros?.movimientos) ||
+        !Array.isArray(resultado.dashboard?.cobros?.porConciliar) ||
+        !Array.isArray(resultado.dashboard?.ventasPorPrecio) ||
+        !Array.isArray(resultado.dashboard?.franjas) ||
+        !resultado.dashboard?.alertasRiesgo ||
+        !resultado.dashboard?.casosActivos ||
+        typeof resultado.dashboard?.ventas !== 'number' ||
+        typeof resultado.dashboard?.baseDia !== 'number' ||
+        typeof resultado.dashboard?.totalGastos !== 'number'
+      )
+        throw new Error('Lectura incompleta')
+      if (seq === solicitud.current.seq) {
+        setData(resultado.dashboard)
+        setDetalleCobros(null)
+      }
+    } catch {
+      if (seq === solicitud.current.seq)
+        setRefreshError(
+          'No se pudo actualizar. Conservamos la última consulta disponible; no significa que las ventas o los cobros sean cero.',
+        )
+    } finally {
+      clearTimeout(timer)
+      if (seq === solicitud.current.seq) setRefreshing(false)
+    }
+  }, [])
+  const programarActualizacionBase = useCallback(() => {
+    if (!vivo.current) return
+    if (temporizadorBase.current) clearTimeout(temporizadorBase.current)
+    temporizadorBase.current = setTimeout(() => {
+      if (vivo.current) void actualizar()
+    }, 300)
+  }, [actualizar])
+  useRealtimeListener(['config.updated'], programarActualizacionBase, {
+    debounceMs: 0,
+  })
+  useEffect(() => {
+    const cambio = (event: StorageEvent) => {
+      if (event.key === `baseDia_${getTodayString()}`)
+        programarActualizacionBase()
+    }
+    window.addEventListener('storage', cambio)
+    return () => window.removeEventListener('storage', cambio)
+  }, [programarActualizacionBase])
+  const botonActualizar = (
     <button
-      onClick={() => window.location.reload()}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border rounded-lg hover:bg-gray-50 transition cursor-pointer"
+      onClick={actualizar}
+      disabled={refreshing || offline}
+      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border bg-white px-3 text-xs font-medium text-gray-700 disabled:opacity-60"
       aria-label="Actualizar dashboard"
-      title="Click para actualizar"
     >
-      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-      {label}
+      {refreshing ? 'Consultando…' : '↻ Actualizar'}
+      {data?.consultadoAt && (
+        <time dateTime={data.consultadoAt}>
+          {' '}
+          · Consulta{' '}
+          {new Date(data.consultadoAt).toLocaleString('es-CO', {
+            timeZone: 'America/Bogota',
+            day: '2-digit',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
+        </time>
+      )}
     </button>
   )
-}
-
-export function DashboardClient({ data, userRole }: { data: DashboardData; userRole?: string | null }) {
-  const { baseDia: baseDiaLocal } = useBaseCaja()
-  const baseDia = baseDiaLocal ? Number(baseDiaLocal) : data.baseDia
+  if (!data)
+    return (
+      <div className="space-y-6">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+          {botonActualizar}
+        </header>
+        <div
+          role="status"
+          className="rounded-xl border border-amber-200 bg-amber-50 p-5"
+        >
+          <h2 className="font-semibold">
+            {offline
+              ? 'Sin conexión'
+              : refreshing
+                ? 'Consultando información'
+                : 'No hay una lectura disponible'}
+          </h2>
+          <p className="mt-2 text-sm">
+            {refreshError ??
+              'Las cifras pendientes de consulta no equivalen a cero. Reintenta cuando tengas conexión.'}
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            'Pedidos del Día',
+            'Ventas del Día',
+            'Efectivo Cobrado',
+            'Gastos del Día',
+          ].map((t) => (
+            <div key={t} className="rounded-xl border bg-white p-5">
+              <h2 className="text-sm text-gray-600">{t}</h2>
+              <p className="mt-3 text-3xl text-gray-400">—</p>
+              <p className="text-xs text-gray-500">Por consultar</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  const baseDia = data.baseDia
+  const cobros = data.cobros
+  const efectivo = cobros?.medios.find((m) => m.metodo === 'EFECTIVO')
+  const efectivoPendiente = !cobros || pendienteMedio(cobros, 'EFECTIVO')
+  const importeEfectivo = efectivo?.neto ?? 0
   const {
     pedidosHoy,
     ventas,
@@ -144,49 +303,130 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
           <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
           <p className="text-gray-500 capitalize">{fechaHoy}</p>
         </div>
-        <RefreshBadge />
+        {botonActualizar}
       </div>
 
+      {offline && (
+        <div
+          role="status"
+          className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+        >
+          Sin conexión · Conservamos la consulta indicada arriba. Pueden faltar
+          cobros recientes.
+        </div>
+      )}
+      {refreshError && !offline && (
+        <div
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+        >
+          {refreshError}
+        </div>
+      )}
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-blue-500">
-          <p className="text-sm text-gray-500">Pedidos del Día</p>
+          <p className="flex items-center justify-between gap-2 text-sm text-gray-500">
+            Pedidos del Día
+            <ClipboardList
+              aria-hidden="true"
+              className="h-6 w-6 text-blue-600"
+            />
+          </p>
           <p className="text-3xl font-bold text-gray-800">{pedidosHoy}</p>
           <p className="text-xs text-gray-400 mt-1">
             {pedidosPendientes} pendientes · {pedidosEntregados} entregados
           </p>
           <p className={`text-xs mt-1 font-medium ${trendClass(pedidosTrend)}`}>
-            {trendArrow(pedidosTrend)} {Math.abs(pedidosTrend).toFixed(0)}% vs ayer
+            {trendArrow(pedidosTrend)} {Math.abs(pedidosTrend).toFixed(0)}% vs
+            ayer
           </p>
         </div>
 
         <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-green-500">
-          <p className="text-sm text-gray-500">Ventas del Día</p>
+          <p className="flex items-center justify-between gap-2 text-sm text-gray-500">
+            Ventas del Día
+            <ShoppingBag
+              aria-hidden="true"
+              className="h-6 w-6 text-green-600"
+            />
+          </p>
           <p className="text-3xl font-bold text-green-600">
             <MoneyDisplay value={ventas} userRole={userRole} />
           </p>
-          <p className="text-xs text-gray-400 mt-1">Total entregado</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Pedidos con fecha de hoy y entregados · incluye fiados
+          </p>
           <p className={`text-xs mt-1 font-medium ${trendClass(ventasTrend)}`}>
-            {trendArrow(ventasTrend)} {Math.abs(ventasTrend).toFixed(0)}% vs ayer
+            {data.ventasAyer > 0
+              ? `${trendArrow(ventasTrend)} ${Math.abs(ventasTrend).toFixed(0)}% vs ayer`
+              : 'Sin ventas ayer'}
           </p>
         </div>
 
         <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-emerald-500">
-          <p className="text-sm text-gray-500">Efectivo Cobrado</p>
-          <p className="text-3xl font-bold text-emerald-600">
-            <MoneyDisplay value={ventas - fiadosHoy} userRole={userRole} />
+          <p className="flex items-center justify-between gap-2 text-sm text-gray-500">
+            Efectivo Cobrado
+            <IconoEfectivo />
           </p>
-          <p className="text-xs text-gray-400 mt-1">Ventas - fiados hoy</p>
+          <p className="text-3xl font-bold text-emerald-600">
+            {efectivoPendiente ? (
+              'Por conciliar'
+            ) : (
+              <MoneyDisplay value={importeEfectivo} userRole={userRole} />
+            )}
+          </p>
+          <p className="mt-1 text-xs text-gray-600">
+            Billetes registrados hoy · no incluye digitales
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            Incluye abonos de pedidos anteriores
+          </p>
+          {efectivo && efectivo.ajustes > 0 && (
+            <p className="mt-2 text-xs text-amber-900">
+              Bruto <MoneyDisplay value={efectivo.bruto} userRole={userRole} />{' '}
+              − ajuste{' '}
+              <MoneyDisplay value={efectivo.ajustes} userRole={userRole} /> ·
+              neto contable
+            </p>
+          )}
+          {efectivoPendiente && cobros && (
+            <p className="mt-2 text-xs text-amber-800">
+              Subtotal identificado:{' '}
+              <MoneyDisplay value={importeEfectivo} userRole={userRole} />
+            </p>
+          )}
+          <button
+            className="mt-2 min-h-11 text-sm font-semibold text-emerald-700 underline"
+            disabled={!cobros}
+            onClick={() => setDetalleCobros('EFECTIVO')}
+          >
+            Ver cobros
+          </button>
         </div>
 
         <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-orange-500">
-          <p className="text-sm text-gray-500">Gastos del Día</p>
+          <p className="flex items-center justify-between gap-2 text-sm text-gray-500">
+            Gastos del Día
+            <Receipt aria-hidden="true" className="h-6 w-6 text-orange-600" />
+          </p>
           <p className="text-3xl font-bold text-orange-600">
             <MoneyDisplay value={totalGastos} userRole={userRole} />
           </p>
-          <p className="text-xs text-gray-400 mt-1">Total gastado</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Gastos registrados · no todos identifican su medio de salida
+          </p>
         </div>
       </div>
+
+      <CobrosDashboard
+        cobros={cobros}
+        deuda={fiadosTotal}
+        deudaHoy={fiadosHoy}
+        userRole={userRole}
+        detalle={detalleCobros}
+        onDetalle={setDetalleCobros}
+      />
 
       {/* KPIs de Producción */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -368,87 +608,180 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
         )}
       </div>
 
-      {/* Ventas por Precio */}
-      <div className="bg-white p-5 rounded-xl shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Ventas por Precio</h2>
+      {/* Ventas por precio: canal y precio conservan representación visible en móvil. */}
+      <section
+        className="min-w-0 rounded-xl bg-white p-3 shadow-sm sm:p-5"
+        aria-labelledby="ventas-precio-title"
+      >
+        <h2
+          id="ventas-precio-title"
+          className="mb-2 text-lg font-semibold text-gray-800"
+        >
+          Ventas por Precio
+        </h2>
+        <p className="mb-4 text-xs text-gray-600">
+          Canal del pedido · Punto / mostrador o Domicilio · pedidos de hoy
+          entregados
+        </p>
         {ventasPorPrecio.length === 0 ? (
-          <div className="text-center py-8 text-gray-400">
-            <p className="mb-3">No hay ventas registradas hoy</p>
+          <div className="py-6 text-center text-sm text-gray-500">
+            {ventas > 0
+              ? 'Hay ventas entregadas sin desglose de producto disponible. Consulta los pedidos para revisarlo.'
+              : 'No hay ventas entregadas de pedidos de hoy.'}
             <Link
               href="/pedidos"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
+              className="mt-3 flex min-h-11 items-center justify-center text-blue-700 underline"
             >
-              Crear primer pedido
+              Ver pedidos
             </Link>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
+          <>
+            <table className="w-full table-fixed text-xs sm:table-auto sm:text-sm">
+              <thead className="bg-gray-50 text-gray-600">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Producto</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Canal</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Precio</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Cantidad</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Subtotal</th>
+                  <th className="w-[45%] px-1 py-3 text-left sm:w-auto sm:px-3">
+                    Producto
+                  </th>
+                  <th className="hidden px-3 py-3 sm:table-cell">Canal</th>
+                  <th className="hidden px-3 py-3 md:table-cell">Precio</th>
+                  <th className="px-1 py-3 text-center sm:px-3">Cantidad</th>
+                  <th className="px-1 py-3 text-right sm:px-3">Subtotal</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {ventasPorPrecio.map((item, index) => {
+                {ventasPorPrecio.map((item) => {
                   const { Icon } = getProductoIconConfig(item.producto)
+                  const badge = (
+                    <span
+                      className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${item.canal === 'PUNTO' ? 'bg-amber-100 text-amber-900' : 'bg-violet-100 text-violet-800'}`}
+                    >
+                      {item.canal === 'PUNTO' ? 'Punto' : 'Domicilio'}
+                    </span>
+                  )
                   return (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <span className="flex items-center gap-2 font-medium text-gray-800">
-                          <Icon size={18} aria-hidden="true" className="flex-shrink-0" />
-                          {item.producto}
+                    <tr
+                      key={`${item.producto}-${item.precio}-${item.canal}`}
+                      data-testid="venta-precio-fila"
+                    >
+                      <td className="px-1 py-3 sm:px-3">
+                        <span className="flex items-center gap-1 font-medium text-gray-800">
+                          <Icon
+                            size={18}
+                            aria-hidden="true"
+                            className="shrink-0"
+                          />
+                          {PRODUCT_LABELS[item.producto as ProductCode] ??
+                            item.producto}
+                        </span>
+                        <span className="mt-1 block sm:hidden">{badge}</span>
+                        <span className="mt-1 block text-[11px] text-gray-600 md:hidden">
+                          Unidad:{' '}
+                          <MoneyDisplay
+                            value={item.precio}
+                            userRole={userRole}
+                          />
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${item.canal === 'PUNTO' ? 'bg-amber-100 text-amber-800' : 'bg-violet-100 text-violet-800'}`}>
-                          {item.canal === 'PUNTO' ? 'Punto' : 'Domicilio'}
+                      <td className="hidden px-3 py-3 text-center sm:table-cell">
+                        {badge}
+                      </td>
+                      <td className="hidden px-3 py-3 text-center md:table-cell">
+                        <MoneyDisplay value={item.precio} userRole={userRole} />
+                      </td>
+                      <td className="px-1 py-3 text-center text-base font-bold text-gray-800 sm:px-3 sm:text-xl">
+                        {item.cantidad}
+                        <span className="block text-[10px] font-normal text-gray-500">
+                          unidades
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center"><span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold"><MoneyDisplay value={item.precio} userRole={userRole} /></span></td>
-                      <td className="px-4 py-3 text-center"><span className="text-2xl font-bold text-gray-800">{item.cantidad}</span><span className="text-sm text-gray-400 ml-1">und</span></td>
-                      <td className="px-4 py-3 text-right"><span className="font-semibold text-green-600"><MoneyDisplay value={item.subtotal} userRole={userRole} /></span></td>
+                      <td className="break-words px-1 py-3 text-right font-semibold text-green-700 sm:px-3">
+                        <MoneyDisplay
+                          value={item.subtotal}
+                          userRole={userRole}
+                        />
+                      </td>
                     </tr>
                   )
                 })}
               </tbody>
-              <tfoot className="bg-gray-50">
-                <tr><td colSpan={4} className="px-4 py-3 text-right font-bold text-gray-800">TOTAL:</td><td className="px-4 py-3 text-right font-bold text-green-600 text-lg"><MoneyDisplay value={ventas} userRole={userRole} /></td></tr>
-              </tfoot>
             </table>
-          </div>
+            <dl className="mt-2 flex flex-wrap justify-between gap-3 rounded-lg bg-gray-50 p-3 font-semibold">
+              <dt>Total de ventas entregadas</dt>
+              <dd className="text-green-700">
+                <MoneyDisplay value={ventas} userRole={userRole} />
+              </dd>
+            </dl>
+            {Math.round(
+              ventasPorPrecio.reduce(
+                (n, v) => n + Math.round(v.subtotal * 100),
+                0,
+              ),
+            ) !== Math.round(ventas * 100) && (
+              <p
+                role="status"
+                className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900"
+              >
+                El desglose por productos no coincide con el total de ventas.{' '}
+                <Link href="/pedidos" className="underline">
+                  Revisar pedidos
+                </Link>
+              </p>
+            )}
+          </>
         )}
-      </div>
-
-      {/* Resumen por Producto */}
+      </section>
       {ventasPorPrecio.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <section
+          aria-label="Resumen por producto"
+          className="grid grid-cols-2 gap-3 md:grid-cols-3"
+        >
           {(Object.keys(PRODUCT_LABELS) as ProductCode[]).map((code) => {
-            const items = ventasPorPrecio.filter(v => v.producto === code)
-            const totalCantidad = items.reduce((acc, v) => acc + v.cantidad, 0)
-            const totalSubtotal = items.reduce((acc, v) => acc + v.subtotal, 0)
-            const cantPunto = items.filter(v => v.canal === 'PUNTO').reduce((acc, v) => acc + v.cantidad, 0)
-            const cantDomicilio = totalCantidad - cantPunto
-            if (totalCantidad === 0) return null
-            const { Icon } = getProductoIconConfig(code)
-            const { bg, text } = PRODUCTO_COLOR[code]
+            const items = ventasPorPrecio.filter((v) => v.producto === code),
+              cantidad = items.reduce((n, v) => n + v.cantidad, 0)
+            if (!cantidad) return null
+            const { Icon } = getProductoIconConfig(code),
+              color = PRODUCTO_COLOR[code]
             return (
-              <div key={code} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center text-center">
-                <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-2 ${bg}`}>
-                  <Icon size={32} aria-hidden="true" />
+              <article
+                key={code}
+                data-testid={`producto-${code}`}
+                className="min-w-0 rounded-xl bg-white p-4 text-center shadow-sm"
+              >
+                <div
+                  className={`mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full ${color.bg}`}
+                >
+                  <Icon size={32} aria-hidden="true" className={color.text} />
                 </div>
-                <p className="text-sm text-gray-500">{PRODUCT_LABELS[code]}</p>
-                <p className={`text-2xl font-bold ${text}`}>{totalCantidad}</p>
-                <p className="text-[11px] text-gray-400">Punto {cantPunto} · Dom {cantDomicilio}</p>
-                <p className="text-sm text-gray-400"><MoneyDisplay value={totalSubtotal} userRole={userRole} /></p>
-              </div>
+                <h2 className="text-sm text-gray-600">
+                  {PRODUCT_LABELS[code]}
+                </h2>
+                <p className={`text-2xl font-bold ${color.text}`}>{cantidad}</p>
+                <div className="mt-3 space-y-2 text-xs">
+                  {(['PUNTO', 'DOMICILIO'] as const).map((canal) => {
+                    const grupo = items.filter((v) => v.canal === canal),
+                      cant = grupo.reduce((n, v) => n + v.cantidad, 0),
+                      subtotal =
+                        grupo.reduce(
+                          (n, v) => n + Math.round(v.subtotal * 100),
+                          0,
+                        ) / 100
+                    return cant > 0 ? (
+                      <p
+                        key={canal}
+                        className={`rounded-lg p-2 ${canal === 'PUNTO' ? 'bg-amber-50 text-amber-900' : 'bg-violet-50 text-violet-800'}`}
+                      >
+                        {canal === 'PUNTO' ? '🏪 Punto' : '🚚 Domicilio'}:{' '}
+                        <strong>{cant}</strong> ·{' '}
+                        <MoneyDisplay value={subtotal} userRole={userRole} />
+                      </p>
+                    ) : null
+                  })}
+                </div>
+              </article>
             )
           })}
-        </div>
+        </section>
       )}
 
       {/* Pedidos por Franja Horaria */}
@@ -528,18 +861,66 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
 
         {/* Caja */}
         <div className="bg-white p-5 rounded-xl shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Resumen de Caja</h2>
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">
+            Resumen de Caja
+          </h2>
           <div className="space-y-3">
-            <div className="flex justify-between items-center py-2 border-b border-gray-100"><span className="text-gray-600">Base del día</span><span className="font-medium">{baseDia === 0 ? 'Sin base registrada' : <MoneyDisplay value={baseDia} userRole={userRole} />}</span></div>
-            <div className="flex justify-between items-center py-2 border-b border-gray-100"><span className="text-gray-600">+ Ventas cobradas</span><span className="font-medium text-green-600"><MoneyDisplay value={ventas - fiadosHoy} userRole={userRole} /></span></div>
-            <div className="flex justify-between items-center py-2 border-b border-gray-100"><span className="text-gray-600">- Gastos</span><span className="font-medium text-red-600"><MoneyDisplay value={totalGastos} userRole={userRole} /></span></div>
-            <div className="flex justify-between items-center py-3 bg-gray-50 rounded-lg px-3 mt-2"><span className="font-semibold text-gray-800">= Efectivo esperado</span><span className="font-bold text-lg text-green-600"><MoneyDisplay value={baseDia + (ventas - fiadosHoy) - totalGastos} userRole={userRole} /></span></div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+              <span className="text-gray-600">Base del día</span>
+              <span className="font-medium">
+                {baseDia === 0 ? (
+                  'Sin base registrada'
+                ) : (
+                  <MoneyDisplay value={baseDia} userRole={userRole} />
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+              <span className="text-gray-600">Efectivo registrado hoy</span>
+              <span className="font-medium text-green-600">
+                {efectivoPendiente ? (
+                  'Por conciliar'
+                ) : (
+                  <MoneyDisplay value={importeEfectivo} userRole={userRole} />
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+              <span className="text-gray-600">- Gastos</span>
+              <span className="font-medium text-red-600">
+                <MoneyDisplay value={totalGastos} userRole={userRole} />
+              </span>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <p className="font-semibold">
+                Disponible en oficina: por conciliar
+              </p>
+              <p className="mt-1 text-xs">
+                Falta distinguir medios de salida y recepción de repartidores.
+                No se calcula con ventas menos fiados.
+              </p>
+            </div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-            <div className="bg-yellow-50 p-3 rounded-lg text-center"><p className="text-gray-500">Fiados hoy</p><p className="font-bold text-yellow-600"><MoneyDisplay value={fiadosHoy} userRole={userRole} /></p></div>
-            <div className="bg-blue-50 p-3 rounded-lg text-center"><p className="text-gray-500">Total ventas</p><p className="font-bold text-blue-600"><MoneyDisplay value={ventas} userRole={userRole} /></p></div>
+            <div className="bg-yellow-50 p-3 rounded-lg text-center">
+              <p className="text-gray-500">Fiados hoy</p>
+              <p className="font-bold text-yellow-600">
+                <MoneyDisplay value={fiadosHoy} userRole={userRole} />
+              </p>
+            </div>
+            <div className="bg-blue-50 p-3 rounded-lg text-center">
+              <p className="text-gray-500">Total ventas</p>
+              <p className="font-bold text-blue-600">
+                <MoneyDisplay value={ventas} userRole={userRole} />
+              </p>
+            </div>
           </div>
-          <Link href="/cierre" className="block mt-4 text-center text-sm text-blue-600 hover:underline">Ver cierre completo</Link>
+          <Link
+            href="/cierre"
+            className="block mt-4 text-center text-sm text-blue-600 hover:underline"
+          >
+            Ver cierre completo
+          </Link>
         </div>
 
         {/* Cartera */}

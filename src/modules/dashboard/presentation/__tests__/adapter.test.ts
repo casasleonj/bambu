@@ -91,13 +91,82 @@ describe('toLegacyDashboardData', () => {
   })
 
   it('pasa franjas y ventasPorPrecio sin transformar', () => {
-    const franjas = [{ label: 'Noche', range: [18, 23] as [number, number], count: 1 }]
-    const ventasPorPrecio = [
-      { producto: 'PACA_AGUA' as const, canal: 'DOMICILIO' as const, precio: 6500, cantidad: 1, subtotal: 6500 },
+    const franjas = [
+      { label: 'Noche', range: [18, 23] as [number, number], count: 1 },
     ]
-    const legacy = toLegacyDashboardData(makeDDDData({ franjasHorarias: franjas, ventasPorPrecio }))
+    const ventasPorPrecio = [
+      {
+        producto: 'PACA_AGUA' as const,
+        canal: 'DOMICILIO' as const,
+        precio: 6500,
+        cantidad: 1,
+        subtotal: 6500,
+      },
+    ]
+    const legacy = toLegacyDashboardData(
+      makeDDDData({ franjasHorarias: franjas, ventasPorPrecio }),
+    )
 
     expect(legacy.franjas).toBe(franjas)
     expect(legacy.ventasPorPrecio).toBe(ventasPorPrecio)
   })
+})
+
+describe('detalle de cobros respeta acceso a Pedidos en SSR y API', () => {
+  const cobros = {
+    subtotalRegistrado: 10000,
+    creditoAplicado: 0,
+    medios: [],
+    movimientos: [
+      {
+        id: 'pago-reservado',
+        fuente: 'PAGO' as const,
+        referencia: 'Pedido #999',
+        pedidoId: 'pedido-reservado',
+        pedidoNumero: 999,
+        canal: 'DOMICILIO',
+        fechaPedido: '2026-10-28T10:00:00Z',
+        registradoAt: '2026-10-29T10:00:00Z',
+        metodo: 'EFECTIVO',
+        confirmacion: 'CONFIRMADO',
+        bruto: 10000,
+        ajuste: 0,
+        neto: 10000,
+        pedidoAnterior: true,
+      },
+    ],
+    porConciliar: [
+      {
+        id: 'abono-reservado',
+        referencia: 'ABO-privado',
+        pedidoId: 'pedido-reservado',
+        metodo: 'EFECTIVO',
+        importe: 10000,
+        motivo: 'ORIGEN_ABONO' as const,
+      },
+    ],
+  }
+  it.each(['ADMIN', 'CONTADOR', 'ASISTENTE'])(
+    '%s conserva el detalle que ya puede consultar en Pedidos',
+    (role) => {
+      expect(toLegacyDashboardData(makeDDDData({ cobros }), role).cobros).toBe(
+        cobros,
+      )
+    },
+  )
+  it.each(['SELLADOR', 'REPARTIDOR', null])(
+    '%s no recibe identificadores ni importes individuales nuevos',
+    (role) => {
+      const r = toLegacyDashboardData(makeDDDData({ cobros }), role)
+      expect(r.cobros?.subtotalRegistrado).toBe(10000)
+      expect(r.cobros?.movimientos).toEqual([])
+      expect(JSON.stringify(r.cobros)).not.toContain('reservado')
+      expect(JSON.stringify(r.cobros)).not.toContain('ABO-privado')
+      expect(r.cobros?.porConciliar[0]).toMatchObject({
+        pedidoId: null,
+        importe: null,
+      })
+      expect(cobros.movimientos).toHaveLength(1)
+    },
+  )
 })

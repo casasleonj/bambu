@@ -5,7 +5,7 @@
  * This is the single entry point for the dashboard presentation layer.
  */
 
-import { getTodayString } from '@/lib/dates'
+import type { FinanzasRepository } from '../infrastructure/finanzas.repository'
 import type { DashboardData, DashboardKPIs } from '../domain'
 import {
   pedidosValidos,
@@ -34,6 +34,7 @@ export interface GetDashboardDeps {
   alertas: AlertasRepository
   gastos: GastosRepository
   embarques: EmbarquesRepository
+  finanzas?: FinanzasRepository
 }
 
 export async function getDashboardData(
@@ -41,38 +42,71 @@ export async function getDashboardData(
   yesterdayRange: { start: Date; end: Date },
   deps: GetDashboardDeps,
 ): Promise<DashboardData> {
-  // ── Parallel data fetch ───────────────────────────────────────────────
+  // La composición productiva siempre provee finanzas. El fallback conserva
+  // el contrato de los repositorios inyectados anteriores, sin inventar cobros.
+  const financiero =
+    deps.finanzas?.leer(todayRange, yesterdayRange) ??
+    (async () => {
+      const [
+        pedidosHoy,
+        pedidosAyer,
+        baseDia,
+        totalGastos,
+        fiadosTotal,
+        clientesConFiado,
+      ] = await Promise.all([
+        deps.pedidos.findByDateRange(todayRange.start, todayRange.end),
+        deps.pedidos.findByDateRange(yesterdayRange.start, yesterdayRange.end),
+        deps.config.getBaseDia(
+          `BASE_DIA_${todayRange.start.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })}`,
+        ),
+        deps.gastos.sumByDateRange(todayRange.start, todayRange.end),
+        deps.pedidos.sumFiadosEntregados(),
+        deps.alertas.countClientesConFiado(),
+      ])
+      return {
+        pedidosHoy,
+        pedidosAyer,
+        baseDia,
+        totalGastos,
+        fiadosTotal,
+        clientesConFiado,
+        cobros: null,
+        consultadoAt: null,
+      }
+    })()
   const [
-    pedidosHoy,
-    pedidosAyer,
-    baseDia,
+    finanzas,
     lastCierre,
-    totalGastos,
     embarquesAbiertos,
     stockAlertas,
-    fiadosTotal,
     produccionHoy,
     produccionAyer,
     stockConfigs,
     alertasRiesgo,
     casosActivos,
-    clientesConFiado,
   ] = await Promise.all([
-    deps.pedidos.findByDateRange(todayRange.start, todayRange.end),
-    deps.pedidos.findByDateRange(yesterdayRange.start, yesterdayRange.end),
-    deps.config.getBaseDia(`BASE_DIA_${getTodayString()}`),
+    financiero,
     deps.config.getLastCierre(),
-    deps.gastos.sumByDateRange(todayRange.start, todayRange.end),
     deps.embarques.countAbiertos(),
     deps.alertas.getStockAlertas(),
-    deps.pedidos.sumFiadosEntregados(),
     deps.produccion.aggregateByDateRange(todayRange.start, todayRange.end),
-    deps.produccion.aggregateByDateRange(yesterdayRange.start, yesterdayRange.end),
+    deps.produccion.aggregateByDateRange(
+      yesterdayRange.start,
+      yesterdayRange.end,
+    ),
     deps.config.getStockConfigs(),
     deps.alertas.getRiskAlerts(),
     deps.alertas.getActiveCases(),
-    deps.alertas.countClientesConFiado(),
   ])
+  const {
+    pedidosHoy,
+    pedidosAyer,
+    baseDia,
+    totalGastos,
+    fiadosTotal,
+    clientesConFiado,
+  } = finanzas
 
   // ── Domain calculations ───────────────────────────────────────────────
   const validosHoy = pedidosValidos(pedidosHoy)
@@ -110,8 +144,10 @@ export async function getDashboardData(
     fiadosHoy,
     fiadosTotal,
     clientesConFiado,
-    pedidosPendientes: validosHoy.filter(p => p.estadoEntrega === 'PENDIENTE').length,
-    pedidosEntregados: validosHoy.filter(p => p.estadoEntrega === 'ENTREGADO').length,
+    pedidosPendientes: validosHoy.filter((p) => p.estadoEntrega === 'PENDIENTE')
+      .length,
+    pedidosEntregados: validosHoy.filter((p) => p.estadoEntrega === 'ENTREGADO')
+      .length,
     baseDia,
     totalGastos,
     ventasAyer,
@@ -120,14 +156,20 @@ export async function getDashboardData(
     embarquesAbiertos,
     prodPiezasHoy: produccionHoy.piezasProducidas,
     prodPiezasAyer: produccionAyer.piezasProducidas,
-    prodPiezasTrend: calcularTrend(produccionHoy.piezasProducidas, produccionAyer.piezasProducidas),
+    prodPiezasTrend: calcularTrend(
+      produccionHoy.piezasProducidas,
+      produccionAyer.piezasProducidas,
+    ),
     prodEficienciaHoy: produccionHoy.eficiencia,
     prodEficienciaAyer: produccionAyer.eficiencia,
-    prodEficienciaTrend: calcularTrend(produccionHoy.eficiencia, produccionAyer.eficiencia),
+    prodEficienciaTrend: calcularTrend(
+      produccionHoy.eficiencia,
+      produccionAyer.eficiencia,
+    ),
   }
 
   // ── Assemble result ───────────────────────────────────────────────────
-  const fechaHoy = new Date().toLocaleDateString('es-CO', {
+  const fechaHoy = todayRange.start.toLocaleDateString('es-CO', {
     timeZone: 'America/Bogota',
     weekday: 'long',
     year: 'numeric',
@@ -137,6 +179,8 @@ export async function getDashboardData(
 
   return {
     kpis,
+    cobros: finanzas.cobros,
+    consultadoAt: finanzas.consultadoAt,
     stock,
     produccion: produccionHoy,
     vendidos,

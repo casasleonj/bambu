@@ -8,9 +8,34 @@
 
 import type { DashboardData as DDDData } from '@/modules/dashboard/domain'
 import type { DashboardData as LegacyData } from '@/app/(app)/dashboard/dashboard-client/types'
+import { userCan } from '@/lib/permissions'
+import type { Role } from '@/lib/constants'
 
-export function toLegacyDashboardData(ddd: DDDData): LegacyData {
+export function toLegacyDashboardData(
+  ddd: DDDData,
+  userRole?: string | null,
+): LegacyData {
+  const detallePermitido = userCan(userRole as Role, 'view:pedidos')
+  const cobros = ddd.cobros
   return {
+    // El permiso del dashboard no concede acceso al detalle de pedidos.
+    // Filtrar también el transporte SSR/API, no solo ocultar sus enlaces.
+    cobros: !cobros
+      ? null
+      : detallePermitido
+        ? cobros
+        : {
+            ...cobros,
+            movimientos: [],
+            porConciliar: cobros.porConciliar.map((p, i) => ({
+              ...p,
+              id: `revision-${i}`,
+              referencia: 'Registro pendiente de revisión',
+              pedidoId: null,
+              importe: null,
+            })),
+          },
+    consultadoAt: ddd.consultadoAt ?? null,
     // KPIs
     pedidosHoy: ddd.kpis.pedidosHoy,
     ventas: ddd.kpis.ventasHoy,
