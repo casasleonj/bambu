@@ -1,8 +1,30 @@
 import { describe, it, expect } from 'vitest'
-import { buildVentasPorPrecio, calcularVentas } from '@/modules/dashboard/domain/ventas.service'
+import {
+  buildVentasPorPrecio,
+  calcularVentas,
+} from '@/modules/dashboard/domain/ventas.service'
 import type { PedidoRaw } from '@/modules/dashboard/domain/types'
 
 describe('buildVentasPorPrecio', () => {
+  it('conserva centavos al sumar pedidos y líneas del mismo producto/precio/canal', () => {
+    const p: PedidoRaw = {
+      id: 'decimal',
+      numero: 1,
+      fecha: new Date(),
+      total: 0.1,
+      saldo: 0,
+      estadoEntrega: 'ENTREGADO',
+      estadoPago: 'PAGADO',
+      canal: 'PUNTO',
+      cPacaAguaEnt: 1,
+      cPacaHieloEnt: 0,
+      cBotellonFabEnt: 0,
+      cBotellonDomEnt: 0,
+      items: [{ producto: 'PACA_AGUA', cantEntrega: 1, precio: 0.1 }],
+    }
+    expect(calcularVentas([p, { ...p, id: 'dos', total: 0.2 }])).toBe(0.3)
+    expect(buildVentasPorPrecio([p, p, p])[0].subtotal).toBe(0.3)
+  })
   it('usa códigos de producto (PACA_AGUA), no labels bonitos (Paca Agua)', () => {
     const pedidos: PedidoRaw[] = [
       {
@@ -55,8 +77,8 @@ describe('buildVentasPorPrecio', () => {
     const result = buildVentasPorPrecio(pedidos)
 
     expect(result).toHaveLength(2)
-    const bucket6500 = result.find(r => r.precio === 6500)
-    const bucket6000 = result.find(r => r.precio === 6000)
+    const bucket6500 = result.find((r) => r.precio === 6500)
+    const bucket6000 = result.find((r) => r.precio === 6000)
     expect(bucket6500?.cantidad).toBe(3)
     expect(bucket6500?.subtotal).toBe(19500)
     expect(bucket6000?.cantidad).toBe(3)
@@ -144,8 +166,8 @@ describe('buildVentasPorPrecio', () => {
     const result = buildVentasPorPrecio(pedidos)
 
     expect(result).toHaveLength(2)
-    const dom = result.find(r => r.canal === 'DOMICILIO')
-    const punto = result.find(r => r.canal === 'PUNTO')
+    const dom = result.find((r) => r.canal === 'DOMICILIO')
+    const punto = result.find((r) => r.canal === 'PUNTO')
     expect(dom?.cantidad).toBe(12)
     expect(dom?.subtotal).toBe(78000)
     expect(punto?.cantidad).toBe(5)

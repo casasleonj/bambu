@@ -5,6 +5,7 @@
  * Returns domain types, not Prisma models.
  */
 
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/shared/infrastructure'
 import type { PedidoRaw } from '../domain'
 
@@ -16,13 +17,16 @@ export interface PedidoRepository {
 }
 
 export class PrismaPedidoRepository implements PedidoRepository {
+  constructor(
+    private readonly db: Pick<Prisma.TransactionClient, 'pedido'> = prisma,
+  ) {}
   async findByDateRange(start: Date, end: Date): Promise<PedidoRaw[]> {
-    const pedidos = await prisma.pedido.findMany({
+    const pedidos = await this.db.pedido.findMany({
       where: { fecha: { gte: start, lt: end } },
       include: { items: true },
     })
 
-    return pedidos.map(p => ({
+    return pedidos.map((p) => ({
       id: p.id,
       numero: p.numero,
       fecha: p.fecha,
@@ -35,7 +39,7 @@ export class PrismaPedidoRepository implements PedidoRepository {
       cPacaHieloEnt: p.cPacaHieloEnt,
       cBotellonFabEnt: p.cBotellonFabEnt,
       cBotellonDomEnt: p.cBotellonDomEnt,
-      items: p.items?.map(i => ({
+      items: p.items?.map((i) => ({
         producto: i.producto,
         cantEntrega: i.cantEntrega,
         precio: i.precio,
@@ -44,20 +48,23 @@ export class PrismaPedidoRepository implements PedidoRepository {
   }
 
   async countDisputasAbiertas(): Promise<number> {
-    return prisma.pedido.count({ where: { disputaAbierta: true } })
+    return this.db.pedido.count({ where: { disputaAbierta: true } })
   }
 
   async countPromesasProximasVencer(): Promise<number> {
-    return prisma.pedido.count({
+    return this.db.pedido.count({
       where: {
-        promesaPagoFecha: { gte: new Date(), lte: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) },
+        promesaPagoFecha: {
+          gte: new Date(),
+          lte: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+        },
         estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
       },
     })
   }
 
   async sumFiadosEntregados(): Promise<number> {
-    const result = await prisma.pedido.aggregate({
+    const result = await this.db.pedido.aggregate({
       where: { saldo: { gt: 0 }, estadoEntrega: 'ENTREGADO' },
       _sum: { saldo: true },
     })

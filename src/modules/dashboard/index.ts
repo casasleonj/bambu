@@ -5,6 +5,7 @@
  * This is the only file the presentation layer should import from this module.
  */
 
+import { PrismaFinanzasRepository } from './infrastructure/finanzas.repository'
 import { getDashboardData } from './application'
 import {
   PrismaPedidoRepository,
@@ -34,6 +35,7 @@ export async function fetchDashboardData(
   yesterdayRange: { start: Date; end: Date },
 ) {
   return getDashboardData(todayRange, yesterdayRange, {
+    finanzas: new PrismaFinanzasRepository(),
     pedidos: pedidoRepo,
     produccion: produccionRepo,
     config: configRepo,
@@ -41,4 +43,13 @@ export async function fetchDashboardData(
     gastos: gastosRepo,
     embarques: embarquesRepo,
   })
+}
+
+/** Anclar ambos días a un solo instante; extremos exclusivos, sin perder el último milisegundo. */
+export function fetchCurrentDashboardData(now = new Date()) {
+  const dia = now.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+  const start = new Date(`${dia}T00:00:00-05:00`)
+  const hoy = { start, end: new Date(+start + 86_400_000) }
+  const ayer = { start: new Date(+start - 86_400_000), end: start }
+  return fetchDashboardData(hoy, ayer)
 }

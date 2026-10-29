@@ -13,7 +13,7 @@ import type { ProductCode } from '@/shared/domain'
  */
 export function pedidosValidos(pedidos: PedidoRaw[]): PedidoRaw[] {
   return pedidos.filter(
-    p => p.estadoEntrega !== 'ANULADO' && p.estadoEntrega !== 'CANCELADO'
+    (p) => p.estadoEntrega !== 'ANULADO' && p.estadoEntrega !== 'CANCELADO',
   )
 }
 
@@ -23,18 +23,22 @@ export function pedidosValidos(pedidos: PedidoRaw[]): PedidoRaw[] {
  * CANCELADO never are), so they must not inflate the day's totals.
  */
 export function calcularVentas(pedidos: PedidoRaw[]): number {
-  return pedidos
-    .filter(p => p.estadoEntrega === 'ENTREGADO')
-    .reduce((acc, p) => acc + Number(p.total), 0)
+  return (
+    pedidos
+      .filter((p) => p.estadoEntrega === 'ENTREGADO')
+      .reduce((acc, p) => acc + Math.round(Number(p.total) * 100), 0) / 100
+  )
 }
 
 /**
  * Calculate pending (fiado) amounts.
  */
 export function calcularFiados(pedidos: PedidoRaw[]): number {
-  return pedidos
-    .filter(p => Number(p.saldo) > 0 && p.estadoEntrega === 'ENTREGADO')
-    .reduce((acc, p) => acc + Number(p.saldo), 0)
+  return (
+    pedidos
+      .filter((p) => Number(p.saldo) > 0 && p.estadoEntrega === 'ENTREGADO')
+      .reduce((acc, p) => acc + Math.round(Number(p.saldo) * 100), 0) / 100
+  )
 }
 
 /**
@@ -53,20 +57,25 @@ export function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {
   for (const pedido of pedidos) {
     if (pedido.estadoEntrega !== 'ENTREGADO') continue
     if (!pedido.items) continue
-    const canal: 'PUNTO' | 'DOMICILIO' = pedido.canal === 'PUNTO' ? 'PUNTO' : 'DOMICILIO'
+    const canal: 'PUNTO' | 'DOMICILIO' =
+      pedido.canal === 'PUNTO' ? 'PUNTO' : 'DOMICILIO'
     for (const item of pedido.items) {
       const key = `${item.producto}-${Number(item.precio)}-${canal}`
       const existing = map.get(key)
       if (existing) {
         existing.cantidad += item.cantEntrega
-        existing.subtotal += item.cantEntrega * Number(item.precio)
+        existing.subtotal =
+          (Math.round(existing.subtotal * 100) +
+            item.cantEntrega * Math.round(Number(item.precio) * 100)) /
+          100
       } else {
         map.set(key, {
           producto: item.producto as ProductCode,
           canal,
           precio: Number(item.precio),
           cantidad: item.cantEntrega,
-          subtotal: item.cantEntrega * Number(item.precio),
+          subtotal:
+            (item.cantEntrega * Math.round(Number(item.precio) * 100)) / 100,
         })
       }
     }
@@ -88,7 +97,7 @@ export function calcularVendidos(pedidos: PedidoRaw[]): {
   hielo: number
   botellon: number
 } {
-  const entregados = pedidos.filter(p => p.estadoEntrega === 'ENTREGADO')
+  const entregados = pedidos.filter((p) => p.estadoEntrega === 'ENTREGADO')
 
   return {
     agua: entregados.reduce((acc, p) => acc + (p.cPacaAguaEnt || 0), 0),

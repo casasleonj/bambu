@@ -5,6 +5,7 @@
  * They are independent of Prisma and any ORM.
  */
 
+import type { CobrosPeriodo } from '@/lib/cobros-periodo'
 import type { ProductCode } from '@/shared/domain'
 
 // ── Raw Pedido (from Prisma) ────────────────────────────────────────────
@@ -25,7 +26,10 @@ export interface PedidoRaw {
   items?: Array<{
     producto: string
     cantEntrega: number
-    precio: number | string | { toNumber?: () => number; toString: () => string }
+    precio:
+      | number
+      | string
+      | { toNumber?: () => number; toString: () => string }
   }>
 }
 
@@ -121,6 +125,8 @@ export interface DashboardKPIs {
 // ── Full Dashboard Data (aggregation of all domain data) ────────────────
 
 export interface DashboardData {
+  cobros?: CobrosPeriodo | null
+  consultadoAt?: string | null
   kpis: DashboardKPIs
   stock: StockSnapshot
   produccion: ProduccionDiaria

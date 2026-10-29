@@ -1,3 +1,4 @@
+import type { CobrosPeriodo } from '@/lib/cobros-periodo'
 export interface VentaPorPrecio {
   producto: string
   canal: 'PUNTO' | 'DOMICILIO'
@@ -13,6 +14,8 @@ export interface FranjaHoraria {
 }
 
 export interface DashboardData {
+  cobros?: CobrosPeriodo | null
+  consultadoAt?: string | null
   pedidosHoy: number
   ventas: number
   fiadosHoy: number
@@ -44,7 +47,12 @@ export interface DashboardData {
   stockHielo: number
   // stockBotellon eliminado — botellones son passthrough (sin ciclo de stock).
   embarquesAbiertos: number
-  stockAlertas: Array<{ id: string; nombre: string; stock: unknown; unidad: string }>
+  stockAlertas: Array<{
+    id: string
+    nombre: string
+    stock: unknown
+    unidad: string
+  }>
   fechaHoy: string
   alertasRiesgo: {
     disputasAbiertas: number
