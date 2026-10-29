@@ -241,6 +241,21 @@ describe('#499 — comisión del repartidor por día (Postgres real)', () => {
     expect(tarde?.revisiones).toHaveLength(1)
   })
 
+  it('no acredita el acumulado legado si el pedido conserva entregas explícitas de otra misión', async () => {
+    const a = await repartidor('Mixto con evento')
+    const b = await repartidor('Mixto legado')
+    const ea = await embarqueCerrado(a, bogota('09:00:00'))
+    const eb = await embarqueCerrado(b, bogota('12:00:00'))
+    const p = await pedidoEntregado({ repartidorId: b, agua: 5, embarqueId: eb.id, entregadoAt: bogota('15:00:00') })
+    await testPrisma.embarqueMovimiento.create({ data: { embarqueId: ea.id, tipo: 'ENTREGA', producto: 'PACA_AGUA', cantidad: 3, metadata: { captura: 'ENTREGA_PEDIDO', pedidoId: p } } })
+    const dia = await comisionRepartidoresDelDia(testPrisma, DIA)
+    expect(dia.find(r => r.trabajadorId === a)?.entregasAgua).toBe(3)
+    const legado = dia.find(r => r.trabajadorId === b)
+    expect(legado?.entregasAgua).toBe(0)
+    expect(legado?.revisiones).toHaveLength(1)
+    expect(legado?.revisiones[0].motivo).toContain('otra misión')
+  })
+
   it('permisos: ADMIN y CONTADOR leen; ASISTENTE y REPARTIDOR reciben 403; sin sesión 401', async () => {
     mockAuth.mockResolvedValue({ user: { id: adminId, role: 'CONTADOR' }, expires: '2099-01-01T00:00:00.000Z' })
     expect((await pedirDia(DIA)).status).toBe(200)

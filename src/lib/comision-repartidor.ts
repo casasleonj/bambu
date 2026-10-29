@@ -25,17 +25,30 @@ const vacio = (): UnidadesReparto => ({ agua: 0, hielo: 0, botellon: 0 })
 const producto = (p: string) => p === 'PACA_AGUA' ? 'agua' : p === 'PACA_HIELO' ? 'hielo' : p === 'BOTELLON' ? 'botellon' : null
 const invalido = (estado: string) => estado === 'ANULADO' || estado === 'CANCELADO'
 
-async function fuentesDeMisiones(tx: Pick<TxComision, 'pedido'>, misiones: Mision[]) {
+/** Identidad explícita, sin comparar importes, cantidades ni cercanía temporal. */
+async function pedidosConEntregaAtribuida(tx: Pick<TxComision, 'embarque'>, ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set()
+  const filtro = { tipo: 'ENTREGA' as const, metadata: { path: ['captura'], equals: CAPTURA_ENTREGA_PEDIDO }, OR: ids.map(id => ({ metadata: { path: ['pedidoId'], equals: id } })) }
+  const misiones = await tx.embarque.findMany({
+    where: { movimientos: { some: filtro } },
+    select: { movimientos: { where: filtro, select: { metadata: true } } },
+  })
+  return new Set(misiones.flatMap(e => e.movimientos.map(m => leerMetadata(m.metadata).pedidoId).filter((id): id is string => !!id)))
+}
+const esMisionViva = (e: Mision) => embarqueUsaEntregaVivaPorFlag(e.createdAt) || e.movimientos.some(m => [CAPTURA_ENTREGA_PEDIDO, CAPTURA_CIERRE].includes(leerMetadata(m.metadata).captura ?? ''))
+
+async function fuentesDeMisiones(tx: Pick<TxComision, 'pedido' | 'embarque'>, misiones: Mision[]) {
   // La asignación actual de Pedido puede ser otra misión. Resolver la identidad
   // del evento por su pedidoId, sin exigir que siga vinculado al embarque original.
   const ids = [...new Set(misiones.flatMap(e => e.movimientos.map(m => leerMetadata(m.metadata).pedidoId).filter((id): id is string => !!id)))]
   const pedidos = ids.length ? await tx.pedido.findMany({ where: { id: { in: ids } }, select: { id: true, estadoEntrega: true, estado: true } }) : []
   const porId = new Map(pedidos.map(p => [p.id, p]))
+  const legadosConEventos = await pedidosConEntregaAtribuida(tx, [...new Set(misiones.filter(e => !esMisionViva(e)).flatMap(e => e.pedidos.map(p => p.id)))])
   const fuentes: FuenteComision[] = []
   const revisiones: RevisionComision[] = []
   for (const e of misiones) {
     // Un CIERRE etiquetado conserva su procedencia aun después de apagar el flag.
-    const vivo = embarqueUsaEntregaVivaPorFlag(e.createdAt) || e.movimientos.some(m => [CAPTURA_ENTREGA_PEDIDO, CAPTURA_CIERRE].includes(leerMetadata(m.metadata).captura ?? ''))
+    const vivo = esMisionViva(e)
     const u = vacio()
     const revision = (motivo: string) => {
       if (!revisiones.some(r => r.embarqueId === e.id && r.motivo === motivo)) revisiones.push({ embarqueId: e.id, motivo })
@@ -70,6 +83,10 @@ async function fuentesDeMisiones(tx: Pick<TxComision, 'pedido'>, misiones: Misio
       // Punto sin evidencia de reparto no acredita una entrega domiciliaria.
       for (const p of e.pedidos) {
         if (p.canal !== 'DOMICILIO' || p.estadoEntrega !== 'ENTREGADO' || invalido(p.estado)) continue
+        if (legadosConEventos.has(p.id)) {
+          revision(`El pedido #${p.numero} tiene entregas atribuidas a otra misión; su acumulado no permite separar el reparto de esta misión histórica.`)
+          continue
+        }
         const n = unidades(p)
         u.agua += n.agua; u.hielo += n.hielo; u.botellon += n.botellon
       }
@@ -100,10 +117,7 @@ export async function calcularComisionRepartidor(tx: Pick<TxComision, 'embarque'
     estadoEntrega: 'ENTREGADO', estado: { notIn: ['ANULADO', 'CANCELADO'] }, entregadoAt: { gte: ini, lte: fin },
   } })
   if (sinEmbarque.length) {
-    const conEventos = await tx.embarque.findMany({ where: { movimientos: { some: {
-      tipo: 'ENTREGA', OR: sinEmbarque.map(p => ({ metadata: { path: ['pedidoId'], equals: p.id } })),
-    } } }, select: { movimientos: { where: { tipo: 'ENTREGA', metadata: { path: ['captura'], equals: CAPTURA_ENTREGA_PEDIDO } }, select: { metadata: true } } } })
-    const yaAtribuidos = new Set(conEventos.flatMap(e => e.movimientos.map(m => leerMetadata(m.metadata).pedidoId)))
+    const yaAtribuidos = await pedidosConEntregaAtribuida(tx, sinEmbarque.map(p => p.id))
     for (const p of sinEmbarque) {
       if (yaAtribuidos.has(p.id)) {
         revisiones.push({ embarqueId: '', motivo: `El pedido #${p.numero} tiene entregas de embarque y fue desvinculado; concilia el reparto antes de pagar.` })
