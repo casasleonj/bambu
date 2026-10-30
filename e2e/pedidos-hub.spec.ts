@@ -454,7 +454,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
     await page.goto(`${BASE}/pedidos`)
     await expect(app.getByTestId(`operacion-row-${ids[0]}`)).toBeVisible({ timeout: 15000 })
-    await expect(app.getByTestId(`operacion-embarque-${ids[0]}`)).toHaveText(`Embarque #${embarqueBD.numeroDia} · ${nombreRep}`)
+    await expect(app.getByTestId(`operacion-embarque-${ids[0]}`)).toHaveText(`Asignación: Embarque #${embarqueBD.numeroDia} · ${nombreRep}`)
     await expect(app.getByTestId(`operacion-row-${ids[1]}`)).toBeVisible()
     await expect(app.getByTestId(`operacion-embarque-${ids[1]}`)).toHaveCount(0)
 
