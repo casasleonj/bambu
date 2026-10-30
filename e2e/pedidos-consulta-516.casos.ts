@@ -139,6 +139,22 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
         () => document.documentElement.scrollWidth <= innerWidth + 1,
       ),
     ).toBe(true);
+    const viewport = page.viewportSize()!;
+    for (const width of info.project.name.includes("mobile")
+      ? [320]
+      : [1366, 1440]) {
+      await page.setViewportSize({ width, height: viewport.height });
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth + 1,
+        ),
+      ).toBe(true);
+      await page.screenshot({
+        path: info.outputPath(`consulta-v6-${width}.png`),
+        fullPage: true,
+      });
+    }
+    await page.setViewportSize(viewport);
     await app
       .getByRole("button", { name: "Limpiar filtros", exact: true })
       .click();
@@ -188,9 +204,15 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
     await app.getByTestId("consulta-repartidores").click();
     await app.getByLabel(r1.nombre, { exact: true }).check();
     await app.getByLabel(r2.nombre, { exact: true }).check();
+    const respuesta = page.waitForResponse(
+      (r) =>
+        r.url().includes("/api/pedidos/consulta?") &&
+        r.url().includes("fechaBase=entrega"),
+    );
     await app
       .getByRole("button", { name: "Aplicar filtros", exact: true })
       .click();
+    expect((await respuesta).status()).toBe(200);
     await expect(app.getByTestId("consulta-productos-resumen")).toContainText(
       "1 entregadas en el rango",
     );
@@ -213,12 +235,20 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
     await goto(page, `/pedidos?clienteId=${c.id}`);
     const row = appMain(page).getByTestId(`operacion-row-${p.id}`);
     await row.getByRole("button", { name: /Planificar en embarque/ }).click();
-    const plan = page.getByRole("dialog").filter({has:page.getByRole("heading",{name:"Asignar a Embarque",exact:true})});
+    const plan = page
+      .getByRole("dialog")
+      .filter({
+        has: page.getByRole("heading", {
+          name: "Asignar a Embarque",
+          exact: true,
+        }),
+      });
     await expect(plan).toBeVisible();
     expect(
       (await db.pedido.findUniqueOrThrow({ where: { id: p.id } })).embarqueId,
     ).toBeNull();
-    await plan.getByRole("button", { name: /Cancelar|Cerrar/ }).click();
+    await page.keyboard.press("Escape");
+    await expect(plan).toHaveCount(0);
     await row
       .getByRole("button", { name: "Registrar entrega", exact: true })
       .click();
@@ -230,6 +260,11 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
       .fill("2");
     await dialog.getByLabel(/¿Quién lo entregó/).selectOption(r1.id);
     await dialog.getByTestId("re-revisar").click();
+    const actualizada = page.waitForResponse(async r => {
+      if (!r.url().includes('/api/pedidos/consulta?') || !r.ok()) return false;
+      const data = await r.json().catch(()=>null);
+      return data?.pedidos?.some((pedido: {id:string;items:Array<{cantEntrega:number}>})=>pedido.id===p.id && pedido.items.some(i=>i.cantEntrega===2)) ?? false;
+    });
     await dialog.getByTestId("re-guardar").click();
     await expect(dialog).toHaveCount(0);
     const saved = await db.pedido.findUniqueOrThrow({
@@ -253,6 +288,7 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
       repartidorId: r1.id,
       cantidades: [{ producto: "PACA_HIELO", cantidad: 2 }],
     });
+    await actualizada;
     await expect(row).toContainText(
       "4 pedidas · 2 entregadas · 2 por entregar",
     );
@@ -312,7 +348,9 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
     await loginAs(page, "admin");
     await goto(page, `/pedidos?clienteId=${c.id}`);
     const app = appMain(page);
-    await expect(app.getByTestId("consulta-resumen")).toContainText(/\$\s*20\.000/);
+    await expect(app.getByTestId("consulta-resumen")).toContainText(
+      /\$\s*20\.000/,
+    );
     await page.route("**/api/pedidos/consulta?**", (r) =>
       r.fulfill({
         status: 503,
@@ -323,12 +361,16 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
         }),
       }),
     );
-    await app.getByPlaceholder("Nombre, teléfono o #pedido").fill("consulta nueva");
+    await app
+      .getByPlaceholder("Nombre, teléfono o #pedido")
+      .fill("consulta nueva");
     await app
       .getByRole("button", { name: "Aplicar filtros", exact: true })
       .click();
     await expect(app.getByTestId("pedido-hub-error-datos")).toBeVisible();
-    await expect(app.getByTestId("consulta-resumen")).toContainText(/\$\s*20\.000/);
+    await expect(app.getByTestId("consulta-resumen")).toContainText(
+      /\$\s*20\.000/,
+    );
     await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(1);
   });
 
@@ -377,16 +419,54 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
     expect(denegada.status()).toBe(403);
     expect(await denegada.json()).not.toHaveProperty("pedidos");
   });
-  test('Activos, Todos y Anulados no conservan estados incompatibles ni suman anulaciones', async ({page})=>{
-    const {c,crear}=await preparar();await crear('PUNTO',4);const a=await crear('PUNTO',4),b=await crear('PUNTO',4);
-    await db.pedido.update({where:{id:a.p.id},data:{estado:'ANULADO',estadoEntrega:'ANULADO',estadoPago:'ANULADO'}});
-    await db.pedido.update({where:{id:b.p.id},data:{estado:'CANCELADO',estadoEntrega:'CANCELADO'}});
-    await loginAs(page,'admin');await goto(page,`/pedidos?clienteId=${c.id}`);const app=appMain(page);
+  test("Activos, Todos y Anulados no conservan estados incompatibles ni suman anulaciones", async ({
+    page,
+  }) => {
+    const { c, crear } = await preparar();
+    await crear("PUNTO", 4);
+    const a = await crear("PUNTO", 4),
+      b = await crear("PUNTO", 4);
+    await db.pedido.update({
+      where: { id: a.p.id },
+      data: {
+        estado: "ANULADO",
+        estadoEntrega: "ANULADO",
+        estadoPago: "ANULADO",
+      },
+    });
+    await db.pedido.update({
+      where: { id: b.p.id },
+      data: {
+        estado: "CANCELADO",
+        estadoEntrega: "CANCELADO",
+        estadoPago: "ANULADO",
+      },
+    });
+    await loginAs(page, "admin");
+    await goto(page, `/pedidos?clienteId=${c.id}`);
+    const app = appMain(page);
     await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(1);
-    await app.getByRole('button',{name:'Más filtros',exact:true}).click();await app.getByRole('button',{name:'Todos',exact:true}).click();
-    await app.getByRole('button',{name:'Aplicar filtros',exact:true}).click();await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(3);await expect(app.getByTestId('consulta-resumen')).toContainText(/\$\s*20\.000/);
-    await app.getByLabel('Entrega',{exact:true}).selectOption('PENDIENTE');await app.getByRole('button',{name:'Anulados',exact:true}).click();
-    await app.getByRole('button',{name:'Aplicar filtros',exact:true}).click();await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(1);await expect(app.getByTestId(`operacion-row-${a.p.id}`)).toBeVisible();await expect(app.getByTestId('consulta-resumen')).not.toContainText(/\$\s*20\.000/);
+    await app.getByRole("button", { name: "Más filtros", exact: true }).click();
+    await app
+      .getByRole("group", { name: "Estado del registro", exact: true })
+      .getByRole("button", { name: "Todos", exact: true })
+      .click();
+    await app
+      .getByRole("button", { name: "Aplicar filtros", exact: true })
+      .click();
+    await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(3);
+    await expect(app.getByTestId("consulta-resumen")).toContainText(
+      /\$\s*20\.000/,
+    );
+    await app.getByLabel("Entrega", { exact: true }).selectOption("PENDIENTE");
+    await app.getByRole("button", { name: "Anulados", exact: true }).click();
+    await app
+      .getByRole("button", { name: "Aplicar filtros", exact: true })
+      .click();
+    await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(1);
+    await expect(app.getByTestId(`operacion-row-${a.p.id}`)).toBeVisible();
+    await expect(app.getByTestId("consulta-resumen")).not.toContainText(
+      /\$\s*20\.000/,
+    );
   });
-
 });
