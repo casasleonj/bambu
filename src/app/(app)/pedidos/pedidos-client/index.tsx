@@ -1979,7 +1979,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
           atrasados/enRiesgo y todos los modales siguen compartidos. */}
       {hubMode && activeTab === 'hoy' && !atrasadosParam && !enRiesgoParam && (
         <ConsultaPedidosHub
-          key={session?.user?.id ?? 'sin-sesion'}
+          key={`consulta-pedidos:${session?.user?.id ?? 'sin-sesion'}`}
           initial={initialActorId === session?.user?.id ? initialConsulta : undefined}
           pendientes={pendingPedidosVisibles}
           refreshKey={hubRefreshKey}
@@ -2180,7 +2180,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
           />
         )
       )}
-      <CobroFiadoDialog key={session?.user?.id ?? 'sin-sesion'} cliente={clienteCobro} onClose={() => setClienteCobro(null)} userRole={userRole}
+      <CobroFiadoDialog key={`cobro-fiado:${session?.user?.id ?? 'sin-sesion'}`} cliente={clienteCobro} onClose={() => setClienteCobro(null)} userRole={userRole}
         actorId={session?.user?.id ?? null} visible={activeTab === 'fiados'}
         onRegistrado={() => { refetchFiados(); refetchCounts(); refreshPedidos() }}
         onOpenPedido={abrirDocumentoPedido}

@@ -60,6 +60,7 @@ test('Ayer en Pedidos no limita Todos en Fiados; documentos y regreso conservan 
   const ayer = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
   await goto(page, `/pedidos?desde=${ayer}&hasta=${ayer}`)
   await appMain(page).getByTestId('tab-fiados').click()
+  await expect(appMain(page).getByTestId('consulta-pedidos-hub')).toHaveCount(0)
   await expect(appMain(page).getByRole('button', { name: 'Todos', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await appMain(page).getByLabel('Buscar cliente', { exact: true }).fill(cliente.nombre)
   await expect(appMain(page).getByText(cliente.nombre, { exact: true }).locator('visible=true').first()).toBeVisible()

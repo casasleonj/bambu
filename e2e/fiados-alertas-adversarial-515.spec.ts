@@ -163,6 +163,7 @@ test('Alertas ignora Ayer, enlaza pedido y factura reales y conserva búsqueda y
   const ayer = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
   await goto(page, `/pedidos?desde=${ayer}&hasta=${ayer}`)
   await appMain(page).getByTestId('tab-alertas').click()
+  await expect(appMain(page).getByTestId('consulta-pedidos-hub')).toHaveCount(0)
   await appMain(page).getByPlaceholder('Buscar cliente...', { exact: true }).fill(cliente.nombre)
   await appMain(page).locator('select').selectOption('ALTA')
   await appMain(page).getByRole('button', { name: 'Ver detalle', exact: true }).locator('visible=true').click()
