@@ -281,6 +281,17 @@ export class EntregarPedidoUseCase {
           estadoEntrega: updated.estadoEntrega.get(),
           estadoPago: updated.estadoPago.get(),
           parcial: !entregaCompleta,
+          // #516: evidencia por entrega, nunca reconstruir del acumulado.
+          // Se guarda con la operación y su deduplicación existentes.
+          consultaEntrega: {
+            version: 1,
+            precisionFecha: oficina ? oficina.precisionFecha ?? 'DIA' : 'INSTANTE',
+            fecha: (oficina?.fechaEntrega ?? (input.entregadoAt ? new Date(input.entregadoAt) : new Date())).toISOString(),
+            repartidorId: oficina ? repartidorOficinaId ?? null : eventoFisico
+              ? (await tx.embarque.findUnique({ where: { id: eventoFisico.embarqueId }, select: { trabajadorId: true } }))?.trabajadorId ?? null : null,
+            eventoEntregaId: eventoFisico?.eventoEntregaId ?? null,
+            cantidades: entregasClampeadas.map(e => ({ producto: e.producto, cantidad: e.cantidadAEntregar })),
+          },
           ...(oficina
             ? {
                 repartidorId: repartidorOficinaId ?? null,

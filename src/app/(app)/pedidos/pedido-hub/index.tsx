@@ -15,6 +15,7 @@ import { deriveOperacion } from './derive-operacion'
 import { usePeek } from './use-peek'
 import { invalidatePeek } from './peek-cache'
 import type { AccionKey, FocoCount, FocoKey, Pedido } from './types'
+import type { AccionesConsulta } from './operacion-consulta'
 
 export interface PedidoHubCounts {
   /** PENDIENTE sin embarque (hoy o atrasados). */
@@ -50,6 +51,8 @@ interface PedidoHubProps {
   onRetry?: () => void
   /** dispara un refetch de la lista/counts (para realtime). */
   onRefetch?: () => void
+  /** Consulta paginada en servidor: nunca volver a filtrar solo la página. */
+  consulta?: AccionesConsulta
 }
 
 function useViewport(): 'desktop' | 'mobile' {
@@ -65,7 +68,7 @@ function useViewport(): 'desktop' | 'mobile' {
 }
 
 export function PedidoHub({
-  pedidos, counts, loading, refetching = false, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch,
+  pedidos, counts, loading, refetching = false, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch, consulta,
 }: PedidoHubProps) {
   const isOnline = useOnlineStatus()
   const viewport = useViewport()
@@ -104,9 +107,9 @@ export function PedidoHub({
   ]
 
   const pedidosFiltrados = useMemo(() => {
-    if (!activeFoco) return pedidos
+    if (consulta || !activeFoco) return pedidos
     return pedidos.filter((p) => focosByPedido.get(p.id)?.includes(activeFoco))
-  }, [pedidos, activeFoco, focosByPedido])
+  }, [pedidos, activeFoco, focosByPedido, consulta])
 
   const peek = usePeek(pedidosFiltrados)
 
@@ -158,7 +161,7 @@ export function PedidoHub({
       {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-12 rounded-lg bg-gray-100" />)}
     </div>
   ) : (
-    <OperacionList pedidos={pedidosFiltrados} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={peek.open} />
+    <OperacionList pedidos={pedidosFiltrados} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={peek.open} consulta={consulta} />
   )
 
   const peekNode = peek.activeId && peek.layer1 ? (
@@ -216,7 +219,7 @@ export function PedidoHub({
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      {!consulta && <div className="flex flex-wrap items-center gap-2">
         <FocoStrip focos={focos} activeFoco={activeFoco} onSelect={setActiveFoco} />
         <button
           type="button"
@@ -227,20 +230,20 @@ export function PedidoHub({
         >
           🔁 Solo habituales
         </button>
-      </div>
+      </div>}
 
-      {activeFoco && pedidosFiltrados.length < pedidos.length && (
+      {!consulta && activeFoco && pedidosFiltrados.length < pedidos.length && (
         <p className="text-xs text-gray-500" data-testid="foco-filtro-info">
           Mostrando {pedidosFiltrados.length} de {pedidos.length} en esta página
         </p>
       )}
 
       {/* F8-iv: "Generar pedidos habituales de hoy" — CTA contextual (Q3) */}
-      <RecurrentesDelDia onGenerado={() => onRefetch?.()} />
+      {!consulta && <RecurrentesDelDia onGenerado={() => onRefetch?.()} />}
 
       {/* desktop: lista + peek lado a lado; mobile: lista + peek como bottom sheet */}
       {viewport === 'desktop' && peekNode ? (
-        <div className="grid grid-cols-[1fr_24rem] gap-3">
+        <div className={consulta ? 'grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]' : 'grid grid-cols-[1fr_24rem] gap-3'}>
           <div>{listNode}</div>
           <div className="sticky top-4 self-start">{peekNode}</div>
         </div>

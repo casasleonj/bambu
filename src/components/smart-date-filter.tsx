@@ -13,11 +13,13 @@ import {
 
 interface SmartDateFilterProps {
   onDateChange?: (desde: string | null, hasta: string | null) => void
+  defaultPreset?: DatePreset
+  turnoLabel?: string
 }
 
 type FilterMode = 'preset' | 'custom'
 
-export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
+export function SmartDateFilter({ onDateChange,defaultPreset='turno',turnoLabel='Turno' }: SmartDateFilterProps) {
   const params = useShallowSearchParams()
 
   const [mode, setMode] = useState<FilterMode>('preset')
@@ -53,8 +55,8 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
       setMode('preset')
       setIsCustomExpanded(false)
     } else if (!desdeUrl && !hastaUrl) {
-      // Default a turno (ayer + hoy) para cubrir jornadas que cruzan medianoche.
-      setActivePreset('turno')
+      // Cada pantalla elige su predeterminado; el resto conserva el contrato anterior.
+      setActivePreset(defaultPreset)
       setMode('preset')
       setIsCustomExpanded(false)
     } else {
@@ -64,7 +66,7 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
       setCustomHasta(hastaUrl || '')
       setIsCustomExpanded(true)
     }
-  }, [desdeUrl, hastaUrl, allUrl])
+  }, [desdeUrl, hastaUrl, allUrl, defaultPreset])
 
   const updateUrl = useCallback(
     (desde: string | null, hasta: string | null, all: boolean, history: 'push' | 'replace' = 'push') => {
@@ -90,13 +92,13 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
     syncFromUrl()
   }
 
-  // Default a "Turno" (ayer + hoy) al montar si no hay filtro de fecha en la URL
+  // Predeterminado de la pantalla al montar si no hay filtro de fecha en la URL
   // y no se ha pedido explícitamente "Todos" con ?all=true.
   // Esto hace que SmartDateFilter sea la única fuente de verdad del
   // filtro default y evita duplicar la lógica en los consumidores.
   useEffect(() => {
     if (!desdeUrl && !hastaUrl && !allUrl) {
-      const dates = getPresetDate('turno')
+      const dates = getPresetDate(defaultPreset)
       if (dates) {
         updateUrl(dates.desde, dates.hasta, false, 'replace')
       }
@@ -173,7 +175,7 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
     },
     {
       key: 'turno',
-      label: 'Turno',
+      label: turnoLabel,
       getDate: () => new Date(),
     },
     {
@@ -303,7 +305,7 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
             {mode === 'preset' && activePreset
-              ? `Filtrado: ${getPresetLabel(activePreset)}`
+              ? `Filtrado: ${activePreset==='turno'?turnoLabel:getPresetLabel(activePreset)}`
               : `Filtrado: ${formatDateLabel(customDesde)} → ${formatDateLabel(customHasta)}`}
           </span>
         </div>

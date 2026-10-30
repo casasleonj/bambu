@@ -94,6 +94,10 @@ export interface Pedido {
   fechaEntrega?: string | null
   entregadoAt?: string | null
   creadoPor?: string | null
+  createdAt?: string
+  responsablesEntrega?: Array<{ id: string; nombre: string }>
+  entregasSinDetalle?: boolean
+  entregaHoraVerificable?: boolean
   pagosDetalle?: PagoDetalle[]
   embarqueResumen?: {
     id: string

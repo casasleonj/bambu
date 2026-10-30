@@ -189,7 +189,7 @@ export function armarPayload(p: PedidoParaEntrega, d: DatosEntrega, offlineId: s
       ? { recibioDinero: d.quienRecibio, pagos: [{ metodo: d.metodo, monto }] }
       : {}),
     // Hoy = el instante actual; otro día = mediodía de Bogotá (evita saltos de día por zona horaria).
-    ...(d.fecha !== hoy ? { fechaEntrega: `${d.fecha}T17:00:00.000Z` } : {}),
+    ...(d.fecha !== hoy ? { fechaEntrega: `${d.fecha}T17:00:00.000Z`, precisionFecha: 'DIA' as const } : {}),
     ...(d.promesa ? { promesaPagoFecha: d.promesa } : {}),
     ...(d.nota.trim() ? { nota: d.nota.trim() } : {}),
   }

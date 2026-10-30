@@ -204,6 +204,8 @@ export const EntregaOficinaSchema = z.object({
     monto: z.number().positive('El monto debe ser mayor que cero'),
   })).optional(),
   fechaEntrega: z.string().datetime().optional(),
+  // #516: una fecha elegida sin hora no acredita el mediodía convencional.
+  precisionFecha: z.enum(['DIA','INSTANTE']).optional(),
   nota: z.string().max(500, 'La nota es muy larga').optional(),
   // YYYY-MM-DD (fecha de calendario de Bogotá).
   promesaPagoFecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha de promesa inválida').optional(),

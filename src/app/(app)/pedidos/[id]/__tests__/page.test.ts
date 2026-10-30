@@ -18,4 +18,14 @@ describe('/pedidos/[id]', () => {
     await PedidoDetallePage({ params: Promise.resolve({ id: 'a b&c=d' }) })
     expect(redirect).toHaveBeenCalledWith('/pedidos?openPedido=a%20b%26c%3Dd')
   })
+
+  it('conserva la consulta interna de origen al abrir en otra pestaña', async () => {
+    await PedidoDetallePage({params:Promise.resolve({id:'p1'}),searchParams:Promise.resolve({volver:'/pedidos?canal=PUNTO&desdeHora=10%3A00&openPedido=otro'})})
+    expect(redirect).toHaveBeenCalledWith('/pedidos?canal=PUNTO&desdeHora=10%3A00&openPedido=p1')
+  })
+
+  it.each(['https://externo.invalid/','//externo.invalid/pedidos','/facturas',['/pedidos','/facturas']])('no sigue retornos externos o de otra ruta: %s',async volver=>{
+    await PedidoDetallePage({params:Promise.resolve({id:'p1'}),searchParams:Promise.resolve({volver})})
+    expect(redirect).toHaveBeenCalledWith('/pedidos?openPedido=p1')
+  })
 })

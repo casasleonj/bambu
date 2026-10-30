@@ -28,7 +28,7 @@ const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
 test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
   test.skip(!HUB_ON, 'requiere NEXT_PUBLIC_PEDIDOS_V2=true + webServer fresco')
 
-  test('shell: focos visibles y acceso independiente a Fiados/Alertas (#515)', async ({ browser }) => {
+  test('shell: filtros visibles y acceso independiente a Fiados/Alertas (#515)', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
     const app = appMain(page)
     const nombreCli = `Hub Shell ${Date.now()}`
@@ -41,7 +41,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
     await page.goto(`${BASE}/pedidos?all=true`)
     await expect(app.getByTestId('pedido-hub')).toBeVisible()
-    await expect(app.getByTestId('foco-strip')).toBeVisible()
+    await expect(app.getByTestId('consulta-filtros')).toBeVisible()
     // #515: G2 reconciliado por aprobación del PO: focos dentro de Pedidos, pestañas independientes.
     await expect(app.getByTestId('tab-hoy')).toBeVisible()
     await expect(app.getByTestId('tab-fiados')).toBeVisible()
@@ -52,25 +52,32 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     const row = app.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCli }).first()
     await expect(row).toBeVisible()
     // G6: microcopy de estado (texto), no badges apilados
-    await expect(row).toContainText('Pendiente')
+    await expect(row).toContainText('Por entregar')
     // una acción destacada
-    await expect(row.getByRole('button', { name: /Planificar|Registrar|Ver cartera|Completar|Confirmar|Resolver/ })).toBeVisible()
+    await expect(row.getByRole('button', { name: /Planificar/ })).toBeVisible()
   })
 
   test('foco filtra la lista y el rango de fecha es independiente', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
     const app = appMain(page)
     await page.goto(`${BASE}/pedidos?all=true`)
-    await expect(app.getByTestId('foco-strip')).toBeVisible()
+    await expect(app.getByTestId('consulta-filtros')).toBeVisible()
 
     const totalAntes = await app.locator('[data-testid^="operacion-row-"]').count()
-    await app.getByTestId('foco-esperandoPago').click()
+    await app.getByRole('button',{name:'Más filtros',exact:true}).click()
+    await app.getByLabel('Pago',{exact:true}).selectOption('fiado')
+    const consulta=page.waitForResponse(r=>r.url().includes('/api/pedidos/consulta')&&r.ok())
+    await app.getByRole('button',{name:'Aplicar filtros',exact:true}).click()
+    await consulta
     // el filtro reduce (o iguala) — nunca aumenta
     const totalDespues = await app.locator('[data-testid^="operacion-row-"]').count()
     expect(totalDespues).toBeLessThanOrEqual(totalAntes)
     // re-clic deselecciona
-    await app.getByTestId('foco-esperandoPago').click()
-    expect(await app.locator('[data-testid^="operacion-row-"]').count()).toBe(totalAntes)
+    await app.getByLabel('Pago',{exact:true}).selectOption('todos')
+    const restaurada=page.waitForResponse(r=>r.url().includes('/api/pedidos/consulta')&&r.ok())
+    await app.getByRole('button',{name:'Aplicar filtros',exact:true}).click()
+    await restaurada
+    await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(totalAntes)
   })
 
   test('responsive: desktop tabla / mobile tarjetas', async ({ browser }) => {
@@ -247,7 +254,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     const app = appMain(page)
     await page.goto(`${BASE}/pedidos?all=true`)
     // asegura que la hidratación terminó antes del atajo de teclado
-    await expect(app.getByTestId('foco-strip')).toBeVisible()
+    await expect(app.getByTestId('consulta-filtros')).toBeVisible()
     await page.keyboard.press('Control+k')
     await expect(page.getByTestId('command-menu')).toBeVisible()
     await page.getByTestId('command-planificacion').click()
@@ -1132,3 +1139,6 @@ test.describe('flag OFF: la UI de tabs sigue funcionando', () => {
     await expect(app.getByTestId('pedido-hub')).toHaveCount(0)
   })
 })
+
+// La misma suite CI Hub incluye los recorridos de consulta aprobados.
+import './pedidos-consulta-516.casos'
