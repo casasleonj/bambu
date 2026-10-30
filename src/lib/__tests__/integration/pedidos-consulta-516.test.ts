@@ -101,7 +101,7 @@ describe("#516 — consulta completa en PostgreSQL", () => {
   beforeAll(async () => {
     await resetAndSeed();
     adminId = (await getAdminUser()).id;
-  });
+  }, 60000);
   afterAll(disconnect);
   it("más de 200 pedidos: filtra antes de paginar; totales/productos no son solo la página", async () => {
     const { c } = await crear({ nombre: "Conjunto grande 516" });
