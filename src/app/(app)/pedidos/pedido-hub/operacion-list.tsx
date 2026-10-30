@@ -4,6 +4,7 @@ import { EmptyState } from '@/components/empty-state'
 import { pedidoItemsResumen } from '../pedido-items'
 import { deriveOperacion, origenLabel, embarqueLinea } from './derive-operacion'
 import type { AccionKey, DeriveContext, Pedido } from './types'
+import { OperacionConsulta,type AccionesConsulta } from './operacion-consulta'
 
 const money = (n: number) => new Intl.NumberFormat('es-CO').format(Number(n) || 0)
 
@@ -15,6 +16,7 @@ interface OperacionListProps {
   contextByPedido?: Record<string, Omit<DeriveContext, 'hoyBogota'>>
   onAccion: (pedido: Pedido, key: AccionKey) => void
   onOpen: (pedido: Pedido) => void
+  consulta?: AccionesConsulta
 }
 
 function clienteLinea(p: Pedido): string {
@@ -141,7 +143,7 @@ function OperacionCardMobile({
  * En 4a la fila abre el modal de detalle legacy vía `onOpen`; el peek es 4b.
  */
 export function OperacionList({
-  pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen,
+  pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen, consulta,
 }: OperacionListProps) {
   if (pedidos.length === 0) {
     return (
@@ -151,6 +153,8 @@ export function OperacionList({
       />
     )
   }
+
+  if (consulta) return <OperacionConsulta pedidos={pedidos} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta}/>
 
   const ctxFor = (id: string): Omit<DeriveContext, 'hoyBogota'> => contextByPedido?.[id] ?? {}
 

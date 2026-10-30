@@ -7,6 +7,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import type { Factura, EmpresaConfig } from './types'
+import { pedidoEnConsulta } from '@/lib/pedidos-contexto'
 
 const BRAND = {
   green: '#4CAF50',
@@ -31,9 +32,10 @@ interface FacturaDetailProps {
   empresaConfig: EmpresaConfig
   onRegistrarAbono?: () => void
   onOpenPedido?: (id: string) => void
+  volverPedidos?: string | null
 }
 
-export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpenPedido }: FacturaDetailProps) {
+export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpenPedido,volverPedidos }: FacturaDetailProps) {
   const [printReady, setPrintReady] = useState(false)
 
   useEffect(() => {
@@ -409,8 +411,8 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
                 <span>
                   <span className="font-medium text-gray-700">Pedido:</span>{' '}
                   <a
-                    href={`/pedidos?openPedido=${factura.pedido.id}`}
-                    onClick={e => { e.stopPropagation(); if (onOpenPedido && factura.pedido && !e.ctrlKey && !e.metaKey) { e.preventDefault(); onOpenPedido(factura.pedido.id) } }}
+                    href={pedidoEnConsulta(factura.pedido.id,volverPedidos)}
+                    onClick={e => { e.stopPropagation(); if (onOpenPedido && factura.pedido && e.button===0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); onOpenPedido(factura.pedido.id) } }}
                     className="text-blue-600 hover:underline"
                   >
                     #{factura.pedido.numero}

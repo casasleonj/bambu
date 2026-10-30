@@ -6,12 +6,13 @@ import type { Factura } from '../../facturas/facturas-client/types'
 import '../../facturas/facturas-client/factura-print.css'
 
 interface Props {
-  documento: { id: string; volver: string } | null
+  documento: { id: string; volver: string; pedidoId?: string; pedidoNumero?: number; consulta?: string } | null
   onClose: () => void
   onOpenPedido: (id: string) => void
+  onVolverConsulta?: () => void
 }
 /** Consulta por ID, sin depender del listado ni de su paginación/fecha. */
-export function FacturaConsultaModal({ documento, onClose, onOpenPedido }: Props) {
+export function FacturaConsultaModal({ documento, onClose, onOpenPedido,onVolverConsulta }: Props) {
   const [factura, setFactura] = useState<Factura | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -30,6 +31,7 @@ export function FacturaConsultaModal({ documento, onClose, onOpenPedido }: Props
           ? 'Tu perfil no tiene acceso a esta factura.' : 'No se pudo consultar la factura.')
         const data = await res.json()
         if (!data.factura || data.factura.id !== documento.id) throw new Error('No se pudo identificar la factura solicitada.')
+        if (documento.pedidoId && data.factura.pedidoId !== documento.pedidoId) throw new Error('La factura recibida no corresponde al pedido solicitado.')
         if (!controller.signal.aborted) setFactura(data.factura)
       }).catch(err => { if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'No se pudo consultar la factura.') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
@@ -44,8 +46,8 @@ export function FacturaConsultaModal({ documento, onClose, onOpenPedido }: Props
       {error && <div role="alert"><h3 className="font-semibold">No se pudo abrir la factura</h3><p className="mt-2 text-sm">{error} Conservamos la vista de origen.</p><button className="mt-3 min-h-11 rounded border px-4" onClick={() => setRetry(n => n + 1)}>Reintentar</button></div>}
       {factura && <FacturaDetail factura={factura} empresaConfig={{ nombre: factura.empresaNombre || 'Agua Bambú',
         nit: factura.empresaNit || '', direccion: factura.empresaDireccion || '', telefono: factura.empresaTelefono || '', email: factura.empresaEmail || '' }}
-        onOpenPedido={id => { onClose(); onOpenPedido(id) }} />}
+        volverPedidos={documento?.consulta} onOpenPedido={id => { onClose(); onOpenPedido(id) }} />}
     </div>
-    <footer className="shrink-0 border-t bg-white p-4"><button className="min-h-11 rounded-lg bg-blue-600 px-4 text-white" onClick={onClose}>{documento?.volver || 'Volver a Fiados'}</button></footer>
+    <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t bg-white p-4">{documento?.pedidoId&&<button className="min-h-11 rounded-lg border border-blue-200 px-4 font-semibold text-blue-700" onClick={()=>{onClose();onOpenPedido(documento.pedidoId!)}}>Volver al pedido{documento.pedidoNumero?` #${documento.pedidoNumero}`:''}</button>}<button className="min-h-11 rounded-lg bg-blue-600 px-4 text-white" onClick={onVolverConsulta??onClose}>{documento?.volver || 'Volver a Fiados'}</button></footer>
   </Modal>
 }

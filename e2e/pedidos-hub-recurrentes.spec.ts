@@ -83,13 +83,14 @@ test.describe('F8 — recurrentes en el Hub (UI, NEXT_PUBLIC_PEDIDOS_V2)', () =>
     await expect(page.getByRole('link', { name: 'Recurrentes' })).toHaveCount(0)
   })
 
-  test('faceta "Solo habituales" visible en el Hub', async ({ browser }) => {
+  test('filtro de origen habitual visible en el Hub', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
     const app = appMain(page)
     await page.goto(`${BASE}/pedidos?all=true`)
-    await expect(app.getByTestId('faceta-habituales')).toBeVisible()
-    await app.getByTestId('faceta-habituales').click()
-    await expect(page).toHaveURL(/conRecurrencia=true/)
+    await app.getByRole('button', { name: 'Más filtros', exact: true }).click()
+    await app.getByLabel('Origen', { exact: true }).selectOption('RECURRENTE')
+    await app.getByRole('button', { name: 'Aplicar filtros', exact: true }).click()
+    await expect(page).toHaveURL(/origen=RECURRENTE/)
   })
 
   test('F8-iv: "Generar habituales de hoy" — CTA solo si hay pendientes; genera con decisión', async ({ browser }) => {

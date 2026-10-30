@@ -333,3 +333,51 @@ Se administra en Administración > Usuarios y **solo lo cambia un ADMIN** (`PUT 
 - No se puede quitar el permiso, cambiar de rol ni desactivar (`PUT` activo=false o `DELETE`) a la última persona activa que lo tiene → 409 con mensaje.
 - Cada cambio queda en la auditoría (`User`, `UPDATE`).
 - Al desplegar no hay migración: la columna ya existe y por defecto nadie tiene el permiso. Un ADMIN debe asignarlo (a sí mismo o a otra persona) para que las solicitudes tengan quién las resuelva.
+
+
+## Consulta del Hub: filtros y resumen (#515, #516)
+
+Implementación de la maqueta V6 aprobada por el PO en esta fase. El registro de
+trabajo y evidencia de entrega permanece en los Issues #515 y #516; esta sección
+describe el contrato técnico y no sustituye las decisiones de producto.
+
+`GET /api/pedidos/consulta` conserva los permisos de `view:pedidos`. Devuelve
+`pedidos`, `total`, `page`, `pageSize`, `leidoAt`, `consultaKey`, `repartidores` y
+`resumen` en una transacción PostgreSQL Repeatable Read. Lista, conteo y resumen
+usan el mismo conjunto; los totales no se calculan sobre la página visible.
+`GET /api/pedidos`, Fiados, Alertas y el generador de habituales conservan sus
+contratos independientes.
+
+- Sin parámetros: Hoy en Bogotá, registros activos, ambos canales, sin resumen.
+  Aplicar explícitamente filtros habilita el resumen; limpiar vuelve a Hoy.
+- `desde`, `hasta`, `desdeHora`, `hastaHora`: intervalo continuo en Colombia,
+  inclusivo de todo el minuto final. Sin hora se incluye el día completo. No es
+  una ventana horaria que se repite cada día. `all=true` elimina las fechas y no
+  admite horas sin fechas. Un rango inválido devuelve 400.
+- `fechaBase`: `pedido` usa `Pedido.fecha`; `creacion` usa `createdAt`; `entrega`
+  usa evidencia de entregas; `cobro` usa la clasificación monetaria canónica por
+  fecha de registro. Una deuda antigua cobrada hoy puede aparecer en Cobros.
+- `canal`, `origen`, estados, `clienteId`, `repartidorId` repetido, `search`,
+  `pago`, `registro`, `foco`, `conRecurrencia`, `page`, `pageSize`: ver el parser
+  compartido en `src/lib/pedidos-consulta.ts`. La búsqueda de texto es literal
+  (incluidos `%` y `_`) y se aplica en el servidor antes de paginar.
+- El repartidor del filtro es quien entregó según evidencia, no quien tiene un
+  embarque asignado actualmente. Un pedido aparece una sola vez aunque varias
+  entregas o repartidores coincidan.
+- Pagado y saldo son los acumulados actuales de los pedidos seleccionados;
+  fiado es un subconjunto del saldo entregado, nunca un importe adicional.
+  Cobros muestra movimientos registrados en el intervalo, agrupados por medio,
+  usando `cobros-periodo.ts`; conserva avisos de procedencia por conciliar.
+- Los productos se cuentan por separado. Por fecha de entrega se suman deltas
+  documentados dentro del rango. Históricos sin cantidades u hora verificable
+  muestran la limitación, sin atribuir el acumulado completo a un horario.
+- Solo ADMIN/CONTADOR reciben el enlace a la factura. El enlace usa su ID exacto
+  y conserva el regreso al pedido y la consulta. Los retornos externos se
+  rechazan también al abrir el pedido en otra pestaña.
+- Respuesta privada, `no-store`. Un fallo devuelve 503; el cliente conserva la
+  última lectura y su fecha, sin sustituirla por ceros ni mezclar consultas.
+
+La gestión directa y Planificar utilizan los flujos existentes. No se cambia el
+interruptor, la matriz de permisos, el proceso de pagos ni las comisiones. No se
+reparan históricos ni se introduce una migración. El control horario de
+Embarques queda fuera de esta fase; #516 no se cierra por este contrato.

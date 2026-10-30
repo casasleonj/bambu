@@ -11,6 +11,12 @@ import { cargarEmbarquesLista, camposEmbarqueLista } from '@/lib/embarque-lista'
 import type { PedidoResumenDTO } from '@/modules/pedidos/application/dto'
 import type { Pedido } from './pedidos-client/types'
 import { PedidosClient } from './pedidos-client'
+import { pedidosV2Enabled } from '@/lib/flags'
+import { consultarPedidos } from '@/lib/pedidos-consulta.repository'
+import { leerFiltrosConsulta, type ResultadoConsultaPedidos } from '@/lib/pedidos-consulta'
+import { logger } from '@/lib/logger'
+import { isRouteAllowed } from '@/lib/permissions'
+import type { Role } from '@/lib/constants'
 
 export type { PedidoResumenDTO }
 
@@ -44,6 +50,17 @@ export default async function PedidosPage({
   // una app pensada para 6 usuarios en 2G/3G rural.
   if (params.get('atrasados') === 'true' || params.get('enRiesgo') === 'true') {
     return <PedidosClient />
+  }
+
+  if (pedidosV2Enabled()) {
+    if (!isRouteAllowed('/pedidos',role as Role|undefined) || ['fiados','alertas'].includes(params.get('tab')??'')) return <PedidosClient />
+    let initialConsulta: ResultadoConsultaPedidos | undefined
+    try {
+      initialConsulta=await consultarPedidos(leerFiltrosConsulta(params),role??null)
+    } catch (error) {
+      logger.warn({err:error},'Consulta inicial de Pedidos no disponible; el cliente ofrece reintento')
+    }
+    return <PedidosClient initialConsulta={initialConsulta} initialActorId={session?.user?.id??undefined}/>
   }
 
   const pagination = getPaginationParams(params)

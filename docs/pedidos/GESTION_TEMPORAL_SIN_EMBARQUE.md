@@ -96,3 +96,17 @@ con antes/después y el motivo; un reintento con la misma clave no se aplica dos
    `grep -rn "TEMPORAL-SIN-EMBARQUE" src prisma docs`.
 3. **Conservar** `Pedido.entregadoPorId` y `Pago.recibidoPorId` (historial de comisión y de fiado).
 4. Quitar la clave de `Config` y de `prisma/seed.ts`.
+
+
+## Precisión de las entregas para consultas por horario (#516)
+
+La auditoría existente de cada entrega incorpora `consultaEntrega` versión 1,
+con cantidades realmente aplicadas, fecha, responsable y vínculo al evento físico
+cuando existe. Se escribe en la misma transacción y deduplicación de la entrega.
+No cambia las cantidades, pagos ni comisiones.
+
+Hoy conserva el instante registrado. Al elegir un día anterior, la interfaz
+solo permite elegir el día: se marca `precisionFecha=DIA`; el horario convencional
+del payload no se presenta como una hora comprobada. Las consultas de un día
+completo pueden contar sus cantidades documentadas; un rango horario parcial
+advierte que no puede asignarlas con precisión. Los históricos no se reescriben.

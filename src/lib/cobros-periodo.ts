@@ -263,6 +263,15 @@ export async function leerCobrosPeriodo(
       })
     }
   }
+  return resumirCobrosPeriodo(movimientos, porConciliar)
+}
+
+/** Misma clasificación monetaria al restringir una lectura a pedidos concretos. */
+export function resumirCobrosPeriodo(
+  movimientos: CobroPeriodo[],
+  incidencias: CobroPorConciliar[] = [],
+): CobrosPeriodo {
+  const porConciliar = [...incidencias]
   const grupos = new Map<string, MedioCobros>()
   // Abono.metodoPago es texto, no enum. Un dato legado desconocido podría
   // ser crédito: no adivinar que es digital ni incluirlo como dinero nuevo.

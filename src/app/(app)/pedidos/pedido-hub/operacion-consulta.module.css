@@ -1,0 +1,285 @@
+.lista {
+  container-type: inline-size;
+}
+.cabecera {
+  display: none;
+}
+.fila {
+  border-top: 1px solid #e7dece;
+  padding: 16px 0;
+  min-width: 0;
+  outline-offset: 3px;
+}
+.fila:last-child {
+  padding-bottom: 0;
+}
+.cliente {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.nombre {
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  color: #17253e;
+}
+.meta {
+  font-size: 12px;
+  color: #596579;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+.canal {
+  display: inline-flex;
+  border-radius: 99px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 650;
+  margin-top: 5px;
+}
+.productos {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #f8f5ef;
+  border: 1px solid #e7ddce;
+  border-radius: 10px;
+  min-width: 0;
+}
+.producto {
+  padding: 6px 0;
+  font-size: 12px;
+  border-top: 1px solid #e7ddce;
+  overflow-wrap: anywhere;
+}
+.producto:first-child {
+  padding-top: 0;
+  border: 0;
+}
+.producto:last-child {
+  padding-bottom: 0;
+}
+.producto strong {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #263c57;
+}
+.producto span {
+  display: block;
+  margin-top: 3px;
+  color: #5e574c;
+}
+.responsables {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+  min-width: 0;
+}
+.responsables strong {
+  display: block;
+  font-size: 12px;
+  color: #594b38;
+  overflow-wrap: anywhere;
+}
+.estados {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 12px;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 99px;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 650;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.importes {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #5b5144;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+.importes span {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.importes strong {
+  color: #17253e;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.acciones {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  min-width: 0;
+}
+.enlaces {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.enlaces a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 12px;
+  font-weight: 650;
+  text-underline-offset: 3px;
+  color: #1d4ed8;
+}
+.primaria {
+  min-height: 44px;
+  border-radius: 9px;
+  background: #1d4ed8;
+  color: #fff;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 650;
+  width: 100%;
+}
+.primaria:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.plan {
+  min-height: 44px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: 12px;
+  color: #5e574c;
+  justify-self: center;
+  font-weight: 600;
+}
+@container (min-width:780px) {
+  .fila {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1.1fr)
+      145px;
+    grid-template-rows: auto auto;
+    gap: 6px 14px;
+    padding: 14px 0;
+    align-items: start;
+  }
+  .cliente {
+    grid-column: 1;
+    grid-row: 1;
+    display: block;
+  }
+  .productos {
+    grid-column: 2;
+    grid-row: 1/3;
+    margin: 0;
+    padding: 9px 10px;
+  }
+  .responsables {
+    grid-column: 1;
+    grid-row: 2;
+    grid-template-columns: 1fr;
+    gap: 5px;
+    margin: 0;
+  }
+  .estados {
+    grid-column: 3;
+    grid-row: 1;
+    margin: 0;
+  }
+  .importes {
+    grid-column: 3;
+    grid-row: 2;
+    display: grid;
+    gap: 2px;
+    margin: 0;
+  }
+  .importes span {
+    justify-content: space-between;
+    gap: 2px 8px;
+  }
+  .acciones {
+    grid-column: 4;
+    grid-row: 1/3;
+    margin: 0;
+    gap: 3px;
+  }
+  .enlaces {
+    display: grid;
+    gap: 0;
+    justify-content: start;
+  }
+  .enlaces a {
+    min-height: 32px;
+  }
+  .primaria {
+    min-height: 36px;
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  .plan {
+    min-height: 32px;
+    justify-self: start;
+    font-size: 11px;
+    text-align: left;
+  }
+  .producto {
+    padding: 5px 0;
+  }
+}
+@container (min-width:1040px) {
+  .fila,
+  .cabecera {
+    grid-template-columns:
+      minmax(0, 1.1fr) minmax(0, 1.4fr) minmax(0, 1.05fr)
+      minmax(0, 1.1fr) 145px;
+  }
+  .cabecera {
+    display: grid;
+    gap: 14px;
+    padding: 7px 0;
+    border-top: 1px solid #e7dece;
+    color: #6c6254;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .cliente {
+    grid-column: 1;
+    grid-row: 1/3;
+  }
+  .responsables {
+    grid-column: 3;
+    grid-row: 1/3;
+  }
+  .estados {
+    grid-column: 4;
+    grid-row: 1;
+  }
+  .importes {
+    grid-column: 4;
+    grid-row: 2;
+  }
+  .acciones {
+    grid-column: 5;
+    grid-row: 1/3;
+  }
+}
+@media (pointer: coarse) {
+  .enlaces a,
+  .primaria,
+  .plan {
+    min-height: 44px;
+  }
+}

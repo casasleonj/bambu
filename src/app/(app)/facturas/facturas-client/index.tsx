@@ -927,6 +927,7 @@ export default function FacturasPage() {
             </div>
             <FacturaDetail
               factura={facturaDetail}
+              volverPedidos={volver}
               empresaConfig={empresaConfig}
               onRegistrarAbono={() => {
                 setAbonoFactura(facturaDetail)

@@ -204,20 +204,22 @@ test.describe('Pedidos', () => {
 
   // ─── Filtros ──────────────────────────────────────────────────────────────
 
-  test('filtro default es Turno al entrar a pedidos', async ({ page }) => {
+  test('filtro default es Hoy al entrar a pedidos', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/pedidos')
-    // Esperar a que los botones de filtro rendericen (SSE mantiene conexión abierta)
-    const turnoBtn = page.locator('button:has-text("Turno")').first()
-    await expect(turnoBtn).toBeVisible({ timeout: 10000 })
-    // La URL debe contener desde/hasta del turno (ayer + hoy)
-    await expect(page).toHaveURL(/desde=\d{4}-\d{2}-\d{2}/)
-    await expect(page).toHaveURL(/hasta=\d{4}-\d{2}-\d{2}/)
-    // El botón "Turno" debe estar activo (bg-blue-600)
-    await expect(turnoBtn).toHaveClass(/bg-blue-600/)
+    const hoyBtn = page.getByRole('button', { name: 'Hoy', exact: true })
+    await expect(hoyBtn).toBeVisible({ timeout: 10000 })
+    if (process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true') {
+      await expect(hoyBtn).toHaveAttribute('aria-pressed', 'true')
+    } else {
+      const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+      // Ambos extremos son hoy en Colombia: no incluye silenciosamente ayer.
+      await expect(page).toHaveURL(url => url.searchParams.get('desde') === hoy && url.searchParams.get('hasta') === hoy)
+      await expect(hoyBtn).toHaveClass(/bg-blue-600/)
+    }
   })
 
-  test('?atrasados=true abre vista autocontenida sin caer a Turno', async ({ page }) => {
+  test('?atrasados=true abre vista autocontenida sin filtros de la lista normal', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/pedidos?atrasados=true')
     // El banner "Volver a Pedidos de Hoy" confirma que la vista atrasados
@@ -229,20 +231,20 @@ test.describe('Pedidos', () => {
     await expect(page).not.toHaveURL(/desde=\d{4}-\d{2}-\d{2}/)
     await expect(page).not.toHaveURL(/hasta=\d{4}-\d{2}-\d{2}/)
     // SmartDateFilter (botones Hoy/Ayer/Turno) no debe estar visible en esta vista.
-    await expect(page.locator('button:has-text("Turno")')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Hoy', exact: true })).toHaveCount(0)
     // "Volver" limpia el param atrasados de la URL.
     await volverBtn.click()
     await expect(page).not.toHaveURL(/atrasados=true/)
   })
 
-  test('?enRiesgo=true abre vista autocontenida sin caer a Turno', async ({ page }) => {
+  test('?enRiesgo=true abre vista autocontenida sin filtros de la lista normal', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/pedidos?enRiesgo=true')
     const volverBtn = page.locator('[data-testid="volver-pedidos-hoy"]')
     await expect(volverBtn).toBeVisible({ timeout: 10000 })
     await expect(page).not.toHaveURL(/desde=\d{4}-\d{2}-\d{2}/)
     await expect(page).not.toHaveURL(/hasta=\d{4}-\d{2}-\d{2}/)
-    await expect(page.locator('button:has-text("Turno")')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Hoy', exact: true })).toHaveCount(0)
     await volverBtn.click()
     await expect(page).not.toHaveURL(/enRiesgo=true/)
   })

@@ -95,6 +95,7 @@ export interface ActualizarPedidoInput {
  * embarque. Su presencia activa las reglas de la entrega de oficina.
  */
 export interface EntregaOficinaInput {
+  precisionFecha?: 'DIA' | 'INSTANTE'
   /** Repartidor responsable. Obligatorio en DOMICILIO; un solo repartidor por pedido. */
   repartidorId?: string
   /** Quién recibió el dinero. Obligatorio si hay cobro; sin valor por defecto. */

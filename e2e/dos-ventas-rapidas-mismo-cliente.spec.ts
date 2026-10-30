@@ -44,12 +44,17 @@ test.describe('Dos ventas rapidas mismo cliente', () => {
     await expect(lista.getByText(`Dos Ventas ${unique}`)).toHaveCount(2, { timeout: 15000 })
   })
 
-  test('filtro default es Turno al entrar a pedidos', async ({ page }) => {
+  test('filtro default es Hoy al entrar a pedidos', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/pedidos')
-    // Wait for the filter buttons to render
-    const turnoBtn = page.locator('button:has-text("Turno")').first()
-    await expect(turnoBtn).toBeVisible({ timeout: 10000 })
-    await expect(turnoBtn).toHaveClass(/bg-blue-600/)
+    const hoyBtn = page.getByRole('button', { name: 'Hoy', exact: true })
+    await expect(hoyBtn).toBeVisible({ timeout: 10000 })
+    if (process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true') {
+      await expect(hoyBtn).toHaveAttribute('aria-pressed', 'true')
+    } else {
+      await expect(hoyBtn).toHaveClass(/bg-blue-600/)
+      const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+      await expect(page).toHaveURL(url => url.searchParams.get('desde') === hoy && url.searchParams.get('hasta') === hoy)
+    }
   })
 })

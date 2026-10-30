@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import dynamic from 'next/dynamic'
 import { useSession } from 'next-auth/react'
@@ -23,7 +24,8 @@ import { FiadosTable } from './fiados-table'
 import { AlertasTable } from './alertas-table'
 import { FacturaConsultaModal } from './factura-consulta-modal'
 import { CobroFiadoDialog } from './cobro-fiado-dialog'
-import { PedidoHub } from '../pedido-hub'
+import { ConsultaPedidosHub } from '../pedido-hub/consulta-pedidos-hub'
+import type { ResultadoConsultaPedidos } from '@/lib/pedidos-consulta'
 import { EstoSeRepite, type EstoSeRepiteContexto } from '../pedido-hub/esto-se-repite'
 import { PedidosWorkspace, type WorkspacePedidoInicial } from '@/components/pedido-workspace'
 import { pedidosV2Enabled } from '@/lib/flags'
@@ -64,6 +66,8 @@ interface PedidosClientProps {
    *  before usePedidos hook returns data. Se elimina el waterfall de API calls
    *  iniciales y reduce cold starts. */
   initialPedidos?: Pedido[]
+  initialConsulta?: ResultadoConsultaPedidos
+  initialActorId?: string
 }
 
 /**
@@ -127,7 +131,7 @@ async function loadPendingPedidosFromQueue(clientes: Cliente[]): Promise<Pedido[
   })
 }
 
-export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
+export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }: PedidosClientProps = {}) {
   // useShallowSearchParams (no useSearchParams crudo): una vez que CUALQUIER
   // escritor de la URL (este componente o SmartDateFilter) hace su primer
   // set(), pasa a leer/escribir siempre desde window.location.search real +
@@ -139,6 +143,12 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const { confirm, modal: confirmModal } = useConfirm()
   const { data: session, status: sessionStatus } = useSession()
   const userRole = (session?.user as { role?: string } | undefined)?.role ?? null
+  const hubMode = pedidosV2Enabled()
+  const [hubRefreshKey,setHubRefreshKey] = useState(0)
+  const [hubTotal,setHubTotal] = useState(initialConsulta?.total ?? 0)
+  const actualizarTotalHub = useCallback((n:number)=>setHubTotal(n),[])
+  const [consultaPedidos,setConsultaPedidos] = useState<Pedido[]>(initialConsulta?.pedidos??[])
+  const actualizarContextoHub = useCallback((p:Pedido[])=>setConsultaPedidos(p),[])
   // B-17 (#434): solo ADMIN/ASISTENTE crean pedidos (igual que POST /api/pedidos).
   // Mientras la sesión carga el rol es null → no se ofrece nada.
   const puedeCrear = canCreatePedidos(userRole)
@@ -152,7 +162,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const [preciosActuales, setPreciosActuales] = useState<Record<string, { precio: number; origen: string }>>({})
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [clienteCobro, setClienteCobro] = useState<{ id: string; nombre: string } | null>(null)
-  const [facturaConsulta, setFacturaConsulta] = useState<{ id: string; volver: string } | null>(null)
+  const [facturaConsulta, setFacturaConsulta] = useState<{ id: string; volver: string; pedidoId?: string; pedidoNumero?: number; consulta?:string; desdePedido?:boolean } | null>(null)
   const [pedidoDocumento, setPedidoDocumento] = useState<{ id: string; volver: string; loading: boolean; error: string | null } | null>(null)
 
   // Pedidos creados offline (2G/3G rural) que siguen encolados en IndexedDB
@@ -242,7 +252,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const [selectedEmbarqueId, setSelectedEmbarqueId] = useState('')
   const tabFromUrl = shallowParams.get('tab')
   const activeTab = tabFromUrl === 'fiados' || tabFromUrl === 'alertas' ? tabFromUrl : 'hoy'
-  const volverConsulta = activeTab === 'alertas' ? 'Volver a Alertas' : 'Volver a Fiados'
+  const volverConsulta = activeTab === 'alertas' ? 'Volver a Alertas' : activeTab === 'fiados' ? 'Volver a Fiados' : 'Volver a Pedidos'
   const setActiveTab = (tab: 'hoy' | 'fiados' | 'alertas') => {
     shallowParams.set({ tab: tab === 'hoy' ? undefined : tab, atrasados: undefined, enRiesgo: undefined,
       ...(activeTab === 'hoy' && tab !== 'hoy' ? { pedidosCliente: shallowParams.get('clienteId') ?? undefined, clienteId: undefined } : {}),
@@ -396,12 +406,12 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     // tráfico en una red 2G/3G rural (ver AGENTS.md, perf de /pedidos).
     // Al salir de esa vista (atrasadosParam/enRiesgoParam vuelven a false)
     // este mismo efecto se re-ejecuta y sí dispara la carga.
-    if (atrasadosParam || enRiesgoParam) return
+    if (hubMode || atrasadosParam || enRiesgoParam) return
     // Fetch de datos al montar — side effect de red real, no derivable
     // durante el render.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAllPedidos()
-  }, [loadAllPedidos, atrasadosParam, enRiesgoParam])
+  }, [loadAllPedidos, atrasadosParam, enRiesgoParam, hubMode])
 
   // cacheActive: el cache trajo el dataset completo (no truncado por el tope
   // de 500). Si el negocio supera el tope, cae a fallback server-filtrado.
@@ -421,34 +431,35 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   } = usePedidos(pedidoFilterParams, {
     all: allFromUrl || fetchAllForTab,
     autoFetch: false,
-    refetchOnParamsChange: !cacheActive,
+    refetchOnParamsChange: !hubMode && !cacheActive,
   })
 
   // Dispara el primer fetch del fallback exactamente en la transición
   // cache-completo → cache-truncado (no en cada render ni en el mount).
   const wasCacheActiveRef = useRef(true)
   useEffect(() => {
-    if (wasCacheActiveRef.current && !cacheActive && cacheLoadedOnce) {
+    if (!hubMode && wasCacheActiveRef.current && !cacheActive && cacheLoadedOnce) {
       fallbackRefetch()
     }
     wasCacheActiveRef.current = cacheActive
-  }, [cacheActive, cacheLoadedOnce, fallbackRefetch])
+  }, [cacheActive, cacheLoadedOnce, fallbackRefetch, hubMode])
 
   // Fuente de datos "cruda" a filtrar en memoria: prioriza allPedidos una vez
   // cargado; antes de eso (o si quedó truncado), usa el SSR inicial / fallback
   // para no mostrar una lista vacía durante el gap de carga.
   const pedidosSource = useMemo(() => {
+    if (hubMode) return consultaPedidos
     if (!cacheLoadedOnce) return initialPedidos || []
     if (cacheActive) return allPedidos
     return (fallbackPedidosRaw as Pedido[]).length > 0 ? (fallbackPedidosRaw as Pedido[]) : allPedidos
-  }, [cacheLoadedOnce, cacheActive, allPedidos, fallbackPedidosRaw, initialPedidos])
+  }, [cacheLoadedOnce, cacheActive, allPedidos, fallbackPedidosRaw, initialPedidos,hubMode,consultaPedidos])
 
   const pedidos = pedidosSource
   // Las vistas autocontenidas atrasados/enRiesgo no cargan la lista base ni
   // reciben initialPedidos del SSR (page.tsx hace early-return): tienen su
   // propio loading/error (usePedidos({atrasados|enRiesgo})). Sin este caso,
   // hasLoadedOnce nunca pasaba a true y la página quedaba en el skeleton (#273).
-  const hasLoadedOnce = initialPedidos !== undefined || cacheLoadedOnce || atrasadosParam || enRiesgoParam
+  const hasLoadedOnce = hubMode || initialPedidos !== undefined || cacheLoadedOnce || atrasadosParam || enRiesgoParam
   const fetchError = allPedidosError || fallbackError
   const loading = !hasLoadedOnce
 
@@ -565,27 +576,14 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
   // Fase 4a — Pedido Hub detrás del flag. OFF: la vista de consulta es la
   // actual (tabs). Ver docs/pedidos/fase4a-hub-plan.md.
-  const hubMode = pedidosV2Enabled()
-
-  // Fase 9 F9-i: un refetch de la lista (polling, realtime, post-mutación) con
-  // datos ya en pantalla no debe verse como carga inicial. `mainRefetching`
-  // alimenta el indicador sutil "Actualizando…" del Hub. NO bloquea la UI.
-  const [mainRefetching, setMainRefetching] = useState(false)
 
   // Refresca el dataset activo: el cache completo (modo normal) o el
   // fallback server-filtrado (negocio con más pedidos que el tope del cache).
   const refreshPedidos = useCallback(async () => {
-    setMainRefetching(true)
-    try {
-      if (cacheActive) {
-        await loadAllPedidos()
-      } else {
-        await fallbackRefetch()
-      }
-    } finally {
-      setMainRefetching(false)
-    }
-  }, [cacheActive, loadAllPedidos, fallbackRefetch])
+    if (hubMode) { setHubRefreshKey(n => n + 1); return }
+    if (cacheActive) await loadAllPedidos()
+    else await fallbackRefetch()
+  }, [cacheActive, loadAllPedidos, fallbackRefetch, hubMode])
 
   // Reconcilia las filas pendientes (offline) contra el resultado real del
   // sync. Declarado después de refreshPedidos/refetchFiados/refetchAlertas/
@@ -1613,6 +1611,10 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // mutación con sus confirmaciones + estados offline.
   function handleHubAccion(pedido: Pedido, key: string) {
     switch (key) {
+      case 'registrar-entrega':
+        if (gestionAdmin.activa && userRole === 'ADMIN' && ['PENDIENTE','NO_ENTREGADO'].includes(pedido.estadoEntrega)) setRegistrarEntregaPara(pedido)
+        else handleDetail(pedido)
+        break
       case 'planificar':
         setSelectedPedidoForEmbarque(pedido.id)
         setShowEmbarqueModal(true)
@@ -1903,7 +1905,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         )}
 
         {/* Banner explicativo para nuevos usuarios */}
-        {activeTab === 'hoy' && pedidosVisibles.length === 0 && !hasActiveFilters && (
+        {!hubMode && activeTab === 'hoy' && pedidosVisibles.length === 0 && !hasActiveFilters && (
           <InfoBanner type="tip" title="¿Cómo funciona el flujo de pedidos?" className="mb-4">
             <ol className="list-decimal list-inside space-y-1 mt-1">
               <li><strong>Crea un pedido</strong> con los productos y cliente</li>
@@ -1926,12 +1928,13 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
                     ? 'Pedidos en riesgo'
                     : getTituloFecha(desdeUrl, hastaUrl, allFromUrl)}
           </h1>
+          {hubMode && activeTab==='hoy' && !atrasadosParam && !enRiesgoParam && <Link href="/recurrentes" className="inline-flex min-h-11 items-center rounded-lg border border-stone-200 bg-white px-3 text-sm font-semibold text-slate-700">↻ Habituales</Link>}
         </div>
 
         {/* #515: los focos operativos no sustituyen la consulta por cliente. */}
         <div className="flex border-b border-gray-200" role="tablist" aria-label="Vistas de Pedidos">
           {[
-            { key: 'hoy', label: 'Pedidos', count: pedidosVisibles.length },
+            { key: 'hoy', label: 'Pedidos', count: hubMode ? hubTotal : pedidosVisibles.length },
             { key: 'fiados', label: 'Fiados', count: fiadosCount },
             { key: 'alertas', label: 'Alertas', count: alertasVisibles ?? alertasCount },
           ].map((tab) => (
@@ -1975,18 +1978,23 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       {/* Fase 4a — Pedido Hub (flag ON). Reemplaza la vista "hoy" de tabs;
           atrasados/enRiesgo y todos los modales siguen compartidos. */}
       {hubMode && activeTab === 'hoy' && !atrasadosParam && !enRiesgoParam && (
-        <PedidoHub
-          pedidos={pedidosVisiblesConPendientes}
+        <ConsultaPedidosHub
+          key={`consulta-pedidos:${session?.user?.id ?? 'sin-sesion'}`}
+          initial={initialActorId === session?.user?.id ? initialConsulta : undefined}
+          pendientes={pendingPedidosVisibles}
+          refreshKey={hubRefreshKey}
+          gestion={gestionAdmin}
           counts={{ porPlanificarCount, atrasadosCount, enRutaCount, esperandoPagoCount, esperandoPagoTotal, pendientesN2Count }}
-          loading={!hasLoadedOnce && loading}
-          refetching={mainRefetching}
-          error={fetchError}
           userRole={userRole}
           onAccion={handleHubAccion}
           onNuevaOperacion={puedeCrear ? () => setShowModal(true) : undefined}
-          dateFilterSlot={<SmartDateFilter />}
-          onRetry={refreshPedidos}
-          onRefetch={() => { refreshPedidos(); refetchCounts() }}
+          onRefetchCounts={refetchCounts}
+          onTotal={actualizarTotalHub}
+          onPedidos={actualizarContextoHub}
+          onVerPedido={id => abrirDocumentoPedido(id,'Volver a Pedidos')}
+          onVerFactura={p => p.factura && setFacturaConsulta({id:p.factura.id,volver:'Volver a Pedidos',pedidoId:p.id,pedidoNumero:p.numero,consulta:`/pedidos?${shallowParams.toString()}`})}
+          onCorregirPendiente={corregirFailedPedido}
+          onDescartarPendiente={discardFailedPedido}
         />
       )}
 
@@ -2059,7 +2067,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       {/* Filtros - solo en Hoy (fuente de verdad URL) */}
       {!hubMode && activeTab === 'hoy' && !atrasadosParam && !enRiesgoParam && (
         <div className="bg-white p-4 rounded-xl shadow mb-6 space-y-4">
-          <SmartDateFilter />
+          <SmartDateFilter defaultPreset="hoy" turnoLabel="Ayer y hoy" />
           <PedidoFilters
             searchInput={searchInput}
             onSearchChange={setSearchInput}
@@ -2172,7 +2180,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           />
         )
       )}
-      <CobroFiadoDialog key={session?.user?.id ?? 'sin-sesion'} cliente={clienteCobro} onClose={() => setClienteCobro(null)} userRole={userRole}
+      <CobroFiadoDialog key={`cobro-fiado:${session?.user?.id ?? 'sin-sesion'}`} cliente={clienteCobro} onClose={() => setClienteCobro(null)} userRole={userRole}
         actorId={session?.user?.id ?? null} visible={activeTab === 'fiados'}
         onRegistrado={() => { refetchFiados(); refetchCounts(); refreshPedidos() }}
         onOpenPedido={abrirDocumentoPedido}
@@ -2285,7 +2293,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         <h2 className="text-lg font-bold mb-4">Asignar a Embarque</h2>
         <p className="text-sm text-gray-500 mb-2">Selecciona un embarque abierto o en ruta para este pedido:</p>
         {(() => {
-          const pedidoPacas = selectedPedidoForEmbarque ? pedidos.find((p) => p.id === selectedPedidoForEmbarque) : null
+          const pedidoPacas = selectedPedidoForEmbarque ? pedidos.find((p) => p.id === selectedPedidoForEmbarque) ?? (selectedPedido?.id===selectedPedidoForEmbarque?selectedPedido:null) : null
           const pedidoPacaCount = pedidoPacas ? (pedidoPacas.cPacaAguaPed || 0) + (pedidoPacas.cPacaHieloPed || 0) + (pedidoPacas.cBotellonFabPed || 0) + (pedidoPacas.cBotellonDomPed || 0) + (pedidoPacas.cBolsaAguaPed || 0) + (pedidoPacas.cBolsaHieloPed || 0) : 0
           const embarquesDisponibles = embarques.filter((e) => (e.estado === 'ABIERTO' || e.estado === 'EN_RUTA') && (e.totalPacas || 0) + pedidoPacaCount <= 70)
           const embarquesLlenos = embarques.filter((e) => (e.estado === 'ABIERTO' || e.estado === 'EN_RUTA') && (e.totalPacas || 0) + pedidoPacaCount > 70)
@@ -2470,7 +2478,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             estadoBadge={getEstadoEntregaBadge(selectedPedido.estadoEntrega)}
             canalBadge={getCanalBadge(selectedPedido.canal)}
             volverLabel={pedidoDocumento?.volver}
-            onOpenFactura={id => setFacturaConsulta({ id, volver: 'Volver al pedido' })}
+            onOpenFactura={id => setFacturaConsulta({ id, volver: 'Volver a Pedidos',pedidoId:selectedPedido.id,pedidoNumero:selectedPedido.numero,consulta:`/pedidos?${shallowParams.toString()}`,desdePedido:true })}
             onClose={() => { setShowDetailModal(false); setPedidoDocumento(null) }}
             onAccion={(key) => {
               setPedidoDocumento(null)
@@ -2651,6 +2659,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
       {/* Confirm Modal */}
       <FacturaConsultaModal documento={facturaConsulta} onClose={() => setFacturaConsulta(null)}
+        onVolverConsulta={() => { if(facturaConsulta?.desdePedido){setShowDetailModal(false);setPedidoDocumento(null)}setFacturaConsulta(null) }}
         onOpenPedido={id => abrirDocumentoPedido(id, pedidoDocumento?.volver ?? volverConsulta)} />
       <Modal open={!!pedidoDocumento && (pedidoDocumento.loading || !!pedidoDocumento.error)} onClose={() => setPedidoDocumento(null)}
         title="Consulta de pedido" overlayClassName="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
@@ -2726,10 +2735,10 @@ function getTituloFecha(desde: string | null, hasta: string | null, all: boolean
   }
 
   if (all) return 'Todos los Pedidos'
-  if (!desde && !hasta) return 'Pedidos'
+  if (!desde && !hasta) return 'Pedidos de hoy'
   if (presets.hoy && desde === presets.hoy.desde && hasta === presets.hoy.hasta) return 'Pedidos de Hoy'
   if (presets.ayer && desde === presets.ayer.desde && hasta === presets.ayer.hasta) return 'Pedidos de Ayer'
-  if (presets.turno && desde === presets.turno.desde && hasta === presets.turno.hasta) return 'Pedidos del Turno'
+  if (presets.turno && desde === presets.turno.desde && hasta === presets.turno.hasta) return 'Pedidos de ayer y hoy'
   if (presets.manana && desde === presets.manana.desde && hasta === presets.manana.hasta) return 'Pedidos de Mañana'
   if (desde && hasta) {
     if (desde === hasta) {
@@ -2738,7 +2747,7 @@ function getTituloFecha(desde: string | null, hasta: string | null, all: boolean
     }
     return `Pedidos: ${new Date(desde + 'T00:00:00-05:00').toLocaleDateString('es-CO')} → ${new Date(hasta + 'T00:00:00-05:00').toLocaleDateString('es-CO')}`
   }
-  return 'Pedidos'
+  return 'Pedidos de hoy'
 }
 
 

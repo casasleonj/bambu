@@ -24,7 +24,9 @@ async function escenario() {
   return { cliente, pendiente: rows[0], viejo: rows[1], hoy: rows[2] }
 }
 async function abrirFiados(page: Page, nombre: string) {
+  const consulta = page.waitForResponse(r => r.ok() && new URL(r.url()).pathname === '/api/pedidos' && new URL(r.url()).searchParams.get('scope') === 'fiados')
   await goto(page, '/pedidos?tab=fiados')
+  await consulta
   await appMain(page).getByLabel('Buscar cliente', { exact: true }).fill(nombre)
   await expect(appMain(page).getByText(nombre, { exact: true }).locator('visible=true').first()).toBeVisible()
 }
@@ -60,6 +62,7 @@ test('Ayer en Pedidos no limita Todos en Fiados; documentos y regreso conservan 
   const ayer = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
   await goto(page, `/pedidos?desde=${ayer}&hasta=${ayer}`)
   await appMain(page).getByTestId('tab-fiados').click()
+  await expect(appMain(page).getByTestId('consulta-pedidos-hub')).toHaveCount(0)
   await expect(appMain(page).getByRole('button', { name: 'Todos', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await appMain(page).getByLabel('Buscar cliente', { exact: true }).fill(cliente.nombre)
   await expect(appMain(page).getByText(cliente.nombre, { exact: true }).locator('visible=true').first()).toBeVisible()

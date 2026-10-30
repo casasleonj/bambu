@@ -66,6 +66,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         repartidorId: d.repartidorId,
         recibioDinero: d.recibioDinero,
         fechaEntrega,
+        // Clientes anteriores elegían solo fecha y enviaban mediodía convencional.
+        precisionFecha: d.precisionFecha ?? (d.fechaEntrega ? 'DIA' : 'INSTANTE'),
         nota: d.nota,
         promesaPagoFecha: d.promesaPagoFecha ? startOfDayBogota(d.promesaPagoFecha) : undefined,
       },
