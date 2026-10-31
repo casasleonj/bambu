@@ -16,6 +16,15 @@ describe('cierre: conceptos financieros y conteo declarado', () => {
     ], inicio)
     expect(r).toEqual({ ventasDePedidosDelDia: 280000, totalNotasCredito: 55000, notasCreditoVentasAnteriores: 20000, notasCreditoSinAjusteVentas: 35000, totalVentas: 260000 })
   })
+  it('reducción comercial (#451): la nota sobre un pedido de hoy no resta otra vez; sobre uno de un día anterior sí', () => {
+    const inicio = new Date('2026-03-10T00:00:00-05:00')
+    // Pedido de hoy: 20 × 2.500, ya baja a 15 × 2.500 = 37.500 y la nota de 12.500 es de hoy.
+    const hoy = resumirVentasCierre([{ total: 37500 }], [{ monto: 12500, pedido: { fecha: new Date('2026-03-10T09:00:00-05:00') } }], inicio)
+    expect(hoy.totalVentas).toBe(37500)
+    // Pedido de ayer reducido hoy: hoy no suma ese pedido y la nota baja las ventas de hoy una sola vez.
+    const ayer = resumirVentasCierre([], [{ monto: 12500, pedido: { fecha: new Date('2026-03-09T09:00:00-05:00') } }], inicio)
+    expect(ayer.totalVentas).toBe(-12500)
+  })
   it('calcula el conteo desde las denominaciones e ignora totales enviados', () => {
     expect(leerArqueoDeclarado(JSON.stringify({ arqueo: { 50000: 2, 2000: 3 }, totalContado: 999999, diferencia: 0 }), 100000))
       .toEqual({ arqueo: { 50000: 2, 2000: 3 }, totalContado: 106000, diferenciaArqueo: 6000 })

@@ -9,6 +9,7 @@ import { logger } from '@/lib/logger'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
 import {
   resolverCambioAutorizador,
+  rolPuedeAutorizar,
   MENSAJES_AUTORIZADOR,
   type ErrorAutorizador,
 } from '@/lib/autorizador-credito'
@@ -46,6 +47,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         rol: true,
         activo: true,
         puedeAutorizarExcepcionCredito: true,
+        puedeAutorizarReduccionComercial: true,
         createdAt: true,
         trabajador: { select: { id: true, nombre: true } },
       },
@@ -73,7 +75,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return apiError('Datos invalidos', 400, { formErrors: [parsed.error.issues.map(e => e.message).join(', ')] })
     }
 
-    const { username, rol, activo, password, nombre, apellido, puedeAutorizarExcepcionCredito } = parsed.data
+    const { username, rol, activo, password, nombre, apellido, puedeAutorizarExcepcionCredito, puedeAutorizarReduccionComercial } = parsed.data
 
     // FIX F-27a/F-27b: read+check+update DENTRO de tx con optimistic lock.
     // Antes: findUnique (línea 58) + update directo. Dos races:
@@ -108,6 +110,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (puedeAutorizarExcepcionCredito !== undefined) {
         data.puedeAutorizarExcepcionCredito = puedeAutorizarExcepcionCredito
       }
+      if (puedeAutorizarReduccionComercial !== undefined) {
+        data.puedeAutorizarReduccionComercial = puedeAutorizarReduccionComercial
+      }
 
       if (Object.keys(data).length === 0) {
         throw new Error('USER_NO_DATA')
@@ -116,7 +121,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       // Read updatedAt para optimistic lock (+ estado actual para las reglas del autorizador)
       const existingTarget = await tx.user.findUnique({
         where: { id },
-        select: { updatedAt: true, rol: true, activo: true, puedeAutorizarExcepcionCredito: true },
+        select: { updatedAt: true, rol: true, activo: true, puedeAutorizarExcepcionCredito: true, puedeAutorizarReduccionComercial: true },
       })
       if (!existingTarget) throw new Error('USER_NOT_FOUND')
 
@@ -137,6 +142,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
 
+      // #451: el permiso de autorizar reducciones comerciales solo lo puede tener un rol de oficina.
+      // Dárselo a otro rol es un error; cambiar a un rol sin derecho lo quita (como el de crédito).
+      const rolFinal = rol ?? existingTarget.rol
+      if (puedeAutorizarReduccionComercial === true && !rolPuedeAutorizar(rolFinal)) {
+        throw new Error('AUTORIZADOR_REDUCCION_ROL_NO_PUEDE')
+      }
+      if (!rolPuedeAutorizar(rolFinal) && existingTarget.puedeAutorizarReduccionComercial) {
+        data.puedeAutorizarReduccionComercial = false
+      }
+
       // Update con condición sobre updatedAt
       const updateResult = await tx.user.updateMany({
         where: { id, updatedAt: existingTarget.updatedAt },
@@ -149,7 +164,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       // Re-leer para devolver el estado final
       return tx.user.findUnique({
         where: { id },
-        select: { id: true, username: true, nombre: true, apellido: true, rol: true, activo: true, puedeAutorizarExcepcionCredito: true },
+        select: { id: true, username: true, nombre: true, apellido: true, rol: true, activo: true, puedeAutorizarExcepcionCredito: true, puedeAutorizarReduccionComercial: true },
       })
     })
 
@@ -163,6 +178,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         cambios: 'user update',
         resetPassword: !!password,
         puedeAutorizarExcepcionCredito: user.puedeAutorizarExcepcionCredito,
+        puedeAutorizarReduccionComercial: user.puedeAutorizarReduccionComercial,
       },
       usuarioId: adminId,
     }).catch(() => {})
@@ -179,6 +195,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
       if (error.message === 'USER_NO_DATA') {
         return apiError('No hay datos para actualizar', 400)
+      }
+      if (error.message === 'AUTORIZADOR_REDUCCION_ROL_NO_PUEDE') {
+        return apiError('Solo un Admin o un Asistente puede recibir el permiso de autorizar reducciones comerciales.', 409)
       }
       for (const codigo of ['ROL_NO_PUEDE_AUTORIZAR', 'ULTIMO_AUTORIZADOR'] as ErrorAutorizador[]) {
         if (error.message === `AUTORIZADOR_${codigo}`) return apiError(MENSAJES_AUTORIZADOR[codigo], 409)

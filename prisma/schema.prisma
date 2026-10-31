@@ -234,6 +234,8 @@ model User {
   // usuario, deliberadamente independiente de `rol` — "ser ADMIN no debe
   // ser la única definición conceptual de autoridad".
   puedeAutorizarExcepcionCredito Boolean    @default(false)
+  /// #451: permiso por usuario (no por rol) para autorizar una reducción comercial.
+  puedeAutorizarReduccionComercial Boolean  @default(false)
   createdAt                      DateTime   @default(now()) @db.Timestamptz()
   updatedAt                      DateTime   @updatedAt @db.Timestamptz()
 
@@ -299,6 +301,9 @@ model User {
   // ADR-CIERRE-004 / ADR-MONETARIO-002: correcciones de precio solicitadas / resueltas.
   correccionesPrecioSolicitadas PedidoCorreccionPrecio[] @relation("CorreccionPrecioSolicitante")
   correccionesPrecioResueltas   PedidoCorreccionPrecio[] @relation("CorreccionPrecioResolutor")
+  // #451 / ADR-REDUCCION-COMERCIAL-001: reducciones comerciales solicitadas / resueltas.
+  reduccionesComercialesSolicitadas PedidoReduccionComercial[] @relation("ReduccionComercialSolicitante")
+  reduccionesComercialesResueltas   PedidoReduccionComercial[] @relation("ReduccionComercialResolutor")
   excepcionesCreditoAutorizadas PedidoExcepcionCredito[] @relation("ExcepcionCreditoAutorizador")
   excepcionesCreditoRechazadas  PedidoExcepcionCredito[] @relation("ExcepcionCreditoRechazador")
 
@@ -1067,6 +1072,7 @@ model Pedido {
   // FASE 2 (ledger físico)
   sustituciones Sustitucion[]
   correccionesPrecio PedidoCorreccionPrecio[]
+  reduccionesComerciales PedidoReduccionComercial[]
   retornos      Retorno[]
 
   // FASE 3 (obligaciones)
@@ -2450,6 +2456,8 @@ model NotaCredito {
   motivo    String
   fecha     DateTime @default(now()) @db.Timestamptz()
   creadoPor String?
+  /// Reducción comercial que la originó (#451). Nula para las notas de anulación/cancelación.
+  reduccionComercial PedidoReduccionComercial?
 
   createdAt DateTime @default(now()) @db.Timestamptz()
 
@@ -3042,6 +3050,64 @@ model PedidoCorreccionPrecio {
   /// Solo si APLICADA: total del pedido justo antes y justo después.
   totalAntes   Decimal? @db.Decimal(10, 2)
   totalDespues Decimal? @db.Decimal(10, 2)
+
+  offlineId String? @unique
+
+  @@index([pedidoId])
+  @@index([estado])
+  @@index([solicitadoPorId])
+}
+
+// ====================
+// PEDIDO_REDUCCION_COMERCIAL (#451, ADR-REDUCCION-COMERCIAL-001)
+// ====================
+//
+// «El cliente ya no quiere el resto»: baja la cantidad PEDIDA de una línea por acuerdo
+// comercial (no es un error de captura, eso es PedidoCantidadAjuste/G11). Nunca toca lo
+// ya entregado. Al aplicarse baja Pedido.total/saldo y la Factura y emite una NotaCredito.
+// Solo agrega: ver prisma/migrations/20261031_pedido_reduccion_comercial.
+
+enum PedidoReduccionComercialEstado {
+  PENDIENTE
+  APLICADA
+  RECHAZADA
+}
+
+model PedidoReduccionComercial {
+  id       String @id @default(cuid())
+  pedidoId String
+  pedido   Pedido @relation(fields: [pedidoId], references: [id])
+
+  producto          String
+  cantidadReducida  Int
+  cantPedidoAntes   Int
+  cantPedidoDespues Int
+  /// Precio unitario vigente de la línea; la reducción no lo cambia.
+  precio            Decimal @db.Decimal(10, 2)
+  /// cantidadReducida × precio: lo que baja la obligación.
+  monto             Decimal @db.Decimal(10, 2)
+  motivo            String
+
+  /// Consentimiento observado: quién del lado del cliente aceptó y por qué medio.
+  aceptadoPor String
+  medio       String
+
+  estado PedidoReduccionComercialEstado @default(PENDIENTE)
+
+  solicitadoPorId String
+  solicitadoPor   User     @relation("ReduccionComercialSolicitante", fields: [solicitadoPorId], references: [id])
+  solicitadoAt    DateTime @default(now()) @db.Timestamptz()
+
+  resueltoPorId  String?
+  resueltoPor    User?     @relation("ReduccionComercialResolutor", fields: [resueltoPorId], references: [id], onDelete: SetNull)
+  resueltoAt     DateTime? @db.Timestamptz()
+  notaResolucion String?
+
+  /// Solo si APLICADA.
+  totalAntes     Decimal? @db.Decimal(10, 2)
+  totalDespues   Decimal? @db.Decimal(10, 2)
+  notaCreditoId  String?       @unique
+  notaCredito    NotaCredito?  @relation(fields: [notaCreditoId], references: [id])
 
   offlineId String? @unique
 
