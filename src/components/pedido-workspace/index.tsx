@@ -16,6 +16,8 @@ import { WorkspaceEntrega } from './workspace-entrega'
 import { WorkspaceComprador } from './workspace-comprador'
 import { WorkspaceDinero } from './workspace-dinero'
 import { WorkspaceEntregaMomento } from './workspace-entrega-momento'
+import { WorkspaceVentaEnRuta, type RepartidorVentaRuta } from './workspace-venta-en-ruta'
+import { getTodayString } from '@/lib/dates'
 import { ventaRutaEntregaPosteriorEnabled } from '@/lib/flags'
 import { PedidoItemEditor, type PedidoItemEditorItem } from '@/components/pedido-form-unified/pedido-item-editor'
 import { PedidoContextPanel, type NuevoClienteForm } from '@/components/pedido-form-unified/pedido-context-panel'
@@ -107,6 +109,12 @@ export interface PedidosWorkspaceProps {
   clientes: Cliente[]
   /** intención inicial — determina el origen del draft. */
   intent?: 'pedido' | 'venta-rapida'
+  /**
+   * TEMPORAL-SIN-EMBARQUE(#535): «venta en ruta». Venta rápida a domicilio que nace entregada y
+   * exige elegir al repartidor que la vendió. Solo la monta el ADMIN con la gestión directa
+   * encendida; el servidor lo vuelve a exigir.
+   */
+  ventaEnRuta?: { repartidores: RepartidorVentaRuta[] }
   initialDraft?: Partial<DraftPedido>
   /** modo edición: pedido existente a editar (cliente/negocio/canal inmutables). */
   pedidoInicial?: WorkspacePedidoInicial
@@ -146,7 +154,7 @@ export interface PedidosWorkspaceProps {
  * "aplicada" del patrón) vive como `useState` local — igual que en el
  * monolito, no es parte del "draft" que se envía.
  */
-export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial, modo = 'crear', pedidoOrigenNumero, offlineIdInicial, onSubmit, onCancel }: PedidosWorkspaceProps) {
+export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, pedidoInicial, modo = 'crear', pedidoOrigenNumero, offlineIdInicial, onSubmit, onCancel }: PedidosWorkspaceProps) {
   const modoEdicion = Boolean(pedidoInicial)
   const esNuevaDemanda = modo === 'nueva-demanda'
   // Clave de idempotencia del borrador (plan de integridad v1.2 §5.B): nace al
@@ -175,7 +183,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
         // commit (ENTREGADO), así el estado de pago mostrado coincide.
         // venta rápida: nace en PUNTO (mostrador), como el formulario antiguo; DOMICILIO
         // es una elección explícita y exige dirección (P1-2).
-        ? { ...EMPTY_DRAFT, origen: 'VENTA_RAPIDA' as const, canal: 'PUNTO' as const, clienteId: 'CONSUMIDOR_FINAL', entregado: true, ...initialDraft }
+        ? { ...EMPTY_DRAFT, origen: 'VENTA_RAPIDA' as const, canal: ventaEnRuta ? 'DOMICILIO' as const : 'PUNTO' as const, clienteId: 'CONSUMIDOR_FINAL', entregado: true, ...(ventaEnRuta ? { ventaEnRuta: true } : {}), ...initialDraft }
         : { ...EMPTY_DRAFT, origen: 'PEDIDO' as const, ...initialDraft },
     initWorkspace,
   )
@@ -188,6 +196,10 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
   const [nuevoCliente, setNuevoCliente] = useState<NuevoClienteForm>(EMPTY_NUEVO_CLIENTE)
   const [sugerenciaAplicada, setSugerenciaAplicada] = useState(false)
   const [reviewMotivo, setReviewMotivo] = useState('')
+  // Venta en ruta (#535): quién vendió y hasta cuándo promete pagar quien queda debiendo.
+  const [vendidoPorId, setVendidoPorId] = useState('')
+  const [promesaPagoFecha, setPromesaPagoFecha] = useState('')
+  const [intentoRegistrar, setIntentoRegistrar] = useState(false)
 
   const onPending = useCallback(() => dispatch({ type: 'PREVIEW_PENDING' }), [])
   const onReceived = useCallback((preview: PreviewPedidoResult) => dispatch({ type: 'PREVIEW_RECEIVED', preview }), [])
@@ -367,6 +379,9 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
   const entregaPosterior = ventaRutaEntregaPosteriorEnabled() && !modoEdicion && intent === 'venta-rapida' && state.draft.canal === 'PUNTO'
   const entregarDespues = entregaPosterior && state.draft.entregado === false
   const tieneComprador = Boolean(clienteSeleccionado) || Boolean(state.draft.clienteNuevo)
+  // Venta en ruta: la promesa solo se pide si un cliente REAL queda debiendo.
+  const pideFechaRuta = Boolean(ventaEnRuta) && tieneComprador && (calc?.saldoProyectado ?? 0) > 0
+  const faltanDatosRuta = Boolean(ventaEnRuta) && (!vendidoPorId || (pideFechaRuta && !promesaPagoFecha))
   const faltaCompradorParaDespues = entregarDespues && !tieneComprador
   const pagadoCompleto = (calc?.saldoProyectado ?? 1) <= 0
   // #425: «Cobrar» solo si hay dinero aplicado y el preview del servidor proyecta saldo cero.
@@ -417,6 +432,11 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
   }
 
   const handleCommit = async () => {
+    if (faltanDatosRuta) {
+      // No se envía nada: se marcan los campos que faltan para que el usuario los complete.
+      setIntentoRegistrar(true)
+      return
+    }
     dispatch({ type: 'COMMIT_START' })
     const clienteNuevo = clienteSeleccionado ? undefined : state.draft.clienteNuevo
     const tieneClienteReal = Boolean(clienteSeleccionado) || Boolean(clienteNuevo)
@@ -440,7 +460,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
       canal: state.draft.canal,
       // edición: origen persistido (inmutable). nueva-demanda: siempre PEDIDO.
       // creación normal: derivado de si hay cliente real.
-      origen: modoEdicion ? state.draft.origen : ((esNuevaDemanda || tieneClienteReal) ? 'PEDIDO' : 'VENTA_RAPIDA'),
+      origen: modoEdicion ? state.draft.origen : (ventaEnRuta ? 'VENTA_RAPIDA' : ((esNuevaDemanda || tieneClienteReal) ? 'PEDIDO' : 'VENTA_RAPIDA')),
       pedidoOrigenId: state.draft.pedidoOrigenId,
       items: state.draft.items
         .filter((i) => i.cantidad > 0)
@@ -457,6 +477,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
         : state.draft.obs,
       entregado: state.draft.entregado,
       excepcionId: state.draft.excepcionId,
+      ...(ventaEnRuta ? { vendidoPorId, promesaPagoFecha: pideFechaRuta ? promesaPagoFecha : undefined } : {}),
       clienteNuevo: clienteNuevo ? { ...clienteNuevo, direccion: clienteNuevo.direccion ?? '' } : undefined,
       actualizarCliente,
       direccionEntrega: state.draft.canal === 'DOMICILIO' ? (state.draft.direccionEntrega || undefined) : undefined,
@@ -478,6 +499,20 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
 
   return (
     <div className="space-y-4" data-testid="pedidos-workspace">
+      {ventaEnRuta && (
+        <WorkspaceVentaEnRuta
+          repartidores={ventaEnRuta.repartidores}
+          vendidoPorId={vendidoPorId}
+          onVendidoPorChange={setVendidoPorId}
+          pideFecha={pideFechaRuta}
+          promesaPagoFecha={promesaPagoFecha}
+          onPromesaChange={setPromesaPagoFecha}
+          hoy={getTodayString()}
+          disabled={state.phase === 'COMMITTING' || state.phase === 'COMMITTED'}
+          mostrarErrores={intentoRegistrar}
+        />
+      )}
+
       {/* ── Zona: Contexto ── */}
       <section data-testid="workspace-contexto" className="space-y-2">
         {esNuevaDemanda ? (
@@ -570,7 +605,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
           <p className="text-xs text-gray-400" data-testid="workspace-canal-fijo">
             {state.draft.canal === 'DOMICILIO' ? '🚚 Domicilio' : '🏪 Punto'} · el canal no se cambia al editar; si fue un error de registro o cambió la entrega, pida la corrección formal a un administrador
           </p>
-        ) : esNuevaDemanda ? null : (
+        ) : esNuevaDemanda || ventaEnRuta ? null : (
           <div className="flex gap-2">
             {(['DOMICILIO', 'PUNTO'] as const).map((ch) => (
               <button

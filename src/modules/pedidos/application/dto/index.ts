@@ -55,6 +55,13 @@ export interface CrearPedidoInput {
   /** Ubicación del DESTINO (≠ GPS de comprobación de entrega). Ambas o ninguna. */
   entregaLat?: number
   entregaLng?: number
+  /**
+   * TEMPORAL-SIN-EMBARQUE(#535): repartidor que vendió en la calle. Solo para una venta rápida
+   * a domicilio; queda como `entregadoPorId` y la venta nace con `entregadoAt` (comisión sin embarque).
+   */
+  vendidoPorId?: string
+  /** Hasta cuándo promete pagar el cliente real que queda debiendo en una venta en ruta. */
+  promesaPagoFecha?: Date
   createdById?: string
   createdByRole?: string
   // Offline-first: id generado por el cliente para dedup al reenviar

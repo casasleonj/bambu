@@ -27,7 +27,7 @@ import type { IPricingPort } from '../../domain/repositories/IPricingPort'
 import { normalizarPagos } from '../../domain/services/pagos-calculator.service'
 import { GetFiadoStatusUseCase } from './GetFiadoStatusUseCase'
 import { leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
-import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
+import type { ITransactionManager, TransactionClient } from '../../infrastructure/transactions/PrismaTransactionManager'
 import type { CrearPedidoInput, CrearPedidoResult } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
@@ -43,6 +43,10 @@ import {
 import { ensureConsumidorFinalCanonical, isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
 import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
+import { nominaQueCubre } from '@/lib/nomina-cobertura'
+import { diaBogota } from '@/lib/gestion-admin-fecha'
+import { todayStringBogota } from '@/lib/dates'
+import { EntregaOficinaError } from '../../domain/services/entrega-oficina.errors'
 
 export class CrearPedidoUseCase {
   constructor(
@@ -308,6 +312,21 @@ export class CrearPedidoUseCase {
         throw new Error('DEUDOR_REQUERIDO')
       }
 
+      // TEMPORAL-SIN-EMBARQUE(#535): venta en ruta. Todas las reglas se validan ANTES de
+      // persistir; si alguna falla, el rollback no deja nada.
+      const vendidoPorId = input.vendidoPorId
+      if (vendidoPorId) {
+        await this.validarVentaEnRuta(tx, {
+          vendidoPorId,
+          origen: origenCreacion,
+          canal: input.canal,
+          estadoEntrega: estadoEntregaCreacion,
+          saldo: total - totalPagado,
+          esConsumidorFinal,
+          promesaPagoFecha: input.promesaPagoFecha,
+        })
+      }
+
       // 6. F1 (Autoridad de Crédito, docs/AGUA_BAMBU_F1_DISENO_TECNICO_AUTORIDAD_CREDITO_v1.0.md):
       // consulta de pendientes + decisión consolidadas en GetFiadoStatusUseCase
       // — MISMA autoridad que usan PreviewPedidoUseCase y venta-libre. El
@@ -365,10 +384,17 @@ export class CrearPedidoUseCase {
         entregaLat: ubicacionPropia?.lat,
         entregaLng: ubicacionPropia?.lng,
         createdById: input.createdById,
+        // Venta en ruta: quién la vendió y cuándo (la comisión sin embarque exige ambos).
+        ...(vendidoPorId ? { entregadoPorId: vendidoPorId, entregadoAt: new Date() } : {}),
       })
 
       // 7. Persist
       const saved = await this.pedidoRepo.save(pedido, tx, { offlineId: input.offlineId, pedidoOrigenId: input.pedidoOrigenId })
+      // Venta en ruta fiada: la promesa de pago queda en el pedido (misma columna que usa el
+      // antifraude #318 y el cron de vencimientos).
+      if (vendidoPorId && input.promesaPagoFecha && total - totalPagado > 0) {
+        await tx.pedido.update({ where: { id: saved.id.get() }, data: { promesaPagoFecha: input.promesaPagoFecha } })
+      }
       logger.info(
         { pedidoId: saved.id.get(), numero: saved.numero, clienteId, total, offlineId: input.offlineId ?? null },
         'Pedido created'
@@ -486,5 +512,56 @@ export class CrearPedidoUseCase {
     if (!efectivoLink) return null
 
     return this.resolverCoordsDeLink(efectivoLink)
+  }
+
+  /**
+   * TEMPORAL-SIN-EMBARQUE(#535): reglas de una «venta en ruta». Solo una venta rápida a
+   * domicilio que nace entregada; el repartidor debe ser un trabajador activo con moto cuya
+   * nómina del día no esté hecha (su comisión se perdería); un anónimo no puede dejar saldo
+   * (ya lo frena `DEUDOR_REQUERIDO`) y un cliente real que queda debiendo necesita promesa de
+   * pago de hoy en adelante.
+   */
+  private async validarVentaEnRuta(
+    tx: TransactionClient,
+    v: {
+      vendidoPorId: string
+      origen: string
+      canal: string
+      estadoEntrega: string
+      saldo: number
+      esConsumidorFinal: boolean
+      promesaPagoFecha?: Date
+    },
+  ): Promise<void> {
+    if (v.origen !== 'VENTA_RAPIDA' || v.canal !== 'DOMICILIO' || v.estadoEntrega !== 'ENTREGADO') {
+      throw new EntregaOficinaError(
+        'VENTA_EN_RUTA_INVALIDA',
+        'La venta en ruta es una venta rápida a domicilio que se entrega en el momento.',
+      )
+    }
+    const t = await tx.trabajador.findUnique({
+      where: { id: v.vendidoPorId },
+      select: { activo: true, usaMoto: true },
+    })
+    if (!t || !t.activo || !t.usaMoto) {
+      throw new EntregaOficinaError(
+        'REPARTIDOR_INVALIDO',
+        'Ese trabajador no aparece en la lista: solo se pueden elegir trabajadores activos con moto.',
+      )
+    }
+    if (await nominaQueCubre(tx, v.vendidoPorId, new Date())) {
+      throw new EntregaOficinaError(
+        'NOMINA_EXISTENTE',
+        'La nómina de ese repartidor para hoy ya está hecha y su comisión se perdería. Habla con quien liquida la nómina.',
+      )
+    }
+    if (v.saldo > 0 && !v.esConsumidorFinal) {
+      if (!v.promesaPagoFecha) {
+        throw new EntregaOficinaError('PROMESA_REQUERIDA', 'Si queda debiendo, necesitamos hasta cuándo promete pagar.')
+      }
+      if (diaBogota(v.promesaPagoFecha) < todayStringBogota()) {
+        throw new EntregaOficinaError('PROMESA_PASADA', 'La fecha de promesa de pago no puede estar en el pasado.')
+      }
+    }
   }
 }

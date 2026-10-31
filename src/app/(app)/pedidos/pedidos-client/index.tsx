@@ -157,6 +157,8 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
 
   const [showModal, setShowModal] = useState(false)
   const [showVentaRapida, setShowVentaRapida] = useState(false)
+  // TEMPORAL-SIN-EMBARQUE(#535): «venta en ruta» = la venta rápida abierta con repartidor obligatorio.
+  const [ventaEnRutaActiva, setVentaEnRutaActiva] = useState(false)
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [preciosActuales, setPreciosActuales] = useState<Record<string, { precio: number; origen: string }>>({})
@@ -2240,9 +2242,9 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
         <div className={`p-4 border-b flex justify-between items-center ${showVentaRapida ? 'bg-green-50' : 'bg-blue-50'}`}>
           <div>
             <h2 className={`text-xl font-bold ${showVentaRapida ? 'text-green-800' : 'text-blue-800'}`}>
-              {showVentaRapida ? '💰 Venta Rápida' : nuevaDemanda ? '📦 Nueva demanda' : '📦 Nuevo Pedido'}
+              {showVentaRapida ? (ventaEnRutaActiva ? '🚚 Venta en ruta' : '💰 Venta Rápida') : nuevaDemanda ? '📦 Nueva demanda' : '📦 Nuevo Pedido'}
             </h2>
-            {!nuevaDemanda && (
+            {!nuevaDemanda && !(showVentaRapida && ventaEnRutaActiva) && (
               <InfoBanner type="info" className="mt-2 text-xs">
                 <strong>Venta Rápida</strong> = cliente conocido, paga en el momento.
                 <strong> Venta Libre</strong> = consumidor final sin registro (mostrador).
@@ -2277,6 +2279,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
               key={`ws-${modalKey}`}
               clientes={clientes}
               intent={showVentaRapida ? 'venta-rapida' : 'pedido'}
+              ventaEnRuta={showVentaRapida && ventaEnRutaActiva ? { repartidores: gestionAdmin.repartidores } : undefined}
               initialDraft={correccion?.draft}
               offlineIdInicial={correccion?.offlineId}
               onSubmit={handlePedidoSubmit}
@@ -2710,7 +2713,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
             </Tooltip>
             <Tooltip content="Venta inmediata en punto de venta sin registro de cliente" title="Venta Rápida" position="left">
               <button
-                onClick={() => { setFabOpen(false); setShowVentaRapida(true); setModalKey(k => k + 1) }}
+                onClick={() => { setFabOpen(false); setVentaEnRutaActiva(false); setShowVentaRapida(true); setModalKey(k => k + 1) }}
                 data-testid="fab-venta-rapida"
                 className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition text-sm font-medium"
               >
@@ -2718,6 +2721,18 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
                 <span>Venta Rápida</span>
               </button>
             </Tooltip>
+            {hubMode && userRole === 'ADMIN' && gestionAdmin.activa && (
+              <Tooltip content="El repartidor vendió en la calle algo que nadie había pedido. No necesita embarque." title="Venta en ruta" position="left">
+                <button
+                  onClick={() => { setFabOpen(false); setVentaEnRutaActiva(true); setShowVentaRapida(true); setModalKey(k => k + 1) }}
+                  data-testid="fab-venta-en-ruta"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-full shadow-lg hover:bg-emerald-700 transition text-sm font-medium"
+                >
+                  <span>🚚</span>
+                  <span>Venta en ruta</span>
+                </button>
+              </Tooltip>
+            )}
           </div>
         )}
         {/* FAB Principal */}

@@ -97,6 +97,11 @@ export const PedidoCreateSchema = z.object({
   entregaLng: z.number().min(-180).max(180).optional().nullable(),
   // Offline-first: id generado por el cliente para dedup si se encola
   offlineId: z.string().optional(),
+  // TEMPORAL-SIN-EMBARQUE(#535): «venta en ruta» — el ADMIN registra la venta que un
+  // repartidor hizo en la calle. `vendidoPorId` queda como `Pedido.entregadoPorId`;
+  // solo vale en una venta rápida a domicilio y solo con la gestión directa encendida.
+  vendidoPorId: z.string().trim().min(1).optional(),
+  promesaPagoFecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha de promesa inválida').optional(),
   // G6/ventaRapida→origen (decisión PO 2026-09-06): `ventaRapida: boolean`
   // salió del contrato — el cliente manda `origen` explícito (arriba).
   // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: solo aplica a venta rápida.

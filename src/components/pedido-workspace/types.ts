@@ -37,6 +37,11 @@ export interface DraftPedido {
   negocioId: string | null
   canal: 'PUNTO' | 'DOMICILIO'
   origen: 'PEDIDO' | 'VENTA_RAPIDA'
+  /**
+   * TEMPORAL-SIN-EMBARQUE(#535): «venta en ruta». El origen se queda en VENTA_RAPIDA aunque el
+   * comprador sea un cliente real (nace entregada y a domicilio), y el servidor exige repartidor.
+   */
+  ventaEnRuta?: boolean
   items: DraftItem[]
   pagos: DraftPago[]
   /**

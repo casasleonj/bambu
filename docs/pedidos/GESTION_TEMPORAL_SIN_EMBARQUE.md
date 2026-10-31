@@ -89,6 +89,25 @@ con antes/después y el motivo; un reintento con la misma clave no se aplica dos
    un CONTADOR recibe 403) y solo acepta esos dos valores. El interruptor se lee **siempre de la base, sin caché** (#479: el caché
    de `Config` sirve el valor viejo una vez tras un cambio), así que apagarlo surte efecto en la petición siguiente.
 
+## Venta en ruta desde Pedidos (#535)
+
+Mientras no hay embarques, la **venta libre** (que exige un embarque abierto) no se puede registrar. Para la venta que un
+repartidor hace en la calle sin pedido previo, Pedidos ofrece «Venta en ruta» (botón del menú `+`, solo ADMIN con el
+interruptor encendido):
+
+- Es una **venta rápida a domicilio** que nace `ENTREGADA`, con `vendidoPorId` → `Pedido.entregadoPorId` y `entregadoAt`, para
+  que la comisión sin embarque (fuente `SIN_EMBARQUE`) la cuente. No crea un pedido de origen `VENTA_LIBRE` ni toca la
+  conciliación de embarques.
+- Reglas (todas en `CrearPedidoUseCase`, antes de guardar): repartidor activo con moto; la nómina de ese repartidor para hoy no
+  puede estar hecha (409 `NOMINA_EXISTENTE`); un cliente sin nombre debe pagar completo (422 `DEUDOR_REQUERIDO`); un cliente real
+  que queda debiendo necesita `promesaPagoFecha` de hoy en adelante.
+- `POST /api/pedidos` con `vendidoPorId`: 403 si no es ADMIN o si el interruptor está apagado. Un reintento con la misma clave
+  (`offlineId`) devuelve la misma venta; si entre tanto se apagó el interruptor, el reintento se rechaza (403) aunque la venta
+  ya exista: no la registres otra vez, búscala en Pedidos.
+- Piezas: `workspace-venta-en-ruta.tsx`, `ventaEnRuta` en `PedidosWorkspace`, botón `fab-venta-en-ruta`, `vendidoPorId` y
+  `promesaPagoFecha` en `PedidoCreateSchema`, `validarVentaEnRuta` en `CrearPedidoUseCase`. Pruebas:
+  `venta-en-ruta.test.ts` (integración), `pedido-workspace/__tests__/venta-en-ruta.test.tsx`, `e2e/venta-en-ruta.spec.ts`.
+
 ## Cómo retirarla cuando Embarques funcione
 
 1. Poner `GESTION_ADMIN_SIN_EMBARQUE=false` (los botones desaparecen y el servidor rechaza).
