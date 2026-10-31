@@ -331,6 +331,13 @@ export async function POST(
     if (error instanceof Error && error.message.includes('excede el saldo del pedido')) {
       return apiError('PAGO_EXCEDE_SALDO: el cobro es mayor que lo que se debe', 422)
     }
+    if (error instanceof Error && error.message === 'DEUDOR_REQUERIDO') {
+      return apiError(
+        'DEUDOR_REQUERIDO: no se puede dejar fiado a un cliente sin nombre. Registra el pago completo o elige un cliente real.',
+        422,
+        { code: 'DEUDOR_REQUERIDO' },
+      )
+    }
     if (error instanceof Error && error.message === 'FIADO_NO_AUTORIZADO') {
       return apiError('FIADO_NO_AUTORIZADO: la oficina no autorizó dejar esta deuda. No entregues el pedido; se devuelve al cerrar el embarque.', 422)
     }

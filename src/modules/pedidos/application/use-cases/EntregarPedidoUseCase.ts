@@ -219,6 +219,19 @@ export class EntregarPedidoUseCase {
         }
       }
 
+      // #473: regla de dominio única — un cliente sin nombre (CONSUMIDOR_FINAL) nunca queda
+      // ENTREGADO con saldo, entregue quien entregue (oficina, repartidor) y por el camino que
+      // sea (entrega normal, retiro del cliente, última entrega parcial): sin nombre no hay a
+      // quién cobrarle después (V4). Va DESPUÉS de los candados de arriba para conservar sus
+      // mensajes y ANTES de persistir: si falla, el rollback deja todo igual.
+      if (
+        pedido.clienteId === CANONICAL_CONSUMIDOR_FINAL_ID &&
+        pedido.estadoEntrega.get() === 'ENTREGADO' &&
+        pedido.saldo.cents > 0
+      ) {
+        throw new Error('DEUDOR_REQUERIDO')
+      }
+
       // Persist pedido
       const updated = await this.pedidoRepo.update(pedido, tx)
 
