@@ -1473,10 +1473,25 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
 
     // Confirmaciones con contexto para acciones destructivas
     if (nuevoEstado === 'CANCELADO') {
+      anularMotivoRef.current = ''
       const ok = await confirm({
         title: 'Cancelar pedido',
         message: '¿Estás seguro de cancelar este pedido?',
         description: 'El pedido se marcará como cancelado y no se podrá revertir.',
+        details: (
+          <div className="space-y-3 w-full">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Motivo de cancelación *</label>
+              <input
+                type="text"
+                placeholder="Ej: el cliente ya no lo necesita, pedido duplicado..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-red-500 focus:ring-2 focus:ring-red-200 outline-none transition"
+                onChange={(e) => { anularMotivoRef.current = e.target.value }}
+                autoFocus
+              />
+            </div>
+          </div>
+        ),
         consequences: [
           'El pedido no se enviará',
           'Se liberará el stock reservado',
@@ -1487,6 +1502,10 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
         cancelLabel: 'No, mantener',
       })
       if (!ok) return
+      if (!anularMotivoRef.current.trim()) {
+        toast.error('Debes indicar el motivo de cancelación')
+        return
+      }
     }
 
     if (nuevoEstado === 'ANULADO') {
@@ -1541,7 +1560,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
         // estado CANCELADO bajo lock NC (paridad con anular). Antes se
         // reutilizaba PUT /api/pedidos/:id con { estado: 'CANCELADO' },
         // lo que no generaba NC automática y permitía inconsistencias.
-        success = await cancelarPedido({ pedidoId: id })
+        success = await cancelarPedido({ pedidoId: id, motivo: anularMotivoRef.current.trim() })
       } else {
         // Volver a PENDIENTE = quitar el pedido de su embarque, con la operación
         // especializada (libera la asignación, audita y avisa al repartidor).

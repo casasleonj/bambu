@@ -49,6 +49,7 @@ export class PedidoDTOMapper {
     raw?: { factura?: PrismaFacturaRaw | null },
   ): PedidoResumenDTO {
     const estadoEntrega = pedido.estadoEntrega.get()
+    const cerrado = estadoEntrega === 'CANCELADO' || estadoEntrega === 'ANULADO'
     const legacy = pedido.toLegacyFields()
     return {
       id: pedido.id.get(),
@@ -112,8 +113,10 @@ export class PedidoDTOMapper {
         monto: p.monto,
       })),
       // ADR-PAGO-REPORTADO-CONFIRMADO-001 §5.
-      pagoReportadoPendiente: pedido.pagos.some(p => p.confirmacion === 'REPORTADO'),
-      pagoDiscrepante: pedido.pagos.some(p => p.confirmacion === 'DISCREPANTE'),
+      // #517: un pedido cancelado/anulado ya no tiene nada por confirmar; sus pagos quedaron
+      // revertidos y ofrecer confirmarlos sería pedirle al usuario revisar dinero que no existe.
+      pagoReportadoPendiente: !cerrado && pedido.pagos.some(p => p.confirmacion === 'REPORTADO'),
+      pagoDiscrepante: !cerrado && pedido.pagos.some(p => p.confirmacion === 'DISCREPANTE'),
       factura: raw?.factura ? mapFacturaToDTO(raw.factura) : null,
     }
   }

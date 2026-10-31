@@ -49,6 +49,12 @@ test.describe('Pantalla de detalle del pedido (P1-1 PR B)', () => {
     await expect(acciones.getByRole('button', { name: /Enviar/ })).toBeVisible()
     await expect(acciones.getByRole('button', { name: /Editar/ })).toBeVisible()
     await acciones.getByRole('button', { name: 'Cancelar' }).click()
+    // #517: cancelar exige motivo; sin él no se cancela.
+    await page.getByRole('button', { name: 'Sí, cancelar' }).click()
+    await expect(page.getByText('Debes indicar el motivo de cancelación')).toBeVisible()
+    expect((await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })).estadoEntrega).toBe('PENDIENTE')
+    await acciones.getByRole('button', { name: 'Cancelar' }).click()
+    await page.getByPlaceholder(/el cliente ya no lo necesita/i).fill('el cliente ya no lo necesita')
     await page.getByRole('button', { name: 'Sí, cancelar' }).click()
     await expect.poll(async () => (await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })).estadoEntrega, { timeout: 15000 }).toBe('CANCELADO')
   })
