@@ -4,7 +4,7 @@
 //     DELETE sigue administrativo
 //   - contrato cliente/negocio: regla determinista única (Q4)
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { RecurrenteCreateSchema } from '@/app/api/recurrentes/route'
@@ -20,10 +20,17 @@ describe('F8-0 — nav (G2)', () => {
     expect(navSrc).not.toMatch(/label: 'Únicos'/)
   })
 
-  it('Hub ON: Fase 8 usa el Hub; Hub OFF: ruta legacy queda accesible', () => {
-    expect(navSrc).toMatch(/pedidosV2Enabled\(\)\s*\?\s*\[\]/)
-    expect(navSrc).toContain("href: '/recurrentes'")
-    expect(navSrc).toContain("href: '/recurrentes', label: 'Pedidos habituales', icon: 'repeat', requiredPermission: 'view:recurrentes'")
+  it('V6 aprobada: un acceso a Habituales con Hub ON y OFF, conservando su permiso', async () => {
+    try {
+      for (const flag of ['true','false']) {
+        vi.stubEnv('NEXT_PUBLIC_PEDIDOS_V2', flag)
+        vi.resetModules()
+        const { navSections } = await import('@/app/(app)/nav-data')
+        const links = navSections.flatMap(s => s.items).filter(i => i.href === '/recurrentes')
+        expect(links).toHaveLength(1)
+        expect(links[0].requiredPermission).toBe('view:recurrentes')
+      }
+    } finally { vi.unstubAllEnvs() }
   })
 })
 

@@ -1,5 +1,4 @@
 import type { Permission } from '@/lib/permissions'
-import { pedidosV2Enabled } from '@/lib/flags'
 
 export const icons: Record<string, React.ReactNode> = {
   home: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
@@ -69,13 +68,9 @@ export const navSections: NavSection[] = [
     title: 'Ventas',
     items: [
       { href: '/clientes', label: 'Clientes', icon: 'users', requiredPermission: 'view:clientes' },
-      // Fase 8: cuando el Hub está activo, las recurrencias se operan allí.
-      // Si el flag está OFF, conservar acceso al flujo legacy: de otro modo
-      // las plantillas activas quedan sin entrada visible desde la aplicación.
+      // #515, maqueta V6 aprobada: acceso único al catálogo y revisión manual.
       { href: '/pedidos', label: 'Pedidos', icon: 'package', requiredPermission: 'view:pedidos' },
-      ...(pedidosV2Enabled() ? [] : ([
-        { href: '/recurrentes', label: 'Pedidos habituales', icon: 'repeat', requiredPermission: 'view:recurrentes' },
-      ] satisfies NavItem[])),
+      { href: '/recurrentes', label: 'Pedidos habituales', icon: 'repeat', requiredPermission: 'view:recurrentes' },
       { href: '/productos', label: 'Productos', icon: 'tag', requiredPermission: 'view:productos' },
       { href: '/casos', label: 'Incidencias', icon: 'shield', requiredPermission: 'view:casos' },
     ]

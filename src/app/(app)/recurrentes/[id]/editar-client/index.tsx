@@ -10,10 +10,15 @@ import ChipGroup from '../../_components/chip-group'
 import ProductStepper from '../../_components/product-stepper'
 import { DireccionIndicator } from '@/components/direccion-indicator'
 import { cn } from '@/lib/utils'
+import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 
-interface PlantillaSerialized {
+interface ClienteSerialized { id: string; nombre: string; telefono: string; barrio: string | null; direccion: string | null; linkUbicacion: string | null }
+
+export interface PlantillaSerialized {
   id: string
-  clienteId: string
+  clienteId: string | null
+  negocioId?: string | null
+  negocio?: { id: string; nombre: string; direccion: string | null; barrio: string | null; linkUbicacion: string | null; cliente: ClienteSerialized | null } | null
   activo: boolean
   cadaNDias: number
   canal: string
@@ -23,14 +28,7 @@ interface PlantillaSerialized {
   proxGeneracion: string | null
   saltos: string[]
   notas: string | null
-  cliente: {
-    id: string
-    nombre: string
-    telefono: string
-    barrio: string | null
-    direccion: string | null
-    linkUbicacion: string | null
-  }
+  cliente: ClienteSerialized | null
 }
 
 type FormCanal = 'DOMICILIO' | 'PUNTO'
@@ -63,7 +61,11 @@ const PRODUCT_ICONS: Record<string, React.ReactNode> = {
   BOLSA_HIELO: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>,
 }
 
-export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSerialized }) {
+export function EditarRecurrenteClient({ plantilla, volverHref = '/recurrentes' }: { plantilla: PlantillaSerialized; volverHref?: string }) {
+  const propietario = plantilla.cliente ?? plantilla.negocio?.cliente
+  const nombreContexto = plantilla.negocio?.nombre ?? propietario?.nombre ?? 'Contexto no disponible'
+  const direccion = pickDireccionTexto({ cliente: propietario, negocio: plantilla.negocio })
+  const linkUbicacion = plantilla.negocio?.linkUbicacion ?? propietario?.linkUbicacion ?? null
   const router = useRouter()
   const [submitting, setSubmitting] = useState(false)
   const [productosError, setProductosError] = useState('')
@@ -137,7 +139,7 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
         const res = await fetch('/api/precios/resolver', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items, canal, clienteId: plantilla.clienteId }),
+          body: JSON.stringify({ items, canal, clienteId: propietario?.id, negocioId: plantilla.negocioId ?? undefined }),
         })
         if (res.ok) {
           const data = await res.json()
@@ -159,7 +161,7 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
     }, 300)
 
     return () => { if (resolverTimeoutRef.current) clearTimeout(resolverTimeoutRef.current) }
-  }, [canal, cantidades, configsLoading, productosVisibles, plantilla.clienteId, productConfigs])
+  }, [canal, cantidades, configsLoading, productosVisibles, propietario?.id, plantilla.negocioId, productConfigs])
 
   // Clear quantities for products not available in new canal
   useEffect(() => {
@@ -214,8 +216,8 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
       })
       const data = await res.json()
       if (data.success) {
-        toast.success('Plantilla actualizada')
-        router.push('/recurrentes')
+        toast.success('Habitual actualizado')
+        router.push(volverHref)
       } else {
         toast.error(data.error?.message || 'Error al actualizar')
       }
@@ -243,31 +245,32 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
   return (
     <div className="max-w-2xl mx-auto pb-8">
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/recurrentes" className="text-gray-400 hover:text-gray-600 transition">
+        <Link href={volverHref} aria-label="Volver a habituales" className="text-gray-400 hover:text-gray-600 transition">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">Editar Plantilla Recurrente</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Ajustar pedido habitual</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* CLIENTE — read-only */}
         <SectionCard
-          title="Cliente"
+          title={plantilla.negocio ? 'Negocio' : 'Cliente'}
           icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>}
         >
           <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold text-sm">
-                {plantilla.cliente.nombre.charAt(0).toUpperCase()}
+                {nombreContexto.charAt(0).toUpperCase()}
               </div>
               <div>
-                <p className="font-medium text-sm text-gray-800">{plantilla.cliente.nombre}</p>
-                <p className="text-xs text-gray-500">{plantilla.cliente.telefono}{plantilla.cliente.barrio && ` · ${plantilla.cliente.barrio}`}</p>
+                <p className="font-medium text-sm text-gray-800">{nombreContexto}</p>
+                <p className="text-xs text-gray-500">{plantilla.negocio && propietario ? `${propietario.nombre} · ` : ''}{propietario?.telefono}{direccion.barrio && ` · ${direccion.barrio}`}</p>
+                {direccion.direccion && <p className="mt-1 text-xs text-gray-600">{direccion.direccion}</p>}
                 <div className="mt-1">
                   <DireccionIndicator
-                    direccion={plantilla.cliente.direccion}
-                    barrio={plantilla.cliente.barrio}
-                    linkUbicacion={plantilla.cliente.linkUbicacion}
+                    direccion={direccion.direccion}
+                    barrio={direccion.barrio}
+                    linkUbicacion={linkUbicacion}
                   />
                 </div>
               </div>
@@ -450,7 +453,7 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
               <div className="w-10 h-6 bg-gray-200 rounded-full peer-checked:bg-blue-600 transition-colors" />
               <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4" />
             </div>
-            <span className="text-sm font-medium text-gray-700">Plantilla activa</span>
+            <span className="text-sm font-medium text-gray-700">Habitual activo</span>
           </label>
         </div>
 
@@ -478,7 +481,7 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
               </>
             )}
           </button>
-          <button type="button" onClick={() => router.push('/recurrentes')}
+          <button type="button" onClick={() => router.push(volverHref)}
             className="px-4 py-3 bg-white border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition text-sm font-medium">
             Cancelar
           </button>
