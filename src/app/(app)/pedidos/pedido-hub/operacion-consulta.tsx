@@ -6,6 +6,7 @@ import { formatCurrency } from "@/lib/utils";
 import { getItemsFromPedido } from "../pedido-items";
 import { deriveOperacion, embarqueLinea } from "./derive-operacion";
 import type { AccionKey, Pedido } from "./types";
+import { fechaConsulta } from "./fecha-consulta";
 import styles from "./operacion-consulta.module.css";
 
 export interface AccionesConsulta {
@@ -17,17 +18,6 @@ export interface AccionesConsulta {
   onCorregirPendiente?: (id: string) => void;
   onDescartarPendiente?: (id: string) => void;
 }
-const fecha = (s?: string | null) =>
-  s
-    ? new Intl.DateTimeFormat("es-CO", {
-        timeZone: "America/Bogota",
-        day: "2-digit",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(new Date(s))
-    : "Sin fecha registrada";
 function interceptar(e: MouseEvent<HTMLAnchorElement>, abrir: () => void) {
   e.stopPropagation();
   if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
@@ -261,14 +251,14 @@ export function OperacionConsulta({
                 </strong>
                 <p className={styles.meta}>
                   {p.createdAt
-                    ? fecha(p.createdAt)
+                    ? fechaConsulta(p.createdAt, hoyBogota)
                     : "Hora de creación no disponible"}
                 </p>
                 {p.createdAt &&
                   Math.floor(Date.parse(p.fecha) / 60000) !==
                     Math.floor(Date.parse(p.createdAt) / 60000) && (
                     <p className={styles.meta}>
-                      Fecha del pedido: {fecha(p.fecha)}
+                      Fecha del pedido: {fechaConsulta(p.fecha, hoyBogota)}
                     </p>
                   )}
               </div>
@@ -288,7 +278,7 @@ export function OperacionConsulta({
                           dateStyle: "short",
                         }).format(new Date(p.entregadoAt)) +
                         " · hora sin verificar"
-                      : fecha(p.entregadoAt)
+                      : fechaConsulta(p.entregadoAt, hoyBogota)
                     : p.entregasSinDetalle
                       ? "Fecha y responsable sin registrar."
                       : "El responsable se registra al entregar."}
