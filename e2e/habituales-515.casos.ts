@@ -385,9 +385,13 @@ export function definirCasosHabituales515() {
         .getByTestId(`habitual-${pt.id}`)
         .getByRole('link', { name: 'Ver y ajustar →' })
         .click()
-      await appMain(page)
-        .getByRole('checkbox', { name: 'Habitual activo', exact: true })
-        .uncheck()
+      await appMain(page).getByText('Habitual activo', { exact: true }).click()
+      await expect(
+        appMain(page).getByRole('checkbox', {
+          name: 'Habitual activo',
+          exact: true,
+        }),
+      ).not.toBeChecked()
       await appMain(page)
         .getByRole('button', { name: 'Guardar cambios', exact: true })
         .click()
@@ -408,9 +412,13 @@ export function definirCasosHabituales515() {
         .getByTestId(`habitual-${pt.id}`)
         .getByRole('link', { name: 'Ver y ajustar →' })
         .click()
-      await appMain(page)
-        .getByRole('checkbox', { name: 'Habitual activo', exact: true })
-        .check()
+      await appMain(page).getByText('Habitual activo', { exact: true }).click()
+      await expect(
+        appMain(page).getByRole('checkbox', {
+          name: 'Habitual activo',
+          exact: true,
+        }),
+      ).toBeChecked()
       await appMain(page)
         .getByRole('button', { name: 'Guardar cambios', exact: true })
         .click()
