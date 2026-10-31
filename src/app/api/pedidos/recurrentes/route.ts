@@ -69,13 +69,9 @@ export async function POST(request: NextRequest) {
       return apiError('No se proporcionaron decisiones', 400)
     }
 
-    // FIX F-N14: el dedup por offlineId (como recurrenteBatchId) se movió
-    // a src/lib/recurrentes.ts:generarPedidosRecurrentes, al inicio de
-    // la función (antes del loop). Antes este check estaba aquí, fuera
-    // de la generación. Dos requests con mismo offlineId podían ambos
-    // pasar el findMany ([]), ambos entrar a la función, y ambos crear
-    // pedidos con el mismo recurrenteBatchId → doble pedido, doble
-    // factura, doble cobro.
+    // #515: la ruta valida la revisión; el motor conserva el manifiesto
+    // original y comprueba cada recibo dentro de su transacción. Que exista
+    // un pedido con esta referencia no demuestra que terminó todo el lote.
 
     // Race-guard: validate proxGeneracion hasn't shifted since preview.
     // limiteConfig (paso A8) no depende de plantillasActuales — se carga
@@ -216,18 +212,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // H-12 RESUELTO: `generarPedidosRecurrentes` (src/lib/recurrentes.ts:370)
-    // ahora corre CADA plantilla dentro de una transacción Serializable
-    // con reintentos en P2034 (write conflict). Esto cierra el LOST UPDATE
-    // en `plantillaRecurrente.ultimaGeneracion`/`proxGeneracion` y el
-    // race en `getNextNumero` (PostgreSQL SSI valida la atomicidad).
-    //
-    // F-N14: el dedup por offlineId → recurrenteBatchId está al INICIO
-    // de la función (src/lib/recurrentes.ts). Las decisiones se ordenan
-    // por recurrenteId antes de iterar para evitar deadlocks cíclicos
-    // (admin vs cron procesando en órdenes distintos).
-    //
-    // Patrón alineado con src/app/api/cierre/route.ts:564-585.
+    // Una transacción Serializable por recurrencia y objetivos originales
+    // conservados entre reintentos. El motor ordena por recurrenteId para
+    // evitar ciclos y comprueba los recibos antes de ejecutar efectos.
     const resultado = await generarPedidosRecurrentes(decisiones, fecha, {
       recurrenteBatchId: offlineId,
       actor: { usuarioId, proceso: 'hub' },
