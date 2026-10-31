@@ -51,14 +51,6 @@ export function AdminUserCard({
                 Autoriza crédito
               </span>
             )}
-            {user.puedeAutorizarReduccionComercial && (
-              <span
-                data-testid="badge-autoriza-reduccion"
-                className="text-xs font-semibold px-2.5 py-1 rounded-full bg-sky-100 text-sky-800"
-              >
-                Autoriza reducciones
-              </span>
-            )}
           </div>
         </div>
       </div>

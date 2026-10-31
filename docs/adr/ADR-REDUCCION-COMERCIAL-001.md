@@ -35,11 +35,9 @@ El cliente pidió 20, recibió 15 y decide no comprar las 5 restantes. Hoy el pe
 - La numeración usa la secuencia `nota_credito_numero_seq` (`NC-00001…`), que no se reutiliza ni se bloquea.
 - Las notas de crédito cuentan para la señal «muchas notas por cliente» de las alertas; una reducción aplicada suma una nota.
 
-## Interfaz (flag `NEXT_PUBLIC_CIERRE_V2`, apagado)
+## Interfaz (pendiente de maqueta)
 
-- Detalle del pedido: panel «Reducir el pedido» junto a la corrección de precio. Muestra lo pendiente por línea, el efecto exacto en el total y la nota de crédito, avisa del sobrepago antes de enviar y el botón dice «Aplicar» o «Pedir autorización» según el permiso.
-- Administración de usuarios: casilla «Puede autorizar reducciones de pedido» (ADMIN/ASISTENTE) y distintivo en la tarjeta.
-- La pantalla de cierre de embarque no cambia (la opción de reducción de la Fase A sigue mostrando «Pendiente de autorización en oficina»); la reducción se registra desde el pedido.
+Esta entrega es solo servidor. Por la regla del PO del 2026-10-27, la interfaz (panel «Reducir el pedido» en el detalle del pedido y la casilla «Puede autorizar reducciones de pedido» en Administración → Usuarios) no se implementa hasta que el PO apruebe una maqueta de escritorio y móvil con sus estados de confirmación, carga y error. El permiso se puede asignar mientras tanto con `PUT /api/users/[id]` (`puedeAutorizarReduccionComercial`). Hay una versión ya probada de ambos componentes en la rama local `wip-451-ui`, que no se publica.
 
 ## Implementación
 
@@ -50,11 +48,10 @@ El cliente pidió 20, recibió 15 y decide no comprar las 5 restantes. Hoy el pe
 | Casos de uso | `…/use-cases/ReduccionComercialUseCases.ts` |
 | Tabla `PedidoReduccionComercial` + `User.puedeAutorizarReduccionComercial` (aditiva, idempotente) | `prisma/migrations/20261031_pedido_reduccion_comercial/` |
 | API | `…/api/pedidos/[id]/reducir-pedido`, `…/reducciones-comerciales`, `…/api/pedidos/reducciones-comerciales/[id]`, `PUT /api/users/[id]` |
-| UI | `src/components/reduccion-comercial/reduccion-comercial-panel.tsx`, `admin-user-form-modal.tsx` |
-| Pruebas | `reduccion-comercial.test.ts` y `reduccion-comercial-http.test.ts` (Postgres real), `reduccion-comercial.service.test.ts`, `reduccion-comercial-http.test.ts` (mapeo), `cierre-totales.test.ts`, `reduccion-comercial-panel.test.tsx`, `admin-user-form-modal-reduccion.test.tsx` |
+| Pruebas | `reduccion-comercial.test.ts` y `reduccion-comercial-http.test.ts` (Postgres real), `reduccion-comercial.service.test.ts`, `reduccion-comercial-http.test.ts` (mapeo), `cierre-totales.test.ts` |
 
 ## Consecuencias
 
 - La migración es solo aditiva: se aplica en producción **antes** del merge (AGENTS.md, paso 7).
-- Nadie tiene el permiso al desplegar: un ADMIN debe dárselo a quien corresponda desde Administración → Usuarios antes de que alguien pueda aplicar. Mientras tanto las solicitudes quedan pendientes.
+- Nadie tiene el permiso al desplegar y aún no hay pantalla para asignarlo ni para registrar reducciones: hasta que se apruebe la maqueta, solo se usa la API.
 - Sigue pendiente: el caso «pagó de más» (requiere reversión de pagos y acreditar a `Cliente.saldoFavor`).
