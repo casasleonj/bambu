@@ -1098,6 +1098,7 @@ export const UserUpdateSchema = z.object({
   nombre: z.string().min(1, 'Nombre requerido').max(100).optional(),
   apellido: z.string().max(100).optional(),
   puedeAutorizarExcepcionCredito: z.boolean().optional(),
+  puedeAutorizarReduccionComercial: z.boolean().optional(),
 })
 
 // ====================
