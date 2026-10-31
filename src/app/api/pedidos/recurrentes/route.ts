@@ -212,8 +212,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Una transacción Serializable por recurrencia y objetivos originales
-    // conservados entre reintentos. El motor ordena por recurrenteId para
+    // H-12 RESUELTO: Serializable evita LOST UPDATE; se conservan además
+    // los objetivos originales de cada recurrencia entre reintentos.
+    // El motor ordena por recurrenteId para
     // evitar ciclos y comprueba los recibos antes de ejecutar efectos.
     const resultado = await generarPedidosRecurrentes(decisiones, fecha, {
       recurrenteBatchId: offlineId,
