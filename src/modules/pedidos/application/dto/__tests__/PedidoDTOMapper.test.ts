@@ -42,14 +42,17 @@ function makePedidoFixture(canal: 'PUNTO' | 'DOMICILIO' = 'DOMICILIO'): Pedido {
 }
 
 describe('PedidoDTOMapper.toResumen — pagoReportadoPendiente (ADR-PAGO-REPORTADO-CONFIRMADO-001 §5)', () => {
-  function conPagos(pagos: Array<{ metodo: 'NEQUI' | 'EFECTIVO'; monto: number; confirmacion?: string }>): Pedido {
+  function conPagos(
+    pagos: Array<{ metodo: 'NEQUI' | 'EFECTIVO'; monto: number; confirmacion?: string }>,
+    estadoEntrega: 'ENTREGADO' | 'ANULADO' | 'CANCELADO' = 'ENTREGADO',
+  ): Pedido {
     return Pedido.create({
       id: PedidoId.from('ped_x'),
       numero: 1,
       clienteId: 'c',
       canal: CanalVO.from('DOMICILIO'),
       origen: OrigenPedidoVO.from('PEDIDO'),
-      estadoEntrega: EstadoEntregaVO.from('ENTREGADO'),
+      estadoEntrega: EstadoEntregaVO.from(estadoEntrega),
       estadoPago: EstadoPagoVO.from('PAGADO'),
       items: [new PedidoItem('PACA_AGUA' as ProductCode, 1, Money.fromDecimal(10000), 'base', 1)],
       total: Money.fromDecimal(10000),
@@ -69,6 +72,15 @@ describe('PedidoDTOMapper.toResumen — pagoReportadoPendiente (ADR-PAGO-REPORTA
     const dto = PedidoDTOMapper.toResumen(conPagos([{ metodo: 'NEQUI', monto: 10000, confirmacion: 'DISCREPANTE' }]))
     expect(dto.pagoDiscrepante).toBe(true)
     expect(dto.pagoReportadoPendiente).toBe(false)
+  })
+
+  it('#517: un pedido anulado o cancelado no tiene nada por confirmar aunque sus pagos sigan REPORTADO/DISCREPANTE', () => {
+    for (const estado of ['ANULADO', 'CANCELADO'] as const) {
+      const reportado = PedidoDTOMapper.toResumen(conPagos([{ metodo: 'NEQUI', monto: 10000, confirmacion: 'REPORTADO' }], estado))
+      expect(reportado.pagoReportadoPendiente).toBe(false)
+      const discrepante = PedidoDTOMapper.toResumen(conPagos([{ metodo: 'NEQUI', monto: 10000, confirmacion: 'DISCREPANTE' }], estado))
+      expect(discrepante.pagoDiscrepante).toBe(false)
+    }
   })
 
   it('ambos false si todos CONFIRMADO (o sin confirmacion) o sin pagos', () => {
