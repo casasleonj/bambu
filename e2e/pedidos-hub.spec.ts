@@ -1142,3 +1142,4 @@ test.describe('flag OFF: la UI de tabs sigue funcionando', () => {
 
 // La misma suite CI Hub incluye los recorridos de consulta aprobados.
 import './pedidos-consulta-516.casos'
+import './pedidos-consulta-resumen-537.casos'
