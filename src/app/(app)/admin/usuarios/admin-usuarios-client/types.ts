@@ -6,6 +6,7 @@ export interface AdminUser {
   rol: string
   activo: boolean
   puedeAutorizarExcepcionCredito?: boolean
+  puedeAutorizarReduccionComercial?: boolean
   createdAt: string
   trabajador?: { nombre: string } | null
 }

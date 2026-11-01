@@ -129,6 +129,31 @@ describe('Reducción comercial — HTTP (#451)', () => {
     expect(lista.body.reducciones[0]).toMatchObject({ estado: 'APLICADA', monto: 12500, notaCredito: { numero: expect.stringMatching(/^NC-/) } })
   })
 
+  it('GET devuelve lo que la pantalla propone sin pedírselo al usuario: titular, tienda, contactos y quién consulta (#541)', async () => {
+    const id = await crearPedido()
+    const cli = await testPrisma.cliente.findUniqueOrThrow({ where: { id: clienteId } })
+    await testPrisma.contactoCliente.createMany({
+      data: [
+        { clienteId, nombre: 'Zoila Ruiz', telefono: `3${uniqueId('t').replace(/\D/g, '').slice(0, 9).padEnd(9, '1')}`, relacion: 'Encargada' },
+        { clienteId, nombre: 'Aurelio Mora', telefono: `3${uniqueId('u').replace(/\D/g, '').slice(0, 9).padEnd(9, '2')}`, relacion: null },
+      ],
+    })
+    sesion('asistente', 'ASISTENTE')
+    const r = await get(id)
+    expect(r.status).toBe(200)
+    expect(r.body.cliente.titular).toBe([cli.nombre, cli.apellido].filter(Boolean).join(' ').trim())
+    expect(r.body.cliente.tienda).toBeNull()
+    expect(r.body.cliente.contactos.map((c: { nombre: string }) => c.nombre)).toEqual(['Aurelio Mora', 'Zoila Ruiz'])
+    expect(r.body.cliente.contactos[1]).toMatchObject({ relacion: 'Encargada' })
+    const asistente = await testPrisma.user.findUniqueOrThrow({ where: { id: ids.asistente } })
+    expect(r.body.yo.nombre).toBe([asistente.nombre, asistente.apellido].filter(Boolean).join(' ').trim())
+  })
+
+  it('GET de un pedido inexistente responde 404', async () => {
+    sesion('asistente', 'ASISTENTE')
+    expect((await get('no-existe')).status).toBe(404)
+  })
+
   it('GET informa puedeAutorizar=false a quien no tiene el permiso', async () => {
     const id = await crearPedido()
     sesion('asistente', 'ASISTENTE')

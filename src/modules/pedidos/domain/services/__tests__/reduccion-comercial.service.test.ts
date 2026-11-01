@@ -7,6 +7,7 @@ import {
   puedeAutorizarReduccion,
   puedeSolicitarReduccion,
   repartirReduccionBotellon,
+  topeReduccion,
 } from '../reduccion-comercial.service'
 
 const base = { total: 50000, totalPagado: 0, cantPedido: 20, cantEntrega: 15, precio: 2500, cantidadReducida: 5, unidadesOtrasLineas: 0 }
@@ -89,5 +90,38 @@ describe('repartirReduccionBotellon', () => {
   })
   it('nunca baja de lo entregado', () => {
     expect(() => repartirReduccionBotellon(p, 4)).toThrow('REDUCCION_SOBRE_ENTREGADO')
+  })
+})
+
+describe('topeReduccion', () => {
+  const b = { total: 50000, totalPagado: 0, cantPedido: 20, cantEntrega: 15, precio: 2500, unidadesOtrasLineas: 0 }
+  it('sin pago, el tope es lo pendiente', () => {
+    expect(topeReduccion(b)).toBe(5)
+  })
+  it('con pago parcial que no limita, sigue siendo lo pendiente', () => {
+    expect(topeReduccion({ ...b, totalPagado: 20000 })).toBe(5)
+  })
+  it('con $40.000 pagados el tope baja a 4 (el nuevo total no puede quedar por debajo)', () => {
+    expect(topeReduccion({ ...b, totalPagado: 40000 })).toBe(4)
+  })
+  it('pagado completo → 0', () => {
+    expect(topeReduccion({ ...b, totalPagado: 50000 })).toBe(0)
+  })
+  it('todo entregado → 0', () => {
+    expect(topeReduccion({ ...b, cantEntrega: 20 })).toBe(0)
+  })
+  it('coincide con calcularReduccion: el tope se acepta y tope + 1 se rechaza', () => {
+    for (const totalPagado of [0, 12500, 37500, 40000, 47500, 50000]) {
+      const tope = topeReduccion({ ...b, totalPagado })
+      if (tope > 0) expect(() => calcularReduccion({ ...b, totalPagado, cantidadReducida: tope })).not.toThrow()
+      if (tope < 5) expect(() => calcularReduccion({ ...b, totalPagado, cantidadReducida: tope + 1 })).toThrow()
+    }
+  })
+  it('el pedido no puede quedar sin unidades', () => {
+    expect(topeReduccion({ ...b, cantEntrega: 0, cantPedido: 3, total: 7500 })).toBe(2)
+    expect(topeReduccion({ ...b, cantEntrega: 0, cantPedido: 3, total: 7500, unidadesOtrasLineas: 2 })).toBe(3)
+  })
+  it('usa centavos: 3 × $0,10', () => {
+    expect(topeReduccion({ total: 10, totalPagado: 9.7, cantPedido: 5, cantEntrega: 0, precio: 0.1, unidadesOtrasLineas: 0 })).toBe(3)
   })
 })

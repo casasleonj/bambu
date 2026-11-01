@@ -35,9 +35,24 @@ El cliente pidió 20, recibió 15 y decide no comprar las 5 restantes. Hoy el pe
 - La numeración usa la secuencia `nota_credito_numero_seq` (`NC-00001…`), que no se reutiliza ni se bloquea.
 - Las notas de crédito cuentan para la señal «muchas notas por cliente» de las alertas; una reducción aplicada suma una nota.
 
-## Interfaz (pendiente de maqueta)
+## Interfaz (maqueta v2 aprobada por el PO el 2026-11-01, #541)
 
-Esta entrega es solo servidor. Por la regla del PO del 2026-10-27, la interfaz (panel «Reducir el pedido» en el detalle del pedido y la casilla «Puede autorizar reducciones de pedido» en Administración → Usuarios) no se implementa hasta que el PO apruebe una maqueta de escritorio y móvil con sus estados de confirmación, carga y error. El permiso se puede asignar mientras tanto con `PUT /api/users/[id]` (`puedeAutorizarReduccionComercial`). Hay una versión ya probada de ambos componentes en la rama local `wip-451-ui`, que no se publica.
+Flag `NEXT_PUBLIC_CIERRE_V2` (apagado). El principio: el sistema completa lo que ya sabe y el usuario decide solo lo que no se puede inferir.
+
+| Dato | Quién lo resuelve |
+|---|---|
+| Tienda y titular del pedido | Sistema (tienda arriba y «de» el titular, la regla de toda la app) |
+| Producto | Sistema: viene elegido si hay una sola línea con algo por entregar |
+| Cantidad | Sistema propone «todo lo pendiente»; se ajusta con − y +. El tope sale de lo pendiente y de lo ya pagado (`topeReduccion`, misma regla que `calcularReduccion`), así el error de sobrepago casi no puede aparecer |
+| Precio, valor, nota de crédito, saldo, quién registra, fecha | Sistema, en una línea de solo lectura |
+| Quién lo aceptó | Sistema propone el titular; se cambia por un contacto del cliente (con su relación) o «Otra persona» |
+| Cómo lo dijo | Usuario, **sin valor por defecto**: es lo único que prueba el consentimiento |
+| Motivo | Usuario, con tres atajos y «Otro…» |
+
+- Detalle del pedido: panel «Reducir el pedido» junto a «Corrección de precio». Pasos: formulario → confirmación con antes y después (en un diálogo) → aplicar. Estados de carga, éxito, solicitud pendiente («Esperando a quien autoriza»), límites (tope por lo pagado, pedido pagado por completo), errores (línea cambiada, sin conexión con la misma clave de reintento), autorizar y rechazar con nota opcional.
+- `GET /api/pedidos/[id]/reducciones-comerciales` devuelve además el titular, la tienda, los contactos y quién consulta.
+- Administración → Usuarios: casilla «Puede autorizar reducciones de pedido» (ADMIN/ASISTENTE) y etiqueta «Autoriza reducciones» en la tarjeta.
+- La pantalla de cierre de embarque no cambia: la reducción se registra desde el pedido.
 
 ## Implementación
 
@@ -48,10 +63,11 @@ Esta entrega es solo servidor. Por la regla del PO del 2026-10-27, la interfaz (
 | Casos de uso | `…/use-cases/ReduccionComercialUseCases.ts` |
 | Tabla `PedidoReduccionComercial` + `User.puedeAutorizarReduccionComercial` (aditiva, idempotente) | `prisma/migrations/20261031_pedido_reduccion_comercial/` |
 | API | `…/api/pedidos/[id]/reducir-pedido`, `…/reducciones-comerciales`, `…/api/pedidos/reducciones-comerciales/[id]`, `PUT /api/users/[id]` |
-| Pruebas | `reduccion-comercial.test.ts` y `reduccion-comercial-http.test.ts` (Postgres real), `reduccion-comercial.service.test.ts`, `reduccion-comercial-http.test.ts` (mapeo), `cierre-totales.test.ts` |
+| UI | `src/components/reduccion-comercial/reduccion-comercial-panel.tsx`, `admin-user-form-modal.tsx`, `admin-user-card.tsx` |
+| Pruebas | `reduccion-comercial.test.ts` y `reduccion-comercial-http.test.ts` (Postgres real), `reduccion-comercial.service.test.ts`, `reduccion-comercial-http.test.ts` (mapeo), `cierre-totales.test.ts`, `reduccion-comercial-panel.test.tsx`, `admin-user-form-modal-reduccion.test.tsx` |
 
 ## Consecuencias
 
 - La migración es solo aditiva: se aplica en producción **antes** del merge (AGENTS.md, paso 7).
-- Nadie tiene el permiso al desplegar y aún no hay pantalla para asignarlo ni para registrar reducciones: hasta que se apruebe la maqueta, solo se usa la API.
+- Nadie tiene el permiso al desplegar: un ADMIN debe asignarlo desde Administración → Usuarios. La interfaz no se ve hasta encender `NEXT_PUBLIC_CIERRE_V2`.
 - Sigue pendiente: el caso «pagó de más» (requiere reversión de pagos y acreditar a `Cliente.saldoFavor`).

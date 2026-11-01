@@ -1,6 +1,7 @@
 'use client'
 
 import { CorreccionPrecioPanel } from '@/components/correccion-precio/correccion-precio-panel'
+import { ReduccionComercialPanel } from '@/components/reduccion-comercial/reduccion-comercial-panel'
 import { cierreV2Enabled } from '@/lib/flags'
 import { canReadFacturas } from '@/lib/permissions'
 import Link from 'next/link'
@@ -273,6 +274,17 @@ export function PedidoDetalle({
                 lineas={items.map((i) => ({ producto: i.producto, cantPedido: i.cantPedido, precio: Number(i.precio) }))}
                 userRole={userRole}
                 corregible={pedido.estadoEntrega !== 'CANCELADO' && pedido.estadoEntrega !== 'ANULADO'}
+              />
+            )}
+
+            {cierreV2Enabled() && (
+              <ReduccionComercialPanel
+                pedidoId={pedido.id}
+                lineas={(pedido.items ?? []).map((i) => ({ producto: i.producto, cantPedido: i.cantPedido, cantEntrega: i.cantEntrega, precio: Number(i.precio) }))}
+                userRole={userRole}
+                reducible={pedido.estadoEntrega !== 'CANCELADO' && pedido.estadoEntrega !== 'ANULADO'}
+                total={total}
+                totalPagado={pagado}
               />
             )}
 

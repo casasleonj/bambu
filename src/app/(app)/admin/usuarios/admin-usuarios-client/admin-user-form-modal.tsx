@@ -33,6 +33,7 @@ export function AdminUserFormModal({
   const [rol, setRol] = useState('ASISTENTE')
   const [activo, setActivo] = useState(true)
   const [puedeAutorizar, setPuedeAutorizar] = useState(false)
+  const [puedeAutorizarReduccion, setPuedeAutorizarReduccion] = useState(false)
   const [password, setPassword] = useState('')
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -53,6 +54,7 @@ export function AdminUserFormModal({
       setRol('ASISTENTE')
       setActivo(true)
       setPuedeAutorizar(false)
+      setPuedeAutorizarReduccion(false)
       setPassword('')
     } else {
       setIsCreate(false)
@@ -62,6 +64,7 @@ export function AdminUserFormModal({
       setRol(user.rol)
       setActivo(user.activo)
       setPuedeAutorizar(user.puedeAutorizarExcepcionCredito === true)
+      setPuedeAutorizarReduccion(user.puedeAutorizarReduccionComercial === true)
       setPassword('')
     }
     setFormError('')
@@ -108,6 +111,10 @@ export function AdminUserFormModal({
         const puedeFinal = rolPuedeAutorizar(rol) && puedeAutorizar
         if (puedeFinal !== (user!.puedeAutorizarExcepcionCredito === true) && rolPuedeAutorizar(rol)) {
           body.puedeAutorizarExcepcionCredito = puedeFinal
+        }
+        const reduccionFinal = rolPuedeAutorizar(rol) && puedeAutorizarReduccion
+        if (reduccionFinal !== (user!.puedeAutorizarReduccionComercial === true) && rolPuedeAutorizar(rol)) {
+          body.puedeAutorizarReduccionComercial = reduccionFinal
         }
         if (password) body.password = password
 
@@ -221,6 +228,26 @@ export function AdminUserFormModal({
                 {MENSAJES_AUTORIZADOR.ULTIMO_AUTORIZADOR}
               </p>
             )}
+          </div>
+        )}
+        {!isCreate && rolPuedeAutorizar(rol) && (
+          <div data-testid="bloque-autoriza-reduccion" className="space-y-1">
+            <div className="flex items-center gap-2">
+              <input
+                id="user-autoriza-reduccion"
+                data-testid="check-autoriza-reduccion"
+                type="checkbox"
+                checked={puedeAutorizarReduccion}
+                onChange={(e) => setPuedeAutorizarReduccion(e.target.checked)}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+              />
+              <label htmlFor="user-autoriza-reduccion" className="text-sm font-medium text-gray-700">
+                Puede autorizar reducciones de pedido
+              </label>
+            </div>
+            <p className="text-xs text-gray-500">
+              Podrá aplicar o rechazar que un cliente ya no reciba parte de lo pedido (baja el total y emite una nota de crédito).
+            </p>
           </div>
         )}
         {!isCreate && !rolPuedeAutorizar(rol) && user?.puedeAutorizarExcepcionCredito && (
