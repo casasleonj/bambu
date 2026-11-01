@@ -133,6 +133,82 @@ describe('#472 — entrega de oficina sin embarque (Postgres real)', () => {
     expect(await violaciones(id)).toEqual([])
   })
 
+  it('#498 cobro mixto (efectivo + transferencia): un Pago por medio, mismo receptor y fecha, pagado completo y sin violaciones', async () => {
+    const id = await crearPedido()
+    const total = Number((await fila(id)).total)
+    const efectivo = Math.round(total * 0.6)
+    const transferencia = total - efectivo
+    const r = await post(id, {
+      repartidorId, recibioDinero: 'OFICINA', fechaEntrega: mediodia(diaBogota(1)), precisionFecha: 'DIA',
+      pagos: [{ metodo: 'EFECTIVO', monto: efectivo }, { metodo: 'TRANSFERENCIA', monto: transferencia }],
+    })
+    expect(r.status).toBe(200)
+
+    const p = await fila(id)
+    expect(p.estadoEntrega).toBe('ENTREGADO')
+    expect(p.estadoPago).toBe('PAGADO')
+    expect(Number(p.saldo)).toBe(0)
+    expect(Number(p.totalPagado)).toBe(total)
+
+    const ps = await pagos(id)
+    expect(ps).toHaveLength(2)
+    expect(ps.map((x) => x.metodo).sort()).toEqual(['EFECTIVO', 'TRANSFERENCIA'])
+    expect(Number(ps.find((x) => x.metodo === 'EFECTIVO')!.monto)).toBe(efectivo)
+    expect(Number(ps.find((x) => x.metodo === 'TRANSFERENCIA')!.monto)).toBe(transferencia)
+    // una sola persona recibió el dinero completo y la fecha del hecho es la misma
+    expect(new Set(ps.map((x) => x.recibidoPorId)).size).toBe(1)
+    expect(ps[0].recibidoPorId).toBeNull() // OFICINA: no queda a nombre del repartidor
+    expect(new Set(ps.map((x) => x.ocurridoAt?.toISOString() ?? null)).size).toBe(1)
+    expect(ps[0].ocurridoAt).not.toBeNull()
+    // el libro registra UN cobro por entrega, con la suma de los medios
+    const libro = await testPrisma.receivableEntry.findMany({ where: { pedidoId: id, tipo: 'PAGO' } })
+    expect(libro).toHaveLength(1)
+    expect(Number(libro[0].monto)).toBe(total)
+    expect(await violaciones(id)).toEqual([])
+  })
+
+  it('#498 cobro mixto parcial: la suma de los medios queda como pagado y el resto como deuda', async () => {
+    const id = await crearPedido()
+    const total = Number((await fila(id)).total)
+    const manana = diaBogota(-3)
+    const r = await post(id, {
+      repartidorId, recibioDinero: 'REPARTIDOR', promesaPagoFecha: manana,
+      pagos: [{ metodo: 'EFECTIVO', monto: 10000 }, { metodo: 'NEQUI', monto: 5000 }],
+    })
+    expect(r.status).toBe(200)
+    const p = await fila(id)
+    expect(Number(p.totalPagado)).toBe(15000)
+    expect(Number(p.saldo)).toBe(total - 15000)
+    expect(p.estadoPago).toBe('PARCIAL')
+    const ps = await pagos(id)
+    expect(ps).toHaveLength(2)
+    expect(ps.every((x) => x.recibidoPorId === repartidorId)).toBe(true)
+    expect(await violaciones(id)).toEqual([])
+  })
+
+  it('#498 un cobro mixto que en suma pasa lo debido se rechaza y no deja pagos a medias', async () => {
+    const id = await crearPedido()
+    const total = Number((await fila(id)).total)
+    const r = await post(id, {
+      repartidorId, recibioDinero: 'REPARTIDOR',
+      pagos: [{ metodo: 'EFECTIVO', monto: total }, { metodo: 'NEQUI', monto: 1000 }],
+    })
+    expect(r.status).toBeGreaterThanOrEqual(400)
+    expect(await pagos(id)).toHaveLength(0)
+    expect((await fila(id)).estadoEntrega).not.toBe('ENTREGADO')
+  })
+
+  it('#498 reintentar un cobro mixto con la misma clave no duplica ningún pago', async () => {
+    const id = await crearPedido()
+    const total = Number((await fila(id)).total)
+    const cuerpo = { offlineId: unico(), repartidorId, recibioDinero: 'OFICINA', pagos: [{ metodo: 'EFECTIVO', monto: total - 5000 }, { metodo: 'DAVIPLATA', monto: 5000 }] }
+    expect((await post(id, cuerpo)).status).toBe(200)
+    const otra = await post(id, cuerpo)
+    expect(otra.status).toBe(200)
+    expect(otra.body.deduped).toBe(true)
+    expect(await pagos(id)).toHaveLength(2)
+  })
+
   it('el dinero que se pagó en la oficina NO queda a nombre del repartidor', async () => {
     const id = await crearPedido()
     const total = Number((await fila(id)).total)

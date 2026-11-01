@@ -11,8 +11,10 @@ import {
   armarPayload,
   completa,
   datosIniciales,
+  erroresLineas,
   hayErrores,
   hoyBogota,
+  METODOS_COBRO,
   montoNumero,
   pendientes,
   pesos,
@@ -23,6 +25,7 @@ import {
   DIAS_MAX_ATRAS,
   CLIENTE_ANONIMO,
   type DatosEntrega,
+  type LineaCobro,
   type MetodoCobro,
   type PedidoParaEntrega,
   type Repartidor,
@@ -75,6 +78,19 @@ export function RegistrarEntregaDialog({ pedido, repartidores, onClose, onRegist
   const hoy = hoyBogota()
 
   const set = <K extends keyof DatosEntrega>(k: K, v: DatosEntrega[K]) => setDatos((d) => ({ ...d, [k]: v }))
+
+  // #498: el cobro tiene una línea por medio de pago.
+  const erroresDeLineas = erroresLineas(datos)
+  const mediosUsados = new Set(datos.lineas.map((l) => l.metodo))
+  const medioLibre = METODOS_COBRO.find((m) => !mediosUsados.has(m.valor))?.valor
+  const cambiarLinea = (i: number, cambios: Partial<LineaCobro>) =>
+    setDatos((d) => ({ ...d, lineas: d.lineas.map((l, j) => (j === i ? { ...l, ...cambios } : l)) }))
+  const agregarLinea = () => {
+    if (!medioLibre) return
+    setDatos((d) => ({ ...d, lineas: [...d.lineas, { metodo: medioLibre, monto: '' }] }))
+  }
+  const quitarLinea = (i: number) =>
+    setDatos((d) => ({ ...d, lineas: d.lineas.length > 1 ? d.lineas.filter((_, j) => j !== i) : d.lineas }))
 
   function revisar() {
     setIntento(true)
@@ -191,17 +207,74 @@ export function RegistrarEntregaDialog({ pedido, repartidores, onClose, onRegist
             </section>
 
             <section className={`${TARJETA} flex flex-col gap-3`}>
-              <div>
-                <label htmlFor="re-monto" className={ETIQUETA}>¿Cuánto dinero se recibió?</label>
-                <input
-                  id="re-monto"
-                  className={CAMPO}
-                  inputMode="numeric"
-                  placeholder="$0"
-                  value={datos.monto}
-                  onChange={(e) => set('monto', e.target.value)}
-                />
+              <div data-testid="re-cobro">
+                <span className={ETIQUETA}>¿Cuánto dinero se recibió y con qué medios?</span>
+                <div className="flex flex-col gap-2">
+                  {datos.lineas.map((l, i) => (
+                    <div key={i} data-testid={`re-linea-${i}`}>
+                      <div className="grid grid-cols-[1.3fr_1fr_44px] items-end gap-2">
+                        <div>
+                          <label htmlFor={`re-metodo-${i}`} className="mb-1 block text-xs text-gray-600">Medio</label>
+                          <select
+                            id={`re-metodo-${i}`}
+                            className={CAMPO}
+                            value={l.metodo}
+                            onChange={(e) => cambiarLinea(i, { metodo: e.target.value as MetodoCobro })}
+                          >
+                            {METODOS_COBRO.map((m) => <option key={m.valor} value={m.valor}>{m.etiqueta}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label htmlFor={`re-monto-${i}`} className="mb-1 block text-xs text-gray-600">Monto{datos.lineas.length > 1 ? '' : ' recibido'}</label>
+                          <input
+                            id={`re-monto-${i}`}
+                            className={`${CAMPO} ${intento && erroresDeLineas[i] ? 'border-red-400 bg-red-50' : ''}`}
+                            inputMode="numeric"
+                            placeholder="$0"
+                            value={l.monto}
+                            aria-invalid={intento && erroresDeLineas[i] ? true : undefined}
+                            onChange={(e) => cambiarLinea(i, { monto: e.target.value })}
+                          />
+                        </div>
+                        {datos.lineas.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => quitarLinea(i)}
+                            aria-label={`Quitar la línea de ${METODOS_COBRO.find((m) => m.valor === l.metodo)?.etiqueta ?? 'pago'}`}
+                            data-testid={`re-quitar-${i}`}
+                            className="min-h-[44px] rounded-lg border border-gray-300 bg-white text-base text-gray-600"
+                          >
+                            ✕
+                          </button>
+                        ) : <span />}
+                      </div>
+                      {erroresDeLineas[i] && <p className={ERROR} data-testid={`re-linea-error-${i}`}>{erroresDeLineas[i]}</p>}
+                    </div>
+                  ))}
+                </div>
+                {medioLibre && (
+                  <button
+                    type="button"
+                    onClick={agregarLinea}
+                    data-testid="re-agregar-medio"
+                    className="mt-1 min-h-[44px] text-sm font-semibold text-blue-700 hover:underline"
+                  >
+                    + Agregar otro medio
+                  </button>
+                )}
                 <p className={AYUDA}>Se debe {pesos(saldo)}. Déjalo vacío si no se recibió nada.</p>
+                {monto > 0 && (
+                  <p
+                    className={`mt-1 flex justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${monto > saldo ? 'border-red-300 bg-red-50 text-red-800' : 'border-gray-200 bg-gray-50 text-gray-900'}`}
+                    data-testid="re-recibido"
+                  >
+                    <span>Recibido</span>
+                    <b>
+                      {pesos(monto)} de {pesos(saldo)} ·{' '}
+                      {monto > saldo ? `se pasa por ${pesos(monto - saldo)}` : monto === saldo ? 'pagado completo' : `quedan ${pesos(saldo - monto)}`}
+                    </b>
+                  </p>
+                )}
                 {intento && errores.monto && <p className={ERROR}>{errores.monto}</p>}
               </div>
               {monto > 0 && (
@@ -218,15 +291,6 @@ export function RegistrarEntregaDialog({ pedido, repartidores, onClose, onRegist
                     </div>
                     <p className={AYUDA}>No viene marcada para evitar errores.</p>
                     {intento && errores.quienRecibio && <p className={ERROR}>{errores.quienRecibio}</p>}
-                  </div>
-                  <div>
-                    <label htmlFor="re-metodo" className={ETIQUETA}>Forma de pago</label>
-                    <select id="re-metodo" className={CAMPO} value={datos.metodo} onChange={(e) => set('metodo', e.target.value as MetodoCobro)}>
-                      <option value="EFECTIVO">Efectivo</option>
-                      <option value="TRANSFERENCIA">Transferencia</option>
-                      <option value="NEQUI">Nequi</option>
-                      <option value="DAVIPLATA">Daviplata</option>
-                    </select>
                   </div>
                 </>
               )}
