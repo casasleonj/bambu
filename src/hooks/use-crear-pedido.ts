@@ -69,6 +69,10 @@ export interface CrearPedidoPayload {
   offlineId?: string
   /** P0-3 (#357): excepción de crédito AUTORIZADA; el servidor la consume una sola vez. */
   excepcionId?: string
+  /** TEMPORAL-SIN-EMBARQUE(#535): repartidor que vendió en la calle (solo «venta en ruta»). */
+  vendidoPorId?: string
+  /** Fecha (YYYY-MM-DD) hasta la que promete pagar el cliente real que queda debiendo. */
+  promesaPagoFecha?: string
 }
 
 export interface CrearPedidoResult {

@@ -84,7 +84,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         entregaLng: null,
         guardarDireccionEnCliente: false,
         // CONSUMIDOR_FINAL ⇒ origen VENTA_RAPIDA (ventaRapida→origen, PO 2026-09-06)
-        origen: action.clienteId === 'CONSUMIDOR_FINAL' ? 'VENTA_RAPIDA' as const : 'PEDIDO' as const,
+        origen: action.clienteId === 'CONSUMIDOR_FINAL' || state.draft.ventaEnRuta ? 'VENTA_RAPIDA' as const : 'PEDIDO' as const,
         // sin comprador no hay «entregar después» (P2-2)
         ...(action.clienteId === 'CONSUMIDOR_FINAL' && state.draft.entregado === false ? { entregado: true } : {}),
       }
@@ -100,7 +100,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       // sin cliente existente seleccionado ni negocio.
       if (action.clienteNuevo) {
         return afterDraftChange(state, {
-          ...state.draft, clienteId: null, negocioId: null, origen: 'PEDIDO', clienteNuevo: action.clienteNuevo, excepcionId: undefined,
+          ...state.draft, clienteId: null, negocioId: null, origen: state.draft.ventaEnRuta ? 'VENTA_RAPIDA' : 'PEDIDO', clienteNuevo: action.clienteNuevo, excepcionId: undefined,
         })
       }
       return afterDraftChange(state, { ...state.draft, clienteNuevo: undefined })

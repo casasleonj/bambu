@@ -17,6 +17,7 @@ export type EntregaOficinaCodigo =
   | 'PROMESA_REQUERIDA'
   | 'PROMESA_PASADA'
   | 'SIN_UNIDADES'
+  | 'VENTA_EN_RUTA_INVALIDA'
 
 export class EntregaOficinaError extends Error {
   constructor(
@@ -45,4 +46,5 @@ export const ESTADO_HTTP_OFICINA: Record<EntregaOficinaCodigo, number> = {
   PROMESA_REQUERIDA: 422,
   PROMESA_PASADA: 422,
   SIN_UNIDADES: 422,
+  VENTA_EN_RUTA_INVALIDA: 422,
 }

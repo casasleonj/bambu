@@ -22,6 +22,8 @@ import { NotificationEventType } from '@/lib/notifications/event-types'
 import { pickCoords } from '@/lib/geo/pedido-coords'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 import { cargarEmbarquesLista, camposEmbarqueLista } from '@/lib/embarque-lista'
+import { gestionAdminSinEmbarqueActiva } from '@/lib/gestion-admin'
+import { EntregaOficinaError, ESTADO_HTTP_OFICINA } from '@/modules/pedidos/domain/services/entrega-oficina.errors'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -278,6 +280,8 @@ export async function POST(request: NextRequest) {
       pedidoOrigenId,
       offlineId,
       excepcionId,
+      vendidoPorId,
+      promesaPagoFecha,
     } = parsed.data
 
     // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: el toggle "entregar después" de la
@@ -291,6 +295,17 @@ export async function POST(request: NextRequest) {
         : process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR === 'true' ? entregado : undefined
 
     const pagosData = parsed.data.pagos || []
+
+    // TEMPORAL-SIN-EMBARQUE(#535): «venta en ruta». Solo el ADMIN y solo con la gestión
+    // directa encendida (mismo interruptor que la entrega de oficina, #472).
+    if (vendidoPorId) {
+      if ((authResult.user as { role?: string } | undefined)?.role !== ROLES.ADMIN) {
+        return apiError('Solo el administrador puede registrar una venta en ruta.', 403, { code: 'SOLO_ADMIN' })
+      }
+      if (!(await gestionAdminSinEmbarqueActiva())) {
+        return apiError('Esta función está desactivada por ahora. Consulta con el administrador del sistema.', 403, { code: 'FUNCION_DESACTIVADA' })
+      }
+    }
 
     // FIX F-N10: el dedup por offlineId se movió al CrearPedidoUseCase
     // (dentro del lock 'PEDIDO'). Antes este check estaba aquí, pero
@@ -339,6 +354,8 @@ export async function POST(request: NextRequest) {
       pedidoOrigenId,
       offlineId,
       excepcionId,
+      vendidoPorId,
+      promesaPagoFecha: promesaPagoFecha ? startOfDayBogota(promesaPagoFecha) : undefined,
       clienteNuevo: clienteNuevo ? {
         nombre: clienteNuevo.nombre,
         apellido: clienteNuevo.apellido,
@@ -403,6 +420,10 @@ export async function POST(request: NextRequest) {
       }
       logger.error({ err: error.message, code: error.code }, 'Error creating pedido (Prisma):')
       return apiError('Error de base de datos. Contactá a soporte.', 500, { code: error.code })
+    }
+
+    if (error instanceof EntregaOficinaError) {
+      return apiError(`${error.codigo}: ${error.message}`, ESTADO_HTTP_OFICINA[error.codigo], { code: error.codigo })
     }
 
     if (error instanceof Error) {

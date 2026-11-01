@@ -115,6 +115,10 @@ export interface PedidoUnifiedData {
   offlineId?: string
   /** P0-3 (#357): excepción de crédito autorizada que se consume al crear. */
   excepcionId?: string
+  /** TEMPORAL-SIN-EMBARQUE(#535): repartidor que vendió en la calle (solo «venta en ruta»). */
+  vendidoPorId?: string
+  /** Fecha (YYYY-MM-DD) hasta la que promete pagar el cliente real que queda debiendo. */
+  promesaPagoFecha?: string
 }
 
 // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: el toggle "entregar después" de la
