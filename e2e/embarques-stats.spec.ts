@@ -1,6 +1,6 @@
 // @tests embarques stats module - comprehensive E2E coverage
 import type { Page } from '@playwright/test'
-import { test, expect, loginAs, apiPost, apiGet, apiDelete, createCliente, BASE } from './fixtures'
+import { test, expect, loginAs, apiPost, apiPut, apiGet, apiDelete, createCliente, BASE } from './fixtures'
 
 async function embarquesLogin(page: Page) {
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
@@ -569,23 +569,65 @@ test.describe('Embarques Stats — UI Contenido del Tab', () => {
 })
 
 // ============================================================
-// UI — Duration Badge in Embarque Cards
+// UI — Duración de un embarque cerrado
 // ============================================================
 
-test.describe('Embarques Stats — UI Duration Badge', () => {
+/**
+ * La API de embarques recibe la salida como "HH:MM" del día de hoy en Bogotá (UTC-5, sin horario de
+ * verano) y la convierte con `new Date("<hoy>T<HH:MM>:00-05:00")`; una fecha ISO completa da "Invalid
+ * Date". Devuelve la hora de hace `minutos` minutos, o null si cruzaría la medianoche (la salida
+ * quedaría "mañana" y la duración sería negativa).
+ */
+function horaBogotaHace(minutos: number): string | null {
+  const ahora = new Date(Date.now() - 5 * 3_600_000)
+  const desdeMedianoche = ahora.getUTCHours() * 60 + ahora.getUTCMinutes()
+  if (desdeMedianoche < minutos + 2) return null
+  const salida = desdeMedianoche - minutos
+  return `${String(Math.floor(salida / 60)).padStart(2, '0')}:${String(salida % 60).padStart(2, '0')}`
+}
 
-  test('closed embarque card shows duration badge', async ({ page }) => {
+test.describe('Embarques Stats — UI Duracion de un embarque cerrado', () => {
+
+  test('closed embarque shows its duration in the stats detail table', async ({ page }) => {
     await embarquesLogin(page)
-    const trabajadorId = await createStatsRepartidor(page)
+    // Repartidor propio (con nombre único) para ubicar SU fila entre las demás de la tabla.
+    const nombre = `Stats Duracion ${Date.now()}`
+    const tRes = await page.request.post(`${BASE}/api/trabajadores`, {
+      data: { nombre, rol: 'REPARTIDOR', tipoPago: 'COMISION', usaMoto: true, capacidadKg: 500, comPacaAgua: 500, comPacaHielo: 300, comBotellon: 200, comRepartAgua: 500, comRepartHielo: 300, comRepartBotellon: 200 },
+    })
+    const trabajadorId = (await tRes.json()).trabajador?.id
     if (!trabajadorId) { test.skip(); return }
-    await createAndCloseEmbarque(page, trabajadorId, null, [], 'COMPLETO')
+
+    // Sale hace 45 minutos: la duración (llegada = momento del cierre) no depende de la velocidad del CI.
+    const horaSalida = horaBogotaHace(45)
+    test.skip(horaSalida === null, 'Entre las 00:00 y las 00:47 (Bogotá) no se puede simular una salida de hace 45 min el mismo día')
+    const eRes = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida, baseDinero: 0, carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
+    const eData = await eRes.json()
+    const embarqueId = eData.data?.id || eData.embarque?.id
+    expect(embarqueId, `no se creó el embarque: ${JSON.stringify(eData)}`).toBeTruthy()
+
+    // El cierre exige pasar antes a EN_RUTA (ABIERTO → CERRADO no es una transición válida).
+    const enRuta = await apiPut(page, `/api/embarques/${embarqueId}`, { estado: 'EN_RUTA' })
+    expect(enRuta.ok(), `no pasó a EN_RUTA: ${await enRuta.text()}`).toBe(true)
+    const cierre = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
+      pedidos: [], ventasLibres: [], productos: [{ producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 }], obs: 'Test duración',
+    })
+    const cierreData = await cierre.json()
+    // Falla en voz alta: antes un cierre fallido dejaba pasar la prueba por casualidad.
+    expect(cierreData.success, `el cierre falló: ${JSON.stringify(cierreData)}`).toBe(true)
+
+    // La tarjeta de la lista ya no muestra la duración (la insignia quedó sin uso); se ve en Estadísticas.
     await gotoEmbarques(page)
-    const cards = page.locator('[data-testid="embarque-card"]')
-    const count = await cards.count()
-    if (count > 0) {
-      const bodyText = await page.locator('body').textContent()
-      expect(bodyText).toMatch(/\d+m/)
-    }
+    await page.locator('button:has-text("Estadísticas")').click()
+    const fila = page.locator('table tbody tr').filter({ hasText: nombre }).filter({ hasText: 'CERRADO' })
+    await expect(fila).toHaveCount(1, { timeout: 15_000 })
+    // Columnas: # · Fecha · Repartidor · Ruta · Estado · Duración · Entregas.
+    const duracion = (await fila.locator('td').nth(5).innerText()).trim()
+    const minutos = /^(\d+)m$/.exec(duracion)
+    expect(minutos, `duración inesperada: «${duracion}»`).not.toBeNull()
+    // 45 min de salida a cierre (+ hasta 1 por los segundos que redondea la hora HH:MM + lo que tarda el propio test).
+    expect(Number(minutos?.[1])).toBeGreaterThanOrEqual(45)
+    expect(Number(minutos?.[1])).toBeLessThanOrEqual(49)
   })
 
   test('open embarque card does not show duration badge', async ({ page }) => {
