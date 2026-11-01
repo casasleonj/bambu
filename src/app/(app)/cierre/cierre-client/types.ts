@@ -124,6 +124,8 @@ export interface CierreData {
     comRepartidorHielo: number
     comRepartTotal: number
   } | null
+  /** #545: stock inicial (último cierre o Config) para días sin producción registrada */
+  stockInicialSugerido?: { stockIniAgua: number; stockIniHielo: number }
 
   // #499: comisiones del día calculadas por el servidor (repartidores con lo pagado y lo pendiente + sellador)
   comisionesAuto?: {

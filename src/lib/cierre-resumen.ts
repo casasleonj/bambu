@@ -4,6 +4,7 @@ import { whereEmbarquesPendientesCierreDia } from '@/lib/cierre-dia-embarques'
 import { comisionesDelCierre } from '@/lib/comision-pagada'
 import { resumirAbonosDelDia } from '@/lib/cobro-cartera'
 import { resumirVentasCierre } from '@/lib/cierre-totales'
+import { resolverStockInicial } from '@/lib/stock-inicial'
 
 type PagoMetodoMonto = { metodo: MetodoPago; monto: unknown }
 type DiasPreviosAgg = { _count: number; _sum: { monto: unknown } }
@@ -345,6 +346,8 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         bolsaAguaVendida,
         bolsaHieloVendida,
         produccion: produccionFlat,
+        // #545: stock inicial a mostrar cuando el día aún no tiene producción registrada
+        stockInicialSugerido: await resolverStockInicial(prisma),
         comisionesAuto: {
           sellador: comisionesAuto.sellador,
           pagadoRepartidores: comisionesAuto.pagadoRepartidores,

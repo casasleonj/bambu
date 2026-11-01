@@ -16,6 +16,8 @@ const tx = {
   embarque: { findMany: vi.fn(async () => []) },
   pedido: { findMany: vi.fn(async ({ where }: { where: { estadoEntrega: unknown } }) => typeof where.estadoEntrega === 'string' ? [] : ventas), groupBy: vi.fn(async () => []) },
   produccion: { findFirst: vi.fn(async () => null) },
+  cierreDia: { findFirst: vi.fn(async () => null) },
+  config: { findMany: vi.fn(async () => []) },
   gasto: { aggregate: vi.fn(async () => ({ _sum: { monto: 0 } })), groupBy: vi.fn(async () => []) },
   notaCredito: { findMany: vi.fn(async () => []) }, factura: { findMany: vi.fn(async () => []) },
   cliente: { count: vi.fn(async () => 0) }, descuentoRepartidor: { findMany: vi.fn(async () => []) },

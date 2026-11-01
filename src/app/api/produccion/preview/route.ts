@@ -4,6 +4,7 @@ import { requirePermission } from '@/lib/auth-check'
 import { getVentasDelDia } from '@/lib/ventas'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
+import { resolverStockInicial } from '@/lib/stock-inicial'
 import { startOfDayInBogota, endOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 
 export async function GET(request: NextRequest) {
@@ -20,8 +21,8 @@ export async function GET(request: NextRequest) {
     const startOfDay = startOfDayInBogota(fechaStr)
     const endOfDay = endOfDayInBogota(fechaStr)
 
-    const [ultimoCierre, ventas, embarquesCerrados, embarquesDelDia] = await Promise.all([
-      prisma.cierreDia.findFirst({ orderBy: { fecha: 'desc' } }),
+    const [stockInicial, ventas, embarquesCerrados, embarquesDelDia] = await Promise.all([
+      resolverStockInicial(prisma),
       getVentasDelDia(new Date(`${fechaStr}T12:00:00-05:00`)),
       prisma.embarque.findMany({
         where: {
@@ -78,8 +79,8 @@ export async function GET(request: NextRequest) {
     const repartidores = Array.from(repMap.values())
 
     return apiSuccess({
-      stockIniAgua: ultimoCierre?.stockFinAgua || 0,
-      stockIniHielo: ultimoCierre?.stockFinHielo || 0,
+      stockIniAgua: stockInicial.stockIniAgua,
+      stockIniHielo: stockInicial.stockIniHielo,
       ventasAgua: ventas.aguaVendida,
       ventasHielo: ventas.hieloVendido,
       repartidores,

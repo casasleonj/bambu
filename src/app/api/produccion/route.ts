@@ -15,6 +15,7 @@ import { startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
+import { resolverStockInicial } from '@/lib/stock-inicial'
 
 const MAX_RETRIES = 3
 
@@ -96,13 +97,12 @@ export async function POST(request: NextRequest) {
 
   // Re-leemos ventas adentro del handler para mayor fidelidad (pueden cambiar
   // entre el preview y el POST)
-  const [ultimoCierre, ventas] = await Promise.all([
-    prisma.cierreDia.findFirst({ orderBy: { fecha: 'desc' } }),
+  const [stockInicial, ventas] = await Promise.all([
+    resolverStockInicial(prisma),
     getVentasDelDia(),
   ])
 
-  const stockIniAgua = ultimoCierre?.stockFinAgua || 0
-  const stockIniHielo = ultimoCierre?.stockFinHielo || 0
+  const { stockIniAgua, stockIniHielo } = stockInicial
 
   // FIX 1.5: validar server-side que obs esté presente si hay diferencia
   const perdidasAgua = itemAgua.rotas + itemAgua.filtradas + itemAgua.consumoInterno
