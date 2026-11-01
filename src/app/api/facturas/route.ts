@@ -23,7 +23,8 @@ import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-1): Only ADMIN/CONTADOR can read facturas
   // Previously: requireAuth() only — any logged-in user (incl. REPARTIDOR) could read all financial data
-  const authResult = await requireRole(['ADMIN', 'CONTADOR'])
+  // #556: la lectura también es del ASISTENTE; crear (POST) sigue siendo ADMIN/CONTADOR.
+  const authResult = await requireRole(['ADMIN', 'CONTADOR', 'ASISTENTE'])
   if (authResult instanceof Response) return authResult
   const { searchParams } = new URL(request.url)
   const pagination = getPaginationParams(searchParams)

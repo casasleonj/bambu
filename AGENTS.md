@@ -508,7 +508,7 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
 
    30. **`/facturas`: totales, búsqueda y orden en el servidor (#466)**: la pantalla filtraba y ordenaba en memoria sobre la página cargada (50), así que con más facturas no encontraba clientes, los KPIs no seguían al cliente y el orden valía solo para esa página.
       - **Contrato**: `GET /api/facturas` acepta `clienteId`, `facturaId`, `estado` (EMITIDA|PARCIAL|PAGADA|ANULADA), `desde`/`hasta`, `incluirAnuladas`, `sort` (fecha|numero|cliente|total|saldo|estado) y `dir`. Totales y conteos por estado salen de un `groupBy` por estado (`src/lib/facturas-filtros.ts`): siguen cliente, fechas e interruptor de anuladas, **no** la pestaña de estado. Las anuladas no suman salvo `incluirAnuladas=true`.
-      - **Búsqueda**: `GET /api/facturas/buscar?q=` (ADMIN/CONTADOR) cubre toda la base; `UnifiedSearch` tiene modo `remote`.
+      - **Búsqueda**: `GET /api/facturas/buscar?q=` (ADMIN/CONTADOR/ASISTENTE; la **lectura** de facturas incluye al ASISTENTE desde #556, decisión del PO; crear sigue siendo ADMIN/CONTADOR) cubre toda la base; `UnifiedSearch` tiene modo `remote`.
       - **Resumen consolidado**: sin límite de meses; sin fechas = historial completo; solo ADMIN/CONTADOR.
       - **Anti-patrón a evitar**: filtrar, ordenar o calcular totales en el cliente sobre una lista paginada.
 

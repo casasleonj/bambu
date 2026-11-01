@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest'
 import {
   userCan,
   canCreatePedidos,
+  canReadFacturas,
   getUserPermissions,
   isRouteAllowed,
   getRedirectForRole,
@@ -179,5 +180,19 @@ describe('canCreatePedidos (B-17, #434): misma regla que POST /api/pedidos', () 
     expect(canCreatePedidos(null)).toBe(false)
     expect(canCreatePedidos(undefined)).toBe(false)
     expect(canCreatePedidos('OTRO')).toBe(false)
+  })
+})
+
+describe('#556 lectura de facturas', () => {
+  it('ADMIN, CONTADOR y ASISTENTE leen facturas; REPARTIDOR y sesiones sin rol no', () => {
+    expect(canReadFacturas(ROLES.ADMIN)).toBe(true)
+    expect(canReadFacturas(ROLES.CONTADOR)).toBe(true)
+    expect(canReadFacturas(ROLES.ASISTENTE)).toBe(true)
+    expect(canReadFacturas(ROLES.REPARTIDOR)).toBe(false)
+    expect(canReadFacturas(null)).toBe(false)
+    expect(canReadFacturas(undefined)).toBe(false)
+  })
+  it('la navegación y la API dicen lo mismo para ASISTENTE (la contradicción que motivó #556)', () => {
+    expect(userCan(ROLES.ASISTENTE, 'view:facturas')).toBe(canReadFacturas(ROLES.ASISTENTE))
   })
 })

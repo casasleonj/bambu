@@ -149,7 +149,10 @@ describe("#516 — consulta completa en PostgreSQL", () => {
       factura: { id: factura.id },
       createdAt: hora("09:00:00").toISOString(),
     });
-    const sinPermiso = await consultarPedidos(f, "ASISTENTE", testPrisma);
+    // #556: el ASISTENTE también lee facturas (decisión del PO); el REPARTIDOR no.
+    const asistente = await consultarPedidos(f, "ASISTENTE", testPrisma);
+    expect(asistente.pedidos[0].factura).toMatchObject({ id: factura.id });
+    const sinPermiso = await consultarPedidos(f, "REPARTIDOR", testPrisma);
     expect(sinPermiso.pedidos[0].factura).toBeFalsy();
     const admin = await testPrisma.user.findUniqueOrThrow({
       where: { id: adminId },

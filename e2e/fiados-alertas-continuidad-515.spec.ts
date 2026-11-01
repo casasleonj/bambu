@@ -167,16 +167,17 @@ test('sin conexión usa la revisión guardada, sincroniza la misma identidad y c
   expect(await db.pago.count({ where: { pedido: { clienteId: cliente.id } } })).toBe(1)
 })
 
-test('ASISTENTE puede cobrar y abrir pedido sin recibir enlaces a facturas rechazadas por API', async ({ page }) => {
+test('ASISTENTE puede cobrar, abrir el pedido y ver su factura (#556)', async ({ page }) => {
   test.setTimeout(90000)
   const { cliente, viejo } = await escenario()
   await loginAs(page, 'asistente'); await abrirFiados(page, cliente.nombre)
   await appMain(page).getByRole('button', { name: 'Ver pedidos', exact: true }).locator('visible=true').click()
-  await expect(appMain(page).getByRole('link', { name: /Ver factura/ })).toHaveCount(0)
+  await expect(appMain(page).getByRole('link', { name: `Ver pedido #${viejo.pedido.numero}`, exact: true }).locator('visible=true')).toBeVisible()
+  await expect(appMain(page).getByRole('link', { name: `Ver factura ${viejo.factura.numero}`, exact: true }).locator('visible=true')).toBeVisible()
   await appMain(page).getByRole('link', { name: `Ver pedido #${viejo.pedido.numero}`, exact: true }).locator('visible=true').click()
   const detail = page.getByRole('dialog', { name: `Pedido #${viejo.pedido.numero}`, exact: true })
   await expect(detail).toBeVisible()
-  await expect(detail.getByRole('link', { name: /Ver factura/ })).toHaveCount(0)
+  await expect(detail.getByRole('link', { name: /Ver factura/ })).toBeVisible()
   await detail.getByRole('button', { name: 'Volver a Fiados', exact: true }).click()
   await llenarCobro(page)
   await pagoDialog(page).getByRole('button', { name: 'Revisar reparto', exact: true }).click()
