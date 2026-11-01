@@ -4,7 +4,7 @@ import { loginAs, createCliente, apiPost, apiGet, apiPut, resetDatabase } from '
 async function createPedidoEntregado(page: Page, clienteId: string, cantidad = 1) {
   return apiPost(page, '/api/pedidos', {
     clienteId,
-    canal: 'DOMICILIO',
+    canal: 'PUNTO', // solo PUNTO nace ENTREGADO; DOMICILIO + entregado:true queda PENDIENTE
     entregado: true,
     items: [{ producto: 'PACA_AGUA', cantidad }],
     pagos: [],

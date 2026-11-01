@@ -942,15 +942,15 @@ test.describe('Pedidos — Edge Cases', () => {
     expect(bodyText?.length).toBeGreaterThan(10)
   })
 
-  test('tab Pedidos muestra filtros y Fiados NO los muestra', async () => {
+  test('tab Pedidos muestra el filtro de fecha y Fiados tiene su propio selector de periodo', async () => {
     await gotoPedidos(p)
     // Pedidos tab has SmartDateFilter
-    await expect(p.locator('button:has-text("Hoy")')).toBeVisible()
+    // exact: 'Entregados Hoy' y 'Ventas Hoy' (tarjetas de resumen) también contienen "Hoy"
+    await expect(p.getByRole('button', { name: 'Hoy', exact: true })).toBeVisible()
     // Switch to Fiados
     await tabButton(p, 'Fiados').click()
     await p.waitForTimeout(500)
-    // SmartDateFilter should NOT be visible (Fiados has its own period filter)
-    // Fiados has its own period chips with different styling
+    // Fiados no usa el SmartDateFilter: tiene sus propios chips de periodo (estilo distinto)
     const fiadosPeriod = p.locator('.bg-red-50 button:has-text("Hoy")')
     expect(await fiadosPeriod.isVisible({ timeout: 2000 }).catch(() => false)).toBe(true)
   })

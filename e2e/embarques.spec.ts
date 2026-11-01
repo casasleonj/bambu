@@ -352,7 +352,7 @@ test.describe('Embarques — Cierre Completo', () => {
     expect(embarque.estado).toBe('CERRADO')
   })
 
-  test('cerrar con entrega PARCIAL crea pedido hijo', async ({ page }) => {
+  test('cerrar con entrega PARCIAL ya no crea pedido hijo: el pedido original queda actualizado', async ({ page }) => {
     await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
@@ -385,8 +385,10 @@ test.describe('Embarques — Cierre Completo', () => {
     expect(closeRes.status()).toBeLessThan(500)
     const closeData = await closeRes.json()
     expect(closeData.success).toBe(true)
-    // Verify child pedido was created
-    expect(closeData.pedidosHijosCreados.length).toBeGreaterThan(0)
+    // Verify no child pedido and the original is updated
+    // El pedido hijo se eliminó (PR-1): ninguna entrega parcial crea pedidos nuevos.
+    expect(closeData.pedidosHijosCreados).toEqual([])
+    expect(closeData.pedidosActualizados.map((p: { id: string }) => p.id)).toContain(pedidoId)
   })
 
   test('cerrar con NO_ENTREGADO y reasignación', async ({ page }) => {

@@ -30,7 +30,7 @@ test.describe('Pedidos: filtros backend funcionan', () => {
     resetDatabase()
   })
 
-  test('filtro tipo=ENVIO solo devuelve pedidos DOMICILIO', async ({ page }) => {
+  test('filtro canal=DOMICILIO solo devuelve pedidos DOMICILIO (y el alias legacy tipo=ENVIO igual)', async ({ page }) => {
     await loginAs(page, 'admin')
     const c = await createCliente(page)
 
@@ -49,10 +49,14 @@ test.describe('Pedidos: filtros backend funcionan', () => {
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
     })
 
-    const res = await apiGet(page, '/api/pedidos?all=true&tipo=ENVIO')
+    const res = await apiGet(page, '/api/pedidos?all=true&canal=DOMICILIO')
     const body = await res.json()
     expect(body.pedidos.length).toBeGreaterThanOrEqual(1)
-    expect(body.pedidos.every((p: { tipo: string }) => p.tipo === 'ENVIO')).toBe(true)
+    expect(body.pedidos.every((p: { canal: string }) => p.canal === 'DOMICILIO')).toBe(true)
+
+    // El parámetro legacy ?tipo=ENVIO se normaliza al mismo filtro.
+    const legacy = await (await apiGet(page, '/api/pedidos?all=true&tipo=ENVIO')).json()
+    expect(legacy.pedidos.map((p: { id: string }) => p.id).sort()).toEqual(body.pedidos.map((p: { id: string }) => p.id).sort())
   })
 
   test('filtro estadoEntrega=PENDIENTE funciona', async ({ page }) => {

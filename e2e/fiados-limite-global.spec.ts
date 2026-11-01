@@ -4,7 +4,7 @@ import {loginAs, createCliente, apiPost, apiPut, apiGet, resetDatabase} from './
 async function createPedidoFiado(page: Page, clienteId: string, ventaRapida = false) {
   return apiPost(page, '/api/pedidos', {
     clienteId,
-    canal: 'DOMICILIO',
+    canal: 'PUNTO', // solo PUNTO nace ENTREGADO; DOMICILIO + entregado:true queda PENDIENTE
     entregado: ventaRapida,
     items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
     pagos: [],
