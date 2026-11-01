@@ -177,6 +177,8 @@ export const PreviewPedidoSchema = z.object({
   entregaLat: z.number().min(-90).max(90).optional().nullable(),
   entregaLng: z.number().min(-180).max(180).optional().nullable(),
   pedidoOrigenId: z.string().optional(),
+  /** #542: «venta en ruta» (la vendió un repartidor en la calle): la dirección de entrega es opcional. */
+  ventaEnRuta: z.boolean().optional(),
   /** modo edición: preview de un PUT declarativo sobre un pedido existente. */
   pedidoId: z.string().trim().min(1).optional(),
   // F2 (Excepciones de Crédito): ver VentaLibreSchema.excepcionId.

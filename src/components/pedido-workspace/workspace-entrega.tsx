@@ -44,6 +44,8 @@ export function WorkspaceEntrega({
   onUbicacionChange,
   previewPending,
   ventaRapida = false,
+  opcional = false,
+  onQuitarDestino,
   guardada = null,
   destinoPropio = false,
   puedeGuardarEnCliente = false,
@@ -63,6 +65,10 @@ export function WorkspaceEntrega({
   previewPending: boolean
   /** venta rápida (sin cliente real): no hay datos de cliente que resolver; la dirección se escribe aquí. */
   ventaRapida?: boolean
+  /** #542: venta en ruta — la dirección es opcional: zona cerrada, sin avisos de «falta». */
+  opcional?: boolean
+  /** #542: vacía dirección, barrio y ubicación del pedido de una sola vez (un solo dispatch). */
+  onQuitarDestino?: () => void
   /** lo guardado del comprador (tienda o cliente) que NO cambia al escribir otro destino; null si no hay comprador real. */
   guardada?: { texto: string; origen: 'cliente' | 'negocio' } | null
   /** el pedido lleva un destino distinto al guardado (texto o ubicación propia). */
@@ -96,7 +102,7 @@ export function WorkspaceEntrega({
       />
       <input
         type="text"
-        placeholder={hayUbicacion ? 'Dirección (opcional con ubicación)' : 'Dirección de entrega'}
+        placeholder={opcional ? 'Dirección (opcional)' : hayUbicacion ? 'Dirección (opcional con ubicación)' : 'Dirección de entrega'}
         value={direccionEntrega}
         onChange={(e) => {
           setAbierto(true) // el preview se recalcula al teclear: los campos no deben desmontarse
@@ -107,7 +113,7 @@ export function WorkspaceEntrega({
       />
       <input
         type="text"
-        placeholder={hayUbicacion ? 'Barrio (opcional)' : 'Barrio'}
+        placeholder={opcional || hayUbicacion ? 'Barrio (opcional)' : 'Barrio'}
         value={barrioEntrega}
         onChange={(e) => {
           setAbierto(true)
@@ -116,6 +122,19 @@ export function WorkspaceEntrega({
         data-testid="workspace-entrega-barrio"
         className="col-span-2 rounded-lg border border-gray-300 px-3 py-2 text-sm"
       />
+      {opcional && onQuitarDestino && (
+        <button
+          type="button"
+          data-testid="workspace-entrega-quitar"
+          onClick={() => {
+            onQuitarDestino?.()
+            setAbierto(false)
+          }}
+          className="col-span-2 min-h-11 text-left text-sm text-blue-600 hover:underline"
+        >
+          Quitar dirección
+        </button>
+      )}
       {guardada && (
         <p className="col-span-2 text-[11px] text-gray-500" data-testid="workspace-entrega-guardada">
           Lo que escribas es solo de este pedido.{' '}
@@ -154,9 +173,10 @@ export function WorkspaceEntrega({
   // Un solo árbol estable: los campos son SIEMPRE el último hijo de la misma
   // <section>, así no se desmontan (ni pierden el foco) cuando el preview se
   // recalcula a `null` mientras el usuario teclea.
-  const pendienteDeEscribir = !entrega && ventaRapida
+  const pendienteDeEscribir = !entrega && ventaRapida && !opcional
   const estado = entrega ? entrega.estado : null
-  const insuficiente = estado === 'INSUFICIENTE'
+  // #542: en una venta en ruta «falta la dirección» no es un problema: nunca se marca ni se abre sola.
+  const insuficiente = estado === 'INSUFICIENTE' && !opcional
   const camposVisibles = abierto || insuficiente || pendienteDeEscribir
   const resumenTexto = entrega ? [entrega.direccion, entrega.barrio].filter(Boolean).join(' · ') : ''
   const coords = entrega?.coords ?? null
@@ -176,13 +196,13 @@ export function WorkspaceEntrega({
   return (
     <section
       data-testid="workspace-entrega"
-      data-estado={pendienteDeEscribir ? 'PENDIENTE_DE_ESCRIBIR' : (estado ?? undefined)}
+      data-estado={pendienteDeEscribir ? 'PENDIENTE_DE_ESCRIBIR' : (opcional ? 'OPCIONAL' : (estado ?? undefined))}
       className={`rounded-lg border px-3 py-2 text-sm ${
         insuficiente || pendienteDeEscribir ? 'border-amber-300 bg-amber-50' : 'border-gray-200'
       }`}
     >
       <div className="text-xs font-semibold uppercase text-gray-400">
-        {pendienteDeEscribir ? 'Entrega · dirección obligatoria' : 'Entrega'}
+        {opcional ? 'Dirección de entrega · opcional' : pendienteDeEscribir ? 'Entrega · dirección obligatoria' : 'Entrega'}
       </div>
 
       {pendienteDeEscribir && (
@@ -193,7 +213,7 @@ export function WorkspaceEntrega({
         </p>
       )}
 
-      {!entrega && !pendienteDeEscribir && (
+      {!entrega && !pendienteDeEscribir && !opcional && (
         <p className="text-xs text-gray-400" data-testid="workspace-entrega-resolviendo">
           {previewPending ? 'Resolviendo información de entrega…' : 'Elegí un cliente para resolver la entrega.'}
         </p>
@@ -206,6 +226,12 @@ export function WorkspaceEntrega({
             <span className="ml-2 text-gray-500">Guardada: {guardada.texto || 'sin dirección'}</span>
           )}
         </div>
+      )}
+
+      {opcional && !camposVisibles && estado !== 'SUFICIENTE' && estado !== 'SUFICIENTE_COMPLEMENTARIA_FALTANTE' && (
+        <p className="mt-0.5 text-[11px] text-gray-500" data-testid="workspace-entrega-opcional">
+          Si no la anotas, la venta se registra igual.
+        </p>
       )}
 
       {estado === 'SUFICIENTE' && (
@@ -238,7 +264,16 @@ export function WorkspaceEntrega({
         </div>
       )}
 
-      {camposVisibles ? AddressInputs : entrega && (
+      {camposVisibles ? AddressInputs : opcional ? (
+        <button
+          type="button"
+          data-testid="workspace-entrega-agregar"
+          onClick={() => setAbierto(true)}
+          className="mt-1 min-h-11 text-sm font-medium text-blue-600 hover:underline"
+        >
+          + Agregar
+        </button>
+      ) : entrega && (
         <button
           type="button"
           data-testid="workspace-entrega-cambiar"

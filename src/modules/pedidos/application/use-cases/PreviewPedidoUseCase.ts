@@ -313,7 +313,9 @@ export class PreviewPedidoUseCase {
     // ¿Se exige la suficiencia? MISMA decisión que Crear/Actualizar (D3): hay
     // mercancía pendiente en un DOMICILIO — el carácter anónimo del cliente NO
     // es una excepción. En edición solo si CAMBIA el destino efectivo (D2).
-    let gateaSuficiencia = requiereEntregaSuficiente({ canal, estadoEntrega: estadoEntregaProyectado, origen })
+    // #542: la venta en ruta ya se entregó en la calle; la dirección es opcional.
+    const ventaEnRuta = input.ventaEnRuta === true && origen === 'VENTA_RAPIDA' && canal === 'DOMICILIO'
+    let gateaSuficiencia = !ventaEnRuta && requiereEntregaSuficiente({ canal, estadoEntrega: estadoEntregaProyectado, origen })
     if (gateaSuficiencia && esEdicion && destinoExistente) {
       const actualTexto = pickDireccionTexto({ cliente, negocio })
       const dirActual = destinoExistente.direccion ?? actualTexto.direccion

@@ -60,9 +60,10 @@ function montar(onSubmit = vi.fn().mockResolvedValue(true)) {
   return onSubmit
 }
 
-async function agregarProductoYDireccion() {
+// #542: la dirección es opcional en la venta en ruta: solo se agregan productos.
+async function agregarProducto() {
   fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
-  fireEvent.change(await screen.findByTestId('workspace-entrega-direccion'), { target: { value: 'Calle 1 # 2-3' } })
+  await screen.findByTestId('workspace-entrega-agregar')
 }
 
 describe('PedidosWorkspace — venta en ruta (#535)', () => {
@@ -75,9 +76,51 @@ describe('PedidosWorkspace — venta en ruta (#535)', () => {
     expect(screen.getByTestId('workspace-entrega')).toBeInTheDocument()
   })
 
+  it('#542 la dirección es opcional: cerrada, sin «obligatoria» ni avisos, y se registra sin ella', async () => {
+    const onSubmit = montar()
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    expect(await screen.findByText('Dirección de entrega · opcional')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-entrega')).toHaveAttribute('data-estado', 'OPCIONAL')
+    expect(screen.queryByText(/obligatoria/i)).toBeNull()
+    expect(screen.queryByTestId('workspace-entrega-direccion')).toBeNull() // cerrada hasta «+ Agregar»
+    expect(screen.queryByTestId('workspace-entrega-insuficiente')).toBeNull()
+    fireEvent.click(await screen.findByTestId('dinero-pagar-completo-EFECTIVO'))
+    fireEvent.change(screen.getByTestId('venta-ruta-repartidor'), { target: { value: 'r1' } })
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled())
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    const enviado = onSubmit.mock.calls[0][0]
+    expect(enviado.direccionEntrega).toBeFalsy()
+    expect(cuerposPreview.every((c) => c.ventaEnRuta === true)).toBe(true) // el preview sabe que es venta en ruta
+  })
+
+  it('#542 «+ Agregar» abre los campos; lo escrito viaja; «Quitar dirección» lo vacía y cierra', async () => {
+    const onSubmit = montar()
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    fireEvent.click(await screen.findByTestId('workspace-entrega-agregar'))
+    fireEvent.change(await screen.findByTestId('workspace-entrega-direccion'), { target: { value: 'Calle 1 # 2-3' } })
+    fireEvent.change(screen.getByTestId('workspace-entrega-barrio'), { target: { value: 'Centro' } })
+    fireEvent.click(screen.getByTestId('workspace-entrega-quitar'))
+    expect(screen.queryByTestId('workspace-entrega-direccion')).toBeNull()
+    expect(screen.getByTestId('workspace-entrega-agregar')).toBeInTheDocument()
+    fireEvent.click(await screen.findByTestId('dinero-pagar-completo-EFECTIVO'))
+    fireEvent.change(screen.getByTestId('venta-ruta-repartidor'), { target: { value: 'r1' } })
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled())
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0][0].direccionEntrega).toBeFalsy()
+    expect(onSubmit.mock.calls[0][0].barrioEntrega).toBeFalsy()
+  })
+
+  it('#542 una venta rápida normal a domicilio sigue marcando la dirección como obligatoria', () => {
+    render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" initialDraft={{ canal: 'DOMICILIO' }} onSubmit={vi.fn()} />)
+    expect(screen.getByText('Entrega · dirección obligatoria')).toBeInTheDocument()
+    expect(screen.queryByTestId('workspace-entrega-agregar')).toBeNull()
+  })
+
   it('sin repartidor no se envía nada y se marca el campo', async () => {
     const onSubmit = montar()
-    await agregarProductoYDireccion()
+    await agregarProducto()
     fireEvent.click(await screen.findByTestId('dinero-pagar-completo-EFECTIVO'))
     await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled())
     fireEvent.click(screen.getByTestId('workspace-commit'))
@@ -87,7 +130,7 @@ describe('PedidosWorkspace — venta en ruta (#535)', () => {
 
   it('con repartidor envía origen VENTA_RAPIDA, domicilio y vendidoPorId (anónimo, sin promesa)', async () => {
     const onSubmit = montar()
-    await agregarProductoYDireccion()
+    await agregarProducto()
     fireEvent.click(await screen.findByTestId('dinero-pagar-completo-EFECTIVO'))
     fireEvent.change(screen.getByTestId('venta-ruta-repartidor'), { target: { value: 'r1' } })
     await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled())
@@ -105,7 +148,7 @@ describe('PedidosWorkspace — venta en ruta (#535)', () => {
     fireEvent.change(screen.getByTestId('cliente-search-input'), { target: { value: 'Tienda' } })
     await waitFor(() => expect(screen.getByTestId('cliente-search-result')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('cliente-search-result'))
-    await agregarProductoYDireccion()
+    await agregarProducto()
     fireEvent.change(screen.getByTestId('venta-ruta-repartidor'), { target: { value: 'r2' } })
 
     // queda debiendo todo: aparece la fecha de la promesa

@@ -386,6 +386,8 @@ export interface PreviewPedidoInput {
   entregaLat?: number | null
   entregaLng?: number | null
   pedidoOrigenId?: string
+  /** #542: venta en ruta — no se exige dirección/ubicación de entrega. */
+  ventaEnRuta?: boolean
   /** modo edición: preview de un PUT declarativo de items sobre un pedido existente. */
   pedidoId?: string
   /** userId de la sesión — lo inyecta la route, no viene del body. */

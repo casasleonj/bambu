@@ -101,6 +101,10 @@ interruptor encendido):
 - Reglas (todas en `CrearPedidoUseCase`, antes de guardar): repartidor activo con moto; la nómina de ese repartidor para hoy no
   puede estar hecha (409 `NOMINA_EXISTENTE`); un cliente sin nombre debe pagar completo (422 `DEUDOR_REQUERIDO`); un cliente real
   que queda debiendo necesita `promesaPagoFecha` de hoy en adelante.
+- **La dirección de entrega es opcional (#542).** La venta ya se entregó en la calle: `CrearPedidoUseCase` no exige dirección ni
+  ubicación cuando viene `vendidoPorId`, y el preview tampoco cuando recibe `ventaEnRuta` (solo con origen `VENTA_RAPIDA` y canal
+  `DOMICILIO`). En la pantalla, «Dirección de entrega · opcional» sale cerrada con «+ Agregar»; lo que se escriba se guarda como
+  siempre y «Quitar dirección» lo vacía. Una venta rápida a domicilio sin repartidor sigue exigiéndola.
 - `POST /api/pedidos` con `vendidoPorId`: 403 si no es ADMIN o si el interruptor está apagado. Un reintento con la misma clave
   (`offlineId`) devuelve la misma venta; si entre tanto se apagó el interruptor, el reintento se rechaza (403) aunque la venta
   ya exista: no la registres otra vez, búscala en Pedidos.
