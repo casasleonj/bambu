@@ -47,6 +47,8 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     'view:casos', 'view:produccion', 'view:insumos', 'view:embarques',
     'view:rutas', 'view:facturas', 'view:gastos', 'view:mi-perfil',
     'view:recurrentes',
+    // #566: ve la deuda pendiente de cada trabajador (solo lectura; ver /api/trabajadores/deudas-resumen).
+    'view:trabajadores',
   ],
   [ROLES.CONTADOR]: [
     'view:dashboard', 'view:clientes', 'view:pedidos', 'view:productos',

@@ -913,6 +913,7 @@ model Pedido {
   createdBy   User?     @relation("PedidoCreador", fields: [createdById], references: [id])
   clienteId   String
   cliente     Cliente   @relation(fields: [clienteId], references: [id])
+  deudasTrabajador DeudaTrabajador[] @relation("DeudaTrabajadorPedido")
   negocioId   String?
   negocio     Negocio?  @relation(fields: [negocioId], references: [id])
   embarqueId  String?
@@ -2677,6 +2678,10 @@ model DeudaTrabajador {
   porcentajePorNomina Int? // tope % de la nomina a descontar por periodo (null = sin tope)
 
   embarqueId  String?
+  // Pedido de origen (#566). Solo lo llevan las deudas por «Fiado no cobrado»; préstamos,
+  // adelantos y descuadres de caja no vienen de un pedido y quedan en null.
+  pedidoId    String?
+  pedido      Pedido?  @relation("DeudaTrabajadorPedido", fields: [pedidoId], references: [id], onDelete: SetNull)
   descripcion String   @db.Text
   fecha       DateTime @default(now()) @db.Timestamptz()
 
@@ -2687,6 +2692,7 @@ model DeudaTrabajador {
 
   @@index([trabajadorId])
   @@index([trabajadorId, montoPendiente])
+  @@index([pedidoId])
 }
 
 // ====================

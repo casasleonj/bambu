@@ -3,15 +3,23 @@ import { Badge } from '@/components/ui/badge'
 import type { Trabajador } from './types'
 import { rolLabels, tipoPagoLabels } from './types'
 import { formatearTelefonoParaInput } from '@/lib/telefono'
+import type { ResumenDeudaTrabajador } from '@/lib/deuda-trabajador-resumen'
+import type { EstadoCarga } from '@/components/deudas-trabajador/use-deudas'
 
 export function TrabajadorCard({
   trabajador,
   onEdit,
   onDelete,
+  soloLectura = false,
+  deuda,
+  onVerDeuda,
 }: {
   trabajador: Trabajador
   onEdit: (t: Trabajador) => void
   onDelete: (id: string) => void
+  soloLectura?: boolean
+  deuda?: { estado: EstadoCarga; resumen?: ResumenDeudaTrabajador; onReintentar: () => void }
+  onVerDeuda?: (t: Trabajador) => void
 }) {
   return (
     <div className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition hover:shadow-md dark:bg-zinc-900">
@@ -28,6 +36,31 @@ export function TrabajadorCard({
           </div>
         </div>
       </div>
+
+      {deuda?.estado === 'cargando' && (
+        <div className="mb-4 h-11 rounded-lg bg-zinc-200 animate-pulse dark:bg-zinc-800" aria-label="Cargando deuda" data-testid="deuda-bloque-cargando" />
+      )}
+      {deuda?.estado === 'error' && (
+        <div role="alert" className="mb-4 flex min-h-11 items-center justify-between gap-2 rounded-lg border border-dashed border-zinc-300 px-3 text-sm text-zinc-500" data-testid="deuda-bloque-error">
+          <span>No se pudo cargar la deuda.</span>
+          <button type="button" onClick={deuda.onReintentar} className="min-h-8 px-1 font-semibold text-blue-600">Reintentar</button>
+        </div>
+      )}
+      {deuda?.estado === 'ok' && deuda.resumen && deuda.resumen.totalPendiente > 0 && (
+        <button
+          type="button"
+          onClick={() => onVerDeuda?.(trabajador)}
+          className="mb-4 flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-left text-orange-800 transition hover:bg-orange-100 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-300"
+          data-testid="deuda-bloque"
+        >
+          <span>
+            <span className="block text-xs">Deuda pendiente</span>
+            <span className="block text-lg font-bold tabular-nums">{formatCurrency(deuda.resumen.totalPendiente)}</span>
+            <span className="block text-xs">{deuda.resumen.cantidad} {deuda.resumen.cantidad === 1 ? 'deuda' : 'deudas'}</span>
+          </span>
+          <span className="whitespace-nowrap text-sm font-semibold">Ver detalle →</span>
+        </button>
+      )}
 
       <div className="flex-1 space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
         {trabajador.telefono && (
@@ -97,20 +130,22 @@ export function TrabajadorCard({
         </div>
       </div>
 
-      <div className="mt-6 flex items-center gap-3">
-        <button
-          onClick={() => onEdit(trabajador)}
-          className="inline-flex flex-1 items-center justify-center rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
-        >
-          Editar
-        </button>
-        <button
-          onClick={() => onDelete(trabajador.id)}
-          className="inline-flex flex-1 items-center justify-center rounded-lg bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900"
-        >
-          Desactivar
-        </button>
-      </div>
+      {!soloLectura && (
+        <div className="mt-6 flex items-center gap-3">
+          <button
+            onClick={() => onEdit(trabajador)}
+            className="inline-flex flex-1 items-center justify-center rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+          >
+            Editar
+          </button>
+          <button
+            onClick={() => onDelete(trabajador.id)}
+            className="inline-flex flex-1 items-center justify-center rounded-lg bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900"
+          >
+            Desactivar
+          </button>
+        </div>
+      )}
     </div>
   )
 }
