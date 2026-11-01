@@ -23,7 +23,7 @@ El cliente pidió 20, recibió 15 y decide no comprar las 5 restantes. Hoy el pe
 2. **Consentimiento observado:** `aceptadoPor` (quién del lado del cliente) y `medio` (`PRESENCIAL`, `TELEFONO`, `MENSAJE`) son obligatorios, además del motivo.
 3. **Quién:** ADMIN y ASISTENTE registran. Si quien registra **tiene el permiso**, se aplica en el acto; si no, queda `PENDIENTE` hasta que alguien con el permiso la autoriza o rechaza (`PATCH /api/pedidos/reducciones-comerciales/[id]`). El permiso se lee de la base (no de la sesión), exige usuario activo y rol ADMIN/ASISTENTE, y lo cambia solo un ADMIN (`PUT /api/users/[id]`); cambiar a un rol sin derecho lo quita. No hay regla de «último autorizador»: sin autorizadores las solicitudes simplemente quedan pendientes.
 4. **Qué se recalcula**, en una sola transacción bajo el lock `PEDIDO`: `PedidoItem.cantPedido/subtotal`, la columna legacy `c…Ped` (el botellón quita primero lo pendiente a domicilio y luego en fábrica), `Pedido.total/saldo/estadoPago`, `Factura.subtotal/total/saldo/estado` y una `NotaCredito` por el monto. La línea **conserva su precio unitario**; si el precio por volumen debe cambiar, se corrige después con la corrección de precio.
-5. **Pagó de más → se rechaza** (`422 REDUCCION_GENERARIA_SOBREPAGO`), igual que en la corrección de precio: `chk_pedido_montopagado_le_total` y `totalPagado = Σ Pago + Σ Abono` (V2) no permiten bajar el total sin reversar pagos. Seguimiento en un issue aparte.
+5. **Pagó de más → el excedente pasa a saldo a favor** (ADR-SALDO-FAVOR-EXCEDENTE-001, #533; antes se rechazaba con `422 REDUCCION_GENERARIA_SOBREPAGO`). La nota de crédito sigue siendo por lo reducido.
 6. **Una solicitud pendiente por línea.** Si la línea cambió antes de autorizar, queda obsoleta (`409 REDUCCION_OBSOLETA`).
 7. **Idempotencia:** `offlineId` al solicitar; «ya resuelta → deduped» al resolver. No se encola sin red: necesita validación del servidor.
 
@@ -70,4 +70,4 @@ Flag `NEXT_PUBLIC_CIERRE_V2` (apagado). El principio: el sistema completa lo que
 
 - La migración es solo aditiva: se aplica en producción **antes** del merge (AGENTS.md, paso 7).
 - Nadie tiene el permiso al desplegar: un ADMIN debe asignarlo desde Administración → Usuarios. La interfaz no se ve hasta encender `NEXT_PUBLIC_CIERRE_V2`.
-- Sigue pendiente: el caso «pagó de más» (requiere reversión de pagos y acreditar a `Cliente.saldoFavor`).
+- El caso «pagó de más» lo resuelve ADR-SALDO-FAVOR-EXCEDENTE-001 (#533); la pantalla sigue pendiente de maqueta.

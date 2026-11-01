@@ -16,13 +16,14 @@ import type { TransactionClient } from '@/lib/locks'
 import { logAudit } from '@/lib/audit'
 import { calcularEstadoPago } from '../../domain/services/pagos-calculator.service'
 import { calcularCorreccion, pedidoCorregible } from '../../domain/services/correccion-precio.service'
+import { reaplicarCreditoDelPedido, trasladarExcedenteASaldoFavor } from './saldo-favor-excedente.service'
 
 const num = (v: unknown): number => Number(v ?? 0)
 
 export async function aplicarCorreccionPrecio(
   tx: TransactionClient,
   input: { correccionId: string; actorId: string; nota?: string },
-): Promise<{ totalAntes: number; totalDespues: number; saldoDespues: number }> {
+): Promise<{ totalAntes: number; totalDespues: number; saldoDespues: number; excedenteAcreditado: number; creditoReaplicado: number }> {
   const c = await tx.pedidoCorreccionPrecio.findUniqueOrThrow({ where: { id: input.correccionId } })
   const pedido = await tx.pedido.findUnique({
     where: { id: c.pedidoId },
@@ -74,24 +75,51 @@ export async function aplicarCorreccionPrecio(
     default: break
   }
 
+  const factura = pedido.factura && pedido.factura.estado !== 'ANULADA' ? pedido.factura : null
+  const centavos = (n: number) => Math.round((n + Number.EPSILON) * 100)
+  const deCentavos = (c: number) => c / 100
+  const motivoSaldo = `Corrección de precio: ${c.motivo}`
+
+  // Pagó de más → el excedente pasa al saldo a favor del cliente (#533). Los Pago no se tocan.
+  if (r.excedente > 0) {
+    await trasladarExcedenteASaldoFavor(tx, {
+      pedidoId: pedido.id, clienteId: pedido.clienteId, facturaId: factura?.id ?? null,
+      origenTipo: 'CORRECCION_PRECIO', origenId: c.id, motivo: motivoSaldo, actorId: input.actorId,
+      excedente: r.excedente, totalPagadoAntes: totalPagado, totalPagadoNuevo: r.totalPagadoNuevo, saldoResultante: r.saldoNuevo,
+    })
+  }
+  // El total subió y el pedido quedó debiendo → se reaplica el crédito que salió de este pedido.
+  const creditoReaplicado = r.delta > 0
+    ? await reaplicarCreditoDelPedido(tx, {
+        pedidoId: pedido.id, clienteId: pedido.clienteId, facturaId: factura?.id ?? null,
+        origenTipo: 'CORRECCION_PRECIO', origenId: c.id, motivo: motivoSaldo, actorId: input.actorId,
+        faltante: r.saldoNuevo, totalPagadoAntes: r.totalPagadoNuevo, saldoResultanteFn: (x) => deCentavos(centavos(r.saldoNuevo) - centavos(x)),
+      })
+    : 0
+  const totalPagadoFinal = deCentavos(centavos(r.totalPagadoNuevo) + centavos(creditoReaplicado))
+  const saldoFinal = deCentavos(centavos(r.totalNuevo) - centavos(totalPagadoFinal))
+
   await tx.pedido.update({
     where: { id: pedido.id },
     data: {
       ...legacy,
       total: r.totalNuevo,
-      saldo: r.saldoNuevo,
-      estadoPago: calcularEstadoPago(r.totalNuevo, totalPagado, pedido.estadoEntrega),
+      totalPagado: totalPagadoFinal,
+      saldo: saldoFinal,
+      estadoPago: calcularEstadoPago(r.totalNuevo, totalPagadoFinal, pedido.estadoEntrega),
     },
   })
 
-  if (pedido.factura && pedido.factura.estado !== 'ANULADA') {
+  if (factura) {
+    const montoPagadoFactura = Math.max(0, deCentavos(centavos(num(factura.montoPagado)) - centavos(r.excedente) + centavos(creditoReaplicado)))
     await tx.factura.update({
-      where: { id: pedido.factura.id },
+      where: { id: factura.id },
       data: {
-        subtotal: Math.round((num(pedido.factura.subtotal) + r.delta) * 100) / 100,
-        total: Math.round((num(pedido.factura.total) + r.delta) * 100) / 100,
-        saldo: r.saldoNuevo,
-        estado: r.saldoNuevo <= 0 ? 'PAGADA' : num(pedido.factura.montoPagado) > 0 ? 'PARCIAL' : 'EMITIDA',
+        subtotal: Math.round((num(factura.subtotal) + r.delta) * 100) / 100,
+        total: Math.round((num(factura.total) + r.delta) * 100) / 100,
+        montoPagado: montoPagadoFactura,
+        saldo: saldoFinal,
+        estado: saldoFinal <= 0 ? 'PAGADA' : montoPagadoFactura > 0 ? 'PARCIAL' : 'EMITIDA',
       },
     })
   }
@@ -122,6 +150,8 @@ export async function aplicarCorreccionPrecio(
           cantidad: item.cantPedido,
           totalAntes: total,
           totalDespues: r.totalNuevo,
+          excedenteAcreditado: r.excedente,
+          creditoReaplicado,
           motivo: c.motivo,
           precioRaro: c.precioRaro,
           solicitadoPorId: c.solicitadoPorId,
@@ -132,5 +162,5 @@ export async function aplicarCorreccionPrecio(
     tx,
   )
 
-  return { totalAntes: total, totalDespues: r.totalNuevo, saldoDespues: r.saldoNuevo }
+  return { totalAntes: total, totalDespues: r.totalNuevo, saldoDespues: saldoFinal, excedenteAcreditado: r.excedente, creditoReaplicado }
 }

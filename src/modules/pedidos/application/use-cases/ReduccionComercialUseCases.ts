@@ -22,6 +22,7 @@ import {
   puedeSolicitarReduccion,
 } from '../../domain/services/reduccion-comercial.service'
 import { aplicarReduccionComercial, entregadoLegacy } from '../services/aplicar-reduccion-comercial.service'
+import { validarExcedenteAcreditable } from '../services/saldo-favor-excedente.service'
 
 export type EstadoReduccion = 'PENDIENTE' | 'APLICADA' | 'RECHAZADA'
 
@@ -44,6 +45,8 @@ export interface ReduccionResultado {
   totalAntes?: number
   totalDespues?: number
   notaCreditoId?: string
+  /** Lo pagado de más que pasó a saldo a favor del cliente (#533). */
+  excedenteAcreditado?: number
 }
 
 const numOrU = (v: unknown): number | undefined => (v === null || v === undefined ? undefined : Number(v))
@@ -100,7 +103,7 @@ export class SolicitarReduccionComercialUseCase {
         throw new Error('REDUCCION_PENDIENTE: ya hay una reducción pendiente para esta línea.')
       }
 
-      // Valida (entregado, sobrepago, pedido vacío…) desde la solicitud: no se encola algo que no se podrá aplicar.
+      // Valida (entregado, excedente, pedido vacío…) desde la solicitud: no se encola algo que no se podrá aplicar.
       const calculo = calcularReduccion({
         total: Number(pedido.total),
         totalPagado: Number(pedido.totalPagado),
@@ -109,6 +112,9 @@ export class SolicitarReduccionComercialUseCase {
         precio: Number(item.precio),
         cantidadReducida: input.cantidadReducida,
         unidadesOtrasLineas: pedido.items.filter((i) => i.id !== item.id).reduce((s, i) => s + i.cantPedido, 0),
+      })
+      await validarExcedenteAcreditable(tx, {
+        pedidoId: pedido.id, clienteId: pedido.clienteId, excedente: calculo.excedente, totalPagadoAntes: Number(pedido.totalPagado),
       })
 
       const creada = await tx.pedidoReduccionComercial.create({
@@ -138,6 +144,7 @@ export class SolicitarReduccionComercialUseCase {
           totalAntes: ap.totalAntes,
           totalDespues: ap.totalDespues,
           notaCreditoId: ap.notaCreditoId,
+          excedenteAcreditado: ap.excedenteAcreditado,
         }
       }
       return { id: creada.id, estado: 'PENDIENTE' as const, deduped: false, monto: calculo.monto }
@@ -196,6 +203,7 @@ export class ResolverReduccionComercialUseCase {
         totalAntes: ap.totalAntes,
         totalDespues: ap.totalDespues,
         notaCreditoId: ap.notaCreditoId,
+        excedenteAcreditado: ap.excedenteAcreditado,
       }
     })
 

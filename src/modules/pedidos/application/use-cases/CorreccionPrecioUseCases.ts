@@ -21,6 +21,7 @@ import {
   puedeSolicitarCorreccion,
 } from '../../domain/services/correccion-precio.service'
 import { aplicarCorreccionPrecio } from '../services/aplicar-correccion-precio.service'
+import { validarExcedenteAcreditable } from '../services/saldo-favor-excedente.service'
 
 export type EstadoCorreccion = 'PENDIENTE' | 'APLICADA' | 'RECHAZADA'
 
@@ -41,6 +42,10 @@ export interface CorreccionResultado {
   deduped: boolean
   totalAntes?: number
   totalDespues?: number
+  /** Lo pagado de más que pasó a saldo a favor del cliente (#533). */
+  excedenteAcreditado?: number
+  /** Crédito de este pedido que se reaplicó al subir el total. */
+  creditoReaplicado?: number
 }
 
 export class SolicitarCorreccionPrecioUseCase {
@@ -86,13 +91,16 @@ export class SolicitarCorreccionPrecioUseCase {
       }
 
       const precioAnterior = Number(item.precio)
-      // Valida (precio, sobrepago…) desde la solicitud: no se encola algo que no se podrá aplicar.
+      // Valida (precio, excedente…) desde la solicitud: no se encola algo que no se podrá aplicar.
       const calculo = calcularCorreccion({
         total: Number(pedido.total),
         totalPagado: Number(pedido.totalPagado),
         cantidad: item.cantPedido,
         precioAnterior,
         precioNuevo: input.precioNuevo,
+      })
+      await validarExcedenteAcreditable(tx, {
+        pedidoId: pedido.id, clienteId: pedido.clienteId, excedente: calculo.excedente, totalPagadoAntes: Number(pedido.totalPagado),
       })
 
       const creada = await tx.pedidoCorreccionPrecio.create({
@@ -119,6 +127,8 @@ export class SolicitarCorreccionPrecioUseCase {
           deduped: false,
           totalAntes: ap.totalAntes,
           totalDespues: ap.totalDespues,
+          excedenteAcreditado: ap.excedenteAcreditado,
+          creditoReaplicado: ap.creditoReaplicado,
         }
       }
       return { id: creada.id, estado: 'PENDIENTE' as const, precioRaro: creada.precioRaro, deduped: false }
@@ -175,6 +185,8 @@ export class ResolverCorreccionPrecioUseCase {
         deduped: false,
         totalAntes: ap.totalAntes,
         totalDespues: ap.totalDespues,
+        excedenteAcreditado: ap.excedenteAcreditado,
+        creditoReaplicado: ap.creditoReaplicado,
       }
     })
 

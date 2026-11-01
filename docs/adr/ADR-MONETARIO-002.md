@@ -1,6 +1,6 @@
 # ADR-MONETARIO-002 — Corrección de precio, reducción comercial y saldo a favor en el cierre (addendum a ADR-MONETARIO-001)
 
-- Estado: **PARCIALMENTE IMPLEMENTADO** — §1 (corrección de precio) implementado en la Fase D, ver `ADR-CIERRE-004` (con dos ajustes: «pagó de más» se rechaza y no se emite `NotaCredito`); §2 (reducción comercial, #451) implementado, ver `ADR-REDUCCION-COMERCIAL-001` (permiso específico por usuario en vez de «solo ADMIN», y «pagó de más» se rechaza); sigue pendiente acreditar el excedente a `Cliente.saldoFavor`
+- Estado: **PARCIALMENTE IMPLEMENTADO** — §1 (corrección de precio) implementado en la Fase D, ver `ADR-CIERRE-004` (con dos ajustes: «pagó de más» se rechaza y no se emite `NotaCredito`); §2 (reducción comercial, #451) implementado, ver `ADR-REDUCCION-COMERCIAL-001` (permiso específico por usuario en vez de «solo ADMIN», y «pagó de más» se rechaza); el excedente cuando el cliente pagó de más se acredita a `Cliente.saldoFavor`, ver `ADR-SALDO-FAVOR-EXCEDENTE-001` (#533)
 - Fecha: 2026-10-24
 - Fuente: #326, #445, #451; decisiones del PO del 2026-10-23 (precio con recálculo; crédito con excepción autorizada; venta al paso con pago completo) y del 2026-10-24 (ver «Decisiones del PO»)
 - Complementa, sin reemplazar: ADR-MONETARIO-001 (el ledger y la fuente de verdad **no cambian**), ADR-CORRECCION-MONETARIA-001 (corrección de abonos y `REVERSION`), `POLITICA_SALDO_FAVOR_Y_DIFERENCIAL_NEGATIVO_v1.0` (2026-09-08), ADR-AUTORIZACION-REGALOS-001, diseño F2 de excepciones de crédito (ya implementado)

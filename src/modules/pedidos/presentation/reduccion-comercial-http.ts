@@ -25,6 +25,8 @@ const POR_CODIGO: Record<string, number> = {
   REDUCCION_PENDIENTE: 409,
   REDUCCION_OBSOLETA: 409,
   REDUCCION_GENERARIA_SOBREPAGO: 422,
+  EXCEDENTE_SIN_CLIENTE: 422,
+  EXCEDENTE_SIN_CONFIRMAR: 422,
 }
 
 export function mapReduccionComercialError(message: string): ErrorHttpReduccion | null {

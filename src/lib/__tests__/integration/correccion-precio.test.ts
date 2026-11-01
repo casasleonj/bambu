@@ -51,7 +51,7 @@ async function crearPedido(pagado = 0, extra: Record<string, unknown> = {}) {
     },
   })
   if (pagado > 0) {
-    await testPrisma.pago.create({ data: { pedidoId: pedido.id, metodo: 'EFECTIVO', monto: pagado } })
+    await testPrisma.pago.create({ data: { pedidoId: pedido.id, metodo: 'EFECTIVO', monto: pagado, confirmacion: 'CONFIRMADO' } })
   }
   return pedido
 }
@@ -143,15 +143,16 @@ describe('Corrección de precio (ADR-MONETARIO-002 §1)', () => {
     expect(e).toMatchObject({ total: 23000, saldo: 0, estadoPago: 'PAGADO', facEstado: 'PAGADA', facSaldo: 0 })
   })
 
-  it('pagó de más: se rechaza (PRECIO_GENERARIA_SOBREPAGO), no cambia nada y no deja solicitud', async () => {
+  it('pagó de más: el excedente pasa a saldo a favor, el pedido queda pagado por su nuevo total y los Pago no se tocan (#533)', async () => {
     const p = await crearPedido(25000)
-    const msg = await mensajeDe(
-      solicitar.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2300, motivo: 'ajuste', actorId: adminId, actorRol: 'ADMIN' }),
-    )
-    expect(msg).toMatch(/^PRECIO_GENERARIA_SOBREPAGO/)
+    const antes = Number((await testPrisma.cliente.findUniqueOrThrow({ where: { id: clienteId } })).saldoFavor)
+    const r = await solicitar.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2300, motivo: 'ajuste', actorId: adminId, actorRol: 'ADMIN' })
+    expect(r).toMatchObject({ estado: 'APLICADA', totalAntes: 25000, totalDespues: 23000, excedenteAcreditado: 2000 })
     const e = await estado(p.id)
-    expect(e).toMatchObject({ total: 25000, saldo: 0, totalPagado: 25000, itemPrecio: 2500, facTotal: 25000 })
-    expect(await testPrisma.pedidoCorreccionPrecio.count({ where: { pedidoId: p.id } })).toBe(0)
+    expect(e).toMatchObject({ total: 23000, saldo: 0, totalPagado: 23000, estadoPago: 'PAGADO', facTotal: 23000, facSaldo: 0, facEstado: 'PAGADA' })
+    expect(Number((await testPrisma.cliente.findUniqueOrThrow({ where: { id: clienteId } })).saldoFavor)).toBe(antes + 2000)
+    const pagos = await testPrisma.pago.findMany({ where: { pedidoId: p.id } })
+    expect(pagos.map((g) => Number(g.monto))).toEqual([25000])
   })
 
   it('ASISTENTE solo solicita: queda PENDIENTE y el pedido no cambia', async () => {

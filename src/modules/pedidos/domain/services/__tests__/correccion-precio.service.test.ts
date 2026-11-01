@@ -13,10 +13,10 @@ const base = { total: 25000, totalPagado: 0, cantidad: 10, precioAnterior: 2500,
 
 describe('calcularCorreccion', () => {
   it('baja el precio: recalcula total y saldo para toda la cantidad pedida', () => {
-    expect(calcularCorreccion(base)).toEqual({ delta: -2000, totalNuevo: 23000, saldoNuevo: 23000 })
+    expect(calcularCorreccion(base)).toEqual({ delta: -2000, totalNuevo: 23000, saldoNuevo: 23000, excedente: 0, totalPagadoNuevo: 0 })
   })
   it('sube el precio', () => {
-    expect(calcularCorreccion({ ...base, precioNuevo: 2600 })).toEqual({ delta: 1000, totalNuevo: 26000, saldoNuevo: 26000 })
+    expect(calcularCorreccion({ ...base, precioNuevo: 2600 })).toEqual({ delta: 1000, totalNuevo: 26000, saldoNuevo: 26000, excedente: 0, totalPagadoNuevo: 0 })
   })
   it('con abono parcial el saldo descuenta lo pagado', () => {
     expect(calcularCorreccion({ ...base, totalPagado: 10000 }).saldoNuevo).toBe(13000)
@@ -24,8 +24,25 @@ describe('calcularCorreccion', () => {
   it('pagado exacto al nuevo total: saldo 0, permitido', () => {
     expect(calcularCorreccion({ ...base, totalPagado: 23000 }).saldoNuevo).toBe(0)
   })
-  it('pagó de más: se rechaza (no se baja el total por debajo de lo pagado)', () => {
-    expect(() => calcularCorreccion({ ...base, totalPagado: 25000 })).toThrow(/^PRECIO_GENERARIA_SOBREPAGO/)
+  it('pagó de más: el pedido queda pagado por su nuevo total y el resto es excedente (va a saldo a favor)', () => {
+    expect(calcularCorreccion({ ...base, totalPagado: 25000 })).toEqual({
+      delta: -2000, totalNuevo: 23000, saldoNuevo: 0, excedente: 2000, totalPagadoNuevo: 23000,
+    })
+  })
+  it('un centavo de más ya es excedente', () => {
+    expect(calcularCorreccion({ ...base, totalPagado: 23000.01 })).toMatchObject({ excedente: 0.01, totalPagadoNuevo: 23000, saldoNuevo: 0 })
+  })
+  it('subir el precio nunca genera excedente: el pedido queda debiendo la diferencia', () => {
+    expect(calcularCorreccion({ ...base, totalPagado: 25000, precioNuevo: 2600 })).toMatchObject({ excedente: 0, totalPagadoNuevo: 25000, saldoNuevo: 1000 })
+  })
+  it('invariante: totalPagadoNuevo + saldoNuevo = totalNuevo y totalPagadoNuevo + excedente = totalPagado', () => {
+    for (const totalPagado of [0, 0.01, 10000, 22999.99, 23000, 23000.01, 24999.99, 25000]) {
+      for (const precioNuevo of [2000, 2300, 2499.99, 2600]) {
+        const r = calcularCorreccion({ ...base, totalPagado, precioNuevo })
+        expect(Math.round((r.totalPagadoNuevo + r.saldoNuevo) * 100)).toBe(Math.round(r.totalNuevo * 100))
+        expect(Math.round((r.totalPagadoNuevo + r.excedente) * 100)).toBe(Math.round(totalPagado * 100))
+      }
+    }
   })
   it('precio vacío, 0, negativo o NaN no es una corrección', () => {
     for (const p of [0, -5, Number.NaN]) {
