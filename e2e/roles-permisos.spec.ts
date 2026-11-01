@@ -586,8 +586,8 @@ test.describe('7. Flujo completo: ADMIN', () => {
       entregado: false,
       canal: 'DOMICILIO',
       pacaAgua: 2,
-      pagoMetodo: 'EFECTIVO',
-      pagoMonto: 5600,
+      // Sin pago previo: el cobro se registra en el cierre. Si el pedido ya nace pagado,
+      // el cierre rechaza cobrar de nuevo (el cobro de misión no puede exceder el saldo).
     })
     expect(pedido.pedido).toBeDefined()
 

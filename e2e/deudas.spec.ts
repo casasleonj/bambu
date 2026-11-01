@@ -29,6 +29,52 @@ async function abonarDeuda(page: Page, deudaId: string, data: {
   return apiPost(page, `/api/deudas/${deudaId}/abonar`, data)
 }
 
+
+/**
+ * Cierra una misión real de un repartidor: pedido a DOMICILIO sin pago previo (la
+ * comisión solo cuenta reparto a domicilio), embarque que sale a ruta (la máquina de
+ * estados exige ABIERTO → EN_RUTA → CERRADO, #550) y cobro igual al total real del
+ * pedido (el cierre rechaza cobrar más que el saldo). No se asumen precios fijos.
+ */
+async function cerrarMisionDeRepartidor(page: Page, trabajadorId: string, opts: { cantidad: number; faltaEnCaja?: number }) {
+  const cliente = await createCliente(page)
+  const pedidoRes = await apiPost(page, '/api/pedidos', {
+    clienteId: cliente.cliente.id,
+    canal: 'DOMICILIO',
+    items: [{ producto: 'PACA_AGUA', cantidad: opts.cantidad }]})
+  const pedido = (await pedidoRes.json()).pedido
+  const total = Number(pedido.total)
+
+  const embarqueId = (await createEmbarque(page, trabajadorId)).embarque.id
+  expect((await apiPost(page, `/api/pedidos/${pedido.id}/enviar`, { embarqueId })).status()).toBe(201)
+  expect((await apiPut(page, `/api/embarques/${embarqueId}`, { estado: 'EN_RUTA' })).status()).toBe(200)
+
+  const cerrarRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
+    pedidos: [{
+      pedidoId: pedido.id,
+      entregado: 'COMPLETO',
+      productosEntregados: {
+        cPacaAguaEnt: opts.cantidad,
+        cPacaHieloEnt: 0,
+        cBotellonFabEnt: 0,
+        cBotellonDomEnt: 0,
+        cBolsaAguaEnt: 0,
+        cBolsaHieloEnt: 0},
+      pagado: 'COMPLETO',
+      pagos: [{ metodo: 'EFECTIVO', monto: total }]}],
+    ventasLibres: [],
+    productos: [
+      { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
+      { producto: 'PACA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
+      { producto: 'BOTELLON', devueltas: 0, cambios: 0, rotas: 0 },
+      { producto: 'BOLSA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
+      { producto: 'BOLSA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
+    ],
+    gastos: [],
+    dineroEntregado: total - (opts.faltaEnCaja ?? 0)})
+  return { pedido, total, embarqueId, cerrarBody: await cerrarRes.json() }
+}
+
 // ─── API Tests ───────────────────────────────────────────────────────────────
 
 test.describe('Deudas API', () => {
@@ -470,7 +516,8 @@ test.describe('Deudas UI', () => {
     // Should show abono history. Scoped to the history line item (has a
     // trailing date) -- an unscoped match also hits the pendiente/original
     // summary numbers, which coincide at 50% paid of a 100.000 loan.
-    await expect(page.getByText(/\$ 50\.000 - /)).toBeVisible()
+    // `formatCurrency` separa «$» y la cifra con un espacio no separable: `\s` lo cubre.
+    await expect(page.getByText(/\$\s50\.000 - /)).toBeVisible()
   })
 })
 
@@ -487,10 +534,9 @@ test.describe('Deudas + Nomina Integration', () => {
     await loginAs(page, 'admin')
   })
 
-  test('nomina AUTO descuenta deudas pendientes', async ({ page }) => {
-    test.setTimeout(60000)
+  test('nomina AUTO descuenta deudas pendientes (hasta lo que ganó en la nómina)', async ({ page }) => {
+    test.setTimeout(90000)
 
-    // Create a repartidor with debt
     const trabajador = await createTrabajador(page, {
       nombre: `NominaDeudaWorker ${Date.now()}`,
       rol: 'REPARTIDOR',
@@ -498,55 +544,16 @@ test.describe('Deudas + Nomina Integration', () => {
       usaMoto: true})
     const tid = trabajador.trabajador.id
 
-    // Create debt
+    const MONTO_DEUDA = 50000
     await createDeuda(page, {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
-      monto: 50000,
+      monto: MONTO_DEUDA,
       descripcion: 'Prestamo antes de nomina'})
 
-    // Create a closed embarque with deliveries for commissions
-    const cliente = await createCliente(page)
-    const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.cliente.id,
-      canal: 'PUNTO',
-      entregado: true,
-      items: [{ producto: 'PACA_AGUA', cantidad: 5 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 25000 }]})
-    const pedidoId = (await pedidoRes.json()).pedido.id
+    const { cerrarBody } = await cerrarMisionDeRepartidor(page, tid, { cantidad: 5 })
+    expect(cerrarBody.success).toBe(true)
 
-    const embarqueRes = await createEmbarque(page, tid)
-    const embarqueId = embarqueRes.embarque.id
-
-    // Send embarque
-    await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
-
-    // Close embarque
-    await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
-      pedidos: [{
-        pedidoId,
-        entregado: 'COMPLETO',
-        productosEntregados: {
-          cPacaAguaEnt: 5,
-          cPacaHieloEnt: 0,
-          cBotellonFabEnt: 0,
-          cBotellonDomEnt: 0,
-          cBolsaAguaEnt: 0,
-          cBolsaHieloEnt: 0},
-        pagado: 'COMPLETO',
-        pagos: [{ metodo: 'EFECTIVO', monto: 25000 }]}],
-      ventasLibres: [],
-      productos: [
-        { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
-        { producto: 'PACA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
-        { producto: 'BOTELLON', devueltas: 0, cambios: 0, rotas: 0 },
-        { producto: 'BOLSA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
-        { producto: 'BOLSA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
-      ],
-      gastos: [],
-      dineroEntregado: 25000})
-
-    // Create nomina
     const today = new Date()
     const startDate = new Date(today)
     startDate.setDate(today.getDate() - 7)
@@ -560,15 +567,20 @@ test.describe('Deudas + Nomina Integration', () => {
     const nominaBody = await nominaRes.json()
     expect(nominaBody.success).toBe(true)
 
-    // Verify debt was deducted
+    // La comisión sale del reparto a domicilio cerrado (5 pacas) y la deuda se
+    // descuenta FIFO pero nunca por encima de lo ganado en esta nómina
+    // (`calcularDeduccionesDeuda`: «Nunca se descuenta más del disponible»).
+    const comisionTotal = nominaBody.detalles.comisionTotal
     const descuentoDeudas = nominaBody.detalles.descuentoDeudas
-    expect(descuentoDeudas).toBe(50000)
+    expect(comisionTotal).toBeGreaterThan(0)
+    expect(descuentoDeudas).toBeGreaterThan(0)
+    expect(descuentoDeudas).toBeLessThanOrEqual(comisionTotal)
+    expect(descuentoDeudas).toBeLessThan(MONTO_DEUDA)
 
-    // Verify debt was reduced
     const deudasRes = await apiGet(page, `/api/deudas?trabajadorId=${tid}`)
     const deudasBody = await deudasRes.json()
     const deuda = deudasBody.deudas[0]
-    expect(deuda.montoPendiente).toBe(0)
+    expect(deuda.montoPendiente).toBe(MONTO_DEUDA - descuentoDeudas)
   })
 
   test('nomina con deuda mayor al total deja remanente', async ({ page }) => {
@@ -605,7 +617,8 @@ test.describe('Deudas + Nomina Integration', () => {
 
     // Debt deduction should be limited to total
     const descuentoDeudas = nominaBody.detalles.descuentoDeudas
-    expect(descuentoDeudas).toBeLessThanOrEqual(nominaBody.detalles.comisionTotal + nominaBody.detalles.salarioFijo)
+    // `salarioFijo` llega como texto (Decimal serializado): se convierte antes de sumar.
+    expect(descuentoDeudas).toBeLessThanOrEqual(nominaBody.detalles.comisionTotal + Number(nominaBody.detalles.salarioFijo))
 
     // Debt should still have remaining balance
     const deudasRes = await apiGet(page, `/api/deudas?trabajadorId=${tid}`)
@@ -615,24 +628,27 @@ test.describe('Deudas + Nomina Integration', () => {
   })
 
   test('anular nomina restaura deudas deducidas', async ({ page }) => {
-    test.setTimeout(60000)
+    test.setTimeout(90000)
 
-    // Create a sellador
+    // Un repartidor con una misión cerrada gana comisión: sin ingresos la nómina
+    // no descuenta nada (nunca se descuenta más de lo ganado), y no habría qué restaurar.
     const trabajador = await createTrabajador(page, {
       nombre: `AnularWorker ${Date.now()}`,
-      rol: 'SELLADOR',
+      rol: 'REPARTIDOR',
       tipoPago: 'COMISION',
-      usaMoto: false})
+      usaMoto: true})
     const tid = trabajador.trabajador.id
 
-    // Create debt
+    const MONTO_DEUDA = 2000 // cabe dentro de la comisión de 5 pacas
     await createDeuda(page, {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
-      monto: 30000,
+      monto: MONTO_DEUDA,
       descripcion: 'Deuda para anular'})
 
-    // Create nomina
+    const { cerrarBody } = await cerrarMisionDeRepartidor(page, tid, { cantidad: 5 })
+    expect(cerrarBody.success).toBe(true)
+
     const today = new Date()
     const startDate = new Date(today)
     startDate.setDate(today.getDate() - 7)
@@ -644,21 +660,21 @@ test.describe('Deudas + Nomina Integration', () => {
       tipoCalculo: 'AUTO'})
 
     const nominaBody = await nominaRes.json()
+    expect(nominaBody.success).toBe(true)
     const nominaId = nominaBody.nomina.id
 
-    // Verify debt was deducted
+    // La deuda se descontó completa
     const deudasRes1 = await apiGet(page, `/api/deudas?trabajadorId=${tid}`)
     const deudasBody1 = await deudasRes1.json()
     expect(deudasBody1.deudas[0].montoPendiente).toBe(0)
 
-    // Annull nomina
     const anularRes = await apiPut(page, `/api/nomina/${nominaId}`, { action: 'ANULAR' })
     expect(anularRes.status()).toBe(200)
 
-    // Verify debt was restored
+    // Anular la nómina restaura la deuda descontada
     const deudasRes2 = await apiGet(page, `/api/deudas?trabajadorId=${tid}`)
     const deudasBody2 = await deudasRes2.json()
-    expect(deudasBody2.deudas[0].montoPendiente).toBe(30000)
+    expect(deudasBody2.deudas[0].montoPendiente).toBe(MONTO_DEUDA)
   })
 })
 
@@ -669,114 +685,35 @@ test.describe('Embarque Cash Reconciliation', () => {
     await loginAs(page, 'admin')
   })
 
-  test('cierre de embarque retorna deficitCaja en conciliacion', async ({ page }) => {
+  test('cierre de embarque reporta el faltante en el cuadre de caja', async ({ page }) => {
     const trabajador = await createTrabajador(page, {
       nombre: `CashWorker ${Date.now()}`,
       rol: 'REPARTIDOR',
       tipoPago: 'COMISION',
       usaMoto: true})
-    const tid = trabajador.trabajador.id
 
-    const cliente = await createCliente(page)
-    const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.cliente.id,
-      canal: 'PUNTO',
-      entregado: true,
-      items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 15000 }]})
-    const pedidoId = (await pedidoRes.json()).pedido.id
-
-    const embarqueRes = await createEmbarque(page, tid)
-    const embarqueId = embarqueRes.embarque.id
-
-    // Send
-    await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
-
-    // Close with LESS cash than expected (simulating lost bill)
-    const cerrarRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
-      pedidos: [{
-        pedidoId,
-        entregado: 'COMPLETO',
-        productosEntregados: {
-          cPacaAguaEnt: 3,
-          cPacaHieloEnt: 0,
-          cBotellonFabEnt: 0,
-          cBotellonDomEnt: 0,
-          cBolsaAguaEnt: 0,
-          cBolsaHieloEnt: 0},
-        pagado: 'COMPLETO',
-        pagos: [{ metodo: 'EFECTIVO', monto: 15000 }]}],
-      ventasLibres: [],
-      productos: [
-        { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
-        { producto: 'PACA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
-        { producto: 'BOTELLON', devueltas: 0, cambios: 0, rotas: 0 },
-        { producto: 'BOLSA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
-        { producto: 'BOLSA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
-      ],
-      gastos: [],
-      dineroEntregado: 10000, // Less than 15000 received = 5000 deficit
-    })
-
-    const cerrarBody = await cerrarRes.json()
+    // Entrega 5000 menos de lo cobrado (simula un billete perdido)
+    const { total, cerrarBody } = await cerrarMisionDeRepartidor(page, trabajador.trabajador.id, { cantidad: 3, faltaEnCaja: 5000 })
     expect(cerrarBody.success).toBe(true)
 
-    // Cash reconciliation data should be present
-    const conciliacion = cerrarBody.conciliacion
-    expect(conciliacion.totalEfectivoRecibido).toBe(15000)
-    expect(conciliacion.dineroEntregado).toBe(10000)
-    expect(conciliacion.deficitCaja).toBe(-5000) // Negative = deficit
+    // El cuadre de caja vive en `caja` (la `conciliacion` quedó solo para la
+    // discrepancia de producto). `sobranteFaltante = dineroEntregado - efectivoReal`.
+    const caja = cerrarBody.caja
+    expect(caja.efectivoReal).toBe(total)
+    expect(caja.dineroEntregadoReportado).toBe(total - 5000)
+    expect(caja.sobranteFaltante).toBe(-5000) // Negative = faltante
   })
 
-  test('cierre con cuadre perfecto retorna deficitCaja = 0', async ({ page }) => {
+  test('cierre con cuadre perfecto reporta sobranteFaltante = 0', async ({ page }) => {
     const trabajador = await createTrabajador(page, {
       nombre: `PerfectCash ${Date.now()}`,
       rol: 'REPARTIDOR',
       tipoPago: 'COMISION',
       usaMoto: true})
-    const tid = trabajador.trabajador.id
 
-    const cliente = await createCliente(page)
-    const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.cliente.id,
-      canal: 'PUNTO',
-      entregado: true,
-      items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 10000 }]})
-    const pedidoId = (await pedidoRes.json()).pedido.id
-
-    const embarqueRes = await createEmbarque(page, tid)
-    const embarqueId = embarqueRes.embarque.id
-
-    await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
-
-    const cerrarRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
-      pedidos: [{
-        pedidoId,
-        entregado: 'COMPLETO',
-        productosEntregados: {
-          cPacaAguaEnt: 2,
-          cPacaHieloEnt: 0,
-          cBotellonFabEnt: 0,
-          cBotellonDomEnt: 0,
-          cBolsaAguaEnt: 0,
-          cBolsaHieloEnt: 0},
-        pagado: 'COMPLETO',
-        pagos: [{ metodo: 'EFECTIVO', monto: 10000 }]}],
-      ventasLibres: [],
-      productos: [
-        { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
-        { producto: 'PACA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
-        { producto: 'BOTELLON', devueltas: 0, cambios: 0, rotas: 0 },
-        { producto: 'BOLSA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
-        { producto: 'BOLSA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
-      ],
-      gastos: [],
-      dineroEntregado: 10000, // Exact match
-    })
-
-    const cerrarBody = await cerrarRes.json()
-    expect(cerrarBody.conciliacion.deficitCaja).toBe(0)
+    const { cerrarBody } = await cerrarMisionDeRepartidor(page, trabajador.trabajador.id, { cantidad: 2 })
+    expect(cerrarBody.success).toBe(true)
+    expect(cerrarBody.caja.sobranteFaltante).toBe(0)
   })
 })
 

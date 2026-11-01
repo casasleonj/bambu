@@ -28,7 +28,9 @@ test.describe('Nomina', () => {
     await page.click('button:has-text("Nueva Nómina")')
     await page.waitForTimeout(500)
 
-    await expect(page.locator('h3:has-text("Calcular Nómina")')).toBeVisible()
+    // El formulario es una tarjeta con selector de trabajador y «Calcular Automático».
+    await expect(page.locator('#nomina-trabajador')).toBeVisible()
+    await expect(page.locator('button:has-text("Calcular Automático")')).toBeVisible()
 
     const select = page.locator('#nomina-trabajador')
     await select.waitFor({ state: 'visible' })
@@ -51,7 +53,7 @@ test.describe('Nomina', () => {
       const hasNomina = await page.locator('text=Período').count()
       expect(hasResult + hasNomina).toBeGreaterThan(0)
     } else {
-      await expect(page.locator('h3:has-text("Calcular Nómina")')).toBeVisible()
+      await expect(page.locator('#nomina-trabajador')).toBeVisible()
     }
   })
 
