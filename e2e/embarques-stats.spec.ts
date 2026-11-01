@@ -619,7 +619,7 @@ test.describe('Embarques Stats — UI Duracion de un embarque cerrado', () => {
     // La tarjeta de la lista ya no muestra la duración (la insignia quedó sin uso); se ve en Estadísticas.
     await gotoEmbarques(page)
     await page.locator('button:has-text("Estadísticas")').click()
-    const fila = page.locator('table tbody tr').filter({ hasText: nombre })
+    const fila = page.locator('table tbody tr').filter({ hasText: nombre }).filter({ hasText: 'CERRADO' })
     await expect(fila).toHaveCount(1, { timeout: 15_000 })
     // Columnas: # · Fecha · Repartidor · Ruta · Estado · Duración · Entregas.
     const duracion = (await fila.locator('td').nth(5).innerText()).trim()
