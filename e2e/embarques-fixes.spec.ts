@@ -191,7 +191,7 @@ test.describe('Embarques — Fix #2: REPARTIDOR no puede override precios', () =
     expect(Number(updatedPedido.total)).toBeLessThan(inflatedPrice)
   })
 
-  test('ADMIN can override preciosReales', async ({ page }) => {
+  test('ni el ADMIN cambia el total del pedido con preciosReales en el cierre (ADR-CIERRE-004)', async ({ page }) => {
     await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
@@ -227,7 +227,9 @@ test.describe('Embarques — Fix #2: REPARTIDOR no puede override precios', () =
     const pedido = getPedidoData.pedido || getPedidoData.data
     const originalPrice = Number(pedido.precioPacaAgua)
 
-    // ADMIN overrides with different price
+    // ADR-CIERRE-004: el cierre no recalcula Pedido.total ni siquiera para ADMIN;
+    // un precio distinto solo se corrige con POST /api/pedidos/[id]/corregir-precio.
+    // El cobro se manda por el total real: cobrar de mas lo rechaza PAGOS_EXCEDIDOS.
     const newPrice = originalPrice + 500
     const closeRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
       pedidos: [{
@@ -236,7 +238,7 @@ test.describe('Embarques — Fix #2: REPARTIDOR no puede override precios', () =
         productosEntregados: { cPacaAguaEnt: 1, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 },
         preciosReales: { pacaAgua: newPrice, pacaHielo: 0, botellonFab: 0, botellonDom: 0, bolsaAgua: 0, bolsaHielo: 0 },
         pagado: 'COMPLETO',
-        pagos: [{ metodo: 'EFECTIVO', monto: newPrice }],
+        pagos: [{ metodo: 'EFECTIVO', monto: originalPrice }],
       }],
       ventasLibres: [],
       productos: [
@@ -246,17 +248,18 @@ test.describe('Embarques — Fix #2: REPARTIDOR no puede override precios', () =
         { producto: 'BOLSA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
         { producto: 'BOLSA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
       ],
-      dineroEntregado: newPrice,
+      dineroEntregado: originalPrice,
     })
     expect(closeRes.status()).toBeLessThan(500)
     const closeData = await closeRes.json()
     expect(closeData.success).toBe(true)
 
-    // Verify the pedido total uses the new price
+    // El total sigue siendo el original, no el precio enviado en el cierre
     const verifyRes = await apiGet(page, `/api/pedidos/${pedidoId}`)
     const verifyData = await verifyRes.json()
     const updatedPedido = verifyData.pedido || verifyData.data
-    expect(Number(updatedPedido.total)).toBe(newPrice)
+    expect(Number(updatedPedido.total)).toBe(originalPrice)
+    expect(Number(updatedPedido.total)).not.toBe(newPrice)
   })
 })
 
@@ -575,7 +578,7 @@ test.describe('Embarques — Fix #12: Pagos sin validacion de monto maximo', () 
     })
     expect(closeRes.status()).toBe(400)
     const closeData = await closeRes.json()
-    expect(closeData.error?.message).toContain('exceden')
+    expect(closeData.error?.message).toContain('excede el saldo pendiente')
   })
 })
 

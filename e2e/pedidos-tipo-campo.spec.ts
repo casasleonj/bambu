@@ -1,6 +1,6 @@
 import { test, expect, loginAs, apiPost, apiGet, createCliente, resetDatabase } from './fixtures'
 
-test.describe('Pedidos: campo Tipo', () => {
+test.describe('Pedidos: campo canal (reemplaza a tipo, ADR-PEDIDO-ORIGEN-CANAL-001)', () => {
   test.describe.configure({ mode: 'serial' })
   test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -8,7 +8,7 @@ test.describe('Pedidos: campo Tipo', () => {
     resetDatabase()
   })
 
-  test('pedido PUNTO tiene tipo=PUNTO en el listado y en detalle', async ({ page }) => {
+  test('pedido PUNTO expone canal=PUNTO en el listado y en detalle, sin campo tipo', async ({ page }) => {
     await loginAs(page, 'admin')
     const c = await createCliente(page)
     const create = await apiPost(page, '/api/pedidos', {
@@ -21,16 +21,18 @@ test.describe('Pedidos: campo Tipo', () => {
     expect(create.status()).toBe(201)
     const list = await apiGet(page, '/api/pedidos?all=true')
     const listBody = await list.json()
-    const punto = listBody.pedidos.find((p: { tipo: string; canal: string }) => p.canal === 'PUNTO')
+    const punto = listBody.pedidos.find((p: { tipo?: string; canal: string }) => p.canal === 'PUNTO')
     expect(punto).toBeDefined()
-    expect(punto.tipo).toBe('PUNTO')
+    expect(punto.canal).toBe('PUNTO')
+    expect(punto.tipo).toBeUndefined()
 
     const detail = await apiGet(page, `/api/pedidos/${punto.id}`)
     const detailBody = await detail.json()
-    expect(detailBody.pedido.tipo).toBe('PUNTO')
+    expect(detailBody.pedido.canal).toBe('PUNTO')
+    expect(detailBody.pedido.tipo).toBeUndefined()
   })
 
-  test('pedido DOMICILIO tiene tipo=ENVIO en el listado y en detalle', async ({ page }) => {
+  test('pedido DOMICILIO expone canal=DOMICILIO en el listado y en detalle, sin campo tipo', async ({ page }) => {
     await loginAs(page, 'admin')
     const c = await createCliente(page)
     const create = await apiPost(page, '/api/pedidos', {
@@ -42,12 +44,14 @@ test.describe('Pedidos: campo Tipo', () => {
     expect(create.status()).toBeLessThan(500)
     const list = await apiGet(page, '/api/pedidos?all=true')
     const listBody = await list.json()
-    const envio = listBody.pedidos.find((p: { tipo: string; canal: string }) => p.canal === 'DOMICILIO')
+    const envio = listBody.pedidos.find((p: { tipo?: string; canal: string }) => p.canal === 'DOMICILIO')
     expect(envio).toBeDefined()
-    expect(envio.tipo).toBe('ENVIO')
+    expect(envio.canal).toBe('DOMICILIO')
+    expect(envio.tipo).toBeUndefined()
 
     const detail = await apiGet(page, `/api/pedidos/${envio.id}`)
     const detailBody = await detail.json()
-    expect(detailBody.pedido.tipo).toBe('ENVIO')
+    expect(detailBody.pedido.canal).toBe('DOMICILIO')
+    expect(detailBody.pedido.tipo).toBeUndefined()
   })
 })
