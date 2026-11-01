@@ -155,7 +155,7 @@ describe('#472 — entrega de oficina sin embarque (Postgres real)', () => {
     expect(ps.map((x) => x.metodo).sort()).toEqual(['EFECTIVO', 'TRANSFERENCIA'])
     expect(Number(ps.find((x) => x.metodo === 'EFECTIVO')!.monto)).toBe(efectivo)
     expect(Number(ps.find((x) => x.metodo === 'TRANSFERENCIA')!.monto)).toBe(transferencia)
-    // una sola persona recibió TODO y la fecha del hecho es la misma
+    // una sola persona recibió el dinero completo y la fecha del hecho es la misma
     expect(new Set(ps.map((x) => x.recibidoPorId)).size).toBe(1)
     expect(ps[0].recibidoPorId).toBeNull() // OFICINA: no queda a nombre del repartidor
     expect(new Set(ps.map((x) => x.ocurridoAt?.toISOString() ?? null)).size).toBe(1)

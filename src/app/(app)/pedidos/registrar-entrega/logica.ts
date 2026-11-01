@@ -47,7 +47,7 @@ export interface DatosEntrega {
   fecha: string
   /** Líneas del cobro (#498): una por medio de pago. Siempre hay al menos una. */
   lineas: LineaCobro[]
-  /** Quién recibió TODO el dinero (una sola persona para todas las líneas). */
+  /** Quién recibió el dinero completo (una sola persona para todas las líneas). */
   quienRecibio: QuienRecibio | null
   /** YYYY-MM-DD */
   promesa: string
