@@ -1,7 +1,7 @@
 // TEMPORAL-SIN-EMBARQUE(#472): reglas de la pantalla «Registrar entrega».
 import { describe, it, expect } from 'vitest'
 import {
-  armarPayload, completa, datosIniciales, hayErrores, hoyBogota, itemsAEntregar, montoNumero, resumen, sumarDias, validar,
+  armarPayload, completa, datosIniciales, erroresLineas, hayErrores, hoyBogota, itemsAEntregar, lineasConMonto, montoNumero, resumen, sumarDias, validar,
   type DatosEntrega, type PedidoParaEntrega,
 } from '../logica'
 
@@ -14,7 +14,17 @@ const pedido = (o: Partial<PedidoParaEntrega> = {}): PedidoParaEntrega => ({
   items: [{ producto: 'PACA_AGUA', cantPedido: 10, cantEntrega: 0 }],
   ...o,
 })
-const datos = (p: PedidoParaEntrega, o: Partial<DatosEntrega> = {}): DatosEntrega => ({ ...datosIniciales(p, AHORA), alcance: 'COMPLETA', repartidorId: 'r1', ...o })
+// `monto` / `metodo` son un atajo para el caso de siempre: un solo medio de pago (primera línea).
+type Atajo = Partial<DatosEntrega> & { monto?: string; metodo?: 'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA' }
+const datos = (p: PedidoParaEntrega, o: Atajo = {}): DatosEntrega => {
+  const { monto, metodo, ...resto } = o
+  const base = datosIniciales(p, AHORA)
+  return {
+    ...base, alcance: 'COMPLETA', repartidorId: 'r1',
+    ...(monto !== undefined || metodo ? { lineas: [{ metodo: metodo ?? 'EFECTIVO', monto: monto ?? '' }] } : {}),
+    ...resto,
+  }
+}
 const nombre = (c: string) => c
 
 describe('datosIniciales', () => {
@@ -36,7 +46,7 @@ describe('validar', () => {
   })
   it('hay que elegir alcance, repartidor (domicilio) y quién recibió el dinero (si hay cobro)', () => {
     const p = pedido()
-    const e = validar(p, { ...datosIniciales(p, AHORA), monto: '1000' }, AHORA)
+    const e = validar(p, datos(p, { alcance: null, repartidorId: '', monto: '1000' }), AHORA)
     expect(e.alcance).toBeTruthy()
     expect(e.repartidor).toBeTruthy()
     expect(e.quienRecibio).toBeTruthy()
@@ -138,5 +148,58 @@ describe('resumen', () => {
     const frases = resumen(p, datos(p, { alcance: 'MENOS', cantidades: { PACA_AGUA: 8 } }), [{ id: 'r1', nombre: 'Andrés' }], nombre)
     expect(frases[0]).toMatch(/parcial/)
     expect(frases.join(' ')).toMatch(/sigue pendiente/)
+  })
+})
+
+describe('#498 pago mixto: varias líneas (medio + monto)', () => {
+  const mixto = (p: PedidoParaEntrega, lineas: Array<{ metodo: 'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA'; monto: string }>, o: Atajo = {}) =>
+    datos(p, { lineas, quienRecibio: 'OFICINA', ...o })
+
+  it('la suma de las líneas es lo recibido; las líneas en blanco no cuentan', () => {
+    const p = pedido()
+    const d = mixto(p, [{ metodo: 'EFECTIVO', monto: '$12.000' }, { metodo: 'TRANSFERENCIA', monto: '8000' }, { metodo: 'NEQUI', monto: '' }])
+    expect(montoNumero(d)).toBe(20000)
+    expect(lineasConMonto(d)).toEqual([{ metodo: 'EFECTIVO', monto: 12000 }, { metodo: 'TRANSFERENCIA', monto: 8000 }])
+  })
+
+  it('el cuerpo trae un pago por medio, con quién recibió una sola vez', () => {
+    const p = pedido()
+    const body = armarPayload(p, mixto(p, [{ metodo: 'EFECTIVO', monto: '12000' }, { metodo: 'TRANSFERENCIA', monto: '48000' }]), 'clave-mixta', AHORA)
+    expect(body.recibioDinero).toBe('OFICINA')
+    expect(body.pagos).toEqual([{ metodo: 'EFECTIVO', monto: 12000 }, { metodo: 'TRANSFERENCIA', monto: 48000 }])
+    expect(hayErrores(validar(p, mixto(p, [{ metodo: 'EFECTIVO', monto: '12000' }, { metodo: 'TRANSFERENCIA', monto: '48000' }]), AHORA))).toBe(false)
+  })
+
+  it('si la suma pasa lo que se debe: error en «monto»; si es menor, queda fiado y pide promesa', () => {
+    const p = pedido()
+    const pasa = validar(p, mixto(p, [{ metodo: 'EFECTIVO', monto: '40000' }, { metodo: 'NEQUI', monto: '30000' }]), AHORA)
+    expect(pasa.monto).toMatch(/mayor/)
+    const menos = validar(p, mixto(p, [{ metodo: 'EFECTIVO', monto: '10000' }, { metodo: 'NEQUI', monto: '20000' }]), AHORA)
+    expect(menos.monto).toBeUndefined()
+    expect(menos.promesa).toMatch(/promete pagar/)
+  })
+
+  it('no se repite el mismo medio: los montos se suman en una sola línea', () => {
+    const p = pedido()
+    const d = mixto(p, [{ metodo: 'EFECTIVO', monto: '15000' }, { metodo: 'EFECTIVO', monto: '8000' }])
+    expect(erroresLineas(d)).toEqual([undefined, 'Ya hay una línea de Efectivo: suma los montos en una sola.'])
+    expect(validar(p, d, AHORA).lineas).toBeDefined()
+  })
+
+  it('un texto que no es un monto se marca (antes se ignoraba en silencio)', () => {
+    const p = pedido()
+    expect(erroresLineas(mixto(p, [{ metodo: 'EFECTIVO', monto: 'abc' }]))).toEqual(['Escribe un monto mayor que cero.'])
+  })
+
+  it('la revisión lista cada medio por separado', () => {
+    const p = pedido()
+    const frases = resumen(p, mixto(p, [{ metodo: 'EFECTIVO', monto: '12000' }, { metodo: 'TRANSFERENCIA', monto: '48000' }]), [], nombre)
+    expect(frases.some((f) => f.includes('Se recibieron $60.000: $12.000 en efectivo y $48.000 por transferencia. Se pagaron en la oficina.'))).toBe(true)
+  })
+
+  it('con un solo medio la frase sigue siendo la de siempre', () => {
+    const p = pedido()
+    const frases = resumen(p, mixto(p, [{ metodo: 'NEQUI', monto: '60000' }]), [], nombre)
+    expect(frases.some((f) => f.includes('Se recibieron $60.000 (Nequi). Se pagaron en la oficina.'))).toBe(true)
   })
 })

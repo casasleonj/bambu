@@ -65,7 +65,7 @@ test.describe('Gestión temporal sin embarque (#472)', () => {
     await expect(dialogo).toBeVisible()
     await dialogo.getByTestId('alcance-todo').check()
     await dialogo.getByLabel(/¿Quién lo entregó/).selectOption({ label: repartidor.nombre })
-    await dialogo.getByLabel('¿Cuánto dinero se recibió?').fill(String(ped.total))
+    await dialogo.getByLabel('Monto recibido').fill(String(ped.total))
 
     // Sin elegir quién recibió el dinero NO se puede continuar.
     await dialogo.getByTestId('re-revisar').click()
@@ -100,6 +100,46 @@ test.describe('Gestión temporal sin embarque (#472)', () => {
     // La ficha muestra quién entregó.
     await page.goto(`${BASE}/pedidos?openPedido=${ped.id}`)
     await expect(appMain(page).getByTestId('detalle-repartidor')).toContainText(repartidor.nombre, { timeout: 20000 })
+  })
+
+  test('#498 ENCENDIDO: cobro con dos medios (efectivo + transferencia): un pago por medio en la base', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    await interruptor(page, 'true')
+    const repartidor = await prisma.trabajador.create({ data: { nombre: `Mixto E2E ${Date.now()}`, rol: 'REPARTIDOR', usaMoto: true } })
+    const ped = await crearPedidoPendiente(page, `GE mixto ${Date.now()}`)
+    const efectivo = 1000
+    const transferencia = ped.total - efectivo
+
+    await page.goto(`${BASE}/pedidos?openPedido=${ped.id}`)
+    await appMain(page).getByTestId('detalle-acciones').getByRole('button', { name: 'Registrar entrega' }).click({ timeout: 20000 })
+    const dialogo = page.getByTestId('registrar-entrega')
+    await expect(dialogo).toBeVisible()
+    await dialogo.getByTestId('alcance-todo').check()
+    await dialogo.getByLabel(/¿Quién lo entregó/).selectOption({ label: repartidor.nombre })
+
+    await dialogo.locator('#re-monto-0').fill(String(efectivo))
+    await dialogo.getByTestId('re-agregar-medio').click()
+    await dialogo.locator('#re-monto-1').fill(String(transferencia))
+    await expect(dialogo.getByTestId('re-linea-1')).toBeVisible()
+    await expect(dialogo.locator('#re-metodo-1')).toHaveValue('TRANSFERENCIA')
+    await expect(dialogo.getByTestId('re-recibido')).toContainText('pagado completo')
+    await dialogo.getByTestId('recibio-oficina').check()
+
+    await dialogo.getByTestId('re-revisar').click()
+    await expect(dialogo.getByTestId('re-resumen')).toContainText('en efectivo y')
+    await expect(dialogo.getByTestId('re-resumen')).toContainText('por transferencia')
+    await dialogo.getByTestId('re-guardar').click()
+    await expect(page.getByText(new RegExp(`Entrega del pedido #${ped.numero} registrada`))).toBeVisible({ timeout: 20000 })
+
+    const p = await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })
+    expect(p.estadoEntrega).toBe('ENTREGADO')
+    expect(p.estadoPago).toBe('PAGADO')
+    expect(Number(p.saldo)).toBe(0)
+    const pagos = await prisma.pago.findMany({ where: { pedidoId: ped.id } })
+    expect(pagos).toHaveLength(2)
+    expect(Number(pagos.find((x) => x.metodo === 'EFECTIVO')!.monto)).toBe(efectivo)
+    expect(Number(pagos.find((x) => x.metodo === 'TRANSFERENCIA')!.monto)).toBe(transferencia)
+    expect(pagos.every((x) => x.recibidoPorId === null)).toBe(true) // se pagó en la oficina
   })
 
   test('ENCENDIDO: un fiado sin promesa de pago no se puede guardar y no deja nada a medias', async ({ browser }) => {

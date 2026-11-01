@@ -4,6 +4,22 @@
 // quien usa la pantalla con mensajes sencillos antes de enviar.
 
 export type MetodoCobro = 'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA'
+
+/** Medios de pago que se ofrecen, en el orden en que se muestran. */
+export const METODOS_COBRO: ReadonlyArray<{ valor: MetodoCobro; etiqueta: string; enFrase: string }> = [
+  { valor: 'EFECTIVO', etiqueta: 'Efectivo', enFrase: 'efectivo' },
+  { valor: 'TRANSFERENCIA', etiqueta: 'Transferencia', enFrase: 'transferencia' },
+  { valor: 'NEQUI', etiqueta: 'Nequi', enFrase: 'Nequi' },
+  { valor: 'DAVIPLATA', etiqueta: 'Daviplata', enFrase: 'Daviplata' },
+]
+export const etiquetaMetodo = (m: MetodoCobro): string => METODOS_COBRO.find((x) => x.valor === m)?.etiqueta ?? m
+
+/** Una línea del cobro: un medio de pago y cuánto se recibió con él (#498). */
+export interface LineaCobro {
+  metodo: MetodoCobro
+  /** Texto tal como lo escribe la persona; vacío = sin cobro en esta línea. */
+  monto: string
+}
 export type QuienRecibio = 'REPARTIDOR' | 'OFICINA'
 
 export interface PedidoParaEntrega {
@@ -29,9 +45,10 @@ export interface DatosEntrega {
   repartidorId: string
   /** YYYY-MM-DD (calendario de Bogotá). */
   fecha: string
-  monto: string
+  /** Líneas del cobro (#498): una por medio de pago. Siempre hay al menos una. */
+  lineas: LineaCobro[]
+  /** Quién recibió TODO el dinero (una sola persona para todas las líneas). */
   quienRecibio: QuienRecibio | null
-  metodo: MetodoCobro
   /** YYYY-MM-DD */
   promesa: string
   nota: string
@@ -70,9 +87,8 @@ export function datosIniciales(p: PedidoParaEntrega, ahora: Date = new Date()): 
     cantidades: Object.fromEntries(pendientes(p).map((i) => [i.producto, i.pendiente])),
     repartidorId: p.entregadoPorId ?? '',
     fecha: hoyBogota(ahora),
-    monto: '',
+    lineas: [{ metodo: 'EFECTIVO', monto: '' }],
     quienRecibio: null,
-    metodo: 'EFECTIVO',
     promesa: '',
     nota: '',
   }
@@ -87,10 +103,39 @@ export function itemsAEntregar(p: PedidoParaEntrega, d: DatosEntrega): Array<{ p
     .filter((i) => i.cantidad > 0)
 }
 
-export function montoNumero(d: DatosEntrega): number {
-  const limpio = d.monto.replace(/[^0-9.,]/g, '').replace(/\./g, '').replace(',', '.')
+export function parsearMonto(texto: string): number {
+  const limpio = texto.replace(/[^0-9.,]/g, '').replace(/\./g, '').replace(',', '.')
   const n = Number(limpio)
   return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+/** Líneas con dinero (monto mayor que cero), ya como números. */
+export function lineasConMonto(d: DatosEntrega): Array<{ metodo: MetodoCobro; monto: number }> {
+  return d.lineas
+    .map((l) => ({ metodo: l.metodo, monto: parsearMonto(l.monto) }))
+    .filter((l) => l.monto > 0)
+}
+
+/** Todo lo recibido: la suma de las líneas. */
+export function montoNumero(d: DatosEntrega): number {
+  return lineasConMonto(d).reduce((s, l) => s + l.monto, 0)
+}
+
+/**
+ * Error de cada línea (misma posición que `d.lineas`; `undefined` = bien): un texto que no es un
+ * monto, o un medio repetido (los montos del mismo medio se suman en una sola línea).
+ */
+export function erroresLineas(d: DatosEntrega): Array<string | undefined> {
+  const vistos = new Set<MetodoCobro>()
+  return d.lineas.map((l) => {
+    const escrito = l.monto.trim() !== ''
+    const monto = parsearMonto(l.monto)
+    if (escrito && monto <= 0) return 'Escribe un monto mayor que cero.'
+    if (monto <= 0) return undefined
+    if (vistos.has(l.metodo)) return `Ya hay una línea de ${etiquetaMetodo(l.metodo)}: suma los montos en una sola.`
+    vistos.add(l.metodo)
+    return undefined
+  })
 }
 
 export function saldoActual(p: PedidoParaEntrega): number {
@@ -103,7 +148,7 @@ export function completa(p: PedidoParaEntrega, d: DatosEntrega): boolean {
   return pendientes(p).every((pe) => (aEntregar.find((a) => a.producto === pe.producto)?.cantidad ?? 0) >= pe.pendiente)
 }
 
-export type Errores = Partial<Record<'alcance' | 'cantidades' | 'repartidor' | 'fecha' | 'monto' | 'quienRecibio' | 'promesa', string>>
+export type Errores = Partial<Record<'alcance' | 'cantidades' | 'repartidor' | 'fecha' | 'monto' | 'lineas' | 'quienRecibio' | 'promesa', string>>
 
 export function validar(p: PedidoParaEntrega, d: DatosEntrega, ahora: Date = new Date()): Errores {
   const e: Errores = {}
@@ -125,6 +170,7 @@ export function validar(p: PedidoParaEntrega, d: DatosEntrega, ahora: Date = new
 
   const monto = montoNumero(d)
   const saldo = saldoActual(p)
+  if (erroresLineas(d).some(Boolean)) e.lineas = 'Revisa las líneas de pago.'
   if (monto > saldo) e.monto = `El dinero recibido es mayor que lo que se debe (${pesos(saldo)}).`
   if (monto > 0 && !d.quienRecibio) e.quienRecibio = 'Indica quién recibió el dinero.'
   const repartidorElegido = Boolean(p.entregadoPorId || d.repartidorId)
@@ -164,7 +210,11 @@ export function resumen(p: PedidoParaEntrega, d: DatosEntrega, repartidores: Rep
   const monto = montoNumero(d)
   if (monto > 0) {
     const quien = d.quienRecibio === 'REPARTIDOR' ? `Los tiene ${nombreRep ?? 'el repartidor'}` : 'Se pagaron en la oficina'
-    frases.push(`Se recibieron ${pesos(monto)} (${d.metodo.toLowerCase()}). ${quien}.`)
+    const lineas = lineasConMonto(d)
+    const detalle = lineas.length === 1
+      ? `(${METODOS_COBRO.find((m) => m.valor === lineas[0].metodo)?.enFrase ?? lineas[0].metodo})`
+      : `: ${lineas.map((l) => `${pesos(l.monto)} ${l.metodo === 'EFECTIVO' ? 'en' : 'por'} ${METODOS_COBRO.find((m) => m.valor === l.metodo)?.enFrase ?? l.metodo}`).join(' y ')}`
+    frases.push(`Se recibieron ${pesos(monto)} ${detalle}. ${quien}.`.replace(' :', ':').replace(' ,', ','))
   }
   const saldoDespues = Math.max(0, saldoActual(p) - monto)
   if (saldoDespues > 0 && total) {
@@ -186,7 +236,7 @@ export function armarPayload(p: PedidoParaEntrega, d: DatosEntrega, offlineId: s
     itemsEntregados: itemsAEntregar(p, d),
     ...(d.repartidorId && !p.entregadoPorId ? { repartidorId: d.repartidorId } : {}),
     ...(monto > 0 && d.quienRecibio
-      ? { recibioDinero: d.quienRecibio, pagos: [{ metodo: d.metodo, monto }] }
+      ? { recibioDinero: d.quienRecibio, pagos: lineasConMonto(d) }
       : {}),
     // Hoy = el instante actual; otro día = mediodía de Bogotá (evita saltos de día por zona horaria).
     ...(d.fecha !== hoy ? { fechaEntrega: `${d.fecha}T17:00:00.000Z`, precisionFecha: 'DIA' as const } : {}),
