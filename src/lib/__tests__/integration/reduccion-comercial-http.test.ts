@@ -160,13 +160,14 @@ describe('Reducción comercial — HTTP (#451)', () => {
     expect((await get(id)).body.puedeAutorizar).toBe(false)
   })
 
-  it('pagó de más → 422 con código; sobre lo entregado → 409; reintento con el mismo offlineId → 200 deduped', async () => {
+  it('pagó de más → se aplica y acredita el excedente; sobre lo entregado → 409; reintento con el mismo offlineId → 200 deduped', async () => {
     sesion('admin', 'ADMIN')
     const pagado = await crearPedido()
     await testPrisma.pedido.update({ where: { id: pagado }, data: { totalPagado: 40000, saldo: 10000, estadoPago: 'PARCIAL' } })
+    await testPrisma.pago.create({ data: { pedidoId: pagado, metodo: 'EFECTIVO', monto: 40000, confirmacion: 'CONFIRMADO' } })
     const r = await post(pagado)
-    expect(r.status).toBe(422)
-    expect(r.body.error.code).toBe('REDUCCION_GENERARIA_SOBREPAGO')
+    expect(r.status).toBe(201)
+    expect(r.body).toMatchObject({ estado: 'APLICADA', excedenteAcreditado: 2500 })
 
     const id = await crearPedido()
     expect((await post(id, { cantidadReducida: 6 })).status).toBe(409)
@@ -177,6 +178,17 @@ describe('Reducción comercial — HTTP (#451)', () => {
     expect(a.status).toBe(201)
     expect(b.status).toBe(200)
     expect(b.body).toMatchObject({ deduped: true, id: a.body.id })
+  })
+
+  it('el excedente de una venta anónima no se puede acreditar: 422 EXCEDENTE_SIN_CLIENTE y no cambia nada', async () => {
+    sesion('admin', 'ADMIN')
+    const id = await crearPedido()
+    await testPrisma.pedido.update({ where: { id }, data: { clienteId: 'CONSUMIDOR_FINAL', totalPagado: 50000, saldo: 0, estadoPago: 'PAGADO' } })
+    await testPrisma.pago.create({ data: { pedidoId: id, metodo: 'EFECTIVO', monto: 50000, confirmacion: 'CONFIRMADO' } })
+    const r = await post(id)
+    expect(r.status).toBe(422)
+    expect(r.body.error.code).toBe('EXCEDENTE_SIN_CLIENTE')
+    expect(Number((await testPrisma.pedido.findUniqueOrThrow({ where: { id } })).total)).toBe(50000)
   })
 
   describe('permiso por usuario en PUT /api/users/[id]', () => {

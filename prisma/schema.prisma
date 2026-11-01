@@ -304,6 +304,7 @@ model User {
   // #451 / ADR-REDUCCION-COMERCIAL-001: reducciones comerciales solicitadas / resueltas.
   reduccionesComercialesSolicitadas PedidoReduccionComercial[] @relation("ReduccionComercialSolicitante")
   reduccionesComercialesResueltas   PedidoReduccionComercial[] @relation("ReduccionComercialResolutor")
+  movimientosSaldoFavor PedidoSaldoFavorMovimiento[] @relation("MovimientoSaldoFavorAutor")
   excepcionesCreditoAutorizadas PedidoExcepcionCredito[] @relation("ExcepcionCreditoAutorizador")
   excepcionesCreditoRechazadas  PedidoExcepcionCredito[] @relation("ExcepcionCreditoRechazador")
 
@@ -1073,6 +1074,7 @@ model Pedido {
   sustituciones Sustitucion[]
   correccionesPrecio PedidoCorreccionPrecio[]
   reduccionesComerciales PedidoReduccionComercial[]
+  movimientosSaldoFavor PedidoSaldoFavorMovimiento[]
   retornos      Retorno[]
 
   // FASE 3 (obligaciones)
@@ -3114,4 +3116,43 @@ model PedidoReduccionComercial {
   @@index([pedidoId])
   @@index([estado])
   @@index([solicitadoPorId])
+}
+
+// ====================
+// PEDIDO_SALDO_FAVOR_MOVIMIENTO (#533, ADR-SALDO-FAVOR-EXCEDENTE-001)
+// ====================
+//
+// Cuando una corrección de precio o una reducción comercial deja el total del pedido por debajo
+// de lo ya pagado, el excedente NO borra ningún Pago: se traslada del pedido al saldo a favor del
+// cliente (ACREDITACION). Si después el total vuelve a subir, se reaplica hasta lo disponible
+// (REAPLICACION). Solo inserción; el neto por pedido es Σ ACREDITACION − Σ REAPLICACION.
+// No mueve caja: el dinero ya entró y se queda en la empresa como crédito del cliente.
+
+enum PedidoSaldoFavorMovimientoTipo {
+  ACREDITACION
+  REAPLICACION
+}
+
+model PedidoSaldoFavorMovimiento {
+  id        String @id @default(cuid())
+  pedidoId  String
+  pedido    Pedido @relation(fields: [pedidoId], references: [id])
+  clienteId String
+
+  tipo  PedidoSaldoFavorMovimientoTipo
+  /// Siempre > 0; el signo lo da `tipo`.
+  monto Decimal @db.Decimal(10, 2)
+
+  /// 'CORRECCION_PRECIO' | 'REDUCCION_COMERCIAL'
+  origenTipo String
+  origenId   String
+  motivo     String
+
+  autorId String
+  autor      User   @relation("MovimientoSaldoFavorAutor", fields: [autorId], references: [id])
+  createdAt  DateTime @default(now()) @db.Timestamptz()
+
+  @@index([pedidoId])
+  @@index([clienteId])
+  @@index([origenTipo, origenId])
 }

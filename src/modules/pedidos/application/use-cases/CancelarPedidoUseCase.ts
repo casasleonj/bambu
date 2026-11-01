@@ -3,6 +3,7 @@
  */
 
 import { getNextNumero } from '@/lib/sequence'
+import { creditoNetoDelPedido } from '../services/saldo-favor-excedente.service'
 import { logAudit } from '@/lib/audit'
 import { registrarReversionPedido } from '@/lib/receivable-entry'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
@@ -90,11 +91,14 @@ export class CancelarPedidoUseCase {
         }, tx)
       }
 
+      // #533: el crédito que este pedido trasladó a saldo a favor no se borra (es dinero del cliente).
+      const saldoFavorConservado = await creditoNetoDelPedido(tx, pedido.id.get())
+
       await logAudit({
         entidad: 'Pedido',
         registroId: pedido.id.get(),
         accion: 'UPDATE',
-        datos: { motivo: input.motivo, estado: updated.estadoEntrega.get(), notaCredito: tuvoPagos, reversion: montoRevertido },
+        datos: { motivo: input.motivo, estado: updated.estadoEntrega.get(), notaCredito: tuvoPagos, reversion: montoRevertido, ...(saldoFavorConservado > 0 ? { saldoFavorConservado } : {}) },
       }, tx)
 
       return { pedido: PedidoDTOMapper.toResumen(updated) }

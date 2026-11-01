@@ -21,6 +21,8 @@ export const PRECIO_RARO_MINIMO: Readonly<Record<string, number>> = {
 }
 
 const redondear = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100
+const aCentavos = (n: number): number => Math.round((n + Number.EPSILON) * 100)
+const deCentavos = (c: number): number => c / 100
 
 export function esPrecioRaro(producto: string, precioNuevo: number): boolean {
   const minimo = PRECIO_RARO_MINIMO[producto]
@@ -39,6 +41,10 @@ export interface CorreccionResultado {
   delta: number
   totalNuevo: number
   saldoNuevo: number
+  /** Lo pagado de más respecto del nuevo total (0 si no hay). Se traslada a saldo a favor. */
+  excedente: number
+  /** Lo que queda pagado en el pedido: `min(totalPagado, totalNuevo)`. */
+  totalPagadoNuevo: number
 }
 
 export function calcularCorreccion(input: CorreccionInput): CorreccionResultado {
@@ -52,15 +58,18 @@ export function calcularCorreccion(input: CorreccionInput): CorreccionResultado 
   if (!Number.isInteger(cantidad) || cantidad <= 0) {
     throw new Error('LINEA_SIN_CANTIDAD: la línea no tiene cantidad pedida.')
   }
-  const delta = redondear((precioNuevo - precioAnterior) * cantidad)
-  const totalNuevo = redondear(total + delta)
-  if (totalNuevo < redondear(totalPagado)) {
-    throw new Error(
-      `PRECIO_GENERARIA_SOBREPAGO: con el precio nuevo el pedido costaría ${totalNuevo} y el cliente ya pagó ${redondear(totalPagado)}. ` +
-        'Reversa primero el pago que sobra o corrige un precio mayor.',
-    )
+  const deltaC = (aCentavos(precioNuevo) - aCentavos(precioAnterior)) * cantidad
+  const totalNuevoC = aCentavos(total) + deltaC
+  const pagadoC = aCentavos(totalPagado)
+  const excedenteC = Math.max(0, pagadoC - totalNuevoC)
+  const pagadoNuevoC = pagadoC - excedenteC
+  return {
+    delta: deCentavos(deltaC),
+    totalNuevo: deCentavos(totalNuevoC),
+    saldoNuevo: deCentavos(totalNuevoC - pagadoNuevoC),
+    excedente: deCentavos(excedenteC),
+    totalPagadoNuevo: deCentavos(pagadoNuevoC),
   }
-  return { delta, totalNuevo, saldoNuevo: redondear(totalNuevo - totalPagado) }
 }
 
 export type RolCorreccion = 'ADMIN' | 'ASISTENTE' | string

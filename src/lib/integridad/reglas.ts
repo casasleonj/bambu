@@ -74,24 +74,46 @@ export const REGLAS: readonly Regla[] = [
   },
   {
     id: 'V2',
-    titulo: 'totalPagado = Σ Pago + Σ Abono (sin el Abono espejo de pagar-fiado)',
+    titulo: 'totalPagado = Σ Pago + Σ Abono (sin el Abono espejo de pagar-fiado) − excedente trasladado a saldo a favor − correcciones de abono',
     severidad: 'ALTA',
+    // #533: el excedente de una corrección de precio / reducción se traslada del pedido al saldo a
+    // favor del cliente SIN tocar los Pago. Lo trasladado (Σ ACREDITACION − Σ REAPLICACION) es lo
+    // único que explica que `totalPagado` sea menor que Σ Pago + Σ Abono; sin descontarlo, cada
+    // traslado legítimo sería un falso positivo. Igual con las correcciones de abono
+    // (`CorreccionAbono`, ADR-CORRECCION-MONETARIA-001): bajan `totalPagado` sin borrar el `Abono` ni
+    // el `Pago` que lo originó, así que también se descuentan (de cualquier abono, espejo o no).
     consulta: () => Prisma.sql`
       WITH pg AS (SELECT "pedidoId", SUM(monto) AS s FROM "Pago" GROUP BY 1),
-           ab AS (${ABONOS_SIN_ESPEJO})
+           ab AS (${ABONOS_SIN_ESPEJO}),
+           mv AS (
+             SELECT "pedidoId",
+               SUM(CASE WHEN tipo = 'ACREDITACION' THEN -monto ELSE monto END) AS s
+             FROM "PedidoSaldoFavorMovimiento" GROUP BY 1
+           ),
+           cr AS (
+             SELECT COALESCE(a."pedidoId", f."pedidoId") AS "pedidoId", SUM(c."montoRevertido") AS s
+             FROM "CorreccionAbono" c
+             JOIN "Abono" a ON a.id = c."abonoId"
+             JOIN "Factura" f ON f.id = a."facturaId"
+             GROUP BY 1
+           )
       SELECT p.id AS ref, p.numero,
         json_build_object(
           'clienteId', p."clienteId",
           'totalPagado', p."totalPagado"::float8,
           'pagos', COALESCE(pg.s, 0)::float8,
           'abonos', COALESCE(ab.s, 0)::float8,
-          'diferencia', (p."totalPagado" - COALESCE(pg.s, 0) - COALESCE(ab.s, 0))::float8
+          'trasladadoASaldoFavor', (-COALESCE(mv.s, 0))::float8,
+          'correccionesDeAbono', COALESCE(cr.s, 0)::float8,
+          'diferencia', (p."totalPagado" - COALESCE(pg.s, 0) - COALESCE(ab.s, 0) - COALESCE(mv.s, 0) + COALESCE(cr.s, 0))::float8
         ) AS detalle
       FROM "Pedido" p
       LEFT JOIN pg ON pg."pedidoId" = p.id
       LEFT JOIN ab ON ab."pedidoId" = p.id
+      LEFT JOIN mv ON mv."pedidoId" = p.id
+      LEFT JOIN cr ON cr."pedidoId" = p.id
       WHERE ${ACTIVO}
-        AND p."totalPagado" <> COALESCE(pg.s, 0) + COALESCE(ab.s, 0)
+        AND p."totalPagado" <> COALESCE(pg.s, 0) + COALESCE(ab.s, 0) + COALESCE(mv.s, 0) - COALESCE(cr.s, 0)
       ORDER BY p.numero`,
   },
   {

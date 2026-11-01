@@ -3,6 +3,7 @@
  */
 
 import { getNextNumero } from '@/lib/sequence'
+import { creditoNetoDelPedido } from '../services/saldo-favor-excedente.service'
 import { logAudit } from '@/lib/audit'
 import { registrarReversionPedido } from '@/lib/receivable-entry'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
@@ -22,7 +23,7 @@ export class AnularPedidoUseCase {
     private txManager: ITransactionManager,
   ) {}
 
-  async execute(input: AnularPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean; hijosAnulados: number; hijosIds: string[] }> {
+  async execute(input: AnularPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean; hijosAnulados: number; hijosIds: string[]; saldoFavorConservado?: number }> {
     // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:notaCredito`. La NC se
     // genera con getNextNumero(model:'notaCredito') MAX+1, por lo que exige
     // serialización global de la numeración. Resuelve la colisión histórica
@@ -56,7 +57,7 @@ export class AnularPedidoUseCase {
         }
       }
 
-      const updated = await this.aplicar(tx, pedido, 'ANULAR', input.motivo, input.offlineId)
+      const { updated, saldoFavorConservado } = await this.aplicar(tx, pedido, 'ANULAR', input.motivo, input.offlineId)
 
       // Decisión PO (#367): anular un pedido anula también sus pedidos hijos
       // (`pedidoOrigenId`: entrega parcial / nueva demanda), en cascada por todo
@@ -82,7 +83,7 @@ export class AnularPedidoUseCase {
         }
       }
 
-      return { pedido: PedidoDTOMapper.toResumen(updated), hijosAnulados: hijosIds.length, hijosIds }
+      return { pedido: PedidoDTOMapper.toResumen(updated), hijosAnulados: hijosIds.length, hijosIds, ...(saldoFavorConservado > 0 ? { saldoFavorConservado } : {}) }
     })
   }
 
@@ -127,13 +128,18 @@ export class AnularPedidoUseCase {
       }, tx)
     }
 
+    // #533: si este pedido trasladó excedentes a saldo a favor, ese crédito NO se borra: es dinero que
+    // el cliente pagó y sigue siendo suyo (la nota de crédito solo cubre lo que quedaba pagado en el
+    // pedido). Se deja constancia para que la oficina lo devuelva o lo use.
+    const saldoFavorConservado = await creditoNetoDelPedido(tx, pedido.id.get())
+
     await logAudit({
       entidad: 'Pedido',
       registroId: pedido.id.get(),
       accion: 'UPDATE',
-      datos: { motivo, modo, notaCredito: tuvoPagos, reversion: montoRevertido },
+      datos: { motivo, modo, notaCredito: tuvoPagos, reversion: montoRevertido, ...(saldoFavorConservado > 0 ? { saldoFavorConservado } : {}) },
     }, tx)
 
-    return updated
+    return { updated, saldoFavorConservado }
   }
 }

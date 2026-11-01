@@ -22,6 +22,8 @@ const POR_CODIGO: Record<string, number> = {
   CORRECCION_PENDIENTE: 409,
   CORRECCION_OBSOLETA: 409,
   PRECIO_GENERARIA_SOBREPAGO: 422,
+  EXCEDENTE_SIN_CLIENTE: 422,
+  EXCEDENTE_SIN_CONFIRMAR: 422,
 }
 
 export function mapCorreccionPrecioError(message: string): ErrorHttpCorreccion | null {

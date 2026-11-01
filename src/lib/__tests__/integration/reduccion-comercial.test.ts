@@ -56,7 +56,7 @@ async function crearPedido(pagado = 0, extra: Record<string, unknown> = {}) {
     },
   })
   if (pagado > 0) {
-    await testPrisma.pago.create({ data: { pedidoId: pedido.id, metodo: 'EFECTIVO', monto: pagado } })
+    await testPrisma.pago.create({ data: { pedidoId: pedido.id, metodo: 'EFECTIVO', monto: pagado, confirmacion: 'CONFIRMADO' } })
   }
   return pedido
 }
@@ -168,15 +168,15 @@ describe('Reducción comercial (#451)', () => {
     expect(await violaciones(p.id)).toEqual([])
   })
 
-  it('con un pago mayor al nuevo total se rechaza (422) y no cambia nada ni emite nota', async () => {
+  it('con un pago mayor al nuevo total: el excedente pasa a saldo a favor y la nota de crédito sigue siendo por lo reducido (#533)', async () => {
     const p = await crearPedido(40000)
-    const notasAntes = await testPrisma.notaCredito.count()
-    const antes = await estado(p.id)
-    const msg = await mensajeDe(solicitar.execute({ ...base, pedidoId: p.id, actorId: autorizadorId }))
-    expect(msg).toContain('REDUCCION_GENERARIA_SOBREPAGO')
-    expect(await estado(p.id)).toEqual(antes)
-    expect(await testPrisma.notaCredito.count()).toBe(notasAntes)
-    expect(await testPrisma.pedidoReduccionComercial.count({ where: { pedidoId: p.id } })).toBe(0)
+    const antes = Number((await testPrisma.cliente.findUniqueOrThrow({ where: { id: clienteId } })).saldoFavor)
+    const r = await solicitar.execute({ ...base, pedidoId: p.id, actorId: autorizadorId })
+    expect(r).toMatchObject({ estado: 'APLICADA', monto: 12500, totalDespues: 37500, excedenteAcreditado: 2500 })
+    expect(await estado(p.id)).toMatchObject({ total: 37500, totalPagado: 37500, saldo: 0, estadoPago: 'PAGADO', facSaldo: 0, facEstado: 'PAGADA' })
+    expect(Number((await testPrisma.cliente.findUniqueOrThrow({ where: { id: clienteId } })).saldoFavor)).toBe(antes + 2500)
+    expect(Number((await testPrisma.notaCredito.findUniqueOrThrow({ where: { id: r.notaCreditoId } })).monto)).toBe(12500)
+    expect(await violaciones(p.id)).toEqual([])
   })
 
   it('no toca lo entregado: pedir quitar más de lo pendiente se rechaza', async () => {

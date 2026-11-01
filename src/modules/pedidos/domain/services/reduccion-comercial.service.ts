@@ -42,6 +42,10 @@ export interface ReduccionResultado {
   cantPedidoNueva: number
   totalNuevo: number
   saldoNuevo: number
+  /** Lo pagado de más respecto del nuevo total (0 si no hay). Se traslada a saldo a favor. */
+  excedente: number
+  /** Lo que queda pagado en el pedido: `min(totalPagado, totalNuevo)`. */
+  totalPagadoNuevo: number
 }
 
 export function calcularReduccion(input: ReduccionInput): ReduccionResultado {
@@ -65,25 +69,23 @@ export function calcularReduccion(input: ReduccionInput): ReduccionResultado {
   const montoC = aCentavos(input.precio) * cantidadReducida
   const totalNuevoC = aCentavos(input.total) - montoC
   const pagadoC = aCentavos(input.totalPagado)
-  if (totalNuevoC < pagadoC) {
-    throw new Error(
-      `REDUCCION_GENERARIA_SOBREPAGO: con la reducción el pedido costaría ${deCentavos(totalNuevoC)} y el cliente ya pagó ${deCentavos(pagadoC)}. ` +
-        'Reversa primero el pago que sobra.',
-    )
-  }
+  const excedenteC = Math.max(0, pagadoC - totalNuevoC)
+  const pagadoNuevoC = pagadoC - excedenteC
   return {
     monto: deCentavos(montoC),
     cantPedidoNueva,
     totalNuevo: deCentavos(totalNuevoC),
-    saldoNuevo: deCentavos(totalNuevoC - pagadoC),
+    saldoNuevo: deCentavos(totalNuevoC - pagadoNuevoC),
+    excedente: deCentavos(excedenteC),
+    totalPagadoNuevo: deCentavos(pagadoNuevoC),
   }
 }
 
 /**
- * Máximo de unidades que se pueden quitar de una línea ahora mismo: lo pendiente por entregar,
- * acotado por lo ya pagado (el nuevo total no puede quedar por debajo). Es la misma regla de
- * `calcularReduccion`, calculada de antemano para que la pantalla no deje equivocarse. Un tope
- * de 0 significa que no se puede quitar nada (todo entregado o ya pagado por completo).
+ * Máximo de unidades que se pueden quitar de una línea SIN generar excedente: lo pendiente por
+ * entregar, acotado por lo ya pagado. La API acepta más (el excedente pasa a saldo a favor); este
+ * tope es el que usa la pantalla actual, que todavía no ofrece trasladar excedentes. Un tope de 0
+ * significa que no se puede quitar nada sin excedente.
  */
 export function topeReduccion(i: {
   total: number

@@ -23,6 +23,7 @@ import {
   pedidoReducible,
   repartirReduccionBotellon,
 } from '../../domain/services/reduccion-comercial.service'
+import { trasladarExcedenteASaldoFavor } from './saldo-favor-excedente.service'
 
 const num = (v: unknown): number => Number(v ?? 0)
 const redondear = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100
@@ -68,7 +69,7 @@ function legacyReducido(p: LegacyPedido, producto: string, reducir: number): Rec
 export async function aplicarReduccionComercial(
   tx: TransactionClient,
   input: { reduccionId: string; actorId: string; nota?: string },
-): Promise<{ totalAntes: number; totalDespues: number; saldoDespues: number; notaCreditoId: string }> {
+): Promise<{ totalAntes: number; totalDespues: number; saldoDespues: number; notaCreditoId: string; excedenteAcreditado: number }> {
   const r = await tx.pedidoReduccionComercial.findUniqueOrThrow({ where: { id: input.reduccionId } })
   const pedido = await tx.pedido.findUnique({
     where: { id: r.pedidoId },
@@ -107,25 +108,38 @@ export async function aplicarReduccionComercial(
     },
   })
 
+  const factura = pedido.factura && pedido.factura.estado !== 'ANULADA' ? pedido.factura : null
+
+  // Pagó de más → el excedente pasa al saldo a favor del cliente (#533). Los Pago no se tocan.
+  if (calculo.excedente > 0) {
+    await trasladarExcedenteASaldoFavor(tx, {
+      pedidoId: pedido.id, clienteId: pedido.clienteId, facturaId: factura?.id ?? null,
+      origenTipo: 'REDUCCION_COMERCIAL', origenId: r.id, motivo: `Reducción comercial: ${r.motivo}`, actorId: input.actorId,
+      excedente: calculo.excedente, totalPagadoAntes: totalPagado, totalPagadoNuevo: calculo.totalPagadoNuevo, saldoResultante: calculo.saldoNuevo,
+    })
+  }
+
   await tx.pedido.update({
     where: { id: pedido.id },
     data: {
       ...legacyReducido(pedido, r.producto, r.cantidadReducida),
       total: calculo.totalNuevo,
+      totalPagado: calculo.totalPagadoNuevo,
       saldo: calculo.saldoNuevo,
-      estadoPago: calcularEstadoPago(calculo.totalNuevo, totalPagado, pedido.estadoEntrega),
+      estadoPago: calcularEstadoPago(calculo.totalNuevo, calculo.totalPagadoNuevo, pedido.estadoEntrega),
     },
   })
 
-  const factura = pedido.factura && pedido.factura.estado !== 'ANULADA' ? pedido.factura : null
   if (factura) {
+    const montoPagadoFactura = Math.max(0, redondear(num(factura.montoPagado) - calculo.excedente))
     await tx.factura.update({
       where: { id: factura.id },
       data: {
         subtotal: redondear(num(factura.subtotal) - calculo.monto),
         total: redondear(num(factura.total) - calculo.monto),
+        montoPagado: montoPagadoFactura,
         saldo: calculo.saldoNuevo,
-        estado: calculo.saldoNuevo <= 0 ? 'PAGADA' : num(factura.montoPagado) > 0 ? 'PARCIAL' : 'EMITIDA',
+        estado: calculo.saldoNuevo <= 0 ? 'PAGADA' : montoPagadoFactura > 0 ? 'PARCIAL' : 'EMITIDA',
       },
     })
   }
@@ -171,6 +185,7 @@ export async function aplicarReduccionComercial(
           monto: calculo.monto,
           totalAntes: total,
           totalDespues: calculo.totalNuevo,
+          excedenteAcreditado: calculo.excedente,
           notaCredito: nota.numero,
           aceptadoPor: r.aceptadoPor,
           medio: r.medio,
@@ -183,5 +198,5 @@ export async function aplicarReduccionComercial(
     tx,
   )
 
-  return { totalAntes: total, totalDespues: calculo.totalNuevo, saldoDespues: calculo.saldoNuevo, notaCreditoId: nota.id }
+  return { totalAntes: total, totalDespues: calculo.totalNuevo, saldoDespues: calculo.saldoNuevo, notaCreditoId: nota.id, excedenteAcreditado: calculo.excedente }
 }

@@ -14,16 +14,31 @@ const base = { total: 50000, totalPagado: 0, cantPedido: 20, cantEntrega: 15, pr
 
 describe('calcularReduccion', () => {
   it('el pedido pidió 20, recibió 15 y ya no quiere 5: baja total y saldo por 5 × precio', () => {
-    expect(calcularReduccion(base)).toEqual({ monto: 12500, cantPedidoNueva: 15, totalNuevo: 37500, saldoNuevo: 37500 })
+    expect(calcularReduccion(base)).toEqual({ monto: 12500, cantPedidoNueva: 15, totalNuevo: 37500, saldoNuevo: 37500, excedente: 0, totalPagadoNuevo: 0 })
   })
   it('con prepago parcial baja el saldo, no lo pagado', () => {
-    expect(calcularReduccion({ ...base, totalPagado: 20000 })).toMatchObject({ totalNuevo: 37500, saldoNuevo: 17500 })
+    expect(calcularReduccion({ ...base, totalPagado: 20000 })).toMatchObject({ totalNuevo: 37500, saldoNuevo: 17500, excedente: 0, totalPagadoNuevo: 20000 })
   })
   it('un pago que cubre exacto el nuevo total deja saldo 0', () => {
-    expect(calcularReduccion({ ...base, totalPagado: 37500 })).toMatchObject({ saldoNuevo: 0 })
+    expect(calcularReduccion({ ...base, totalPagado: 37500 })).toMatchObject({ saldoNuevo: 0, excedente: 0, totalPagadoNuevo: 37500 })
   })
-  it('pago mayor al nuevo total → REDUCCION_GENERARIA_SOBREPAGO', () => {
-    expect(() => calcularReduccion({ ...base, totalPagado: 37500.01 })).toThrow('REDUCCION_GENERARIA_SOBREPAGO')
+  it('pago mayor al nuevo total → excedente: el pedido queda pagado por su nuevo total y el resto va a saldo a favor', () => {
+    expect(calcularReduccion({ ...base, totalPagado: 40000 })).toEqual({
+      monto: 12500, cantPedidoNueva: 15, totalNuevo: 37500, saldoNuevo: 0, excedente: 2500, totalPagadoNuevo: 37500,
+    })
+  })
+  it('un centavo de más ya es excedente (sin redondeos que lo escondan)', () => {
+    expect(calcularReduccion({ ...base, totalPagado: 37500.01 })).toMatchObject({ excedente: 0.01, totalPagadoNuevo: 37500, saldoNuevo: 0 })
+  })
+  it('pagado completo: todo lo reducido es excedente', () => {
+    expect(calcularReduccion({ ...base, totalPagado: 50000 })).toMatchObject({ excedente: 12500, totalPagadoNuevo: 37500, saldoNuevo: 0 })
+  })
+  it('invariante: totalPagadoNuevo + saldoNuevo = totalNuevo y totalPagadoNuevo + excedente = totalPagado', () => {
+    for (const totalPagado of [0, 0.01, 12500, 37499.99, 37500, 37500.01, 49999.99, 50000]) {
+      const r = calcularReduccion({ ...base, totalPagado })
+      expect(Math.round((r.totalPagadoNuevo + r.saldoNuevo) * 100)).toBe(Math.round(r.totalNuevo * 100))
+      expect(Math.round((r.totalPagadoNuevo + r.excedente) * 100)).toBe(Math.round(totalPagado * 100))
+    }
   })
   it('no baja de lo entregado', () => {
     expect(() => calcularReduccion({ ...base, cantidadReducida: 6 })).toThrow('REDUCCION_SOBRE_ENTREGADO')
@@ -41,11 +56,11 @@ describe('calcularReduccion', () => {
   })
   it('no acumula error de punto flotante: 3 × $0,10 queda en $0,30 exactos', () => {
     const r = calcularReduccion({ total: 10, totalPagado: 0, cantPedido: 5, cantEntrega: 2, precio: 0.1, cantidadReducida: 3, unidadesOtrasLineas: 0 })
-    expect(r).toEqual({ monto: 0.3, cantPedidoNueva: 2, totalNuevo: 9.7, saldoNuevo: 9.7 })
+    expect(r).toEqual({ monto: 0.3, cantPedidoNueva: 2, totalNuevo: 9.7, saldoNuevo: 9.7, excedente: 0, totalPagadoNuevo: 0 })
   })
   it('precios con centavos suman en centavos enteros', () => {
     const r = calcularReduccion({ total: 33.33, totalPagado: 0, cantPedido: 3, cantEntrega: 0, precio: 11.11, cantidadReducida: 2, unidadesOtrasLineas: 0 })
-    expect(r).toEqual({ monto: 22.22, cantPedidoNueva: 1, totalNuevo: 11.11, saldoNuevo: 11.11 })
+    expect(r).toEqual({ monto: 22.22, cantPedidoNueva: 1, totalNuevo: 11.11, saldoNuevo: 11.11, excedente: 0, totalPagadoNuevo: 0 })
   })
 })
 
@@ -110,11 +125,11 @@ describe('topeReduccion', () => {
   it('todo entregado → 0', () => {
     expect(topeReduccion({ ...b, cantEntrega: 20 })).toBe(0)
   })
-  it('coincide con calcularReduccion: el tope se acepta y tope + 1 se rechaza', () => {
+  it('coincide con calcularReduccion: con el tope no hay excedente y con tope + 1 sí', () => {
     for (const totalPagado of [0, 12500, 37500, 40000, 47500, 50000]) {
       const tope = topeReduccion({ ...b, totalPagado })
-      if (tope > 0) expect(() => calcularReduccion({ ...b, totalPagado, cantidadReducida: tope })).not.toThrow()
-      if (tope < 5) expect(() => calcularReduccion({ ...b, totalPagado, cantidadReducida: tope + 1 })).toThrow()
+      if (tope > 0) expect(calcularReduccion({ ...b, totalPagado, cantidadReducida: tope }).excedente).toBe(0)
+      if (tope < 5) expect(calcularReduccion({ ...b, totalPagado, cantidadReducida: tope + 1 }).excedente).toBeGreaterThan(0)
     }
   })
   it('el pedido no puede quedar sin unidades', () => {
