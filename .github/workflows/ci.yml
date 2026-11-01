@@ -134,7 +134,12 @@ jobs:
 
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          # Tres puntos (`BASE...HEAD`): solo lo que ESTE PR cambió desde su ancestro común con
+          # la base. Con dos puntos (`BASE HEAD`), si `main` avanzó después de ramar, el diff
+          # incluye al revés los archivos de código de los PR mergeados entretanto y un PR
+          # solo de documentación corría los 8 turnos de E2E (#547). Si el diff falla (sin
+          # ancestro común), `CHANGED_FILES` queda vacío y se corre el E2E por seguridad.
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA"..."$HEAD_SHA" 2>/dev/null || true)
 
           echo "Archivos modificados en este PR (base $BASE_SHA -> head $HEAD_SHA):"
           echo "$CHANGED_FILES"
