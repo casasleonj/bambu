@@ -53,6 +53,8 @@ interface PedidoHubProps {
   onRefetch?: () => void
   /** Consulta paginada en servidor: nunca volver a filtrar solo la página. */
   consulta?: AccionesConsulta
+  /** #538: avisa si la hoja de detalle móvil está abierta (el botón «+» se oculta mientras tanto). */
+  onPeekMovilChange?: (abierta: boolean) => void
 }
 
 function useViewport(): 'desktop' | 'mobile' {
@@ -68,7 +70,7 @@ function useViewport(): 'desktop' | 'mobile' {
 }
 
 export function PedidoHub({
-  pedidos, counts, loading, refetching = false, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch, consulta,
+  pedidos, counts, loading, refetching = false, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch, consulta, onPeekMovilChange,
 }: PedidoHubProps) {
   const isOnline = useOnlineStatus()
   const viewport = useViewport()
@@ -112,6 +114,13 @@ export function PedidoHub({
   }, [pedidos, activeFoco, focosByPedido, consulta])
 
   const peek = usePeek(pedidosFiltrados)
+
+  // #538: la hoja móvil cubre la pantalla; el «+» flotante no debe quedar encima ni interceptar toques.
+  const hojaMovilAbierta = viewport === 'mobile' && Boolean(peek.activeId && peek.layer1)
+  useEffect(() => {
+    onPeekMovilChange?.(hojaMovilAbierta)
+    return () => onPeekMovilChange?.(false)
+  }, [hojaMovilAbierta, onPeekMovilChange])
 
   // Realtime SELECTIVO (plan Fase 5, P6): invalidar el peek solo ante eventos
   // que cambian los datos de un pedido concreto; refetch de la lista/counts
@@ -176,6 +185,7 @@ export function PedidoHub({
       onClose={peek.close}
       onNav={peek.nav}
       onAccion={onAccion}
+      acciones={consulta}
       onOpenVinculado={(id) => {
         const target = pedidos.find((p) => p.id === id)
         if (target) peek.open(target)

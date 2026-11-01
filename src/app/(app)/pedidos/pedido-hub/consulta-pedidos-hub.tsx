@@ -32,6 +32,7 @@ interface Props {
   onPedidos: (pedidos: Pedido[]) => void;
   onCorregirPendiente: (id: string) => void;
   onDescartarPendiente: (id: string) => void;
+  onPeekMovilChange?: (abierta: boolean) => void;
   initial?: ResultadoConsultaPedidos;
 }
 export function ConsultaPedidosHub(props: Props) {
@@ -231,6 +232,7 @@ export function ConsultaPedidosHub(props: Props) {
                 onNuevaOperacion={props.onNuevaOperacion}
                 onRetry={refresh}
                 onRefetch={refresh}
+                onPeekMovilChange={props.onPeekMovilChange}
                 consulta={{
                   userRole: props.userRole,
                   gestionDirecta: props.gestion.activa && !gestionDesconocida,

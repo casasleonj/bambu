@@ -264,6 +264,8 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
   // Clientes con alertas tras descontar las ignoradas (el contador del servidor no las conoce).
   const [alertasVisibles, setAlertasVisibles] = useState<number | null>(null)
   const [fabOpen, setFabOpen] = useState(false)
+  // #538: con la hoja de detalle móvil abierta, el «+» no se muestra (no tapa ni intercepta la hoja).
+  const [hojaMovilAbierta, setHojaMovilAbierta] = useState(false)
   const [fabHoverable, setFabHoverable] = useState(false)
   const [modalKey, setModalKey] = useState(0)
 
@@ -2016,6 +2018,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
           onVerFactura={p => p.factura && setFacturaConsulta({id:p.factura.id,volver:'Volver a Pedidos',pedidoId:p.id,pedidoNumero:p.numero,consulta:`/pedidos?${shallowParams.toString()}`})}
           onCorregirPendiente={corregirFailedPedido}
           onDescartarPendiente={discardFailedPedido}
+          onPeekMovilChange={setHojaMovilAbierta}
         />
       )}
 
@@ -2691,7 +2694,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
       {confirmModal}
 
       {/* FAB Unificado — solo para quien puede crear pedidos (B-17, #434) */}
-      {puedeCrear && (
+      {puedeCrear && !hojaMovilAbierta && (
       <div
         className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2"
         data-testid="fab-container"
