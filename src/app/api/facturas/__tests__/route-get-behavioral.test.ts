@@ -46,11 +46,11 @@ describe('GET /api/facturas', () => {
     aggregate.mockResolvedValue({ _min: { fecha: new Date('2026-05-16T00:00:00Z') } })
   })
 
-  it('sigue siendo solo ADMIN/CONTADOR', async () => {
+  it('la lectura es de ADMIN, CONTADOR y ASISTENTE; quien no tiene el rol recibe 403', async () => {
     requireRole.mockResolvedValue(NextResponse.json({ success: false }, { status: 403 }))
     const res = await get('')
     expect(res.status).toBe(403)
-    expect(requireRole).toHaveBeenCalledWith(['ADMIN', 'CONTADOR'])
+    expect(requireRole).toHaveBeenCalledWith(['ADMIN', 'CONTADOR', 'ASISTENTE'])
     expect(findMany).not.toHaveBeenCalled()
   })
 

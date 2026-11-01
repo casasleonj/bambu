@@ -8,6 +8,7 @@ import { getPaginationParams, buildPaginationResponse } from '@/lib/pagination'
 import { getTodayRange, buildDateRangeFilter, startOfDayBogota } from '@/lib/dates'
 import { normalizeCanalFilter } from '@/lib/pedido-canal'
 import { ROLES } from '@/lib/constants'
+import { canReadFacturas } from '@/lib/permissions'
 import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
@@ -189,7 +190,7 @@ export async function GET(request: NextRequest) {
           })
         : Promise.resolve([]),
       cargarEmbarquesLista(prisma, result.pedidos.map(p => p.embarqueId)),
-      scoped && ['ADMIN', 'CONTADOR'].includes(session.user?.role ?? '')
+      scoped && canReadFacturas(session.user?.role)
         ? prisma.factura.findMany({ where: { pedidoId: { in: result.pedidos.map(p => p.id) } },
           select: { id: true, numero: true, estado: true, pedidoId: true } }) : Promise.resolve([]),
     ])

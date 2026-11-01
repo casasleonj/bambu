@@ -14,7 +14,8 @@ const MAX_RESULTADOS = 8
  * que la lista tenga cargada.
  */
 export async function GET(request: NextRequest) {
-  const authResult = await requireRole(['ADMIN', 'CONTADOR'])
+  // #556: la lectura también es del ASISTENTE.
+  const authResult = await requireRole(['ADMIN', 'CONTADOR', 'ASISTENTE'])
   if (authResult instanceof Response) return authResult
 
   const q = (new URL(request.url).searchParams.get('q') ?? '').trim()

@@ -395,7 +395,7 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
     await expect(appMain(page)).toContainText("Gestión directa desactivada");
   });
 
-  test("ASISTENTE puede consultar sin factura; la API niega datos de Pedidos a REPARTIDOR", async ({
+  test("ASISTENTE consulta con su factura (#556); la API niega datos de Pedidos a REPARTIDOR", async ({
     page,
   }) => {
     const { c, crear } = await preparar(),
@@ -406,13 +406,13 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
       appMain(page).getByTestId(`operacion-row-${p.id}`),
     ).toBeVisible();
     await expect(
-      appMain(page).getByRole("link", { name: /Ver factura/ }),
-    ).toHaveCount(0);
+      appMain(page).getByRole("link", { name: /Ver factura/ }).first(),
+    ).toBeVisible();
     const data = await page.request.get(
       `/api/pedidos/consulta?clienteId=${c.id}`,
     );
     expect(data.status()).toBe(200);
-    expect((await data.json()).pedidos[0].factura).toBeUndefined();
+    expect((await data.json()).pedidos[0].factura).toBeDefined();
     await page.context().clearCookies();
     await loginAs(page, "repartidor");
     const denegada = await page.request.get("/api/pedidos/consulta");

@@ -28,11 +28,11 @@ describe('GET /api/facturas/buscar', () => {
     facturaFindMany.mockResolvedValue([])
   })
 
-  it('solo ADMIN/CONTADOR', async () => {
+  it('la búsqueda es de ADMIN, CONTADOR y ASISTENTE; quien no tiene el rol recibe 403', async () => {
     requireRole.mockResolvedValue(NextResponse.json({ success: false }, { status: 403 }))
     const res = await get('sandra')
     expect(res.status).toBe(403)
-    expect(requireRole).toHaveBeenCalledWith(['ADMIN', 'CONTADOR'])
+    expect(requireRole).toHaveBeenCalledWith(['ADMIN', 'CONTADOR', 'ASISTENTE'])
   })
 
   it('con menos de 2 caracteres no consulta la base', async () => {

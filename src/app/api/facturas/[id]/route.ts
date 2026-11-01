@@ -7,7 +7,8 @@ import { logger } from '@/lib/logger'
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)
+  // #556: la lectura también es del ASISTENTE.
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR', 'ASISTENTE'], authResult)
   if (roleCheck instanceof Response) return roleCheck
 
   try {

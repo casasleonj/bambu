@@ -135,7 +135,7 @@ describe("#516 — productos, acciones y navegación", () => {
       expect.stringContaining("facturaId=factura-exacta"),
     );
   });
-  it("ASISTENTE no recibe un enlace a factura prohibida; CONTADOR no recibe botones de entrega", () => {
+  it("#556 ASISTENTE y CONTADOR reciben el enlace a la factura; REPARTIDOR no; CONTADOR no recibe botones de entrega", () => {
     const { unmount } = render(
       <OperacionList
         pedidos={[base]}
@@ -152,8 +152,26 @@ describe("#516 — productos, acciones y navegación", () => {
         }}
       />,
     );
-    expect(screen.queryByRole("link", { name: /Ver factura/ })).toBeNull();
+    expect(screen.getByRole("link", { name: /Ver factura/ })).toBeInTheDocument();
     unmount();
+    const rep = render(
+      <OperacionList
+        pedidos={[base]}
+        viewport="mobile"
+        hoyBogota="2026-10-29"
+        onAccion={vi.fn()}
+        onOpen={vi.fn()}
+        consulta={{
+          userRole: "REPARTIDOR",
+          gestionDirecta: false,
+          volver: "/pedidos",
+          onVerPedido: vi.fn(),
+          onVerFactura: vi.fn(),
+        }}
+      />,
+    );
+    expect(screen.queryByRole("link", { name: /Ver factura/ })).toBeNull();
+    rep.unmount();
     montar({ role: "CONTADOR" });
     expect(
       screen.getByRole("link", { name: /Ver factura/ }),

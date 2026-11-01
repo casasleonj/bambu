@@ -86,9 +86,12 @@ export function canCreatePedidos(role: string | null | undefined): boolean {
   return role === ROLES.ADMIN || role === ROLES.ASISTENTE
 }
 
-/** #517: misma restricción que GET /api/facturas y /api/facturas/[id]. */
+/**
+ * Lectura de facturas (#556, decisión del PO 2026-11-01): ADMIN, CONTADOR y ASISTENTE. Misma regla que
+ * GET /api/facturas, /api/facturas/[id] y /api/facturas/buscar. Crear o modificar sigue siendo ADMIN/CONTADOR.
+ */
 export function canReadFacturas(role: string | null | undefined): boolean {
-  return role === ROLES.ADMIN || role === ROLES.CONTADOR
+  return role === ROLES.ADMIN || role === ROLES.CONTADOR || role === ROLES.ASISTENTE
 }
 
 export function getUserPermissions(role: Role | undefined): Permission[] {
