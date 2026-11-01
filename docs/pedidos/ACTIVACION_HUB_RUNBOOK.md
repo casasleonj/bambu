@@ -2,7 +2,7 @@
 
 Paso 8 de #345. Opción elegida con el PO (2026-10-26): **encender para todos con una ventana vigilada**, con la reversa ensayada de antemano. El Hub es el nuevo flujo de crear y consultar pedidos (`NEXT_PUBLIC_PEDIDOS_V2`).
 
-> **Estado de este documento (2026-10-31):** la activación **se ejecutó** el 2026-10-26 y la ventana vigilada de 3 días **terminó sin reglas de parada**. El registro de lo ocurrido está en la sección 10. Las secciones 1 a 9 quedan como procedimiento reutilizable (por ejemplo, para encender «Entregar después» o el cierre V2) y para la reversa. Lo que no se ha verificado está marcado **(sin verificar)**.
+> **Estado de este documento (2026-10-31):** la activación **se ejecutó** el 2026-10-26 y la ventana vigilada de 3 días **terminó sin reglas de parada**. El registro de lo ocurrido está en la sección 10. Las secciones 1 a 9 quedan como procedimiento reutilizable (por ejemplo, para encender «Entregar después» o el cierre V2) y para la reversa. Lo que no se ha verificado está marcado **(sin verificar)**; la apertura en la UI antigua de pedidos creados con el Hub se verificó el 2026-11-01 (sección 7).
 
 ## 1. Cómo funciona el interruptor
 
@@ -66,7 +66,14 @@ Los mismos pasos, en sentido contrario:
 
 **Tiempo de reversa medido: unos 2 minutos** (ensayo del 2026-10-26: 2 min 20 s hasta `READY`; el redespliegue del encendido tardó 1 min 58 s). La reversa **no se ha usado** en producción.
 
-**Qué pasa con lo creado con el Hub (sin verificar):** el Hub y el formulario antiguo crean pedidos con la misma API (`POST /api/pedidos`) y las mismas tablas, así que lo creado debería verse y editarse igual en la UI de pestañas. **No se comprobó abriendo en la UI antigua un pedido creado con el Hub.** Si algún día hay que revertir, hacerlo primero con un pedido de prueba.
+**Qué pasa con lo creado con el Hub (verificado el 2026-11-01):** el Hub y el formulario antiguo crean pedidos con la misma API (`POST /api/pedidos`) y las mismas tablas. Se comprobó en un entorno local con el Hub encendido, creando con él un envío a un cliente (pendiente de entrega), una venta rápida pagada en efectivo y una venta rápida con pago combinado (efectivo y Nequi). Luego, con el Hub apagado (UI de pestañas), en un navegador real:
+
+- Los tres pedidos se abren desde el enlace `?openPedido=`, con número, total, productos, estado de entrega y de pago correctos.
+- El detalle muestra los pagos reales (efectivo $5.600; Nequi $4.600 «por confirmar» y efectivo $1.000), la factura de cada uno (`EMITIDA` o `PAGADA`) y «Registrado por».
+- Los pagos y la factura aparecen un instante después de abrir el detalle (carga diferida): al principio dice «Sin pagos registrados» y se corrige solo.
+- El pedido pendiente se editó con el formulario antiguo: el guardado respondió 200 y quedó la nota, con el total y el estado sin cambios.
+
+Límites de esta comprobación: fue en local y con 3 pedidos, no sobre datos de producción; no se probaron la entrega, el cobro ni la anulación desde la UI antigua sobre pedidos del Hub. Si algún día hay que revertir, conviene repetirla antes con un pedido de prueba.
 
 ## 8. Cuándo se da por cerrada la ventana
 
@@ -116,5 +123,5 @@ Criterio: sin reglas de parada y con la comparación de integridad limpia durant
 **Limitaciones de este registro**
 
 - La foto oficial de `/api/integridad` solo se tomó antes del encendido y a los 8 minutos. Las revisiones posteriores replican las reglas con consultas de solo lectura; no sustituyen al verificador. Para una lectura oficial, un ADMIN abre `portal.aguabambu.com/api/integridad`.
-- No se verificó que un pedido creado con el Hub se abra bien en la pantalla antigua (sección 7).
+- La apertura y edición en la pantalla antigua de pedidos creados con el Hub se verificó después, el 2026-11-01, en local (sección 7).
 - La vigilancia de Lilia se confirmó por la ausencia de avisos; no hay un registro escrito de sus revisiones.
