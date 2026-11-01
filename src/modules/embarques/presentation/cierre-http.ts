@@ -85,8 +85,18 @@ const CODIGOS_400 = [
 /** Traduce un error del caso de uso a la respuesta HTTP; `null` = no es un error conocido. */
 export function mapCierreError(message: string): ErrorHttpCierre | null {
   if (message === 'EMBARQUE_NOT_FOUND') return { status: 404, message: 'Embarque no encontrado' }
-  if (message === 'EMBARQUE_YA_CERRADO' || message.toLowerCase().includes('transicion')) {
-    return { status: 400, message: 'El embarque ya esta cerrado' }
+  if (message === 'EMBARQUE_YA_CERRADO') return { status: 400, message: 'El embarque ya esta cerrado' }
+  // La máquina de estados de `EstadoEmbarque` solo permite ABIERTO → EN_RUTA → CERRADO. Antes todo
+  // «Transicion invalida» se traducía a «ya esta cerrado», lo que era falso para un ABIERTO (#550).
+  const transicion = /^Transicion invalida: (\w+) -> (\w+)/.exec(message)
+  if (transicion) {
+    const [, desde, hacia] = transicion
+    if (desde === 'CERRADO') return { status: 400, message: 'El embarque ya esta cerrado' }
+    if (desde === 'ABIERTO' && hacia === 'CERRADO') {
+      return { status: 400, message: 'El embarque aún no salió a ruta: despáchalo antes de cerrarlo.' }
+    }
+    if (desde === 'CANCELADO') return { status: 400, message: 'El embarque está cancelado y no se puede cerrar.' }
+    return { status: 400, message: `El embarque no puede pasar de ${desde} a ${hacia}.` }
   }
   if (message.startsWith('PAGOS_EXCEDIDOS')) return { status: 400, message: message.replace('PAGOS_EXCEDIDOS: ', '') }
   // B-12: `COMPLETO` exige cantidad acumulada completa; rechazo determinista.

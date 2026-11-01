@@ -527,4 +527,25 @@ test.describe('Embarques — Validaciones y Edge Cases', () => {
     expect(embarque.trabajador).toBeDefined()
     expect(embarque.pedidos).toBeDefined()
   })
+
+  test('cerrar un embarque ABIERTO explica que falta despacharlo (no dice «ya está cerrado», #550)', async ({ page }) => {
+    await loginAs(page, 'admin')
+    const t = await createTrabajador(page)
+    const eRes = await apiPost(page, '/api/embarques', { trabajadorId: t.trabajador.id, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
+    const embarqueId = (await eRes.json()).embarque.id
+
+    // Sin despacharlo (ABIERTO → CERRADO no es una transición válida)
+    const sinDespachar = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, cierrePayload())
+    expect(sinDespachar.status()).toBe(400)
+    const msgSinDespachar = (await sinDespachar.json()).error.message as string
+    expect(msgSinDespachar).toMatch(/aún no salió a ruta/)
+    expect(msgSinDespachar).not.toMatch(/ya esta cerrado/i)
+
+    // Ya cerrado de verdad: ahí sí es «ya está cerrado»
+    const cerrado = await cerrarEmbarqueTest(page, embarqueId)
+    expect(cerrado.status()).toBeLessThan(300)
+    const otraVez = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, cierrePayload())
+    expect(otraVez.status()).toBe(400)
+    expect(((await otraVez.json()).error.message as string)).toMatch(/ya esta cerrado/i)
+  })
 })

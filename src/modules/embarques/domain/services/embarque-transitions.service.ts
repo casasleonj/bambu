@@ -31,7 +31,8 @@ export class EmbarqueTransitionsService {
   }
 
   /**
-   * Validates and executes ABIERTO/EN_RUTA -> CERRADO transition.
+   * Validates and executes EN_RUTA -> CERRADO transition. Un embarque ABIERTO no se cierra directo:
+   * primero debe salir a ruta (`EstadoEmbarque.transicionar`, #550).
    */
   cerrar(embarqueEstado: EstadoEmbarque): TransitionResult {
     try {
