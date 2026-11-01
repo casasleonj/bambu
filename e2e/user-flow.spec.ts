@@ -95,7 +95,13 @@ test.describe('Flujo completo de usuario', () => {
     expect(respuestas404.filter((u) => !u.startsWith('/api/config?clave=BASE_DIA_'))).toEqual([])
     const sin404Esperado = consoleErrors.filter((m) => !/Failed to load resource: the server responded with a status of 404/.test(m))
     expect(sin404Esperado).toHaveLength(0)
-    expect(pageErrors).toHaveLength(0)
+    // Playwright bloquea los service workers (`serviceWorkers: 'block'`). Con el build de
+    // producción, Serwist accede entonces a `registration.waiting` sin guarda y lanza
+    // `Cannot read properties of undefined (reading 'waiting')` (documentado en
+    // `src/app/layout.tsx`, que solo lo evita en desarrollo). Es un artefacto de bloquear el
+    // SW en el entorno de pruebas; cualquier OTRO error de página sigue contando.
+    const erroresDeSerwist = /Cannot read properties of undefined \(reading 'waiting'\)/
+    expect(pageErrors.filter((e) => !erroresDeSerwist.test(e))).toHaveLength(0)
   })
 
   test('Login con credenciales incorrectas permanece en login', async ({ page }) => {
