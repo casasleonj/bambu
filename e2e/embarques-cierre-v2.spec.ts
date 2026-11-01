@@ -111,6 +111,30 @@ test.describe('Cierre V2 (NEXT_PUBLIC_CIERRE_V2)', () => {
     await expect(page.getByTestId('siguiente-paso')).toBeEnabled()
   })
 
+  test('móvil de 360 px: ningún paso del asistente se desborda y «Cobrar el total» se puede tocar', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 740 })
+    await cierreLogin(page)
+    const { embarqueId } = await seedEmbarqueEnRuta(page, 5)
+    await page.goto(`${BASE}/embarques/${embarqueId}/cerrar`, { waitUntil: 'domcontentloaded' })
+    const sinDesborde = async (paso: string) => {
+      const m = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, ancho: document.documentElement.clientWidth }))
+      expect(m.scroll, `desborde horizontal en «${paso}»`).toBeLessThanOrEqual(m.ancho + 1)
+    }
+    await expect(page.getByTestId('siguiente-paso')).toBeVisible()
+    await sinDesborde('pedidos')
+    await page.getByTestId('siguiente-paso').click()
+    await page.getByRole('button', { name: '+ Agregar venta' }).click()
+    await page.getByTestId('vl-venta-al-paso').click()
+    await page.getByLabel('Paca de agua').fill('2')
+    await sinDesborde('venta al paso con fila de pago')
+    await page.getByTestId('vl-cobrar-total').click() // tocable: antes lo tapaba el contenido desbordado
+    await expect(page.getByTestId('siguiente-paso')).toBeEnabled()
+    for (const paso of ['ventas libres', 'conciliación', 'gastos', 'confirmar']) {
+      await sinDesborde(paso)
+      if (paso !== 'confirmar') await page.getByTestId('siguiente-paso').click()
+    }
+  })
+
   test('un rechazo 4xx del preview se muestra con su motivo y bloquea Confirmar (no es «estimado local»)', async ({ page }) => {
     await cierreLogin(page)
     const { embarqueId } = await seedEmbarqueEnRuta(page, 3)
