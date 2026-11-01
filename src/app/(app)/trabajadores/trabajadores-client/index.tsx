@@ -6,9 +6,12 @@ import { useConfirm } from '@/components/confirm-modal'
 import { EmptyState } from '@/components/empty-state'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import type { Trabajador, TrabajadorFormData, TrabajadoresClientProps } from './types'
+import { rolLabels } from './types'
 import { TrabajadorCard } from './trabajador-card'
 import { TrabajadorFormModal } from './trabajador-form-modal'
 import { normalizarTelefono } from '@/lib/telefono'
+import { useDeudasResumen } from '@/components/deudas-trabajador/use-deudas'
+import { DeudaDetalleDialog } from '@/components/deudas-trabajador/deuda-detalle-dialog'
 
 const EMPTY_FORM: TrabajadorFormData = {
   nombre: '',
@@ -26,7 +29,7 @@ const EMPTY_FORM: TrabajadorFormData = {
   telefono: '',
 }
 
-export default function TrabajadoresClient({ initialTrabajadores }: TrabajadoresClientProps) {
+export default function TrabajadoresClient({ initialTrabajadores, soloLectura = false }: TrabajadoresClientProps) {
   const [trabajadores, setTrabajadores] = useState<Trabajador[]>(initialTrabajadores)
   const { confirm, modal } = useConfirm()
   const [search, setSearch] = useState('')
@@ -35,6 +38,8 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState<TrabajadorFormData>(EMPTY_FORM)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const deudas = useDeudasResumen()
+  const [deudaAbierta, setDeudaAbierta] = useState<Trabajador | null>(null)
 
   async function fetchTrabajadores() {
     setFetchError(null)
@@ -116,12 +121,14 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Trabajadores</h1>
-        <button
-          onClick={openCreateModal}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-        >
-          + Nuevo Trabajador
-        </button>
+        {!soloLectura && (
+          <button
+            onClick={openCreateModal}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+          >
+            + Nuevo Trabajador
+          </button>
+        )}
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow mb-6">
@@ -174,6 +181,9 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
               trabajador={t}
               onEdit={openEditModal}
               onDelete={handleDelete}
+              soloLectura={soloLectura}
+              deuda={{ estado: deudas.estado, resumen: deudas.resumen[t.id], onReintentar: deudas.reintentar }}
+              onVerDeuda={setDeudaAbierta}
             />
           ))
         )}
@@ -187,6 +197,14 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
         editingId={editingId}
         initialData={formData}
       />
+      {deudaAbierta && (
+        <DeudaDetalleDialog
+          trabajadorId={deudaAbierta.id}
+          nombre={deudaAbierta.nombre}
+          rol={rolLabels[deudaAbierta.rol] || deudaAbierta.rol}
+          onClose={() => setDeudaAbierta(null)}
+        />
+      )}
       {modal}
     </div>
   )
