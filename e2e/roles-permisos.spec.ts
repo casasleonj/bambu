@@ -170,8 +170,9 @@ test.describe('3. ASISTENTE — acceso limitado', () => {
     await loginAs(page, 'asistente')
   })
 
-  const allowedPages = ['/dashboard', '/pedidos', '/clientes', '/facturas', '/embarques', '/gastos', '/produccion']
-  const forbiddenPages = ['/trabajadores', '/cierre', '/reportes', '/productos', '/nomina', '/configuracion']
+  // /trabajadores: el ASISTENTE ve la lista con la deuda de cada trabajador (#566), sin acciones.
+  const allowedPages = ['/dashboard', '/pedidos', '/clientes', '/facturas', '/embarques', '/gastos', '/produccion', '/trabajadores']
+  const forbiddenPages = ['/cierre', '/reportes', '/productos', '/nomina', '/configuracion']
 
   test('Accede a páginas permitidas sin redirect', async ({ page }) => {
     for (const path of allowedPages) {
@@ -179,6 +180,14 @@ test.describe('3. ASISTENTE — acceso limitado', () => {
       const segment = path.split('/')[1]
       expect(page.url()).toContain(segment)
     }
+  })
+
+  test('La ficha completa de un trabajador lo devuelve a la lista (#566)', async ({ page }) => {
+    const lista = await (await apiGet(page, '/api/trabajadores?activo=true')).json()
+    const id = lista.trabajadores?.[0]?.id
+    test.skip(!id, 'No hay trabajadores en la base')
+    await goto(page, `/trabajadores/${id}`)
+    await expect(page).toHaveURL(/\/trabajadores$/)
   })
 
   test('Redirige a /dashboard desde páginas restringidas', async ({ page }) => {
