@@ -79,6 +79,31 @@ export function calcularReduccion(input: ReduccionInput): ReduccionResultado {
   }
 }
 
+/**
+ * Máximo de unidades que se pueden quitar de una línea ahora mismo: lo pendiente por entregar,
+ * acotado por lo ya pagado (el nuevo total no puede quedar por debajo). Es la misma regla de
+ * `calcularReduccion`, calculada de antemano para que la pantalla no deje equivocarse. Un tope
+ * de 0 significa que no se puede quitar nada (todo entregado o ya pagado por completo).
+ */
+export function topeReduccion(i: {
+  total: number
+  totalPagado: number
+  cantPedido: number
+  cantEntrega: number
+  precio: number
+  unidadesOtrasLineas: number
+}): number {
+  const pendiente = Math.max(0, i.cantPedido - i.cantEntrega)
+  const precioC = aCentavos(i.precio)
+  if (pendiente === 0 || !Number.isFinite(precioC) || precioC <= 0) return 0
+  const holguraC = Math.max(0, aCentavos(i.total) - aCentavos(i.totalPagado))
+  let tope = Math.min(pendiente, Math.floor(holguraC / precioC))
+  // El pedido no puede quedar sin unidades.
+  const maximoSinVaciar = i.cantPedido + i.unidadesOtrasLineas - 1
+  tope = Math.min(tope, Math.max(0, maximoSinVaciar))
+  return Math.max(0, tope)
+}
+
 /** Quién puede registrar una reducción (cualquiera que vea pedidos de oficina). */
 export function puedeSolicitarReduccion(rol: string): boolean {
   return rol === 'ADMIN' || rol === 'ASISTENTE'
