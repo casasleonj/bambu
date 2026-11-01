@@ -78,25 +78,24 @@ test.describe('Gastos', () => {
     expect(bodyText).toContain('Admin Test')
   })
 
-  test('validacion: sin categoria', async ({ page }) => {
+  test('sin categoria elegida el gasto se registra como OTRO (categoria por defecto)', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
 
     await page.click('button:has-text("Nuevo Gasto")')
     await page.waitForTimeout(500)
 
+    // La categoría arranca en «OTRO»: ya no hay error por no elegir una.
+    await expect(page.locator('#gasto-categoria')).toHaveValue('OTRO')
     await page.locator('#gasto-descripcion').fill('Test sin categoria')
     await page.locator('#gasto-monto').fill('5000')
 
-    await page.locator('button:has-text("Guardar")').click()
-    await page.waitForTimeout(1000)
-
-    const toastEl = page.locator('[data-sonner-toast]')
-    if (await toastEl.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await expect(toastEl).toContainText(/error|Error/i)
-    }
-
-    await expect(page.locator('h3:has-text("Registrar Gasto")')).toBeVisible()
+    const [response] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes('/api/gastos') && r.request().method() === 'POST'),
+      page.locator('button:has-text("Guardar")').click(),
+    ])
+    expect(response.status()).toBe(201)
+    expect((await response.json()).gasto.categoria).toBe('OTRO')
   })
 
   test('validacion: monto vacio', async ({ page }) => {
@@ -108,14 +107,8 @@ test.describe('Gastos', () => {
 
     await page.locator('#gasto-descripcion').fill('Sin monto')
 
-    await page.locator('button:has-text("Guardar")').click()
-    await page.waitForTimeout(1000)
-
-    const toastEl = page.locator('[data-sonner-toast]')
-    if (await toastEl.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await expect(toastEl).toContainText(/obligatorio|monto|descripción/i)
-    }
-
+    // Sin monto «Guardar» queda deshabilitado (no se puede ni hacer clic).
+    await expect(page.locator('button:has-text("Guardar")')).toBeDisabled()
     await expect(page.locator('h3:has-text("Registrar Gasto")')).toBeVisible()
   })
 

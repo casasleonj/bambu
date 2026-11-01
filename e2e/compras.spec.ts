@@ -72,14 +72,8 @@ test.describe('Compras', () => {
 
     await page.locator('#compra-proveedor').selectOption('')
 
-    await page.locator('button:has-text("Guardar")').click()
-    await page.waitForTimeout(1000)
-
-    const toastEl = page.locator('[data-sonner-toast]')
-    const form = page.locator('h3:has-text("Registrar Compra")')
-    const toastVisible = await toastEl.isVisible({ timeout: 3000 }).catch(() => false)
-    const formVisible = await form.isVisible({ timeout: 3000 }).catch(() => false)
-    expect(toastVisible || formVisible).toBeTruthy()
+    // Sin proveedor «Guardar» queda deshabilitado (no se puede ni hacer clic).
+    await expect(page.locator('button:has-text("Guardar")')).toBeDisabled()
   })
 
   test('validacion: sin insumo', async ({ page }) => {
@@ -91,38 +85,37 @@ test.describe('Compras', () => {
 
     await page.locator('#compra-insumo').selectOption('')
 
-    await page.locator('button:has-text("Guardar")').click()
-    await page.waitForTimeout(1000)
-
-    const toastEl = page.locator('[data-sonner-toast]')
-    const form = page.locator('h3:has-text("Registrar Compra")')
-    const toastVisible = await toastEl.isVisible({ timeout: 3000 }).catch(() => false)
-    const formVisible = await form.isVisible({ timeout: 3000 }).catch(() => false)
-    expect(toastVisible || formVisible).toBeTruthy()
+    // Sin insumo «Guardar» queda deshabilitado (no se puede ni hacer clic).
+    await expect(page.locator('button:has-text("Guardar")')).toBeDisabled()
   })
 
   test('API crear compra', async ({ page }) => {
     await loginAs(page, 'admin')
 
-    const proveedor = await createProveedor(page)
-    const insumo = await createInsumo(page)
+    // Las APIs responden `{ success, proveedor }` / `{ success, insumo }`.
+    const { proveedor } = await createProveedor(page)
+    const { insumo } = await createInsumo(page)
+    expect(proveedor.id).toBeTruthy()
+    expect(insumo.id).toBeTruthy()
 
     const res = await apiPost(page, '/api/compras', {
-      proveedorId: proveedor.id || proveedor.proveedorId,
-      insumoId: insumo.id || insumo.insumoId,
+      proveedorId: proveedor.id,
+      insumoId: insumo.id,
       cantidad: 10,
       montoTotal: 35000,
     })
 
-    expect([201, 500]).toContain(res.status())
+    expect(res.status()).toBe(201)
   })
 
   test('verificar stock aumenta post-compra', async ({ page }) => {
     await loginAs(page, 'admin')
 
-    const proveedor = await createProveedor(page)
-    const insumo = await createInsumo(page)
-    const insumoId = insumo.id || insumo.insumoId
+    const { proveedor } = await createProveedor(page)
+    const { insumo } = await createInsumo(page)
+    const insumoId = insumo.id as string
+    expect(proveedor.id).toBeTruthy()
+    expect(insumoId).toBeTruthy()
 
     const stockAntesRes = await apiGet(page, `/api/insumos`)
     const stockAntesData = await stockAntesRes.json()
@@ -130,21 +123,19 @@ test.describe('Compras', () => {
     const stockAntes = insumoAntes ? Number(insumoAntes.stock) : 0
 
     const res = await apiPost(page, '/api/compras', {
-      proveedorId: proveedor.id || proveedor.proveedorId,
+      proveedorId: proveedor.id,
       insumoId,
       cantidad: 10,
       montoTotal: 35000,
     })
+    expect(res.status()).toBe(201)
 
-    if (res.status() === 201) {
-      await page.waitForTimeout(500)
+    await page.waitForTimeout(500)
 
-      const stockDespuesRes = await apiGet(page, `/api/insumos`)
-      const stockDespuesData = await stockDespuesRes.json()
-      const insumoDespues = ((stockDespuesData.insumos || []) as Array<{ id: string; stock: number | string }>).find((i) => i.id === insumoId)
-      const stockDespues = insumoDespues ? Number(insumoDespues.stock) : stockAntes
-
-      expect(stockDespues).toBeGreaterThanOrEqual(stockAntes + 10)
-    }
+    const stockDespuesRes = await apiGet(page, `/api/insumos`)
+    const stockDespuesData = await stockDespuesRes.json()
+    const insumoDespues = ((stockDespuesData.insumos || []) as Array<{ id: string; stock: number | string }>).find((i) => i.id === insumoId)
+    expect(insumoDespues).toBeDefined()
+    expect(Number(insumoDespues!.stock)).toBeGreaterThanOrEqual(stockAntes + 10)
   })
 })

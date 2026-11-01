@@ -57,6 +57,15 @@ test.describe('Flujo completo de usuario', () => {
 
     const consoleErrors: string[] = []
     const pageErrors: string[] = []
+    const respuestas404: string[] = []
+
+    // El navegador registra cada 404 como «Failed to load resource» sin la URL.
+    // Hay un 404 esperado: la app consulta `/api/config?clave=BASE_DIA_<fecha>` y
+    // responde 404 mientras no se haya fijado la base del día. Se anota la URL de
+    // cada 404 para exigir que sean SOLO esa y no esconder otros.
+    page.on('response', (res) => {
+      if (res.status() === 404) respuestas404.push(new URL(res.url()).pathname + new URL(res.url()).search)
+    })
 
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
@@ -83,7 +92,9 @@ test.describe('Flujo completo de usuario', () => {
       await page.waitForLoadState('networkidle', { timeout: 10000 })
     }
 
-    expect(consoleErrors).toHaveLength(0)
+    expect(respuestas404.filter((u) => !u.startsWith('/api/config?clave=BASE_DIA_'))).toEqual([])
+    const sin404Esperado = consoleErrors.filter((m) => !/Failed to load resource: the server responded with a status of 404/.test(m))
+    expect(sin404Esperado).toHaveLength(0)
     expect(pageErrors).toHaveLength(0)
   })
 

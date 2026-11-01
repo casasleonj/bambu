@@ -80,8 +80,10 @@ test.describe('Proveedores', () => {
   test('editar proveedor', async ({ page }) => {
     await loginAs(page, 'admin')
 
-    const proveedor = await createProveedor(page)
-    expect(proveedor.id).toBeTruthy()
+    // La API responde `{ success, proveedor }`: el id vive en `proveedor.proveedor`.
+    const creado = await createProveedor(page)
+    expect(creado.success).toBe(true)
+    expect(creado.proveedor.id).toBeTruthy()
 
     await goto(page, '/proveedores')
 
@@ -114,9 +116,11 @@ test.describe('Proveedores', () => {
   test('desactivar proveedor', async ({ page }) => {
     await loginAs(page, 'admin')
 
-    const proveedor = await createProveedor(page)
-    const provId = proveedor.id || proveedor.proveedorId
-    expect(provId).toBeTruthy()
+    // La API responde `{ success, proveedor }`: el id y el nombre viven en `proveedor.proveedor`.
+    const creado = await createProveedor(page)
+    expect(creado.success).toBe(true)
+    const proveedor = creado.proveedor
+    expect(proveedor.id).toBeTruthy()
 
     await goto(page, '/proveedores')
 

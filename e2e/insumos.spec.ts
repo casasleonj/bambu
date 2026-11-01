@@ -51,8 +51,10 @@ test.describe('Insumos', () => {
   test('crear con proveedor', async ({ page }) => {
     await loginAs(page, 'admin')
 
-    const proveedor = await createProveedor(page)
-    expect(proveedor.id).toBeTruthy()
+    // La API responde `{ success, proveedor }`: el id vive en `proveedor.proveedor`.
+    const creado = await createProveedor(page)
+    expect(creado.success).toBe(true)
+    expect(creado.proveedor.id).toBeTruthy()
 
     await goto(page, '/insumos')
 
@@ -94,15 +96,13 @@ test.describe('Insumos', () => {
     await page.click('button:has-text("+ Nuevo Insumo")')
     await page.waitForTimeout(500)
 
-    await page.locator('button:has-text("Guardar")').click()
-    await page.waitForTimeout(1000)
-
-    const form = page.locator('h3:has-text("Crear Insumo")')
-    await expect(form).toBeVisible({ timeout: 5000 }).catch(() => null)
-
+    // La validación es que «Guardar» queda deshabilitado mientras falte el nombre
+    // (no se puede ni hacer clic): se comprueba eso, no un clic que nunca llega.
     const guardarBtn = page.locator('button:has-text("Guardar")')
-    const isDisabled = await guardarBtn.isDisabled()
-    expect(isDisabled || true).toBeTruthy()
+    await expect(guardarBtn).toBeDisabled()
+
+    await page.locator('#insumo-nombre').fill(`Insumo valido ${Date.now() % 10000}`)
+    await expect(guardarBtn).toBeEnabled()
   })
 
   test('API crear insumo', async ({ page }) => {
