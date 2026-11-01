@@ -179,31 +179,33 @@ test.describe('Recurrentes', () => {
   test('generar pedido desde recurrente via API', async ({ page }) => {
     await loginAs(page, 'admin')
 
-    const cliente = await createCliente(page, {
+    const clienteRes = await createCliente(page, {
       nombre: `Cliente Gen ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
+    // `createCliente` responde `{ success, cliente }`: el id vive en `cliente.cliente`.
+    const cliente = clienteRes.cliente || clienteRes
+    expect(cliente.id).toBeDefined()
 
-    await generateRecurrente(page, cliente.id)
+    // Misma fecha en la plantilla y al generar: no depende del día ni de la hora (#553).
+    const proxGeneracion = proxGeneracionHabil()
+    const creada = await generateRecurrente(page, cliente.id, proxGeneracion)
+    expect(creada.success).toBe(true)
     await page.waitForTimeout(300)
 
     const previewRes = await apiGet(page, '/api/pedidos/recurrentes')
     const previewData = await previewRes.json()
+    const item = (previewData.preview as Array<{ clienteId: string; recurrenteId: string }>).find((p) => p.clienteId === cliente.id)
+    expect(item).toBeDefined()
 
-    if (previewData.preview && previewData.preview.length > 0) {
-      const decisiones = previewData.preview.map((item: { recurrenteId: string }) => ({
-        recurrenteId: item.recurrenteId,
-        decision: 'NORMAL',
-      }))
+    const genRes = await page.request.post(`${BASE}/api/pedidos/recurrentes`, {
+      data: { decisiones: [{ recurrenteId: item!.recurrenteId, decision: 'NORMAL' }], fecha: proxGeneracion },
+    })
+    expect(genRes.status()).toBe(201)
 
-      const genRes = await page.request.post(`${BASE}/api/pedidos/recurrentes`, {
-        data: { decisiones },
-      })
-      expect(genRes.status()).toBe(201)
-
-      const genData = await genRes.json()
-      expect(genData.success).toBe(true)
-    }
+    const genData = await genRes.json()
+    expect(genData.success).toBe(true)
+    expect(genData.generados).toBe(1)
   })
 
   test('aplicar crédito de pedido pagado al recurrente', async ({ page }) => {
@@ -231,8 +233,9 @@ test.describe('Recurrentes', () => {
     })
     expect(pedidoExtraData.pedido).toBeDefined()
 
-    // 3. Crear plantilla recurrente
-    await generateRecurrente(page, cliente.id)
+    // 3. Crear plantilla recurrente (la misma fecha se manda al generar: #553)
+    const proxGeneracion = proxGeneracionHabil()
+    await generateRecurrente(page, cliente.id, proxGeneracion)
     await page.waitForTimeout(300)
 
     // 4. Verificar preview muestra opción "Aplicar crédito"
@@ -266,6 +269,7 @@ test.describe('Recurrentes', () => {
           recurrenteId: item!.recurrenteId,
           decision: 'APLICAR_CREDITO',
         }],
+        fecha: proxGeneracion,
       },
     })
     const genData = await genRes.json()
@@ -311,6 +315,11 @@ test.describe('Recurrentes', () => {
  * «Domingo → Lunes» en la vista previa (regla A3), así que con «ahora» el spec
  * fallaba cuando se corría en domingo (#494). A mediodía UTC el día de calendario
  * es el mismo en UTC y en Bogotá.
+ *
+ * OJO (#553): esa hora futura hace que el `POST /api/pedidos/recurrentes` responda 409
+ * si se compara contra «ahora» (`proxGeneracion > fecha` → «ya fueron generadas o
+ * modificadas»). Por eso las pruebas que generan mandan `fecha: <la misma proxGeneracion>`
+ * en el cuerpo: así el resultado no depende del día ni de la hora a la que corre el CI.
  */
 function proxGeneracionHabil(ahora: Date = new Date()): string {
   const [y, m, d] = ahora.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }).split('-').map(Number)
@@ -318,14 +327,14 @@ function proxGeneracionHabil(ahora: Date = new Date()): string {
   return new Date(Date.UTC(y, m - 1, esDomingo ? d + 1 : d, 12)).toISOString()
 }
 
-async function generateRecurrente(page: import('@playwright/test').Page, clienteId: string) {
+async function generateRecurrente(page: import('@playwright/test').Page, clienteId: string, proxGeneracion: string = proxGeneracionHabil()) {
   const res = await page.request.post(`${BASE}/api/recurrentes`, {
     data: {
       clienteId,
       tipo: 'ENVIO',
       canal: 'DOMICILIO',
       cadaNDias: 1,
-      proxGeneracion: proxGeneracionHabil(),
+      proxGeneracion,
       productos: { pacaAgua: 5 }, // 5 pacas para superar el crédito de 4 pacas
     },
   })
