@@ -317,39 +317,23 @@ test.describe('Dia completo de usuario', () => {
   // ═══════════════════════════════════════════
   // 9. EMBARQUES — create and assign pedidos
   // ═══════════════════════════════════════════
-  test('9. Crear embarque', async ({ page }) => {
+  test('9. Abrir el asistente de Nuevo Embarque', async ({ page }) => {
+    // La creación completa (pedidos → repartidor y carga → crear) la cubre
+    // e2e/embarques-nuevo.spec.ts; el modal ya no es el formulario con <select>
+    // de repartidor y observaciones: es el asistente «pedidos primero».
     await login(page)
-    await ensureTestData(page)
     await nav(page, '/embarques')
-
-    await page.click('button:has-text("+ Nuevo Embarque")')
-    await page.waitForTimeout(800)
-
-    // Select repartidor (wait for options to load)
-    const trabSelect = page.locator('label:has-text("Repartidor")').locator('..').locator('select')
-    await trabSelect.waitFor({ state: 'visible', timeout: 5000 })
-    await page.waitForTimeout(500) // wait for options to populate
-    const optCount = await trabSelect.locator('option').count()
-    if (optCount > 1) {
-      await trabSelect.selectOption({ index: 1 })
-    }
-
-    // Add observations
-    const obsTextarea = page.locator('textarea')
-    if (await obsTextarea.isVisible()) {
-      await obsTextarea.fill('Embarque de prueba E2E')
-    }
-
-    await page.locator('[role="dialog"] button:has-text("Crear")').click()
-    await page.waitForTimeout(2000)
-
-    // Fase 4 (Preparation Flow): tras crear, el flujo guiado navega al detalle
-    // del nuevo embarque (?step=asignar). Antes se quedaba en la lista.
-    await page.reload()
     await dismissBaseCaja(page)
-    // Sirve tanto para la lista ("Embarques del Día") como para el detalle
-    // ("Embarque #N") — lo que importa es que la creación no falló.
-    await expect(page.locator('body')).toContainText('Embarque', { timeout: 5000 })
+
+    const wizard = page.getByTestId('nuevo-embarque-wizard')
+    const boton = page.getByRole('button', { name: /Nuevo Embarque/i }).first()
+    // El clic puede llegar antes de que React enganche el handler: se reintenta
+    // solo mientras el asistente siga cerrado.
+    await expect(async () => {
+      if (!(await wizard.isVisible())) await boton.click()
+      await expect(wizard).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 20000 })
+    await expect(page.getByTestId('wizard-fase')).toBeVisible()
   })
 
   // ═══════════════════════════════════════════
@@ -628,17 +612,13 @@ test.describe('Dia completo de usuario', () => {
   // ═══════════════════════════════════════════
   // 20. ROLES — asistente no puede cerrar dia
   // ═══════════════════════════════════════════
-  test('20. Asistente no ve boton Cerrar Dia', async ({ page }) => {
+  test('20. Asistente no puede entrar al cierre del dia (sin permiso view:cierre)', async ({ page }) => {
     await login(page, 'asistente', 'asist123')
     await dismissBaseCaja(page)
     await nav(page, '/cierre')
 
-    // The "Cerrar Dia" button should NOT be visible for non-admin
-    // Wait a moment for page to fully render
-    await page.waitForTimeout(2000)
-
-    // It may or may not be visible depending on implementation,
-    // but at minimum we verify the page loads for asistente
-    await expect(page.locator('body')).toContainText('Cierre', { timeout: 5000 })
+    // ASISTENTE no tiene view:cierre: el proxy lo devuelve al dashboard.
+    await expect(page).not.toHaveURL(/\/cierre/, { timeout: 10000 })
+    await expect(page.getByRole('button', { name: /Cerrar D[ií]a/i })).toHaveCount(0)
   })
 })

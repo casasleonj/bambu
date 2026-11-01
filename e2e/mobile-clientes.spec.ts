@@ -3,7 +3,7 @@
 // lista de clientes y abrir el detalle al hacer click.
 
 import { test, expect } from '@playwright/test'
-import { loginAs } from './fixtures'
+import { loginAs, createCliente } from './fixtures'
 
 // Viewport mobile iPhone 13 (390x844) sin forzar webkit (que no esta
 // instalado en este entorno). Usamos chromium con viewport mobile,
@@ -51,6 +51,8 @@ test.describe('Clientes en mobile', () => {
 
   test('click en cliente abre el modal de detalle', async ({ page }) => {
     await loginAs(page, 'admin')
+    // La prueba no debe depender de datos previos: asegura al menos un cliente.
+    await createCliente(page)
     await page.goto('/clientes')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
@@ -78,6 +80,8 @@ test.describe('Clientes en mobile', () => {
 
   test('modal de detalle muestra informacion del cliente (no error)', async ({ page }) => {
     await loginAs(page, 'admin')
+    // La prueba no debe depender de datos previos: asegura al menos un cliente.
+    await createCliente(page)
     await page.goto('/clientes')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
