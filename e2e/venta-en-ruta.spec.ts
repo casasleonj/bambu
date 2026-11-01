@@ -18,7 +18,7 @@ test.describe.configure({ mode: 'serial' })
 
 async function interruptor(page: PaginaAdmin, valor: 'true' | 'false') {
   const res = await apiPost(page, '/api/config', { clave: CLAVE, valor })
-  expect(res.ok()).toBeTruthy()
+  expect(res.ok(), `${res.status()} ${await res.text()}`).toBeTruthy()
 }
 
 test.describe('Venta en ruta (#535)', () => {
@@ -53,8 +53,10 @@ test.describe('Venta en ruta (#535)', () => {
 
     await page.getByTestId('workspace-inc-PACA_AGUA').click()
     await page.getByTestId('workspace-inc-PACA_AGUA').click()
-    await page.getByTestId('workspace-entrega-direccion').fill(`Calle ${Date.now() % 100} # 3-2`)
-    await page.getByTestId('workspace-entrega-barrio').fill('Centro')
+    // #542: la dirección es opcional — cerrada, sin «obligatoria» y sin aviso de falta
+    await expect(page.getByTestId('workspace-entrega')).toContainText('Dirección de entrega · opcional')
+    await expect(page.getByTestId('workspace-entrega-agregar')).toBeVisible()
+    await expect(page.getByTestId('workspace-entrega-direccion')).toHaveCount(0)
     await page.getByTestId('dinero-pagar-completo-EFECTIVO').click()
     await expect(page.getByTestId('dinero-saldo')).toHaveText('Pagado', { timeout: 10000 })
     await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
@@ -80,6 +82,7 @@ test.describe('Venta en ruta (#535)', () => {
     expect(f.entregadoPorId).toBe(repartidor.id)
     expect(f.entregadoAt).not.toBeNull()
     expect(f.embarqueId).toBeNull()
+    expect(f.direccionEntrega).toBeNull() // #542: registrada sin dirección
     expect(Number(f.saldo)).toBe(0)
     expect(f.pagos).toHaveLength(1)
     expect(Number(f.pagos[0].monto)).toBe(Number(f.total))
@@ -104,7 +107,9 @@ test.describe('Venta en ruta (#535)', () => {
 
     await page.getByTestId('workspace-inc-PACA_AGUA').click()
     await page.getByTestId('workspace-inc-PACA_AGUA').click()
-    await page.getByTestId('workspace-entrega-direccion').fill(`Calle ${Date.now() % 100} # 4-1`)
+    // con «+ Agregar» sí se puede anotar la calle: debe guardarse
+    await page.getByTestId('workspace-entrega-agregar').click()
+    await page.getByTestId('workspace-entrega-direccion').fill('Calle 4 # 4-1')
     await page.getByTestId('workspace-entrega-barrio').fill('Centro')
     // queda debiendo todo: aparece la pregunta de la promesa
     await expect(page.getByTestId('venta-ruta-promesa')).toBeVisible({ timeout: 10000 })
@@ -130,6 +135,7 @@ test.describe('Venta en ruta (#535)', () => {
     expect(f.origen).toBe('VENTA_RAPIDA')
     expect(f.estadoEntrega).toBe('ENTREGADO')
     expect(f.entregadoPorId).toBe(repartidor.id)
+    expect(f.direccionEntrega).toBe('Calle 4 # 4-1')
     expect(Number(f.saldo)).toBeGreaterThan(0)
     expect(f.promesaPagoFecha).not.toBeNull()
   })

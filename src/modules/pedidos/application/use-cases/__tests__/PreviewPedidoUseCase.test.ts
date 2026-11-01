@@ -205,6 +205,37 @@ describe('PreviewPedidoUseCase — permissions + warnings', () => {
     expect(r.allowedActions).not.toContain('crear')
   })
 
+  describe('#542 venta en ruta: la dirección de entrega es opcional', () => {
+    const sinDireccion = () => {
+      const deps = makeDeps()
+      ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'c1', nombre: 'X', apellido: null, telefono: '3001112233', direccion: null, barrio: null,
+        bloqueado: false, verificado: true, creadoPorRol: 'ADMIN', limitePedidosFiados: null, preciosEspeciales: null,
+        referencia: undefined, linkUbicacion: undefined, lat: null, lng: null, geocodeOrigen: null,
+      })
+      return deps
+    }
+    const base = { clienteId: 'c1', canal: 'DOMICILIO' as const, origen: 'VENTA_RAPIDA' as const, entregado: true, items: [{ producto: 'PACA_AGUA' as const, cantidad: 1 }], actorId: 'u1' }
+
+    it('con ventaEnRuta y sin dirección NI ubicación: puede crear y no avisa ENTREGA_INSUFICIENTE', async () => {
+      const r = await new PreviewPedidoUseCase(sinDireccion()).execute({ ...base, ventaEnRuta: true })
+      expect(r.warnings.some(w => w.code === 'ENTREGA_INSUFICIENTE')).toBe(false)
+      expect(r.permissions.canCreate).toBe(true)
+      expect(r.allowedActions).toContain('crear')
+    })
+
+    it('una venta rápida a domicilio normal (sin ventaEnRuta) sigue bloqueando', async () => {
+      const r = await new PreviewPedidoUseCase(sinDireccion()).execute(base)
+      expect(r.warnings.some(w => w.code === 'ENTREGA_INSUFICIENTE')).toBe(true)
+      expect(r.permissions.canCreate).toBe(false)
+    })
+
+    it('ventaEnRuta no relaja un pedido normal (origen PEDIDO)', async () => {
+      const r = await new PreviewPedidoUseCase(sinDireccion()).execute({ ...base, origen: 'PEDIDO', entregado: undefined, ventaEnRuta: true })
+      expect(r.warnings.some(w => w.code === 'ENTREGA_INSUFICIENTE')).toBe(true)
+    })
+  })
+
   it('DOMICILIO con ubicación válida pero sin dirección escrita → SUFICIENTE_COMPLEMENTARIA_FALTANTE, NO bloquea', async () => {
     const deps = makeDeps()
     ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({

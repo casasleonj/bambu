@@ -636,6 +636,11 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
           onUbicacionChange={(lat, lng) => dispatch({ type: 'SET_UBICACION', lat, lng })}
           previewPending={state.previewPending}
           ventaRapida={esVentaRapida}
+          opcional={Boolean(ventaEnRuta)}
+          onQuitarDestino={() => {
+            dispatch({ type: 'SET_DIRECCION', direccion: '', barrio: '' })
+            dispatch({ type: 'SET_UBICACION', lat: null, lng: null })
+          }}
           guardada={destinoGuardado ? { texto: destinoGuardado.texto, origen: destinoGuardado.origen } : null}
           destinoPropio={Boolean(destinoGuardado) && destinoPropio}
           puedeGuardarEnCliente={Boolean(destinoGuardado) && destinoGuardado?.origen === 'cliente' && textoDestinoCambiado}

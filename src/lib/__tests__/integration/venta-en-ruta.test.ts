@@ -43,7 +43,7 @@ const base = () => ({
   origen: 'VENTA_RAPIDA',
   canal: 'DOMICILIO',
   clienteId: 'CONSUMIDOR_FINAL',
-  direccionEntrega: 'Calle 1 # 2-3, Centro',
+  // #542: sin dirección de entrega — la venta ya se hizo en la calle, es opcional.
   items: [{ producto: 'PACA_AGUA', cantidad: 5 }],
   offlineId: unico(),
 })
@@ -188,6 +188,34 @@ describe('#535 — venta en ruta desde Pedidos (Postgres real)', () => {
     expect(await testPrisma.pedido.count()).toBe(antes)
     const id = (a.body.pedido?.id ?? a.body.id) as string
     expect(await testPrisma.pago.count({ where: { pedidoId: id } })).toBe(1)
+  })
+
+  it('#542 sin dirección ni ubicación se registra igual: entregada, cobrada y sin destino guardado', async () => {
+    const r = await crear({ ...base(), vendidoPorId: repartidorId, pagos: [{ metodo: 'EFECTIVO', monto: await totalDe([]) }] })
+    expect(r.status).toBe(201)
+    const id = (r.body.pedido?.id ?? r.body.id) as string
+    const f = await testPrisma.pedido.findUniqueOrThrow({ where: { id } })
+    expect(f.estadoEntrega).toBe('ENTREGADO')
+    expect(f.direccionEntrega).toBeNull()
+    expect(f.entregaLat).toBeNull()
+    expect(Number(f.saldo)).toBe(0)
+  })
+
+  it('#542 si se anota la dirección, se guarda como siempre', async () => {
+    const r = await crear({ ...base(), direccionEntrega: 'Calle 1 # 2-3', barrioEntrega: 'Centro', vendidoPorId: repartidorId, pagos: [{ metodo: 'EFECTIVO', monto: await totalDe([]) }] })
+    expect(r.status).toBe(201)
+    const id = (r.body.pedido?.id ?? r.body.id) as string
+    const f = await testPrisma.pedido.findUniqueOrThrow({ where: { id } })
+    expect(f.direccionEntrega).toBe('Calle 1 # 2-3')
+    expect(f.barrioEntrega).toBe('Centro')
+  })
+
+  it('#542 la regla no se relaja para lo demás: una venta rápida a domicilio SIN repartidor sigue exigiendo dirección', async () => {
+    const antes = await testPrisma.pedido.count()
+    const r = await crear({ ...base(), pagos: [{ metodo: 'EFECTIVO', monto: await totalDe([]) }] })
+    expect(r.status).toBe(422)
+    expect(JSON.stringify(r.body)).toContain('ENTREGA_INSUFICIENTE')
+    expect(await testPrisma.pedido.count()).toBe(antes)
   })
 
   it('una venta rápida normal (sin vendidoPorId) sigue igual: no exige repartidor', async () => {

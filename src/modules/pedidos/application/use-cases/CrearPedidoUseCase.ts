@@ -220,7 +220,9 @@ export class CrearPedidoUseCase {
         if (!ubicacionPropia) throw new UbicacionEntregaInvalidaError()
         if (input.canal !== 'DOMICILIO') throw new UbicacionSoloDomicilioError()
       }
-      if (requiereEntregaSuficiente({ canal: input.canal, estadoEntrega: estadoEntregaCreacion, origen: origenCreacion })) {
+      // #542: la venta en ruta (`vendidoPorId`) ya se entregó en la calle: la dirección es opcional.
+      // `validarVentaEnRuta` (más abajo) sigue exigiendo ADMIN, interruptor, venta rápida a domicilio, etc.
+      if (!input.vendidoPorId && requiereEntregaSuficiente({ canal: input.canal, estadoEntrega: estadoEntregaCreacion, origen: origenCreacion })) {
         const negocioEntrega = input.negocioId
           ? await this.clienteRepo.findNegocioById(input.negocioId, tx)
           : null
