@@ -150,7 +150,7 @@ export function VentaLibreRowV2({
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {productos.map(({ key, label, codigo }) => (
-          <div key={key}>
+          <div key={key} className="min-w-0">
             <label className="text-xs text-gray-500" htmlFor={`vl-${index}-${key}`}>{label}</label>
             <input
               id={`vl-${index}-${key}`}
@@ -175,7 +175,7 @@ export function VentaLibreRowV2({
               aria-label="Método de pago"
               value={pago.metodo}
               onChange={(e) => onUpdatePago(index, pIdx, 'metodo', e.target.value)}
-              className="h-11 rounded-lg border px-2 text-sm"
+              className="h-11 max-w-[45%] shrink-0 rounded-lg border px-2 text-sm"
             >
               {METODOS_PAGO.map((m) => (
                 <option key={m} value={m}>{m}</option>
@@ -188,10 +188,10 @@ export function VentaLibreRowV2({
               aria-label="Monto cobrado"
               value={pago.monto}
               onChange={(e) => onUpdatePago(index, pIdx, 'monto', parseFloat(e.target.value) || 0)}
-              className="h-11 flex-1 rounded-lg border px-3 text-sm"
+              className="h-11 min-w-0 flex-1 rounded-lg border px-3 text-sm"
               placeholder="Monto"
             />
-            <button type="button" aria-label="Quitar pago" onClick={() => onEliminarPago(index, pIdx)} className="h-11 w-11 rounded-lg text-red-600 hover:bg-red-50">
+            <button type="button" aria-label="Quitar pago" onClick={() => onEliminarPago(index, pIdx)} className="h-11 w-11 shrink-0 rounded-lg text-red-600 hover:bg-red-50">
               ✕
             </button>
           </div>
