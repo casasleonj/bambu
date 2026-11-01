@@ -140,6 +140,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           setStockIniHielo(json.cierre.produccion.stockIniHielo || 0)
           setStockFinAgua(json.cierre.produccion.stockFinAgua || 0)
           setStockFinHielo(json.cierre.produccion.stockFinHielo || 0)
+        } else if (json.cierre.stockInicialSugerido) {
+          setStockIniAgua(json.cierre.stockInicialSugerido.stockIniAgua || 0)
+          setStockIniHielo(json.cierre.stockInicialSugerido.stockIniHielo || 0)
         }
       }
     } catch (error) {
