@@ -64,7 +64,9 @@ describe('F-N14: la route ya NO tiene el dedup redundante', () => {
 // Helper: extraer el último `return apiSuccess({ ... }, <status>)` del POST
 // con balanceo de paréntesis correcto
 function extractLastApiSuccessReturn(source: string): string | null {
-  const postStart = source.indexOf('export async function POST')
+  // #407: la respuesta la arma `responderGeneracion` (la usan la generación
+  // nueva y el reintento de un lote ya existente).
+  const postStart = source.indexOf('function responderGeneracion')
   if (postStart === -1) return null
   const postSource = source.substring(postStart)
   // Buscar el ÚLTIMO `return apiSuccess(`
@@ -117,7 +119,12 @@ describe('F-N14: la route sigue trabajando (no rompe flujo normal)', () => {
   })
 
   it('FIX: los efectos post-commit (realtime) solo corren si NO es deduped', () => {
-    expect(postSource).toMatch(/if\s*\(resultado\.generados\.length\s*>\s*0\s*&&\s*!deduped\)/)
+    expect(routeSource).toMatch(/if\s*\(resultado\.generados\.length\s*>\s*0\s*&&\s*!deduped\)/)
+  })
+
+  it('#407: deduped lo informa la función, no se infiere contando pedidos del lote', () => {
+    expect(routeSource).toMatch(/const\s*\{\s*deduped\s*\}\s*=\s*resultado/)
+    expect(routeSource).not.toMatch(/allHaveBatch/)
   })
 
   it('§5.E: la route ya no audita post-commit; la auditoría va en la tx del lib', () => {
