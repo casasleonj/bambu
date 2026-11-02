@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { formatCurrency } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import type { Trabajador } from './types'
@@ -8,23 +9,55 @@ export function TrabajadorCard({
   trabajador,
   onEdit,
   onDelete,
+  onRetryDeuda,
 }: {
   trabajador: Trabajador
   onEdit: (t: Trabajador) => void
   onDelete: (id: string) => void
+  /** Reintenta la carga de la lista cuando la deuda no se pudo calcular (#566) */
+  onRetryDeuda?: () => void
 }) {
   return (
-    <div className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition hover:shadow-md dark:bg-zinc-900">
+    <div data-testid="trabajador-card" className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition hover:shadow-md dark:bg-zinc-900">
       <div className="mb-4 flex items-start justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{trabajador.nombre}</h2>
-          <div className="mt-1 flex gap-1.5">
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+            <Link
+              href={`/trabajadores/${trabajador.id}`}
+              className="rounded hover:text-emerald-700 hover:underline focus-visible:outline-2 focus-visible:outline-emerald-600 dark:hover:text-emerald-400"
+            >
+              {trabajador.nombre}
+            </Link>
+          </h2>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <Badge variant="default">
               {rolLabels[trabajador.rol] || trabajador.rol}
             </Badge>
             <Badge variant="secondary">
               {tipoPagoLabels[trabajador.tipoPago] || trabajador.tipoPago}
             </Badge>
+            {typeof trabajador.deudaPendiente === 'number' && trabajador.deudaPendiente > 0 && (
+              <span
+                data-testid="trabajador-deuda-badge"
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+              >
+                Deuda pendiente <span className="tabular-nums">{formatCurrency(trabajador.deudaPendiente)}</span>
+              </span>
+            )}
+            {trabajador.deudaPendiente === null && (
+              <span
+                role="status"
+                data-testid="trabajador-deuda-error"
+                className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+              >
+                Deuda no disponible
+                {onRetryDeuda && (
+                  <button type="button" onClick={onRetryDeuda} className="underline focus-visible:outline-2 focus-visible:outline-red-600">
+                    Reintentar
+                  </button>
+                )}
+              </span>
+            )}
           </div>
         </div>
       </div>

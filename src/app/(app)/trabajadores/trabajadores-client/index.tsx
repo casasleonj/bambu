@@ -174,6 +174,7 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
               trabajador={t}
               onEdit={openEditModal}
               onDelete={handleDelete}
+              onRetryDeuda={fetchTrabajadores}
             />
           ))
         )}
