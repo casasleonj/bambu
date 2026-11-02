@@ -82,10 +82,23 @@ export async function comisionDiaConEstado(tx: TxPagoComision, fecha: string): P
   return resultado
 }
 
-/** Comisión de repartidores que salió de la caja entre `desde` (incluido) y `hasta` (excluido), por fecha de pago. */
+/**
+ * Comisión de repartidores que salió de la caja entre `desde` (incluido) y `hasta` (excluido), por fecha
+ * de pago. #305: solo cuenta lo pagado en EFECTIVO; lo pagado por transferencia, Nequi o Daviplata no
+ * salió de la caja.
+ */
 export async function comisionPagadaEnCaja(tx: Pick<Prisma.TransactionClient, 'pagoComisionRepartidor'>, desde: Date, hasta: Date): Promise<number> {
   const agg = await tx.pagoComisionRepartidor.aggregate({
-    where: { createdAt: { gte: desde, lt: hasta } },
+    where: { createdAt: { gte: desde, lt: hasta }, metodo: 'EFECTIVO' },
+    _sum: { monto: true },
+  })
+  return num(agg._sum.monto)
+}
+
+/** #305: comisión de repartidores pagada ese día por un medio distinto del efectivo (informativo; no resta de la caja). */
+export async function comisionPagadaOtrosMedios(tx: Pick<Prisma.TransactionClient, 'pagoComisionRepartidor'>, desde: Date, hasta: Date): Promise<number> {
+  const agg = await tx.pagoComisionRepartidor.aggregate({
+    where: { createdAt: { gte: desde, lt: hasta }, metodo: { not: 'EFECTIVO' } },
     _sum: { monto: true },
   })
   return num(agg._sum.monto)
@@ -113,9 +126,11 @@ export interface ComisionesDelCierre {
   repartidores: ComisionDiaConEstado[]
   /** Comisión de sellador del día (Producción). */
   sellador: number
-  /** Lo que salió de la caja este día por comisión de repartidores. */
+  /** Lo que salió de la caja este día por comisión de repartidores (solo efectivo). */
   pagadoRepartidores: number
-  /** Lo que el cierre resta de la caja: sellador + repartidores pagados. */
+  /** #305: pagado ese día por otros medios (transferencia, Nequi, Daviplata); no resta de la caja. */
+  pagadoRepartidoresOtrosMedios: number
+  /** Lo que el cierre resta de la caja: sellador + repartidores pagados en efectivo. */
   total: number
 }
 
@@ -124,10 +139,11 @@ export interface ComisionesDelCierre {
  * (el cliente ya no teclea la cifra): `desde`/`hasta` son los límites del día de caja.
  */
 export async function comisionesDelCierre(tx: TxPagoComision, fecha: string, desde: Date, hasta: Date): Promise<ComisionesDelCierre> {
-  const [repartidores, sellador, pagadoRepartidores] = await Promise.all([
+  const [repartidores, sellador, pagadoRepartidores, pagadoRepartidoresOtrosMedios] = await Promise.all([
     comisionDiaConEstado(tx, fecha),
     comisionSelladorDia(tx, desde, hasta),
     comisionPagadaEnCaja(tx, desde, hasta),
+    comisionPagadaOtrosMedios(tx, desde, hasta),
   ])
-  return { repartidores, sellador, pagadoRepartidores, total: sellador + pagadoRepartidores }
+  return { repartidores, sellador, pagadoRepartidores, pagadoRepartidoresOtrosMedios, total: sellador + pagadoRepartidores }
 }

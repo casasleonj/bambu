@@ -351,6 +351,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         comisionesAuto: {
           sellador: comisionesAuto.sellador,
           pagadoRepartidores: comisionesAuto.pagadoRepartidores,
+          pagadoRepartidoresOtrosMedios: comisionesAuto.pagadoRepartidoresOtrosMedios,
           total: comisionesAuto.total,
           repartidores: comisionesAuto.repartidores.map((r) => ({
             trabajadorId: r.trabajadorId, nombre: r.nombre, total: r.total, pagado: r.pagado, pendiente: r.pendiente,
