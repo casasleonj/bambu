@@ -259,7 +259,9 @@ test.describe('Embarques — Stock Estimado UI', () => {
   test('click en stock estimado abre modal', async () => {
     await gotoEmbarques(p)
     await p.locator('button:has-text("Stock Estimado"), button:has-text("Stock:")').first().click()
-    await expect(p.locator('text=Stock Estimado').first()).toBeVisible()
+    // El rótulo del botón es `hidden sm:inline`: en móvil el primer `text=Stock Estimado`
+    // del DOM es ese <span> oculto. Se comprueba el encabezado del modal.
+    await expect(p.getByRole('heading', { name: /Stock Estimado/ })).toBeVisible()
   })
 
   test('crear stock estimado via modal', async () => {
