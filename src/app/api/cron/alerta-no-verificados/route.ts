@@ -32,8 +32,9 @@ import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { requireCronSecret } from '@/lib/cron-auth'
+import { USUARIO_SISTEMA } from '@/lib/usuario-sistema'
 
-const SISTEMA_USERNAME = 'system@bambu.local'
+const SISTEMA_USERNAME = USUARIO_SISTEMA
 const AUTO_CIERRE_DIAS = 30
 
 export async function POST(request: NextRequest) {

@@ -4,10 +4,11 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { requireCronSecret } from '@/lib/cron-auth'
 import { prisma } from '@/lib/prisma'
+import { USUARIO_SISTEMA } from '@/lib/usuario-sistema'
 
 // Actor técnico del cron (plan de integridad v1.2 §5.E): la generación
 // automática nunca se atribuye a una persona.
-const SISTEMA_USERNAME = 'system@bambu.local'
+const SISTEMA_USERNAME = USUARIO_SISTEMA
 
 /**
  * POST /api/cron/generar-recurrentes
