@@ -17,6 +17,8 @@ export interface Trabajador {
   telefono?: string
   activo: boolean
   createdAt: string
+  /** #566: number = saldo (0 sin deuda), null = no se pudo calcular, undefined = el rol no ve deudas */
+  deudaPendiente?: number | null
 }
 
 export interface TrabajadorFormData {

@@ -8,6 +8,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { conDeudaPendiente } from '@/lib/trabajadores-deuda'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -35,7 +36,13 @@ export async function GET(request: NextRequest) {
       where,
       orderBy: { nombre: 'asc' },
     })
-    return apiSuccess({ trabajadores })
+    // #566: la deuda pendiente solo se expone a quien ya puede ver deudas
+    // (GET /api/deudas es ADMIN/CONTADOR). Un fallo del cálculo no tumba la lista.
+    const userRole = (authResult.user as { role?: string } | undefined)?.role
+    const puedeVerDeudas = userRole === ROLES.ADMIN || userRole === ROLES.CONTADOR
+    return apiSuccess({
+      trabajadores: puedeVerDeudas ? await conDeudaPendiente(trabajadores) : trabajadores,
+    })
   } catch (_error) {
     return apiError('Error cargando trabajadores')
   }

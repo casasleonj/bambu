@@ -441,9 +441,13 @@ test.describe('Deudas UI', () => {
 
     await goto(page, '/trabajadores')
 
-    // Badge should show debt
-    await expect(page.getByText('Deuda pendiente')).toBeVisible()
-    await expect(page.getByText('$ 60.000')).toBeVisible()
+    // Badge should show debt. Scoped to this worker's own card: the other
+    // tests of this describe leave workers with debts in the same database,
+    // so an unscoped getByText('Deuda pendiente') matches one badge per worker
+    // (strict-mode violation).
+    const card = page.getByTestId('trabajador-card').filter({ hasText: trabajador.trabajador.nombre })
+    await expect(card.getByText('Deuda pendiente')).toBeVisible()
+    await expect(card.getByText('$ 60.000')).toBeVisible()
 
     // Click on worker name should navigate to detail
     await page.locator(`a[href="/trabajadores/${tid}"]`).first().click()
