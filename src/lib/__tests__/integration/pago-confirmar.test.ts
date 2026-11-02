@@ -180,4 +180,59 @@ describe('pago-confirmado.2', () => {
     // y NO en la advertencia de días previos (createdAt es de hoy)
     // (no aserción estricta del total previo — puede haber otros de tests anteriores)
   })
+
+  describe('#517: el pago de un pedido anulado o cancelado ya no se confirma', () => {
+    async function anular(pedidoId: string, estado: 'ANULADO' | 'CANCELADO') {
+      await testPrisma.pedido.update({ where: { id: pedidoId }, data: { estadoEntrega: estado, estado, estadoPago: 'ANULADO' } })
+    }
+
+    it.each(['ANULADO', 'CANCELADO'] as const)('no aparece en la cola ni en su total (%s)', async (estado) => {
+      const vigente = await seedPagoReportado(7100)
+      const cerrado = await seedPagoReportado(7200)
+      await anular(cerrado.pedido.id, estado)
+      configHolder.value = adminId
+      const { GET } = await import('@/app/api/pagos/por-confirmar/route')
+      const json = await (await GET(getReq('all=true'))).json()
+      const ids = (json.data as Array<{ id: string }>).map((p) => p.id)
+      expect(ids).toContain(vigente.pago.id)
+      expect(ids).not.toContain(cerrado.pago.id)
+      expect(json.totales.count).toBe(ids.length)
+    })
+
+    it('confirmarlo responde 409 y el pago queda igual', async () => {
+      const { pedido, pago } = await seedPagoReportado(7300)
+      await anular(pedido.id, 'ANULADO')
+      configHolder.value = adminId
+      const { POST } = await import('@/app/api/pagos/[id]/confirmar/route')
+      const res = await POST(postReq({ resultado: 'CONFIRMADO' }), { params: Promise.resolve({ id: pago.id }) })
+      expect(res.status).toBe(409)
+      const post = await testPrisma.pago.findUniqueOrThrow({ where: { id: pago.id } })
+      expect(post.confirmacion).toBe('REPORTADO')
+      expect(post.confirmadoPorId).toBeNull()
+    })
+
+    it('el cierre no lo cuenta en porConfirmar', async () => {
+      const { pedido } = await seedPagoReportado(7400)
+      configHolder.value = adminId
+      const { GET: cierreGet } = await import('@/app/api/cierre/route')
+      const nextReq = { nextUrl: { searchParams: new URLSearchParams() } } as unknown as import('next/server').NextRequest
+      const antes = (await (await cierreGet(nextReq)).json()).cierre.porConfirmar.total as number
+      await anular(pedido.id, 'CANCELADO')
+      const despues = (await (await cierreGet(nextReq)).json()).cierre.porConfirmar.total as number
+      expect(antes - despues).toBe(7400)
+    })
+
+    it('V9 no lo marca', async () => {
+      const { verificarIntegridad } = await import('@/lib/integridad/verificar')
+      const viejo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000)
+      const vigente = await seedPagoReportado(7500)
+      const cerrado = await seedPagoReportado(7600)
+      await testPrisma.pago.updateMany({ where: { id: { in: [vigente.pago.id, cerrado.pago.id] } }, data: { createdAt: viejo } })
+      await anular(cerrado.pedido.id, 'ANULADO')
+      const v9 = (await verificarIntegridad(testPrisma, { maxMuestras: 1000 })).reglas.find((r) => r.id === 'V9')!
+      const refs = v9.hallazgos.map((h) => h.ref)
+      expect(refs).toContain(vigente.pago.id)
+      expect(refs).not.toContain(cerrado.pago.id)
+    })
+  })
 })
