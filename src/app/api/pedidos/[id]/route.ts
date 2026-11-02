@@ -421,7 +421,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     // Try anular (requires ENTREGADO), fallback to cancelar
     try {
-      const result = await anularPedidoUseCase.execute({ pedidoId: id })
+      const result = await anularPedidoUseCase.execute({ pedidoId: id, actorId: getUserFromSession(authResult).id })
       logAudit({
         entidad: 'Pedido',
         registroId: id,
@@ -438,7 +438,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       if (err instanceof Error && err.message === 'PEDIDO_NOT_FOUND') {
         return apiError('Pedido no encontrado', 404)
       }
-      const result = await cancelarPedidoUseCase.execute({ pedidoId: id })
+      const result = await cancelarPedidoUseCase.execute({ pedidoId: id, actorId: getUserFromSession(authResult).id })
       logAudit({
         entidad: 'Pedido',
         registroId: id,

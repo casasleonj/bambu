@@ -96,3 +96,9 @@ Ver `docs/pedidos/fase5-n2-flujo-plan.md` (P3) y el componente `n2-impacto.tsx` 
 4. **No** tratar un error de Agua Bambú como deuda del cliente.
 5. **No** implementar esta compensación dentro de Fase 5 / Pedidos como lógica ad hoc. Es dominio compartido (N2 + Cartera).
 6. **No** dejar el ajuste sin los 10 campos de trazabilidad de §4.
+
+---
+
+## 7. Anular o cancelar el pedido (#577)
+
+Esta política cubre liberar y cambiar de modo: ahí el crédito ya acreditado **permanece** (el pedido sigue vivo). **Anular o cancelar el pedido es distinto:** el pedido deja de existir y se resta del cliente el crédito que salió de él, hasta lo que todavía tenga; lo que ya usó en otros pedidos no se reclama y se informa. Detalle y casos límite en `docs/adr/ADR-SALDO-FAVOR-EXCEDENTE-001.md` (decisión 6). En la interfaz, el texto de liberar dice que «solo anular o cancelar el pedido los resta».

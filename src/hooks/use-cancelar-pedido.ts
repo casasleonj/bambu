@@ -9,6 +9,8 @@ import { useState, useCallback } from 'react'
 import { generateUUID } from '@/lib/uuid'
 import { toast } from 'sonner'
 import { fetchResilient } from '@/lib/fetch-resilient'
+import { formatCurrency } from '@/lib/utils'
+import { hayParteYaUsada, mensajeSaldoFavor, type ResultadoSaldoFavor } from '@/lib/saldo-favor-mensajes'
 
 export interface CancelarPedidoPayload {
   pedidoId: string
@@ -18,6 +20,11 @@ export interface CancelarPedidoPayload {
 export interface UseCancelarPedidoOptions {
   onSuccess?: () => void
   onError?: (error: string) => void
+  /**
+   * #577: parte del saldo a favor del pedido ya se había usado en otros pedidos. La pantalla lo muestra
+   * en un aviso que no se cierra solo. Sin esta función, el aviso va dentro del mensaje.
+   */
+  onSaldoFavorYaUsado?: (mensaje: string) => void
 }
 
 export function useCancelarPedido(options?: UseCancelarPedidoOptions) {
@@ -27,7 +34,7 @@ export function useCancelarPedido(options?: UseCancelarPedidoOptions) {
   const cancelar = useCallback(async (payload: CancelarPedidoPayload): Promise<boolean> => {
     setSubmitting(true)
     try {
-      const result = await fetchResilient<{ success: boolean; error?: { message?: string } }>(
+      const result = await fetchResilient<{ success: boolean; error?: { message?: string } } & ResultadoSaldoFavor>(
         `/api/pedidos/${payload.pedidoId}/cancelar`,
         {
           method: 'POST',
@@ -38,7 +45,13 @@ export function useCancelarPedido(options?: UseCancelarPedidoOptions) {
 
       if (result.status === 'ok') {
         options?.onSuccess?.()
-        toast.success('Pedido cancelado correctamente')
+        const saldoFavor = mensajeSaldoFavor(result.data, formatCurrency)
+        if (saldoFavor && hayParteYaUsada(result.data) && options?.onSaldoFavorYaUsado) {
+          toast.success('Pedido cancelado correctamente')
+          options.onSaldoFavorYaUsado(saldoFavor)
+        } else {
+          toast.success(saldoFavor ? `Pedido cancelado correctamente. ${saldoFavor}` : 'Pedido cancelado correctamente', saldoFavor ? { duration: 10000 } : undefined)
+        }
         return true
       }
 

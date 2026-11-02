@@ -45,7 +45,7 @@ describe('ActividadAcciones — liberar (F5-iii, P3)', () => {
     render(<ActividadAcciones pedidoId="p1" actividadId="a1" modoActual="DOMICILIO" accion="liberar" onCancel={vi.fn()} onMutado={vi.fn()} />)
     await waitFor(() => expect(screen.getByTestId('n2-impacto-reversion')).toBeInTheDocument())
     expect(screen.getByTestId('n2-impacto-reversion')).toHaveTextContent(/\$3.000/)
-    expect(screen.getByTestId('n2-impacto-no-revertido')).toHaveTextContent(/permanecen/)
+    expect(screen.getByTestId('n2-impacto-no-revertido')).toHaveTextContent(/siguen siendo suyos/)
     expect(screen.getByTestId('n2-impacto-tipo-reversion_parcial')).toBeInTheDocument()
   })
 

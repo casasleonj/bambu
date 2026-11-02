@@ -40,6 +40,7 @@ import { useCrearPedido, type CrearPedidoPayload } from '@/hooks/use-crear-pedid
 import { offlineDb } from '@/lib/db/offline'
 import { SYNC_ITEM_DONE_EVENT } from '@/lib/db/sync'
 import { useAnularPedido } from '@/hooks/use-anular-pedido'
+import { SaldoFavorAnulacionAviso } from '@/components/saldo-favor/saldo-favor-anulacion-aviso'
 import { useCancelarPedido } from '@/hooks/use-cancelar-pedido'
 import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
 import { useEntregarPedido } from '@/hooks/use-entregar-pedido'
@@ -993,7 +994,20 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
     },
   })
 
+  // #577: parte del saldo a favor del pedido ya se había usado en otros pedidos. Aviso que no se cierra solo.
+  const avisarSaldoFavorYaUsado = (mensaje: string) => {
+    void confirm({
+      title: 'Una parte del saldo a favor ya se había usado',
+      message: mensaje,
+      description: 'Esos pedidos quedaron pagados de verdad: no se pueden deshacer y el cliente no queda debiendo por eso.',
+      variant: 'warning',
+      confirmLabel: 'Entendido',
+      hideCancel: true,
+    })
+  }
+
   const { anular: anularPedido } = useAnularPedido({
+    onSaldoFavorYaUsado: avisarSaldoFavorYaUsado,
     onSuccess: () => {
       refreshPedidos()
       refetchFiados()
@@ -1003,6 +1017,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
   })
 
   const { cancelar: cancelarPedido } = useCancelarPedido({
+    onSaldoFavorYaUsado: avisarSaldoFavorYaUsado,
     onSuccess: () => {
       setShowDetailModal(false)
       refreshPedidos()
@@ -1494,6 +1509,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
                 autoFocus
               />
             </div>
+            <SaldoFavorAnulacionAviso pedidoId={id} accion="cancelar" />
           </div>
         ),
         consequences: [
@@ -1531,6 +1547,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
                 autoFocus
               />
             </div>
+            <SaldoFavorAnulacionAviso pedidoId={id} accion="anular" />
           </div>
         ),
         consequences: [

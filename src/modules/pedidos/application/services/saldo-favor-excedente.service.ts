@@ -47,7 +47,11 @@ export async function respaldoConfirmado(tx: TransactionClient, pedidoId: string
   return Math.max(0, deCentavos(aCentavos(totalPagado) - aCentavos(num(sinConfirmar._sum.monto))))
 }
 
-/** Crédito que salió de este pedido y no se ha reaplicado: Σ ACREDITACION − Σ REAPLICACION. */
+/**
+ * Crédito que salió de este pedido y sigue pendiente: Σ ACREDITACION − Σ REAPLICACION − Σ REVERSION_ANULACION.
+ * En un pedido ya anulado o cancelado lo que queda es lo que el cliente alcanzó a usar en otros pedidos
+ * antes de la anulación (no se pudo restar).
+ */
 export async function creditoNetoDelPedido(tx: TransactionClient, pedidoId: string): Promise<number> {
   const filas = await tx.pedidoSaldoFavorMovimiento.groupBy({
     by: ['tipo'],
@@ -55,7 +59,70 @@ export async function creditoNetoDelPedido(tx: TransactionClient, pedidoId: stri
     _sum: { monto: true },
   })
   const suma = (t: string) => aCentavos(num(filas.find((f) => f.tipo === t)?._sum.monto))
-  return deCentavos(Math.max(0, suma('ACREDITACION') - suma('REAPLICACION')))
+  return deCentavos(Math.max(0, suma('ACREDITACION') - suma('REAPLICACION') - suma('REVERSION_ANULACION')))
+}
+
+export interface ProyeccionReversionCredito {
+  /** Crédito que salió de este pedido y sigue pendiente. */
+  salioDelPedido: number
+  /** Lo que se puede restar ahora: lo pendiente, acotado a lo que el cliente tiene disponible. */
+  seResta: number
+  /** Lo pendiente que el cliente ya usó en otros pedidos y no se puede restar. */
+  yaUsado: number
+  saldoActual: number
+  saldoDespues: number
+}
+
+/** Qué pasaría con el saldo a favor si se anulara o cancelara el pedido ahora. Solo lee. */
+export async function proyectarReversionCredito(tx: TransactionClient, pedidoId: string, clienteId: string): Promise<ProyeccionReversionCredito> {
+  const neto = isConsumidorFinalCanonical(clienteId) ? 0 : await creditoNetoDelPedido(tx, pedidoId)
+  const cli = await tx.cliente.findUnique({ where: { id: clienteId }, select: { saldoFavor: true } })
+  const saldoActual = num(cli?.saldoFavor)
+  const seRestaC = Math.min(aCentavos(neto), aCentavos(saldoActual))
+  return {
+    salioDelPedido: neto,
+    seResta: deCentavos(seRestaC),
+    yaUsado: deCentavos(aCentavos(neto) - seRestaC),
+    saldoActual,
+    saldoDespues: deCentavos(aCentavos(saldoActual) - seRestaC),
+  }
+}
+
+/**
+ * Anular o cancelar el pedido resta del saldo a favor del cliente lo que salió de él (#577). Es lo
+ * que el cliente todavía tiene: si ya gastó una parte en otros pedidos, esa parte no se toca (esos
+ * pedidos quedaron pagados de verdad) y se informa como `yaUsado`. Mismo patrón atómico que
+ * `reaplicarCreditoDelPedido`: decremento condicionado, con reintento si el saldo cambió.
+ */
+export async function revertirCreditoDelPedido(
+  tx: TransactionClient,
+  input: { pedidoId: string; clienteId: string; origen: 'ANULACION' | 'CANCELACION'; motivo: string; actorId: string },
+): Promise<{ revertido: number; yaUsado: number }> {
+  if (isConsumidorFinalCanonical(input.clienteId)) return { revertido: 0, yaUsado: 0 }
+  const neto = await creditoNetoDelPedido(tx, input.pedidoId)
+  if (neto <= 0) return { revertido: 0, yaUsado: 0 }
+  if (!input.actorId) throw new Error('ACTOR_REQUERIDO: el pedido tiene saldo a favor que restar y falta indicar quién lo anula.')
+
+  for (let intento = 0; intento < 3; intento++) {
+    const cli = await tx.cliente.findUnique({ where: { id: input.clienteId }, select: { saldoFavor: true } })
+    const aRestarC = Math.min(aCentavos(neto), aCentavos(num(cli?.saldoFavor)))
+    if (aRestarC <= 0) return { revertido: 0, yaUsado: neto }
+    const monto = deCentavos(aRestarC)
+    const r = await tx.cliente.updateMany({
+      where: { id: input.clienteId, saldoFavor: { gte: monto } },
+      data: { saldoFavor: { decrement: monto } },
+    })
+    if (r.count === 0) continue // el saldo cambió entre la lectura y la escritura: reintenta con el valor fresco
+    await tx.pedidoSaldoFavorMovimiento.create({
+      data: {
+        pedidoId: input.pedidoId, clienteId: input.clienteId, tipo: 'REVERSION_ANULACION', monto,
+        origenTipo: input.origen, origenId: input.pedidoId, motivo: input.motivo, autorId: input.actorId,
+      },
+    })
+    return { revertido: monto, yaUsado: deCentavos(aCentavos(neto) - aRestarC) }
+  }
+  // No se pudo fijar el saldo tras los reintentos: se informa todo como no revertido en vez de fallar la anulación.
+  return { revertido: 0, yaUsado: neto }
 }
 
 /**

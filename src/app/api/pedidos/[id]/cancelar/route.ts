@@ -43,7 +43,7 @@ export async function POST(
     // FIX: el dedup por estado CANCELADO vive dentro del
     // CancelarPedidoUseCase (bajo lock NC). Paridad con AnularPedidoUseCase
     // (F-N21): dos requests idénticas retornan 200 idempotente en vez de 400.
-    const result = await cancelarPedidoUseCase.execute({ pedidoId: id, motivo, offlineId })
+    const result = await cancelarPedidoUseCase.execute({ pedidoId: id, motivo, offlineId, actorId: (authResult as { user?: { id?: string } }).user?.id ?? '' })
 
     if (result.deduped) {
       logAudit({

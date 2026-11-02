@@ -87,7 +87,7 @@ export const REGLAS: readonly Regla[] = [
            ab AS (${ABONOS_SIN_ESPEJO}),
            mv AS (
              SELECT "pedidoId",
-               SUM(CASE WHEN tipo = 'ACREDITACION' THEN -monto ELSE monto END) AS s
+               SUM(CASE tipo WHEN 'ACREDITACION' THEN -monto WHEN 'REAPLICACION' THEN monto ELSE 0 END) AS s
              FROM "PedidoSaldoFavorMovimiento" GROUP BY 1
            ),
            cr AS (

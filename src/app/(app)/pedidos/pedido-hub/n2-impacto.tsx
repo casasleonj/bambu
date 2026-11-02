@@ -45,7 +45,7 @@ export function N2Impacto({ proyeccion }: { proyeccion: ProyectarGestionPendient
           <p>Se revierten <b>{money(proyeccion.reversion.montoRevertible)}</b> del total del pedido.</p>
           {proyeccion.reversion.saldoFavorNoRevertido > 0 && (
             <p className="text-amber-800" data-testid="n2-impacto-no-revertido">
-              Los <b>{money(proyeccion.reversion.saldoFavorNoRevertido)}</b> ya acreditados al saldo a favor del cliente <b>permanecen</b>: son un crédito real del cliente y esta acción no los revierte. El cliente no queda debiendo por esto.
+              Los <b>{money(proyeccion.reversion.saldoFavorNoRevertido)}</b> que ya pasaron al saldo a favor del cliente <b>siguen siendo suyos</b>: esta acción no los quita. Solo anular o cancelar el pedido los resta. El cliente no queda debiendo por esto.
             </p>
           )}
         </div>
