@@ -16,6 +16,14 @@ import { CobrosSinConciliarError } from '@/lib/cobro-cartera'
 import { construirResumenCierre } from '@/lib/cierre-resumen'
 import { calcularNetoCierre } from '@/lib/cierre-totales'
 import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
+import { analizarHueco, type DiaHueco } from '@/lib/cierre-huecos'
+
+/** #306: hay días anteriores sin cerrar que tuvieron operación (o son demasiados para revisarlos). */
+class HuecoConOperacionError extends Error {
+  constructor(readonly dias: DiaHueco[], readonly excedeTope: boolean) {
+    super('CIERRE_HUECO')
+  }
+}
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -186,6 +194,7 @@ export async function POST(request: NextRequest) {
   const nextDay = new Date(startOfDay.getTime() + 86_400_000)
 
   const userId = (authResult.user as { id?: string } | undefined)?.id
+  const esAdmin = (authResult.user as { role?: string } | undefined)?.role === 'ADMIN'
 
   const MAX_RETRIES = 3
   let lastError: Error | null = null
@@ -195,6 +204,7 @@ export async function POST(request: NextRequest) {
       const cierre = await prisma.$transaction(async (tx) => {
         // 1. Advisory lock por día (ADR-CONCURRENCIA-001, §6 "Cierre").
         await acquireAdvisoryLockTx(tx, 'CIERRE', startOfDay.toISOString())
+        let saltoConOperacion: { motivo: string; dias: DiaHueco[] } | null = null
 
         // 2. Validate sequence inside lock
         const lastCierre = await tx.cierreDia.findFirst({ orderBy: { fecha: 'desc' } })
@@ -206,7 +216,18 @@ export async function POST(request: NextRequest) {
             throw new Error('CIERRE_DUPLICADO')
           }
           if (diffDays > 1) {
-            throw new Error('CIERRE_HUECO')
+            // #306: los días sin operación se saltan solos; los que tuvieron operación bloquean,
+            // salvo que el ADMIN los salte con motivo (queda en el historial).
+            const hueco = await analizarHueco(tx, lastDate, reqDate)
+            const bloqueantes = hueco.excedeTope ? null : hueco.conOperacion
+            if (bloqueantes === null || bloqueantes.length > 0) {
+              const salto = parsed.data.saltarDiasConOperacion
+              if (esAdmin && salto && bloqueantes !== null) {
+                saltoConOperacion = { motivo: salto.motivo, dias: bloqueantes }
+              } else {
+                throw new HuecoConOperacionError(bloqueantes ?? [], bloqueantes === null)
+              }
+            }
           }
         }
 
@@ -287,6 +308,16 @@ export async function POST(request: NextRequest) {
           usuarioId: userId,
         }, tx)
 
+        if (saltoConOperacion) {
+          await logAudit({
+            entidad: 'CierreDia',
+            registroId: nuevoCierre.id,
+            accion: 'CIERRE_SALTO_DIAS',
+            datos: { fecha: nuevoCierre.fecha, motivo: saltoConOperacion.motivo, diasSaltados: saltoConOperacion.dias },
+            usuarioId: userId,
+          }, tx)
+        }
+
         return nuevoCierre
       }, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -319,8 +350,15 @@ export async function POST(request: NextRequest) {
       if (lastError.message === 'CIERRE_DUPLICADO') {
         return apiError('No se puede cerrar un día anterior o igual al último cierre registrado', 400)
       }
-      if (lastError.message === 'CIERRE_HUECO') {
-        return apiError('Hay días sin cerrar entre el último cierre y esta fecha. Ciérralos primero.', 400)
+      if (error instanceof HuecoConOperacionError) {
+        const lista = error.dias.map((d) => d.fecha).join(', ')
+        return apiError(
+          error.excedeTope
+            ? 'Hay demasiados días sin cerrar entre el último cierre y esta fecha. Ciérralos primero.'
+            : `Hay días sin cerrar que tuvieron operación (${lista}). Ciérralos primero.`,
+          400,
+          { code: 'CIERRE_HUECO', formErrors: error.dias.map((d) => `${d.fecha}: ${d.operaciones} registros`) },
+        )
       }
       if (lastError.message === 'CIERRE_YA_EXISTE') {
         return apiError('Ya existe un cierre para esta fecha', 409)

@@ -761,6 +761,9 @@ export const CierreCreateSchema = z.object({
   comisiones: z.coerce.number().min(0).optional(),
   salarios: z.coerce.number().min(0),
   reporte: z.string().optional(),
+  // #306: solo ADMIN. Permite cerrar saltando días anteriores que SÍ tuvieron operación;
+  // el motivo (mínimo 10 caracteres) queda en el historial.
+  saltarDiasConOperacion: z.object({ motivo: z.string().trim().min(10).max(500) }).optional(),
 }).strict() // Reject extra fields like netoCaja, totalVentas, etc.
 
 export const ConfigCreateSchema = z.object({
