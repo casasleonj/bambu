@@ -90,6 +90,8 @@ export class CrearEmbarqueUseCase {
 
       // 7. Get next sequence number
       const numeroDia = await this.embarqueRepo.getNextNumeroDia(new Date(), tx)
+      // #427: número global único (secuencia), distinto del número del día que ve el usuario.
+      const numero = await this.embarqueRepo.getNextNumero(tx)
 
       // 8. Create embarque
       const embarque = await this.embarqueRepo.create(
@@ -104,7 +106,7 @@ export class CrearEmbarqueUseCase {
           codigoVisita: input.codigoVisita,
           obs: input.obs,
           createdById: input.createdById,
-          numero: numeroDia,
+          numero,
           numeroDia,
           offlineId: input.offlineId,
         },

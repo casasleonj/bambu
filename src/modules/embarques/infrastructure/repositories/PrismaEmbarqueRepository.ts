@@ -6,6 +6,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { startOfDayBogota, endOfDayBogota } from '@/lib/dates'
+import { getNextNumero } from '@/lib/sequence'
 import { EmbarqueMapper } from '../mappers/EmbarqueMapper'
 import type {
   IEmbarqueRepository,
@@ -257,5 +258,10 @@ export class PrismaEmbarqueRepository implements IEmbarqueRepository {
     })
 
     return count + 1
+  }
+
+  async getNextNumero(tx?: unknown): Promise<number> {
+    // #427: antes `numero` copiaba `numeroDia` (el conteo del día) y se repetía cada día.
+    return getNextNumero(getTx(tx), { model: 'embarque' })
   }
 }
