@@ -8,6 +8,7 @@ import { logger } from '@/lib/logger'
 import { executeSerializableWithRetry } from '@/lib/serializable'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { sendPushToUser } from '@/lib/push'
+import { numeroVisibleEmbarque } from '@/lib/embarque-numero'
 
 // Tipo del embarque con las relaciones que necesitamos en la respuesta
 type EmbarqueConRelaciones = Prisma.EmbarqueGetPayload<{
@@ -183,7 +184,7 @@ export async function POST(
     if (repartidorUserId) {
       void sendPushToUser(repartidorUserId, {
         title: 'Embarque en ruta',
-        body: `Embarque #${embarque.numero} asignado a ${embarque.trabajador.nombre}.`,
+        body: `Embarque #${numeroVisibleEmbarque(embarque)} asignado a ${embarque.trabajador.nombre}.`,
         url: `/repartidor`,
         tag: `embarque-ruta-${id}`,
       })

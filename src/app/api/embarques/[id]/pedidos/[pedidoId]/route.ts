@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger'
 import { logAudit } from '@/lib/audit'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { sendPushToUser } from '@/lib/push'
+import { numeroVisibleEmbarque } from '@/lib/embarque-numero'
 
 /**
  * DELETE /api/embarques/[id]/pedidos/[pedidoId]
@@ -92,7 +93,7 @@ export async function DELETE(
       if (repartidorUserId) {
         void sendPushToUser(repartidorUserId, {
           title: 'Pedido removido de tu ruta',
-          body: `El pedido #${result.pedido.numero} fue removido del embarque #${result.embarque.numero}.`,
+          body: `El pedido #${result.pedido.numero} fue removido del embarque #${numeroVisibleEmbarque(result.embarque)}.`,
           url: '/repartidor',
           tag: `embarque-ruta-modificado-${id}`,
         })

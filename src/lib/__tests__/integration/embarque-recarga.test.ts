@@ -137,4 +137,22 @@ describe('Recargas — CrearEmbarqueUseCase permite 2+ embarques/día si el prev
     expect(found).not.toBeNull()
     expect(found!.id.value).toBe(embarque.id)
   })
+
+  it('#427: el número global no se repite al cambiar de día (el del día sí vuelve a 1)', async () => {
+    // Un embarque de "ayer": el primero del día de hoy vuelve a tener numeroDia 1,
+    // pero su `numero` global tiene que ser otro (antes era una copia de numeroDia).
+    const ayer = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    await testPrisma.embarque.updateMany({ data: { fecha: ayer } })
+    const t1 = await crearTrabajadorRepartidor('Test 427 ayer')
+    const deAyer = await crearEmbarque(t1)
+    await testPrisma.embarque.update({ where: { id: deAyer.id }, data: { fecha: ayer } })
+
+    const t2 = await crearTrabajadorRepartidor('Test 427 hoy')
+    const deHoy = await crearEmbarque(t2)
+
+    expect(deHoy.numeroDia).toBe(1)
+    expect(deHoy.numero).not.toBe(deAyer.numero)
+    const usados = await testPrisma.embarque.findMany({ where: { numeroColisionHistorica: false }, select: { numero: true } })
+    expect(new Set(usados.map((e) => e.numero)).size).toBe(usados.length)
+  })
 })
