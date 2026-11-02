@@ -36,6 +36,30 @@ export async function GET() {
   }
 }
 
+// #407: `deduped` lo informa generarPedidosRecurrentes (lote ya existente).
+// Antes se infería contando pedidos con `recurrenteBatchId = offlineId`, y los
+// recién creados también lo llevan: toda generación salía como duplicada (200,
+// sin evento de tiempo real).
+function responderGeneracion(resultado: Awaited<ReturnType<typeof generarPedidosRecurrentes>>) {
+  const { deduped } = resultado
+  // La auditoría (GENERACION + CREATE del pedido) se escribe dentro de la
+  // transacción de cada plantilla en `generarPedidosRecurrentes` (§5.E).
+  if (resultado.generados.length > 0 && !deduped) {
+    resultado.generados.forEach((g) => {
+      publishRealtimeEvent('pedido.created', g.id).catch(() => {})
+    })
+  }
+  return apiSuccess({
+    generados: resultado.generados.length,
+    saltados: resultado.saltados.length,
+    pedidos: resultado.generados,
+    saltadosIds: resultado.saltados,
+    // Plantillas no generadas por destino no localizable, con motivo.
+    omitidos: resultado.omitidos,
+    ...(deduped && { deduped: true }),
+  }, deduped ? 200 : 201)
+}
+
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
@@ -55,6 +79,21 @@ export async function POST(request: NextRequest) {
 
     if (decisiones.length === 0) {
       return apiError('No se proporcionaron decisiones', 400)
+    }
+
+    const usuarioId = (authResult.user as { id?: string } | undefined)?.id
+    if (!usuarioId) return apiError('Sesión sin usuario', 401)
+
+    // #407: un reintento del mismo lote (offlineId ya usado) devuelve el lote
+    // existente ANTES de validar. Las plantillas ya avanzaron su calendario y
+    // la validación de abajo respondería 409 en vez de "ya estaba generado".
+    if (offlineId && (await prisma.pedido.count({ where: { recurrenteBatchId: offlineId } })) > 0) {
+      return responderGeneracion(
+        await generarPedidosRecurrentes(decisiones, fecha, {
+          recurrenteBatchId: offlineId,
+          actor: { usuarioId, proceso: 'hub' },
+        }),
+      )
     }
 
     // FIX F-N14: el dedup por offlineId (como recurrenteBatchId) se movió
@@ -207,40 +246,12 @@ export async function POST(request: NextRequest) {
     // (admin vs cron procesando en órdenes distintos).
     //
     // Patrón alineado con src/app/api/cierre/route.ts:564-585.
-    const usuarioId = (authResult.user as { id?: string } | undefined)?.id
-    if (!usuarioId) return apiError('Sesión sin usuario', 401)
-    const resultado = await generarPedidosRecurrentes(decisiones, fecha, {
-      recurrenteBatchId: offlineId,
-      actor: { usuarioId, proceso: 'hub' },
-    })
-
-    // Detectar dedup: si la función retornó pedidos con el mismo
-    // recurrenteBatchId que pasamos, fue deduped (ya existían).
-    let deduped = false
-    if (offlineId && resultado.generados.length > 0) {
-      const allHaveBatch = await prisma.pedido.count({
-        where: { id: { in: resultado.generados.map(g => g.id) }, recurrenteBatchId: offlineId },
-      })
-      deduped = allHaveBatch === resultado.generados.length
-    }
-
-    // La auditoría (GENERACION + CREATE del pedido) se escribe dentro de la
-    // transacción de cada plantilla en `generarPedidosRecurrentes` (§5.E).
-    if (resultado.generados.length > 0 && !deduped) {
-      resultado.generados.forEach((g) => {
-        publishRealtimeEvent('pedido.created', g.id).catch(() => {})
-      })
-    }
-
-    return apiSuccess({
-      generados: resultado.generados.length,
-      saltados: resultado.saltados.length,
-      pedidos: resultado.generados,
-      saltadosIds: resultado.saltados,
-      // Plantillas no generadas por destino no localizable, con motivo.
-      omitidos: resultado.omitidos,
-      ...(deduped && { deduped: true }),
-    }, deduped ? 200 : 201)
+    return responderGeneracion(
+      await generarPedidosRecurrentes(decisiones, fecha, {
+        recurrenteBatchId: offlineId,
+        actor: { usuarioId, proceso: 'hub' },
+      }),
+    )
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error generando recurrentes:')
     return apiError('Error generando pedidos recurrentes', 500)

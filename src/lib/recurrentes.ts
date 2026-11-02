@@ -484,6 +484,9 @@ export async function generarPedidosRecurrentes(
         generados: pedidosExistentes,
         saltados: [] as string[],
         omitidos: [] as Array<{ recurrenteId: string; motivo: typeof MOTIVO_ENTREGA_INSUFICIENTE }>,
+        // #407: el lote ya existía; la ruta no debe inferirlo de recurrenteBatchId
+        // (los pedidos recién creados también lo llevan).
+        deduped: true,
       }
     }
   }
@@ -1020,7 +1023,7 @@ export async function generarPedidosRecurrentes(
     }
   }
 
-  return { generados, saltados, omitidos }
+  return { generados, saltados, omitidos, deduped: false }
 }
 
 /**
