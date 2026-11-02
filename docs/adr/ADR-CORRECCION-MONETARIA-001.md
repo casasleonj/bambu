@@ -101,6 +101,10 @@ model CorreccionAbono {
   menor:** o `pagar-fiado` pasa a `ADMIN + ASISTENTE + CONTADOR`, o la corrección
   también admite `ASISTENTE`. Propuesta: `pagar-fiado` suma `CONTADOR` (puede
   cobrar), corrección se queda `ADMIN + CONTADOR` (revierte).
+  **Resuelto (2026-11-02, #309): propuesta RECHAZADA, los roles se mantienen.** Quien cobra
+  (`ADMIN + ASISTENTE`) no es quien revierte (`ADMIN + CONTADOR`): es separación de funciones, la
+  misma persona no registra el dinero y además lo deshace. Dejar que el CONTADOR cobre la debilitaría.
+  La asimetría es intencional, no un descuido; la fija `roles-309.test.ts`.
 - **Sección "Cartera"** nueva en el sidebar (ícono wallet), permiso `view:cartera`,
   roles `ADMIN + CONTADOR`. Contiene: lista de abonos (con paginación server-side
   — hoy `GET /api/abonos` no la tiene), historial por cliente (extender el
