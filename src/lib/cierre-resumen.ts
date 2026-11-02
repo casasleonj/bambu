@@ -5,6 +5,7 @@ import { comisionesDelCierre } from '@/lib/comision-pagada'
 import { resumirAbonosDelDia } from '@/lib/cobro-cartera'
 import { resumirVentasCierre } from '@/lib/cierre-totales'
 import { resolverStockInicial } from '@/lib/stock-inicial'
+import { PAGO_DE_PEDIDO_VIGENTE } from '@/lib/pago-confirmacion'
 
 type PagoMetodoMonto = { metodo: MetodoPago; monto: unknown }
 type DiasPreviosAgg = { _count: number; _sum: { monto: unknown } }
@@ -123,12 +124,12 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
       // `pago.createdAt`, no por `pedido.fecha` — un pago de fiado de hoy sobre
       // un pedido viejo también cuenta).
       prisma.pago.findMany({
-        where: { confirmacion: 'REPORTADO', createdAt: dateRange, regularizacionId: null },
+        where: { confirmacion: 'REPORTADO', createdAt: dateRange, regularizacionId: null, ...PAGO_DE_PEDIDO_VIGENTE },
         select: { metodo: true, monto: true },
       }),
       // ...y los REPORTADO de días anteriores (advertencia, no bloquea).
       prisma.pago.aggregate({
-        where: { confirmacion: 'REPORTADO', createdAt: { lt: startOfDay } },
+        where: { confirmacion: 'REPORTADO', createdAt: { lt: startOfDay }, ...PAGO_DE_PEDIDO_VIGENTE },
         _sum: { monto: true },
         _count: true,
       }),
