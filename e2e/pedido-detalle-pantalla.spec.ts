@@ -47,7 +47,7 @@ test.describe('Pantalla de detalle del pedido (P1-1 PR B)', () => {
     for (const p of [vigente, cancelado]) {
       await prisma.pago.create({ data: { pedidoId: p.id, metodo: 'NEQUI', monto: 1000, confirmacion: 'REPORTADO' } })
     }
-    await prisma.pedido.update({ where: { id: cancelado.id }, data: { estadoEntrega: 'CANCELADO', estado: 'CANCELADO' } })
+    await prisma.pedido.update({ where: { id: cancelado.id }, data: { estadoEntrega: 'CANCELADO', estado: 'CANCELADO', estadoPago: 'ANULADO' } })
 
     for (const [p, marcado] of [[vigente, true], [cancelado, false]] as const) {
       await page.goto(`${BASE}/pedidos?openPedido=${p.id}`)
