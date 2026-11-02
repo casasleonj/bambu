@@ -26,6 +26,25 @@ function handleDe(page: Page, href: string): Locator {
   return page.locator(`a[href="${href}"] [data-testid="drag-handle"]`).filter({ visible: true }).first()
 }
 
+/** En móvil el sidebar es un drawer: se abre con el botón de la cabecera (en escritorio ya está visible). */
+async function abrirMenuSiEsMovil(page: Page) {
+  const hamburger = page.getByRole('button', { name: /abrir menú/i })
+  if (await hamburger.isVisible().catch(() => false)) await hamburger.click()
+}
+
+/**
+ * Sale del modo edición. Justo después de soltar un arrastre dnd-kit descarta el clic siguiente
+ * (primeros ~700 ms), así que el primer clic en «Listo» puede no hacer nada: se reintenta hasta
+ * que desaparece el banner «Editando menú».
+ */
+async function salirDelModoEdicion(page: Page) {
+  const listo = page.getByTestId('sidebar-menu-done')
+  await expect(async () => {
+    if (await listo.isVisible()) await listo.click({ timeout: 2000 })
+    await expect(page.getByText('Editando menú')).toBeHidden({ timeout: 1000 })
+  }).toPass({ timeout: 10000 })
+}
+
 test.describe('Menú reorganizable', () => {
   test.setTimeout(60000)
 
@@ -42,6 +61,7 @@ test.describe('Menú reorganizable', () => {
     await page.goto(`${BASE}/dashboard`)
 
     // Entrar en modo edición via el botón de opciones del sidebar.
+    await abrirMenuSiEsMovil(page)
     const optionsBtn = page.getByTestId('sidebar-menu-options')
     await expect(optionsBtn).toBeVisible()
     await optionsBtn.click()
@@ -63,9 +83,7 @@ test.describe('Menú reorganizable', () => {
     await dragHandleAbove(page, handleDe(page, '/productos'), handleDe(page, '/clientes'))
 
     // Salir del modo edición.
-    const doneBtn = page.getByTestId('sidebar-menu-done')
-    await expect(doneBtn).toBeVisible()
-    await doneBtn.click()
+    await salirDelModoEdicion(page)
 
     // Verificar inmediatamente que el orden cambió antes de refrescar.
     const nav = page.locator('aside[aria-label="Navegación principal"]')
@@ -108,6 +126,7 @@ test.describe('Menú reorganizable', () => {
     await page.goto(`${BASE}/dashboard`)
 
     // Entrar en modo edición y mover Productos arriba de Clientes.
+    await abrirMenuSiEsMovil(page)
     await page.getByTestId('sidebar-menu-options').click()
     await page.getByRole('menuitem', { name: 'Personalizar menú' }).click()
     await expect(page.getByTestId('sidebar-menu-done')).toBeVisible({ timeout: 10000 })
@@ -116,7 +135,7 @@ test.describe('Menú reorganizable', () => {
     await dragHandleAbove(page, handleDe(page, '/productos'), handleDe(page, '/clientes'))
 
     // Salir y verificar que el orden cambió.
-    await page.getByTestId('sidebar-menu-done').click()
+    await salirDelModoEdicion(page)
     const nav = page.locator('aside[aria-label="Navegación principal"]')
     let texts = await nav.locator('a').allTextContents()
     let productosIdx = texts.findIndex((t) => t.includes('Productos'))
@@ -127,7 +146,7 @@ test.describe('Menú reorganizable', () => {
     await page.getByTestId('sidebar-menu-options').click()
     await page.getByRole('menuitem', { name: 'Personalizar menú' }).click()
     await page.getByRole('button', { name: 'Restablecer' }).click()
-    await page.getByTestId('sidebar-menu-done').click()
+    await salirDelModoEdicion(page)
 
     // El orden debe volver al default: Clientes antes que Productos.
     texts = await nav.locator('a').allTextContents()

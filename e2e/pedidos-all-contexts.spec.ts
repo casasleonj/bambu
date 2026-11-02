@@ -805,8 +805,13 @@ test.describe('Pedidos — Tab Alertas', () => {
     await tabButton(p, 'Alertas').click()
     await p.waitForTimeout(1000)
     // Severidad badge
-    const severidadBadge = p.locator('span:has-text("BAJA"), span:has-text("MEDIA"), span:has-text("ALTA")')
-    expect(await severidadBadge.first().isVisible({ timeout: 3000 }).catch(() => false)).toBe(true)
+    // Texto exacto y solo el visible: la lista de alertas se pinta dos veces (escritorio y
+    // móvil) y `has-text("BAJA")` también coincidía con «Trabajadores» del menú lateral.
+    const severidadBadge = p
+      .locator('span.rounded-full')
+      .filter({ hasText: /^(BAJA|MEDIA|ALTA)$/ })
+      .filter({ visible: true })
+    await expect(severidadBadge.first()).toBeVisible({ timeout: 3000 })
   })
 })
 

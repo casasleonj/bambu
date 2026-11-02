@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { loginAs, goto, apiPost, createCliente } from './fixtures'
+import { loginAs, goto, apiPost, createCliente, responsiveContainer } from './fixtures'
 
 test.describe('Pedidos - detalle muestra nombre', () => {
   test.describe.configure({ mode: 'serial' })
@@ -27,10 +27,13 @@ test.describe('Pedidos - detalle muestra nombre', () => {
 
     await goto(page, '/pedidos')
     // Wait for the table to render instead of networkidle (SSE keeps connection open)
-    await page.waitForSelector('table tbody tr', { timeout: 10000 })
+    // La lista se pinta dos veces (tabla en escritorio, tarjetas en móvil): se trabaja
+    // solo con la vista que corresponde al viewport.
+    const lista = responsiveContainer(page, 'pedidos-mobile', 'pedidos-desktop')
+    await expect(lista).toBeVisible({ timeout: 10000 })
 
-    // Click on the row that contains the client name
-    const row = page.locator('table tbody tr').filter({ hasText: `Detalle Nombre ${unique}` }).first()
+    // Click on the row (or card) that contains the client name
+    const row = lista.getByText(`Detalle Nombre ${unique}`).first()
     await expect(row).toBeVisible({ timeout: 10000 })
     await row.click()
 

@@ -28,14 +28,18 @@ test.describe('Producción — E2E Exhaustivo', () => {
     await goto(page, '/produccion')
 
     await expect(page.getByRole('heading', { name: 'Registro de Producción' })).toBeVisible()
-    await expect(page.getByText('Stock Inicial')).toBeVisible()
-    await expect(page.getByText('Conteos')).toBeVisible()
-    await expect(page.getByText('Datos del Turno')).toBeVisible()
-    await expect(page.getByText('Conciliar')).toBeVisible()
+    // Los rótulos del stepper son `hidden sm:block` (< 640 px solo se ven los círculos
+    // numerados): en móvil se comprueba que existen, en escritorio que se ven.
+    const rotulosVisibles = (page.viewportSize()?.width ?? 1280) >= 640
+    for (const rotulo of ['Stock Inicial', 'Conteos', 'Datos del Turno', 'Conciliar']) {
+      const el = page.getByText(rotulo, { exact: true }).first()
+      if (rotulosVisibles) await expect(el).toBeVisible()
+      else await expect(el).toBeAttached()
+    }
 
     await expect(page.getByText('AGUA').first()).toBeVisible()
     await expect(page.getByText('HIELO').first()).toBeVisible()
-    await expect(page.getByText('Balance del día').first()).toBeVisible()
+    await expect(page.getByText('Balance del día').filter({ visible: true }).first()).toBeVisible()
   })
 
   // ─── 2. Navegación de steps ───────────────────────────────────────────────
