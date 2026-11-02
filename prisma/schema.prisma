@@ -837,6 +837,8 @@ model PagoComisionRepartidor {
   trabajador   Trabajador @relation("PagoComisionTrabajador", fields: [trabajadorId], references: [id])
   fecha        DateTime   @db.Timestamptz()
   monto        Decimal    @db.Decimal(10, 2)
+  // #305: con qué se pagó. Solo EFECTIVO sale de la caja del cierre; los demás medios no la tocan.
+  metodo       MetodoPago @default(EFECTIVO)
   pagadoPorId  String?
   pagadoPor    User?      @relation("PagoComisionPagador", fields: [pagadoPorId], references: [id], onDelete: SetNull)
   offlineId    String?    @unique

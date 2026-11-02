@@ -338,6 +338,7 @@ export const REGLAS: readonly Regla[] = [
       LEFT JOIN LATERAL (
         SELECT SUM(g.monto) AS s FROM "PagoComisionRepartidor" g
         WHERE g."createdAt" >= c.fecha AND g."createdAt" < c.fecha + interval '1 day'
+          AND g.metodo = 'EFECTIVO'
       ) p ON true
       WHERE c.reporte->'comisionesAuto'->>'pagadoRepartidores' IS NOT NULL
         AND ABS((c.reporte->'comisionesAuto'->>'pagadoRepartidores')::numeric - COALESCE(p.s, 0)) > 0.005

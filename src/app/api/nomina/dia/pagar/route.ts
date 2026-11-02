@@ -23,6 +23,8 @@ const PagarComisionSchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)'),
   offlineId: z.string().min(8).max(100),
   montoEsperado: z.coerce.number().min(0).optional(),
+  // #305: con qué se pagó. Sin indicarlo se asume EFECTIVO (clientes anteriores). Solo EFECTIVO sale de la caja del cierre.
+  metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA']).default('EFECTIVO'),
 })
 
 class PagoComisionError extends Error {
@@ -51,7 +53,7 @@ export async function POST(request: NextRequest) {
   }
   const parsed = PagarComisionSchema.safeParse(body)
   if (!parsed.success) return apiError(formatZodError(parsed.error), 400)
-  const { trabajadorId, fecha, offlineId, montoEsperado } = parsed.data
+  const { trabajadorId, fecha, offlineId, montoEsperado, metodo } = parsed.data
 
   const dia = startOfDayBogota(fecha)
   if (Number.isNaN(dia.getTime())) return apiError('Fecha inválida', 400)
@@ -84,7 +86,7 @@ export async function POST(request: NextRequest) {
       }
 
       const pago = await tx.pagoComisionRepartidor.create({
-        data: { trabajadorId, fecha: dia, monto: fila.pendiente, pagadoPorId: userId ?? null, offlineId },
+        data: { trabajadorId, fecha: dia, monto: fila.pendiente, metodo, pagadoPorId: userId ?? null, offlineId },
       })
       return { pago, deduped: false as const }
     }, 'nomina/dia/pagar')
@@ -94,12 +96,12 @@ export async function POST(request: NextRequest) {
         entidad: 'PagoComisionRepartidor',
         registroId: resultado.pago.id,
         accion: 'CREATE',
-        datos: { trabajadorId, fecha, monto: Number(resultado.pago.monto) },
+        datos: { trabajadorId, fecha, monto: Number(resultado.pago.monto), metodo: resultado.pago.metodo },
         usuarioId: userId,
       }).catch(() => {})
     }
     return apiSuccess({
-      pago: { id: resultado.pago.id, monto: Number(resultado.pago.monto), fecha, createdAt: resultado.pago.createdAt },
+      pago: { id: resultado.pago.id, monto: Number(resultado.pago.monto), metodo: resultado.pago.metodo, fecha, createdAt: resultado.pago.createdAt },
       deduped: resultado.deduped,
     }, resultado.deduped ? 200 : 201)
   } catch (error) {

@@ -251,14 +251,17 @@ export async function POST(request: NextRequest) {
         const { totalVentas, cobrado, fiado, efectivo, transferencia, nequi, daviplata, bono, cobroVentasHoy, cobroCartera } = resumen
         const gastosTotal = resumen.totalGastos
         const comisiones = resumen.comisionesAuto
+        // #305: solo los salarios pagados en EFECTIVO salen de la caja; sin indicarlo se asume todo.
+        const salariosEfectivo = parsed.data.salariosEfectivo ?? parsed.data.salarios
         const netoCaja = calcularNetoCierre({
           baseDia: parsed.data.baseDia, cobroVentasHoy, cobroCartera,
-          totalGastos: gastosTotal, comisiones: comisiones.total, salarios: parsed.data.salarios,
+          totalGastos: gastosTotal, comisiones: comisiones.total, salarios: salariosEfectivo,
         })
         const arqueo = leerArqueoDeclarado(parsed.data.reporte, netoCaja)
         const reporteData = {
           ...resumen, ...arqueo, _version: '2.1', netoCaja,
           baseDia: parsed.data.baseDia, salarios: parsed.data.salarios, comisiones: comisiones.total,
+          salariosEfectivo, salariosOtrosMedios: (Math.round(parsed.data.salarios * 100) - Math.round(salariosEfectivo * 100)) / 100,
         }
 
         // 8. Create cierre

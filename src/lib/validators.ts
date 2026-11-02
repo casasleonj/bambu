@@ -760,11 +760,17 @@ export const CierreCreateSchema = z.object({
   // #499: el servidor calcula las comisiones; si llega, se ignora (compat. con clientes viejos).
   comisiones: z.coerce.number().min(0).optional(),
   salarios: z.coerce.number().min(0),
+  // #305: de los salarios, cuánto se pagó en EFECTIVO de la caja. Sin indicarlo se asume todo (clientes
+  // anteriores). Lo pagado por otro medio no resta de la caja del cierre.
+  salariosEfectivo: z.coerce.number().min(0).optional(),
   reporte: z.string().optional(),
   // #306: solo ADMIN. Permite cerrar saltando días anteriores que SÍ tuvieron operación;
   // el motivo (mínimo 10 caracteres) queda en el historial.
   saltarDiasConOperacion: z.object({ motivo: z.string().trim().min(10).max(500) }).optional(),
-}).strict() // Reject extra fields like netoCaja, totalVentas, etc.
+}).strict().refine( // Reject extra fields like netoCaja, totalVentas, etc.
+  (d) => d.salariosEfectivo === undefined || d.salariosEfectivo <= d.salarios,
+  { message: 'Los salarios pagados en efectivo no pueden superar el total de salarios', path: ['salariosEfectivo'] },
+)
 
 export const ConfigCreateSchema = z.object({
   clave: z.string().min(1).max(100),
