@@ -3,7 +3,7 @@
  */
 
 import { getNextNumero } from '@/lib/sequence'
-import { creditoNetoDelPedido } from '../services/saldo-favor-excedente.service'
+import { revertirCreditoDelPedido } from '../services/saldo-favor-excedente.service'
 import { logAudit } from '@/lib/audit'
 import { registrarReversionPedido } from '@/lib/receivable-entry'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
@@ -23,7 +23,7 @@ export class AnularPedidoUseCase {
     private txManager: ITransactionManager,
   ) {}
 
-  async execute(input: AnularPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean; hijosAnulados: number; hijosIds: string[]; saldoFavorConservado?: number }> {
+  async execute(input: AnularPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean; hijosAnulados: number; hijosIds: string[]; saldoFavorRevertido?: number; saldoFavorYaUsado?: number; saldoFavorCliente?: number }> {
     // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:notaCredito`. La NC se
     // genera con getNextNumero(model:'notaCredito') MAX+1, por lo que exige
     // serialización global de la numeración. Resuelve la colisión histórica
@@ -57,7 +57,9 @@ export class AnularPedidoUseCase {
         }
       }
 
-      const { updated, saldoFavorConservado } = await this.aplicar(tx, pedido, 'ANULAR', input.motivo, input.offlineId)
+      const { updated, revertido: revertidoRaiz, yaUsado: yaUsadoRaiz } = await this.aplicar(tx, pedido, 'ANULAR', input.motivo, input.offlineId, input.actorId)
+      let saldoFavorRevertido = revertidoRaiz
+      let saldoFavorYaUsado = yaUsadoRaiz
 
       // Decisión PO (#367): anular un pedido anula también sus pedidos hijos
       // (`pedidoOrigenId`: entrega parcial / nueva demanda), en cascada por todo
@@ -78,12 +80,24 @@ export class AnularPedidoUseCase {
           pendientes.push(hijoId)
           if (hijo.estadoEntrega.isTerminal()) continue
           const modo = hijo.puedeAnular() ? 'ANULAR' : 'CANCELAR'
-          await this.aplicar(tx, hijo, modo, input.motivo ? `${input.motivo} (cascada de #${pedido.numero})` : undefined)
+          const r = await this.aplicar(tx, hijo, modo, input.motivo ? `${input.motivo} (cascada de #${pedido.numero})` : undefined, undefined, input.actorId)
+          saldoFavorRevertido = (Math.round(saldoFavorRevertido * 100) + Math.round(r.revertido * 100)) / 100
+          saldoFavorYaUsado = (Math.round(saldoFavorYaUsado * 100) + Math.round(r.yaUsado * 100)) / 100
           hijosIds.push(hijoId)
         }
       }
 
-      return { pedido: PedidoDTOMapper.toResumen(updated), hijosAnulados: hijosIds.length, hijosIds, ...(saldoFavorConservado > 0 ? { saldoFavorConservado } : {}) }
+      // Lo que el cliente tiene ahora, para que el aviso diga el saldo final sin otra consulta.
+      const saldoFavorCliente = saldoFavorRevertido > 0 || saldoFavorYaUsado > 0
+        ? Number((await tx.cliente.findUnique({ where: { id: pedido.clienteId }, select: { saldoFavor: true } }))?.saldoFavor ?? 0)
+        : undefined
+
+      return {
+        pedido: PedidoDTOMapper.toResumen(updated), hijosAnulados: hijosIds.length, hijosIds,
+        ...(saldoFavorRevertido > 0 ? { saldoFavorRevertido } : {}),
+        ...(saldoFavorYaUsado > 0 ? { saldoFavorYaUsado } : {}),
+        ...(saldoFavorCliente !== undefined ? { saldoFavorCliente } : {}),
+      }
     })
   }
 
@@ -98,6 +112,7 @@ export class AnularPedidoUseCase {
     modo: 'ANULAR' | 'CANCELAR',
     motivo?: string,
     offlineId?: string,
+    actorId?: string,
   ) {
     const { tuvoPagos, totalPagado } = modo === 'ANULAR' ? pedido.anular(offlineId) : pedido.cancelar()
 
@@ -128,18 +143,24 @@ export class AnularPedidoUseCase {
       }, tx)
     }
 
-    // #533: si este pedido trasladó excedentes a saldo a favor, ese crédito NO se borra: es dinero que
-    // el cliente pagó y sigue siendo suyo (la nota de crédito solo cubre lo que quedaba pagado en el
-    // pedido). Se deja constancia para que la oficina lo devuelva o lo use.
-    const saldoFavorConservado = await creditoNetoDelPedido(tx, pedido.id.get())
+    // #577: anular significa anular. El crédito que este pedido pasó a saldo a favor se resta (lo que el
+    // cliente aún tiene); lo que ya gastó en otros pedidos no se toca y se informa. La nota de crédito
+    // sigue siendo solo por lo pagado en el pedido: subirla restaría dos veces las ventas en el cierre.
+    const { revertido, yaUsado } = await revertirCreditoDelPedido(tx, {
+      pedidoId: pedido.id.get(),
+      clienteId: pedido.clienteId,
+      origen: modo === 'ANULAR' ? 'ANULACION' : 'CANCELACION',
+      motivo: motivo || (modo === 'ANULAR' ? 'ANULADO' : 'CANCELADO'),
+      actorId: actorId ?? '',
+    })
 
     await logAudit({
       entidad: 'Pedido',
       registroId: pedido.id.get(),
       accion: 'UPDATE',
-      datos: { motivo, modo, notaCredito: tuvoPagos, reversion: montoRevertido, ...(saldoFavorConservado > 0 ? { saldoFavorConservado } : {}) },
+      datos: { motivo, modo, notaCredito: tuvoPagos, reversion: montoRevertido, ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}), ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}) },
     }, tx)
 
-    return { updated, saldoFavorConservado }
+    return { updated, revertido, yaUsado }
   }
 }

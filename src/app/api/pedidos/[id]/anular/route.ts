@@ -34,7 +34,7 @@ export async function POST(
     // el check y el segundo recibía 400 'YA_ANULADO' en vez de
     // 200 idempotente. Ahora el use case retorna { deduped: true }
     // y la route lo propaga al cliente.
-    const result = await anularPedidoUseCase.execute({ pedidoId: id, motivo, offlineId })
+    const result = await anularPedidoUseCase.execute({ pedidoId: id, motivo, offlineId, actorId: (authResult as { user?: { id?: string } }).user?.id ?? '' })
 
     if (result.deduped) {
       logAudit({

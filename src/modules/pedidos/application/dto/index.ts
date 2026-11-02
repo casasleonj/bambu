@@ -162,12 +162,16 @@ export interface AnularPedidoInput {
   pedidoId: string
   motivo?: string
   offlineId?: string
+  /** Quien anula: autor del movimiento de saldo a favor (#577). Obligatorio solo si el pedido tiene crédito que restar. */
+  actorId?: string
 }
 
 export interface CancelarPedidoInput {
   pedidoId: string
   motivo?: string
   offlineId?: string
+  /** Quien anula: autor del movimiento de saldo a favor (#577). Obligatorio solo si el pedido tiene crédito que restar. */
+  actorId?: string
 }
 
 export interface ListarPedidosInput {

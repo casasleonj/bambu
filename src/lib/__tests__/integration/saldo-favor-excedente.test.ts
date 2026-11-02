@@ -16,7 +16,7 @@ import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/reposit
 import { PrismaFacturaRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaFacturaRepository'
 import { PrismaNotaCreditoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaNotaCreditoRepository'
 import { PrismaTransactionManager } from '@/modules/pedidos/infrastructure/transactions/PrismaTransactionManager'
-import { reaplicarCreditoDelPedido, creditoNetoDelPedido } from '@/modules/pedidos/application/services/saldo-favor-excedente.service'
+import { reaplicarCreditoDelPedido, creditoNetoDelPedido, proyectarReversionCredito } from '@/modules/pedidos/application/services/saldo-favor-excedente.service'
 import { withAdvisoryLock } from '@/lib/locks'
 import { calcularEstadoPago } from '@/modules/pedidos/domain/services/pagos-calculator.service'
 import { verificarIntegridad } from '@/lib/integridad/verificar'
@@ -211,40 +211,132 @@ describe('Excedente → saldo a favor (#533)', () => {
     })
   })
 
-  describe('anular y cancelar', () => {
-    it('anular conserva el crédito del cliente, la nota cubre lo que quedaba pagado y las dos sumas dan lo que pagó', async () => {
+  describe('anular y cancelar (#577: se resta el crédito que salió del pedido)', () => {
+    const movs = (pedidoId: string) => testPrisma.pedidoSaldoFavorMovimiento.findMany({ where: { pedidoId }, orderBy: { createdAt: 'asc' } })
+
+    it('anular resta el crédito del pedido: el saldo a favor queda en cero y la nota no cambia', async () => {
       const c = await createTestCliente('an1')
       const p = await crearPedido(c.id, [{ monto: 25000 }])
       await bajar(p.id, 2000) // total 20.000, pagado 20.000, crédito 5.000
-      const res = await anular().execute({ pedidoId: p.id, motivo: 'venta mal hecha', offlineId: uniqueId('an') })
-      expect(res.saldoFavorConservado).toBe(5000)
+      const res = await anular().execute({ pedidoId: p.id, motivo: 'venta mal hecha', offlineId: uniqueId('an'), actorId: adminId })
+      expect(res.saldoFavorRevertido).toBe(5000)
+      expect(res.saldoFavorYaUsado).toBeUndefined()
+      expect(await saldoFavor(c.id)).toBe(0)
+      // La nota cubre solo lo pagado en el pedido: subirla restaría dos veces las ventas en el cierre.
       const nota = await testPrisma.notaCredito.findFirstOrThrow({ where: { pedidoId: p.id } })
       expect(Number(nota.monto)).toBe(20000)
-      expect(await saldoFavor(c.id)).toBe(5000)
-      // Lo que el cliente puede reclamar = lo que pagó: nota (20.000) + crédito (5.000) = 25.000.
-      expect(Number(nota.monto) + (await saldoFavor(c.id))).toBe(25000)
-      const rev = (await testPrisma.receivableEntry.findMany({ where: { pedidoId: p.id, tipo: 'REVERSION' } })).reduce((s, e) => s + Number(e.monto), 0)
-      const pag = (await testPrisma.receivableEntry.findMany({ where: { pedidoId: p.id, tipo: 'PAGO' } })).reduce((s, e) => s + Number(e.monto), 0)
-      expect(pag - rev).toBe(0)
+      const mv = await movs(p.id)
+      expect(mv.map((m) => [m.tipo, Number(m.monto)])).toEqual([['ACREDITACION', 5000], ['REVERSION_ANULACION', 5000]])
+      expect(mv[1]).toMatchObject({ origenTipo: 'ANULACION', autorId: adminId, clienteId: c.id, motivo: 'venta mal hecha' })
+      expect(await creditoNetoDelPedido(testPrisma, p.id)).toBe(0)
       const auditoria = await testPrisma.historial.findMany({ where: { entidad: 'Pedido', registroId: p.id } })
-      expect(auditoria.some((h) => h.datos.includes('"saldoFavorConservado":5000'))).toBe(true)
+      expect(auditoria.some((h) => h.datos.includes('"saldoFavorRevertido":5000'))).toBe(true)
       expect(await violaciones(p.id)).toEqual([])
     })
 
-    it('cancelar un pedido pagado por adelantado que ya trasladó excedente también lo conserva', async () => {
+    it('solo resta lo que salió de este pedido: el crédito que el cliente tenía por otras vías no se toca', async () => {
+      const c = await createTestCliente('an1b')
+      await fijarSaldoFavor(c.id, 3000)
+      const p = await crearPedido(c.id, [{ monto: 25000 }])
+      await bajar(p.id, 2000) // +5.000 → 8.000
+      const res = await anular().execute({ pedidoId: p.id, motivo: 'error', offlineId: uniqueId('an'), actorId: adminId })
+      expect(res.saldoFavorRevertido).toBe(5000)
+      expect(await saldoFavor(c.id)).toBe(3000)
+    })
+
+    it('si el cliente ya usó una parte en otros pedidos, resta lo disponible, informa lo usado y no deja saldo negativo', async () => {
+      const c = await createTestCliente('an1c')
+      const p = await crearPedido(c.id, [{ monto: 25000 }])
+      await bajar(p.id, 2000) // crédito 5.000
+      await fijarSaldoFavor(c.id, 2000) // el cliente gastó 3.000 en otros pedidos
+      const res = await anular().execute({ pedidoId: p.id, motivo: 'error', offlineId: uniqueId('an'), actorId: adminId })
+      expect(res.saldoFavorRevertido).toBe(2000)
+      expect(res.saldoFavorYaUsado).toBe(3000)
+      expect(await saldoFavor(c.id)).toBe(0)
+      expect((await movs(p.id)).map((m) => [m.tipo, Number(m.monto)])).toEqual([['ACREDITACION', 5000], ['REVERSION_ANULACION', 2000]])
+      // Lo que quedó pendiente en el pedido anulado es exactamente lo que el cliente ya había usado.
+      expect(await creditoNetoDelPedido(testPrisma, p.id)).toBe(3000)
+      expect((await testPrisma.pedido.findUniqueOrThrow({ where: { id: p.id } })).estadoEntrega).toBe('ANULADO')
+    })
+
+    it('si el cliente ya usó todo el crédito, la anulación igual se hace y todo se informa como ya usado', async () => {
+      const c = await createTestCliente('an1d')
+      const p = await crearPedido(c.id, [{ monto: 25000 }])
+      await bajar(p.id, 2000)
+      await fijarSaldoFavor(c.id, 0)
+      const res = await anular().execute({ pedidoId: p.id, motivo: 'error', offlineId: uniqueId('an'), actorId: adminId })
+      expect(res.saldoFavorRevertido).toBeUndefined()
+      expect(res.saldoFavorYaUsado).toBe(5000)
+      expect(await saldoFavor(c.id)).toBe(0)
+      expect((await movs(p.id)).map((m) => m.tipo)).toEqual(['ACREDITACION'])
+    })
+
+    it('repetir la anulación (misma clave o ya anulado) no resta dos veces', async () => {
+      const c = await createTestCliente('an1e')
+      const p = await crearPedido(c.id, [{ monto: 25000 }])
+      await bajar(p.id, 2000)
+      await fijarSaldoFavor(c.id, 9000) // crédito de otra fuente que no debe tocarse
+      const offlineId = uniqueId('an')
+      await anular().execute({ pedidoId: p.id, motivo: 'error', offlineId, actorId: adminId })
+      const otra = await anular().execute({ pedidoId: p.id, motivo: 'error', offlineId, actorId: adminId })
+      const sinClave = await anular().execute({ pedidoId: p.id, motivo: 'error', actorId: adminId })
+      expect(otra.deduped).toBe(true)
+      expect(sinClave.deduped).toBe(true)
+      expect(await saldoFavor(c.id)).toBe(4000)
+      expect((await movs(p.id)).filter((m) => m.tipo === 'REVERSION_ANULACION')).toHaveLength(1)
+    })
+
+    it('dos anulaciones simultáneas del mismo pedido restan una sola vez', async () => {
+      const c = await createTestCliente('an1f')
+      const p = await crearPedido(c.id, [{ monto: 25000 }])
+      await bajar(p.id, 2000)
+      await fijarSaldoFavor(c.id, 9000)
+      await Promise.all([
+        anular().execute({ pedidoId: p.id, motivo: 'a', offlineId: uniqueId('an'), actorId: adminId }),
+        anular().execute({ pedidoId: p.id, motivo: 'b', offlineId: uniqueId('an'), actorId: adminId }),
+      ])
+      expect(await saldoFavor(c.id)).toBe(4000)
+    })
+
+    it('sin indicar quién anula y con crédito que restar: falla y no cambia nada', async () => {
+      const c = await createTestCliente('an1g')
+      const p = await crearPedido(c.id, [{ monto: 25000 }])
+      await bajar(p.id, 2000)
+      expect(await mensajeDe(anular().execute({ pedidoId: p.id, motivo: 'error', offlineId: uniqueId('an') }))).toMatch(/^ACTOR_REQUERIDO/)
+      expect((await testPrisma.pedido.findUniqueOrThrow({ where: { id: p.id } })).estadoEntrega).toBe('ENTREGADO')
+      expect(await saldoFavor(c.id)).toBe(5000)
+    })
+
+    it('cancelar un pedido pagado por adelantado que ya trasladó excedente también lo resta', async () => {
       const c = await createTestCliente('an2')
       const p = await crearPedido(c.id, [{ monto: 25000 }], { estado: 'PENDIENTE', ent: 0 })
       await bajar(p.id, 2000)
-      await cancelar().execute({ pedidoId: p.id, motivo: 'el cliente canceló' })
-      expect(await saldoFavor(c.id)).toBe(5000)
+      const res = await cancelar().execute({ pedidoId: p.id, motivo: 'el cliente canceló', actorId: adminId })
+      expect(res.saldoFavorRevertido).toBe(5000)
+      expect(await saldoFavor(c.id)).toBe(0)
       expect(Number((await testPrisma.notaCredito.findFirstOrThrow({ where: { pedidoId: p.id } })).monto)).toBe(20000)
+      expect((await movs(p.id))[1]).toMatchObject({ tipo: 'REVERSION_ANULACION', origenTipo: 'CANCELACION' })
     })
 
-    it('anular un pedido sin traslados no informa crédito', async () => {
+    it('anular un pedido sin traslados no informa crédito ni toca el saldo del cliente', async () => {
       const c = await createTestCliente('an3')
+      await fijarSaldoFavor(c.id, 1500)
       const p = await crearPedido(c.id, [{ monto: 25000 }])
       const res = await anular().execute({ pedidoId: p.id, motivo: 'error', offlineId: uniqueId('an') })
-      expect(res.saldoFavorConservado).toBeUndefined()
+      expect(res.saldoFavorRevertido).toBeUndefined()
+      expect(res.saldoFavorYaUsado).toBeUndefined()
+      expect(await saldoFavor(c.id)).toBe(1500)
+    })
+
+    it('la proyección (lo que ve el diálogo) coincide con lo que la anulación hace', async () => {
+      const c = await createTestCliente('an4')
+      const p = await crearPedido(c.id, [{ monto: 25000 }])
+      await bajar(p.id, 2000)
+      await fijarSaldoFavor(c.id, 2000)
+      const proy = await proyectarReversionCredito(testPrisma, p.id, c.id)
+      expect(proy).toEqual({ salioDelPedido: 5000, seResta: 2000, yaUsado: 3000, saldoActual: 2000, saldoDespues: 0 })
+      const res = await anular().execute({ pedidoId: p.id, motivo: 'error', offlineId: uniqueId('an'), actorId: adminId })
+      expect([res.saldoFavorRevertido, res.saldoFavorYaUsado]).toEqual([proy.seResta, proy.yaUsado])
     })
   })
 

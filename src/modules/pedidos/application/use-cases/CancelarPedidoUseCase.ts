@@ -3,7 +3,7 @@
  */
 
 import { getNextNumero } from '@/lib/sequence'
-import { creditoNetoDelPedido } from '../services/saldo-favor-excedente.service'
+import { revertirCreditoDelPedido } from '../services/saldo-favor-excedente.service'
 import { logAudit } from '@/lib/audit'
 import { registrarReversionPedido } from '@/lib/receivable-entry'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
@@ -22,7 +22,7 @@ export class CancelarPedidoUseCase {
     private txManager: ITransactionManager,
   ) {}
 
-  async execute(input: CancelarPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean }> {
+  async execute(input: CancelarPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean; saldoFavorRevertido?: number; saldoFavorYaUsado?: number; saldoFavorCliente?: number }> {
     // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:notaCredito` (paridad con
     // AnularPedidoUseCase). La NC se genera con MAX+1 → serialización global.
     return this.txManager.executeWithLock('SECUENCIA', 'notaCredito', async (tx) => {
@@ -91,17 +91,32 @@ export class CancelarPedidoUseCase {
         }, tx)
       }
 
-      // #533: el crédito que este pedido trasladó a saldo a favor no se borra (es dinero del cliente).
-      const saldoFavorConservado = await creditoNetoDelPedido(tx, pedido.id.get())
+      // #577: lo que este pedido pasó a saldo a favor se resta (lo que el cliente aún tenga); ver AnularPedidoUseCase.
+      const { revertido, yaUsado } = await revertirCreditoDelPedido(tx, {
+        pedidoId: pedido.id.get(),
+        clienteId: pedido.clienteId,
+        origen: 'CANCELACION',
+        motivo: input.motivo || 'CANCELADO',
+        actorId: input.actorId ?? '',
+      })
 
       await logAudit({
         entidad: 'Pedido',
         registroId: pedido.id.get(),
         accion: 'UPDATE',
-        datos: { motivo: input.motivo, estado: updated.estadoEntrega.get(), notaCredito: tuvoPagos, reversion: montoRevertido, ...(saldoFavorConservado > 0 ? { saldoFavorConservado } : {}) },
+        datos: { motivo: input.motivo, estado: updated.estadoEntrega.get(), notaCredito: tuvoPagos, reversion: montoRevertido, ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}), ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}) },
       }, tx)
 
-      return { pedido: PedidoDTOMapper.toResumen(updated) }
+      const saldoFavorCliente = revertido > 0 || yaUsado > 0
+        ? Number((await tx.cliente.findUnique({ where: { id: pedido.clienteId }, select: { saldoFavor: true } }))?.saldoFavor ?? 0)
+        : undefined
+
+      return {
+        pedido: PedidoDTOMapper.toResumen(updated),
+        ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}),
+        ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}),
+        ...(saldoFavorCliente !== undefined ? { saldoFavorCliente } : {}),
+      }
     })
   }
 }

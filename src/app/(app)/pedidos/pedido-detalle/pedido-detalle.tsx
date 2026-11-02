@@ -2,6 +2,7 @@
 
 import { CorreccionPrecioPanel } from '@/components/correccion-precio/correccion-precio-panel'
 import { ReduccionComercialPanel } from '@/components/reduccion-comercial/reduccion-comercial-panel'
+import { SaldoFavorHistorial } from '@/components/saldo-favor/saldo-favor-historial'
 import { cierreV2Enabled } from '@/lib/flags'
 import { canReadFacturas } from '@/lib/permissions'
 import Link from 'next/link'
@@ -286,6 +287,12 @@ export function PedidoDetalle({
                 total={total}
                 totalPagado={pagado}
               />
+            )}
+
+            {/* #577: de dónde salió y a dónde fue el saldo a favor de este pedido. No se muestra si nunca movió saldo. */}
+            {(userRole === 'ADMIN' || userRole === 'ASISTENTE' || userRole === 'CONTADOR')
+              && (cierreV2Enabled() || pedido.estadoEntrega === 'ANULADO' || pedido.estadoEntrega === 'CANCELADO') && (
+              <SaldoFavorHistorial pedidoId={pedido.id} />
             )}
 
             <Seccion titulo="Pagos y factura" testId="detalle-pagos">

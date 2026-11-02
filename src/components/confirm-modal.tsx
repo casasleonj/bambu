@@ -13,6 +13,8 @@ interface ConfirmOptions {
   cancelLabel?: string
   variant?: 'default' | 'destructive' | 'warning'
   requireTyping?: string // text user must type to confirm (for critical actions)
+  /** Aviso que solo se acepta (sin elegir): oculta el botón de cancelar. */
+  hideCancel?: boolean
 }
 
 interface PendingConfirm {
@@ -147,12 +149,14 @@ export function useConfirm() {
           )}
 
           <div className="flex gap-3 w-full mt-2">
-            <button
-              onClick={handleCancel}
-              className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition"
-            >
-              {pending.options.cancelLabel || 'Cancelar'}
-            </button>
+            {!pending.options.hideCancel && (
+              <button
+                onClick={handleCancel}
+                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition"
+              >
+                {pending.options.cancelLabel || 'Cancelar'}
+              </button>
+            )}
             <button
               onClick={handleConfirm}
               disabled={isConfirmDisabled}
