@@ -89,12 +89,12 @@ test.describe('push permission flow en /configuracion', () => {
   test('el opt-in toast no aparece cuando el permiso ya fue resuelto (granted)', async ({ page }) => {
     await stubNotificationPermission(page, 'granted')
     await login(page)
-    await expect(page.locator('[data-testid="push-opt-in-toast"]')).not.toBeVisible()
+    await expect(page.locator('[data-testid="push-opt-in-strip"]')).not.toBeVisible()
   })
 
   test('el opt-in toast no aparece cuando el permiso esta denegado', async ({ page }) => {
     await stubNotificationPermission(page, 'denied')
     await login(page)
-    await expect(page.locator('[data-testid="push-opt-in-toast"]')).not.toBeVisible()
+    await expect(page.locator('[data-testid="push-opt-in-strip"]')).not.toBeVisible()
   })
 })

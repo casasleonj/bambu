@@ -1,5 +1,6 @@
 'use client'
 
+import { PushOptInStrip } from '@/components/push-opt-in-strip'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -879,6 +880,11 @@ export function MainContent({ children }: { children: React.ReactNode }) {
   const shouldOffset = isDesktop && !desktopCollapsed
   return (
     <main className={`pt-14 print:pt-0 transition-all duration-300 ${shouldOffset ? 'md:ml-64 print:ml-0' : 'md:ml-0'}`}>
+      {/* #595: invitación a activar notificaciones, en el flujo bajo el encabezado
+          (no flota sobre nada, así que no tapa botones). */}
+      <div className="print:hidden">
+        <PushOptInStrip />
+      </div>
       {/* pb-20 on mobile reserves space for the PWA install banner so the last
           row of content is not covered. On desktop the banner is not expected. */}
       <div className="p-6 pb-20 md:pb-6 print:p-0">{children}</div>

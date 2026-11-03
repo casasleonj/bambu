@@ -6,7 +6,7 @@ import { BaseCajaLoader } from '@/components/base-caja-loader'
 import { UpdateNotification } from '@/components/update-notification'
 import { PwaInstallBanner } from '@/components/pwa-install-banner'
 import { InAppPushListener } from '@/components/in-app-push-listener'
-import { PushOptInToast } from '@/components/push-opt-in-toast'
+import { PushOptInProvider } from '@/components/push-opt-in-provider'
 import { AppShell } from './app-shell'
 import { MustChangePasswordGuard } from '@/components/must-change-password-guard'
 import { SessionExpiryGuard } from '@/components/session-expiry-guard'
@@ -55,11 +55,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <MustChangePasswordGuard />
         <SessionExpiryGuard />
         <InAppPushListener />
-        <PushOptInToast />
         <RealtimeStatusBanner />
-        <AppShell fechaLarga={headerFechaLarga} fechaCorta={headerFechaCorta}>
-          {children}
-        </AppShell>
+        <PushOptInProvider>
+          <AppShell fechaLarga={headerFechaLarga} fechaCorta={headerFechaCorta}>
+            {children}
+          </AppShell>
+        </PushOptInProvider>
         <BaseCajaLoader />
         <UpdateNotification />
         <Toaster />
