@@ -23,7 +23,8 @@ describe('commit 3.3: cron reescrito (no mas Historial)', () => {
   })
 
   it('FIX: el cron usa el SYSTEM user como creadoPorId', () => {
-    expect(source).toMatch(/system@bambu\.local/)
+    // #410: el nombre del usuario técnico vive en una sola constante compartida.
+    expect(source).toMatch(/SISTEMA_USERNAME = USUARIO_SISTEMA/)
     expect(source).toMatch(/creadoPorId:\s*systemUser\.id/)
   })
 

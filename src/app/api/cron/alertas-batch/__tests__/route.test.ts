@@ -22,7 +22,8 @@ describe('commit 4: batch cron seguro', () => {
   })
 
   it('FIX: el cron usa SYSTEM user como creadoPorId', () => {
-    expect(source).toMatch(/system@bambu\.local/)
+    // #410: el nombre del usuario técnico vive en una sola constante compartida.
+    expect(source).toMatch(/SISTEMA_USERNAME = USUARIO_SISTEMA/)
     expect(source).toMatch(/creadoPorId:\s*systemUser\.id/)
   })
 })

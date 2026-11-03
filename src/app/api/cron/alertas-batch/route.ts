@@ -36,8 +36,9 @@ import { requireCronSecret } from '@/lib/cron-auth'
 import { UMBRALES_DEFAULT } from '@/lib/umbrales'
 import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
+import { USUARIO_SISTEMA } from '@/lib/usuario-sistema'
 
-const SISTEMA_USERNAME = 'system@bambu.local'
+const SISTEMA_USERNAME = USUARIO_SISTEMA
 const NC_VENTANA_DIAS = 30
 const DEVOLUCIONES_MIN_EMBARQUES = 5
 const DEVOLUCIONES_MULTIPLICADOR = UMBRALES_DEFAULT.pctDevolucionesAnormales
