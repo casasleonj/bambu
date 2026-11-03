@@ -107,6 +107,7 @@ export async function POST(request: NextRequest) {
             montoPendiente: monto,
             descripcion,
             embarqueId: p.embarqueId,
+            pedidoId: p.id,
           },
         })
         nuevasDeudas.push({

@@ -17,7 +17,7 @@ export default async function MiPerfilPage() {
       rol: true,
       activo: true,
       createdAt: true,
-      trabajador: { select: { nombre: true } },
+      trabajador: { select: { id: true, nombre: true } },
     },
   })
   if (!user) redirect('/login')

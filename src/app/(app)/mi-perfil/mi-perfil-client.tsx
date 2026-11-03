@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { useSession } from 'next-auth/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { MisDeudas } from './mis-deudas'
 
 const ROL_LABELS: Record<string, string> = {
   ADMIN: 'Admin',
@@ -38,7 +39,7 @@ interface UserProfile {
   rol: string
   activo: boolean
   createdAt: string
-  trabajador?: { nombre: string } | null
+  trabajador?: { id: string; nombre: string } | null
 }
 
 type FieldState = 'idle' | 'saving' | 'saved' | 'error'
@@ -210,6 +211,8 @@ export default function MiPerfilClient({ user }: { user: UserProfile }) {
           </div>
         </div>
       </div>
+
+      {user.trabajador && <MisDeudas trabajadorId={user.trabajador.id} />}
 
       <form id="perfil-form" onSubmit={handleSubmit} className="space-y-6">
         {/* Card 1: Datos Personales */}

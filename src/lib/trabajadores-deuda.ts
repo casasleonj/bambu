@@ -3,7 +3,7 @@ import { logger } from '@/lib/logger'
 
 /**
  * Deuda pendiente por trabajador (#566): suma de `montoPendiente` de las
- * deudas con saldo > 0. Una sola consulta agrupada, calculada en el servidor.
+ * deudas con saldo > 0 más el faltante de embarque aún no descontado en nómina. Dos consultas agrupadas, calculada en el servidor.
  *
  * Contrato del valor por trabajador:
  *  - `number` > 0 : tiene deuda (la tarjeta muestra el badge).
@@ -21,14 +21,26 @@ export async function deudaPendientePorTrabajador(
   if (trabajadorIds.length === 0) return resultado
 
   try {
-    const grupos = await prisma.deudaTrabajador.groupBy({
-      by: ['trabajadorId'],
-      where: { trabajadorId: { in: trabajadorIds }, montoPendiente: { gt: 0 } },
-      _sum: { montoPendiente: true },
-    })
+    // Misma cuenta que el detalle (src/lib/deuda-trabajador-resumen.ts): las deudas con saldo y el
+    // faltante de embarque que la nómina todavía no descontó.
+    const [grupos, descuentos] = await Promise.all([
+      prisma.deudaTrabajador.groupBy({
+        by: ['trabajadorId'],
+        where: { trabajadorId: { in: trabajadorIds }, montoPendiente: { gt: 0 } },
+        _sum: { montoPendiente: true },
+      }),
+      prisma.descuentoRepartidor.groupBy({
+        by: ['trabajadorId'],
+        where: { trabajadorId: { in: trabajadorIds }, aplicadoEnNomina: false },
+        _sum: { monto: true },
+      }),
+    ])
     for (const id of trabajadorIds) resultado.set(id, 0)
     for (const g of grupos) {
       resultado.set(g.trabajadorId, Number(g._sum.montoPendiente ?? 0))
+    }
+    for (const d of descuentos) {
+      resultado.set(d.trabajadorId, (resultado.get(d.trabajadorId) ?? 0) + Number(d._sum.monto ?? 0))
     }
   } catch (error) {
     logger.error(
