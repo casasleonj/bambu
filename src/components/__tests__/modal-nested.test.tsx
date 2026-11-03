@@ -21,3 +21,45 @@ it('detalle y revisión tienen títulos propios, Escape solo cierra el detalle y
   unmount()
   expect(document.body.style.overflow).toBe('')
 })
+
+// #594: el body no puede quedar con overflow:hidden según el orden de cierre.
+function Apilados({ n }: { n: number }) {
+  const [abiertos, setAbiertos] = useState<boolean[]>(() => Array.from({ length: n }, () => true))
+  const cerrar = (idx: number[]) => setAbiertos(prev => prev.map((v, i) => (idx.includes(i) ? false : v)))
+  return <>
+    {abiertos.map((open, i) => (
+      <Modal key={i} open={open} title={`M${i}`} onClose={() => cerrar([i])}>
+        <button onClick={() => cerrar([i])}>cerrar {i}</button>
+        <button onClick={() => cerrar(abiertos.map((_, j) => j))}>todos</button>
+        <button onClick={() => cerrar([0])}>abajo {i}</button>
+      </Modal>
+    ))}
+  </>
+}
+
+it('cerrar el modal de abajo primero no deja el body bloqueado', () => {
+  render(<Apilados n={2} />)
+  expect(document.body.style.overflow).toBe('hidden')
+  fireEvent.click(screen.getAllByText('abajo 0')[0])
+  expect(document.body.style.overflow).toBe('hidden')
+  fireEvent.click(screen.getByText('cerrar 1'))
+  expect(document.body.style.overflow).toBe('')
+})
+
+it('cerrar dos modales apilados en el mismo render restaura el body (Volver a Pedidos)', () => {
+  render(<Apilados n={2} />)
+  fireEvent.click(screen.getAllByText('todos')[1])
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(document.body.style.overflow).toBe('')
+})
+
+it('tres modales apilados cerrados desordenados restauran el valor original', () => {
+  document.body.style.overflow = 'scroll'
+  render(<Apilados n={3} />)
+  fireEvent.click(screen.getByText('cerrar 1'))
+  fireEvent.click(screen.getByText('cerrar 2'))
+  expect(document.body.style.overflow).toBe('hidden')
+  fireEvent.click(screen.getByText('cerrar 0'))
+  expect(document.body.style.overflow).toBe('scroll')
+  document.body.style.overflow = ''
+})

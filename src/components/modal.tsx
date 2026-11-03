@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useCallback, useRef, useId } from 'react'
+import { lockBodyScroll } from '@/lib/body-scroll-lock'
 
 // Modal stack registry — tracks all open modals/overlays.
 // Only the topmost layer responds to Escape key.
@@ -76,13 +77,10 @@ export function Modal({ open, onClose, children, className, overlayClassName, ti
     if (!wasOpen.current) {
       wasOpen.current = true
       pushModal(id)
-      // Capture the current overflow value so we can restore it exactly.
-      // This prevents the body from getting stuck with overflow='hidden'
-      // when a non-Modal overlay (e.g. a side panel via useEscapeGuard)
-      // participates in the modalStack without touching overflow itself.
+      // Bloqueo con contador global: el orden de cierre de modales apilados
+      // no puede dejar el body con overflow='hidden' (#594).
       const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
-      const prevOverflow = document.body.style.overflow
-      document.body.style.overflow = 'hidden'
+      const unlockScroll = lockBodyScroll()
       const timer = setTimeout(() => {
         if (contentRef.current) {
           const focusable = contentRef.current.querySelector<HTMLElement>(
@@ -93,7 +91,7 @@ export function Modal({ open, onClose, children, className, overlayClassName, ti
       }, 50)
       return () => {
         removeModal(id)
-        document.body.style.overflow = prevOverflow
+        unlockScroll()
         clearTimeout(timer)
         if (previousFocus?.isConnected) previousFocus.focus()
       }
