@@ -10,12 +10,18 @@ export function TrabajadorCard({
   onEdit,
   onDelete,
   onRetryDeuda,
+  onVerDeuda,
+  soloLectura = false,
 }: {
   trabajador: Trabajador
   onEdit: (t: Trabajador) => void
   onDelete: (id: string) => void
   /** Reintenta la carga de la lista cuando la deuda no se pudo calcular (#566) */
   onRetryDeuda?: () => void
+  /** #566: clic en la insignia → detalle de cada deuda (sin esto la insignia es solo texto) */
+  onVerDeuda?: (t: Trabajador) => void
+  /** Sin editar ni desactivar (todo rol que no sea ADMIN) */
+  soloLectura?: boolean
 }) {
   return (
     <div data-testid="trabajador-card" className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition hover:shadow-md dark:bg-zinc-900">
@@ -37,12 +43,25 @@ export function TrabajadorCard({
               {tipoPagoLabels[trabajador.tipoPago] || trabajador.tipoPago}
             </Badge>
             {typeof trabajador.deudaPendiente === 'number' && trabajador.deudaPendiente > 0 && (
-              <span
-                data-testid="trabajador-deuda-badge"
-                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
-              >
-                Deuda pendiente <span className="tabular-nums">{formatCurrency(trabajador.deudaPendiente)}</span>
-              </span>
+              onVerDeuda ? (
+                <button
+                  type="button"
+                  onClick={() => onVerDeuda(trabajador)}
+                  data-testid="trabajador-deuda-badge"
+                  aria-label={`Ver el detalle de la deuda de ${trabajador.nombre}`}
+                  className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-amber-600 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+                >
+                  Deuda pendiente <span className="tabular-nums">{formatCurrency(trabajador.deudaPendiente)}</span>
+                  <span aria-hidden="true">→</span>
+                </button>
+              ) : (
+                <span
+                  data-testid="trabajador-deuda-badge"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+                >
+                  Deuda pendiente <span className="tabular-nums">{formatCurrency(trabajador.deudaPendiente)}</span>
+                </span>
+              )
             )}
             {trabajador.deudaPendiente === null && (
               <span
@@ -130,20 +149,22 @@ export function TrabajadorCard({
         </div>
       </div>
 
-      <div className="mt-6 flex items-center gap-3">
-        <button
-          onClick={() => onEdit(trabajador)}
-          className="inline-flex flex-1 items-center justify-center rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
-        >
-          Editar
-        </button>
-        <button
-          onClick={() => onDelete(trabajador.id)}
-          className="inline-flex flex-1 items-center justify-center rounded-lg bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900"
-        >
-          Desactivar
-        </button>
-      </div>
+      {!soloLectura && (
+        <div className="mt-6 flex items-center gap-3">
+          <button
+            onClick={() => onEdit(trabajador)}
+            className="inline-flex flex-1 items-center justify-center rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+          >
+            Editar
+          </button>
+          <button
+            onClick={() => onDelete(trabajador.id)}
+            className="inline-flex flex-1 items-center justify-center rounded-lg bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900"
+          >
+            Desactivar
+          </button>
+        </div>
+      )}
     </div>
   )
 }

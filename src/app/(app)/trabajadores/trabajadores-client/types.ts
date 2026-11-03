@@ -55,4 +55,6 @@ export const tipoPagoLabels: Record<string, string> = {
 
 export interface TrabajadoresClientProps {
   initialTrabajadores: Trabajador[]
+  /** Sin crear, editar ni desactivar (todo rol que no sea ADMIN). */
+  soloLectura?: boolean
 }

@@ -449,9 +449,32 @@ test.describe('Deudas UI', () => {
     await expect(card.getByText('Deuda pendiente')).toBeVisible()
     await expect(card.getByText('$ 60.000')).toBeVisible()
 
+    // Clic en la insignia (#566) → detalle de cada deuda: préstamo, descuadre de caja y su total
+    await createDeuda(page, { trabajadorId: tid, tipo: 'DEFICIT_EFECTIVO', monto: 15000, descripcion: 'Faltante de caja del embarque' })
+    await goto(page, '/trabajadores')
+    await card.getByTestId('trabajador-deuda-badge').click()
+    const detalle = page.getByTestId('deuda-detalle')
+    await expect(detalle).toBeVisible()
+    await expect(detalle.getByTestId('deuda-total')).toHaveText('$ 75.000')
+    await expect(detalle).toContainText('Préstamo')
+    await expect(detalle).toContainText('Descuadre de caja')
+    await expect(detalle).toContainText('Deuda para badge')
+    await detalle.getByRole('button', { name: 'Cerrar' }).click()
+    await expect(detalle).toBeHidden()
+
     // Click on worker name should navigate to detail
     await page.locator(`a[href="/trabajadores/${tid}"]`).first().click()
     await expect(page.getByRole('heading', { name: trabajador.trabajador.nombre })).toBeVisible()
+  })
+
+  test('trabajador sin deuda no muestra nada de deuda en su tarjeta (#566)', async ({ page }) => {
+    const trabajador = await createTrabajador(page, { nombre: `SinDeuda ${Date.now()}` })
+    await goto(page, '/trabajadores')
+    const card = page.getByTestId('trabajador-card').filter({ hasText: trabajador.trabajador.nombre })
+    await expect(card).toBeVisible()
+    await expect(card.getByTestId('trabajador-deuda-badge')).toHaveCount(0)
+    await expect(card).not.toContainText('Deuda pendiente')
+    await expect(card).not.toContainText('Sin deudas')
   })
 
   test('filtro de deudas pendientes/pagadas', async ({ page }) => {

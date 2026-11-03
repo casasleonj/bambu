@@ -37,9 +37,9 @@ export async function GET(request: NextRequest) {
       orderBy: { nombre: 'asc' },
     })
     // #566: la deuda pendiente solo se expone a quien ya puede ver deudas
-    // (GET /api/deudas es ADMIN/CONTADOR). Un fallo del cálculo no tumba la lista.
+    // (ADMIN, CONTADOR y ASISTENTE; el detalle vive en /api/trabajadores/[id]/deudas-pendientes). Un fallo del cálculo no tumba la lista.
     const userRole = (authResult.user as { role?: string } | undefined)?.role
-    const puedeVerDeudas = userRole === ROLES.ADMIN || userRole === ROLES.CONTADOR
+    const puedeVerDeudas = userRole === ROLES.ADMIN || userRole === ROLES.CONTADOR || userRole === ROLES.ASISTENTE
     return apiSuccess({
       trabajadores: puedeVerDeudas ? await conDeudaPendiente(trabajadores) : trabajadores,
     })
