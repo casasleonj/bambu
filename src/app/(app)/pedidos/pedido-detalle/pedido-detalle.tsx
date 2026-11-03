@@ -108,6 +108,7 @@ export function PedidoDetalle({
   const casos = pedido.casosAbiertos ?? []
   const totalRelacionado = (pedido.recurrencia ? 1 : 0) + (n2 ? 1 : 0) + vinculados.length + casos.length
   const hayPorConfirmar = pedido.pagoReportadoPendiente || pedido.pagoDiscrepante
+  const pedidoCerrado = pedido.estadoEntrega === 'ANULADO' || pedido.estadoEntrega === 'CANCELADO'
 
   const boton = (a: AccionDetalle, full = false) => (
     <button
@@ -305,7 +306,8 @@ export function PedidoDetalle({
                       <div>
                         <span className="font-medium text-gray-700">{METODO_LABEL[pg.metodo] ?? pg.metodo}</span>
                         <span className="text-gray-400 text-xs ml-2">{fmtFecha(pg.fecha)} {fmtHora(pg.fecha)}</span>
-                        {pg.confirmacion && pg.confirmacion !== 'CONFIRMADO' && (
+                        {/* #517: en un pedido anulado o cancelado el pago ya no se confirma. */}
+                        {pg.confirmacion && pg.confirmacion !== 'CONFIRMADO' && !pedidoCerrado && (
                           <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${pg.confirmacion === 'DISCREPANTE' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                             {pg.confirmacion === 'DISCREPANTE' ? 'discrepante' : 'por confirmar'}
                           </span>

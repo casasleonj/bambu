@@ -220,6 +220,7 @@ export const REGLAS: readonly Regla[] = [
         json_build_object('metodo', g.metodo, 'monto', g.monto::float8, 'createdAt', g."createdAt") AS detalle
       FROM "Pago" g JOIN "Pedido" p ON p.id = g."pedidoId"
       WHERE g.confirmacion = 'REPORTADO' AND g.metodo <> 'EFECTIVO'
+        AND p."estadoEntrega" NOT IN ('ANULADO', 'CANCELADO') -- #517: ya no se confirma
         AND g."createdAt" < now() - make_interval(days => ${diasReportado}::int)
       ORDER BY g."createdAt"`,
   },

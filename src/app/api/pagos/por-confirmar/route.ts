@@ -5,6 +5,7 @@ import { getConfig } from '@/lib/config'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
+import { PAGO_DE_PEDIDO_VIGENTE } from '@/lib/pago-confirmacion'
 
 /**
  * GET /api/pagos/por-confirmar — ADR-PAGO-REPORTADO-CONFIRMADO-001 §3.
@@ -12,6 +13,7 @@ import { logger } from '@/lib/logger'
  * Cola de `Pago` con `confirmacion = REPORTADO`, enriquecida. La ve SOLO el
  * usuario designado en `Config.USUARIO_CONFIRMA_PAGOS`. Si no está seteado,
  * nadie la ve (403) y los pagos quedan REPORTADO — no bloquea la operación.
+ * No incluye pagos de pedidos anulados o cancelados (#517).
  *
  * Auth: `requireAuth()` + guard explícito por userId (excepción documentada al
  * patrón `requireRole`).
@@ -30,7 +32,9 @@ export async function GET(request: NextRequest) {
     const sp = request.nextUrl.searchParams
     const pagination = getPaginationParams(sp)
 
-    const where = { confirmacion: 'REPORTADO' as const }
+    // #517: el pago de un pedido anulado o cancelado ya no se confirma (quedó compensado por la
+    // nota crédito / reversión); no aparece en la cola ni cuenta en el total pendiente.
+    const where = { confirmacion: 'REPORTADO' as const, ...PAGO_DE_PEDIDO_VIGENTE }
     const [pagos, total, agg] = await Promise.all([
       prisma.pago.findMany({
         where,
