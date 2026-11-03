@@ -1039,6 +1039,9 @@ export const TrabajadorUpdateSchema = TrabajadorBaseObject.partial()
 
 const PagarFiadoBaseSchema = z.object({
   clienteId: z.string().min(1),
+  // #597: cobro de UN solo pedido del día (desde la lista de Pedidos). Sin él, el cobro
+  // sigue siendo el de Fiados: reparte entre toda la deuda entregada del cliente.
+  pedidoId: z.string().min(1).optional(),
   // Offline-first: dedup por batchId (compartido por todos los Pagos del batch)
   offlineId: z.string().min(1).max(200).optional(),
   versionDeuda: z.string().regex(/^[a-f0-9]{64}$/).optional(),

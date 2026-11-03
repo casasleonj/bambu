@@ -19,7 +19,7 @@ import { diaBogota, validarFechaHechoOficina } from '@/lib/gestion-admin-fecha'
 import { nominaQueCubre } from '@/lib/nomina-cobertura'
 import { todayStringBogota } from '@/lib/dates'
 import { EntregaOficinaError, ESTADO_HTTP_OFICINA } from '@/modules/pedidos/domain/services/entrega-oficina.errors'
-import { idResultadoFiado, huellaCobroFiado, prepararCobroFiado, leerResultadoFiado } from '@/lib/fiados-cobro-server'
+import { idResultadoFiado, huellaCobroFiado, prepararCobroFiado, leerResultadoFiado, errorCobroPedido } from '@/lib/fiados-cobro-server'
 import type { AplicacionFiado, ResultadoCobroFiado } from '@/lib/fiados-cobro'
 
 /** #515: revisión y resultados originales, independientes de la fecha de Pedidos. */
@@ -50,8 +50,11 @@ export async function GET(request: NextRequest) {
       return apiSuccess({ estado: previos.length ? 'REGISTRADO_LEGACY' : 'NO_ENCONTRADO',
         pedidos: previos.map(p => ({ id: p.pedidoId, numero: p.pedido.numero })) })
     }
-    const preparacion = await prepararCobroFiado(clienteId)
-    return preparacion ? apiSuccess({ preparacion }) : apiError('Cliente no encontrado', 404)
+    const pedidoId = q.get('pedidoId') || undefined
+    const preparacion = await prepararCobroFiado(clienteId, prisma, pedidoId)
+    if (!preparacion) return apiError('Cliente no encontrado', 404)
+    const rechazo = pedidoId ? errorCobroPedido(preparacion, clienteId) : null
+    return rechazo ? apiError(rechazo.message, rechazo.status, { code: rechazo.code }) : apiSuccess({ preparacion })
   } catch (error) {
     logger.error({ err: error }, 'Error consultando cobro de fiado')
     return apiError('No se pudo consultar el cobro. Conserva su referencia y reintenta.', 500)
@@ -64,9 +67,9 @@ export async function POST(request: NextRequest) {
   try {
     const parsed = PagarFiadoSchema.safeParse(await request.json())
     if (!parsed.success) return apiError('Revisa los medios y montos del cobro', 400)
-    const { clienteId, monto, pagos, offlineId, versionDeuda, recibioDinero, repartidorId, fechaRecepcion } = parsed.data
+    const { clienteId, pedidoId, monto, pagos, offlineId, versionDeuda, recibioDinero, repartidorId, fechaRecepcion } = parsed.data
     const oficina = recibioDinero !== undefined || repartidorId !== undefined || fechaRecepcion !== undefined
-    const huella = huellaCobroFiado({ clienteId, pagos, recibioDinero: recibioDinero ?? null,
+    const huella = huellaCobroFiado({ clienteId, ...(pedidoId ? { pedidoId } : {}), pagos, recibioDinero: recibioDinero ?? null,
       repartidorId: repartidorId ?? null, fechaRecepcion: fechaRecepcion ?? null })
     const outcome = await withAdvisoryLock('CARTERA', clienteId, async tx => {
       // Dedup antes de la versión: el pago registrado ya cambió la deuda.
@@ -111,8 +114,12 @@ export async function POST(request: NextRequest) {
         ocurridoAt = diaBogota(fecha) !== todayStringBogota() ? fecha : null
         recepcion = { quien: recibioDinero, nombre: nombreReceptor, fecha: fecha.toISOString() }
       }
-      const preparacion = await prepararCobroFiado(clienteId, tx)
+      const preparacion = await prepararCobroFiado(clienteId, tx, pedidoId)
       if (!preparacion) return apiError('Cliente no encontrado', 404)
+      if (pedidoId) {
+        const rechazo = errorCobroPedido(preparacion, clienteId, Math.round(monto * 100))
+        if (rechazo) return apiError(rechazo.message, rechazo.status, { code: rechazo.code })
+      }
       if (versionDeuda && versionDeuda !== preparacion.version) return apiError(
         'La deuda cambió desde que la revisaste. Actualiza el reparto antes de registrar el pago.', 409, { code: 'DEUDA_CAMBIO' })
       if (!preparacion.pedidos.length) return apiError('El cliente no tiene deudas pendientes de pedidos entregados', 400, { code: 'SIN_DEUDA' })

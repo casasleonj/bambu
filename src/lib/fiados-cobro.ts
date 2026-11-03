@@ -8,6 +8,8 @@ export interface LineaCobroFiado { metodo: MetodoFiado; monto: number }
 export interface DeudaFiado {
   id: string; numero: number; fecha: string; total: number; totalPagado: number; saldo: number
   factura: { id: string; numero: string } | null
+  /** #597: solo se informan al cobrar UN pedido (para decidir si se cobra ahí o en Fiados). */
+  entregadoAt?: string | null; promesaPagoFecha?: string | null
 }
 export interface AplicacionFiado {
   pedidoId: string; numero: number; facturaId?: string; facturaNumero?: string
@@ -30,6 +32,8 @@ export interface ResultadoCobroFiado {
 export interface PreparacionCobroFiado {
   clienteId: string; clienteNombre: string; version: string; deudaTotal: number
   pedidos: DeudaFiado[]; metodosPorConfirmar: string[]
+  /** #597: al cobrar UN pedido, otras deudas del cliente que el reparto por antigüedad pagaría ANTES. */
+  deudaAnterior?: { cantidad: number; masAntiguaNumero: number }
 }
 
 /** El cálculo compartido usa centavos; el servidor vuelve a leer bajo CARTERA. */
