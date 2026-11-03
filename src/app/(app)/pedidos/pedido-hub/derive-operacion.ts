@@ -61,8 +61,9 @@ export function deriveOperacion(p: Pedido, ctx: DeriveContext): OperacionDerivad
   } else if (p.estadoEntrega === 'ENTREGADO' && p.pagoReportadoPendiente && saldo === 0) {
     accionDestacada = { key: 'confirmar-pago', label: 'Confirmar pago' }
   } else if (p.estadoEntrega === 'ENTREGADO' && saldo > 0) {
-    // #597: el pedido del día se cobra desde la lista; uno de un día anterior es un fiado.
-    accionDestacada = diasDesde(p.fecha, ctx.hoyBogota) === 0 && p.clienteId !== 'CONSUMIDOR_FINAL'
+    // #597: se cobra desde la lista el pedido entregado HOY (si no hay fecha de entrega, la del pedido) que no
+    // se vendió fiado a propósito. Los demás son fiados. El servidor decide la última palabra (deuda anterior).
+    accionDestacada = diasDesde(p.entregadoAt ?? p.fecha, ctx.hoyBogota) === 0 && !p.promesaPagoFecha && p.clienteId !== 'CONSUMIDOR_FINAL'
       ? { key: 'registrar-pago', label: 'Registrar pago' }
       : { key: 'cobrar-en-fiados', label: 'Cobrar en Fiados' }
   } else if (p.estadoEntrega === 'EN_RUTA') {

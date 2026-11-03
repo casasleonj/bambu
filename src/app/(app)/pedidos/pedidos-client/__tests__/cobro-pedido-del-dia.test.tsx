@@ -10,9 +10,10 @@ vi.mock('@/lib/db/sync', () => ({ syncWithServer: vi.fn(), SYNC_ITEM_DONE_EVENT:
 const preparacion = { clienteId: 'c1', clienteNombre: 'Tienda', version: 'b'.repeat(64), deudaTotal: 45000,
   pedidos: [{ id: 'p701', numero: 701, saldo: 45000, total: 45000, totalPagado: 0, fecha: new Date().toISOString(), factura: null }], metodosPorConfirmar: [] }
 const urls: string[] = []
+const irAFiados = vi.fn()
 function montar() {
   return render(<CobroFiadoDialog cliente={{ id: 'c1', nombre: 'Tienda', pedido: { id: 'p701', numero: 701 } }}
-    actorId="u1" visible={false} userRole="ASISTENTE" onClose={vi.fn()} onRegistrado={vi.fn()} />)
+    actorId="u1" visible={false} userRole="ASISTENTE" onClose={vi.fn()} onRegistrado={vi.fn()} onIrAFiados={irAFiados} />)
 }
 async function llenar(monto: string) {
   await screen.findByLabelText('Medio 1')
@@ -44,6 +45,18 @@ describe('CobroFiadoDialog con un pedido (#597)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Revisar reparto' }))
     expect(await screen.findByRole('alert')).toBeTruthy()
     expect(screen.getByRole('alert').textContent).toMatch(/supera el saldo del pedido/)
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+  it('si el servidor dice que se cobra en Fiados (p. ej. deuda anterior) lo explica y ofrece ir a Fiados, sin formulario de pago', async () => {
+    global.fetch = vi.fn().mockImplementation(async (url: string) => url.includes('recientes')
+      ? { ok: true, json: async () => ({ resultados: [] }) }
+      : { ok: false, status: 409, json: async () => ({ error: { code: 'CLIENTE_CON_DEUDA_ANTERIOR',
+        message: 'Este cliente tiene deuda anterior (la más antigua es el pedido #651). El pago se aplica primero a la más antigua: cóbralo en la pestaña Fiados.' } }) }) as unknown as typeof fetch
+    montar()
+    expect((await screen.findByTestId('cobro-en-fiados')).textContent).toContain('pedido #651')
+    expect(screen.queryByLabelText('Medio 1')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Ir a Fiados' }))
+    expect(irAFiados).toHaveBeenCalledTimes(1)
     expect(mockFetch).not.toHaveBeenCalled()
   })
 })

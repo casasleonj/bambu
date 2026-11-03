@@ -2237,6 +2237,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
       )}
       <CobroFiadoDialog key={`cobro-fiado:${session?.user?.id ?? 'sin-sesion'}`} cliente={clienteCobro} onClose={() => setClienteCobro(null)} userRole={userRole}
         actorId={session?.user?.id ?? null} visible={activeTab === 'fiados'}
+        onIrAFiados={() => { setClienteCobro(null); setActiveTab('fiados') }}
         onRegistrado={() => { refetchFiados(); refetchCounts(); refreshPedidos() }}
         onOpenPedido={abrirDocumentoPedido}
         onOpenFactura={(id, volver) => setFacturaConsulta({ id, volver: volver ?? volverConsulta })} />

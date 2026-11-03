@@ -27,6 +27,8 @@ interface Borrador {
 interface Props extends AccesoDocumentosPedido {
   cliente: ClienteCobro | null; actorId: string | null; visible: boolean
   onClose: () => void; onRegistrado: () => void
+  /** #597: cuando el cobro de un pedido corresponde a Fiados, lleva a esa pestaña. */
+  onIrAFiados?: () => void
 }
 const dinero = (n: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP',
   minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 }).format(n)
@@ -41,7 +43,7 @@ function leerBorradores(actor: string): Borrador[] {
 }
 
 /** #515/#498: escritorio y móvil comparten estado, identidad y revisión del cobro. */
-export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose, onRegistrado, onOpenPedido, onOpenFactura }: Props) {
+export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose, onRegistrado, onIrAFiados, onOpenPedido, onOpenFactura }: Props) {
   const [draft, setDraft] = useState<Borrador | null>(null)
   const draftRef = useRef<Borrador | null>(null)
   const [preparacion, setPreparacion] = useState<PreparacionCobroFiado | null>(null)
@@ -50,6 +52,8 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
+  /** #597: el servidor dijo que este pedido se cobra en Fiados (mensaje a mostrar). */
+  const [enFiados, setEnFiados] = useState<string | null>(null)
   const [recientes, setRecientes] = useState<ResultadoCobroFiado[]>([])
   const [locales, setLocales] = useState<Borrador[]>([])
   const [errorRecientes, setErrorRecientes] = useState<string | null>(null)
@@ -93,14 +97,20 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
     const next: Borrador = guardado || { cliente, referencia: generateUUID(), lineas: [{ metodo: '', monto: '' }],
       cobro: datosCobroIniciales(), etapa: 'editar' }
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    guardar(next); setPreparacion(next.preparacion ?? null); setResultado(null); setError(null); setErrores({}); setOpen(true)
+    guardar(next); setPreparacion(next.preparacion ?? null); setResultado(null); setError(null); setEnFiados(null); setErrores({}); setOpen(true)
     let cancelled = false
     // Obtener una revisión verificable al abrir, para conservarla si la señal
     // se pierde mientras el usuario ingresa los medios y montos.
     if (navigator.onLine && next.etapa === 'editar') void fetch(
       `/api/pedidos/pagar-fiado?clienteId=${encodeURIComponent(cliente.id)}${cliente.pedido ? `&pedidoId=${encodeURIComponent(cliente.pedido.id)}` : ''}`, { cache: 'no-store', signal: AbortSignal.timeout(30000) },
     ).then(async res => {
-      if (!res.ok) return
+      if (!res.ok) {
+        if (cliente.pedido && res.status === 409) {
+          const f = await res.json().catch(() => null)
+          if (!cancelled && f?.error?.message) setEnFiados(f.error.message)
+        }
+        return
+      }
       const data = await res.json()
       const current = draftRef.current
       if (!cancelled && data.preparacion?.clienteId === cliente.id && current?.referencia === next.referencia && current.etapa === 'editar') {
@@ -201,6 +211,7 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
       } else {
         const res = await fetch(`/api/pedidos/pagar-fiado?clienteId=${encodeURIComponent(actual.cliente.id)}${actual.cliente.pedido ? `&pedidoId=${encodeURIComponent(actual.cliente.pedido.id)}` : ''}`, { cache: 'no-store', signal: AbortSignal.timeout(30000) })
         const data = await res.json()
+        if (!res.ok && actual.cliente.pedido && res.status === 409 && data.error?.message) { setEnFiados(data.error.message); return }
         if (!res.ok || !data.preparacion) throw new Error(data.error?.message || 'No se pudo revisar la deuda del cliente.')
         prep = data.preparacion
       }
@@ -265,6 +276,7 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
       className="flex max-h-[94dvh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
       <header className="flex shrink-0 items-start justify-between gap-3 border-b p-4"><div><p className="text-sm text-gray-500">{resultado?.clienteNombre || draft?.cliente.nombre}</p><h2 className="text-xl font-semibold">{resultado ? 'Pago registrado' : pendiente ? draft.motivo === 'network' ? 'Pago guardado en este dispositivo' : 'Estado del registro por verificar' : draft?.etapa === 'revisar' ? 'Revisar antes de registrar' : delPedido ? `Registrar pago · Pedido #${delPedido.numero}` : 'Registrar pago del cliente'}</h2></div><button className="min-h-11 min-w-11 rounded border px-3" aria-label="Cerrar pago" onClick={cerrar}>×</button></header>
       <div className="min-h-0 overflow-y-auto p-4">
+        {enFiados && <p role="alert" data-testid="cobro-en-fiados" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">{enFiados}</p>}
         {error && <p role="alert" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">{error}</p>}
         {busy && <p role="status" className="mb-3 text-sm text-gray-500">{pendiente ? 'Verificando el registro…' : 'Consultando la deuda…'}</p>}
         {resultado ? <>
@@ -286,7 +298,7 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
           <div className="my-3 rounded-lg bg-gray-50 p-3 text-sm">{pagos.map((p, i) => <p key={i}>{METODOS[p.metodo]}: {dinero(p.monto)}{preparacion.metodosPorConfirmar.includes(p.metodo) ? ' · por confirmar al registrar' : ''}</p>)}<p className="mt-2">{gestion.activa ? `Recepción: ${draft.cobro.fecha} · ${draft.cobro.quien === 'OFICINA' ? 'Oficina' : gestion.repartidores.find(r => r.id === draft.cobro.repartidorId)?.nombre || 'Repartidor'}` : 'Fecha de registro: el servidor la asignará al registrar.'}</p></div>
           {reparto.sobrante > 0 && <p className="my-3 rounded-lg bg-amber-50 p-3 text-sm">El excedente quedará como saldo a favor del cliente. No se aplicará a pedidos sin entregar.</p>}
           <p className="text-sm text-gray-600">Registrar un medio digital y verificar que el dinero llegó son pasos diferentes. El servidor volverá a comprobar el reparto antes de registrar.</p>
-        </> : draft && <>
+        </> : draft && !enFiados && <>
           {delPedido ? <p className="mb-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-950" data-testid="cobro-solo-pedido">Saldo del pedido #{delPedido.numero}{preparacion?.pedidos[0] ? `: ${dinero(preparacion.pedidos[0].saldo)}` : ''}. El pago se aplica solo a este pedido.</p> : <p className="mb-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-950">El pago se aplica a la deuda entregada más antigua del cliente, de todas las fechas. Los filtros de Fiados solo cambian la consulta.</p>}
           <p className="mb-3 text-sm">Registra el dinero recibido por cada medio. Puedes abonar una parte de la deuda.</p>
           {preparacion && !delPedido && <p className="mb-3 text-sm font-semibold" data-testid="deuda-cliente-preparada">Deuda entregada consultada: {dinero(preparacion.deudaTotal)}</p>}
@@ -299,6 +311,7 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
       <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t bg-white p-4">
         {resultado ? <button className="min-h-11 rounded-lg bg-blue-600 px-4 text-white" onClick={cerrar}>{cliente?.pedido || delPedido ? 'Cerrar' : 'Volver a Fiados'}</button>
           : pendiente ? <><button className="min-h-11 rounded-lg border px-3" disabled={busy} onClick={() => void consultarEstado()}>Consultar estado del registro</button><button className="min-h-11 rounded-lg border px-3" disabled={busy} onClick={() => void registrar(true)}>Reintentar con la misma referencia</button><button className="min-h-11 rounded-lg bg-blue-600 px-4 text-white" onClick={cerrar}>{cliente?.pedido || delPedido ? 'Cerrar' : 'Volver a Fiados'}</button></>
+          : enFiados ? <><button className="min-h-11 rounded-lg border px-4" onClick={() => { if (draft) guardar(null, draft.referencia); cerrar() }}>Cerrar</button>{onIrAFiados && <button className="min-h-11 rounded-lg bg-blue-600 px-4 text-white" onClick={() => { if (draft) guardar(null, draft.referencia); setOpen(false); onIrAFiados() }}>Ir a Fiados</button>}</>
           : draft?.etapa === 'revisar' ? <><button className="min-h-11 rounded-lg border px-4" disabled={busy} onClick={() => guardar({ ...draft, etapa: 'editar', cuerpo: undefined })}>Volver a editar</button><button className="min-h-11 rounded-lg bg-blue-600 px-4 text-white disabled:opacity-50" disabled={busy || !puedeCobrar} onClick={() => void registrar()}>Registrar {dinero(monto)}</button></>
           : <><button className="min-h-11 rounded-lg border px-4" disabled={busy} onClick={() => { if (draft) guardar(null, draft.referencia); cerrar() }}>Cancelar</button><button className="min-h-11 rounded-lg bg-blue-600 px-4 text-white disabled:opacity-50" disabled={busy || !puedeCobrar} onClick={() => void revisar()}>{draft?.etapa === 'revisar-cambio' ? 'Actualizar reparto' : 'Revisar reparto'}</button></>}
       </footer>
