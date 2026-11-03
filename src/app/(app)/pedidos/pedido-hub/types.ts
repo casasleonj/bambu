@@ -19,6 +19,7 @@ export type AccionKey =
   | 'nueva-demanda'
   | 'venta-libre'
   | 'registrar-pago'
+  | 'cobrar-en-fiados'
   | 'confirmar-pago'
   | 'resolver-excepcion'
   | 'ver-cartera'

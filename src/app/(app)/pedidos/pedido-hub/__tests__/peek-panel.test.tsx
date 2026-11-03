@@ -12,7 +12,7 @@ const pedido = (over: Partial<Pedido> = {}): Pedido => ({
   cPacaAguaPed: 10, cPacaHieloPed: 0, cBotellonFabPed: 0, cBotellonDomPed: 0, cBolsaAguaPed: 0, cBolsaHieloPed: 0,
   cPacaAguaEnt: 10, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0,
   precioPacaAgua: 2300, precioPacaHielo: 0, precioBotellonFab: 0, precioBotellonDom: 0, precioBolsaAgua: 0, precioBolsaHielo: 0,
-  totalPagado: 10000, total: 23000, saldo: 13000, fecha: '2026-09-05T08:00:00.000Z', ...over,
+  totalPagado: 10000, total: 23000, saldo: 13000, fecha: '2026-09-08T15:00:00.000Z', ...over,
 })
 
 const layer2 = (over: Partial<PeekLayer2> = {}): PeekLayer2 => ({
