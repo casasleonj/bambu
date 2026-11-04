@@ -46,6 +46,14 @@ enum OrigenPedido {
   RECURRENTE
 }
 
+/// #644: frecuencia de pago del sueldo fijo del trabajador.
+enum FrecuenciaPago {
+  SEMANAL
+  QUINCENAL
+  MENSUAL
+  FECHAS
+}
+
 enum MetodoPago {
   EFECTIVO
   TRANSFERENCIA
@@ -789,6 +797,15 @@ model Trabajador {
   comRepartBotellon Decimal @default(0) @db.Decimal(10, 2)
 
   salarioFijo Decimal @default(0) @db.Decimal(10, 2)
+
+  // #644: cada cuánto se paga el sueldo fijo y cuánto es «por cada pago». NULL = una vez por nómina (anterior).
+  // SEMANAL: diasPago = días de la semana (0 = domingo); QUINCENAL: 15 y último día; MENSUAL/FECHAS: días del mes.
+  frecuenciaPago  FrecuenciaPago?
+  diasPago        Int[]           @default([])
+  // Desde cuándo rige el plan: no se listan como pendientes los pagos de antes de configurarlo.
+  frecuenciaDesde DateTime?       @db.Timestamptz()
+  // Su pago queda en la nómina pero no baja el efectivo de la caja (p. ej. el administrador).
+  pagoFueraDeCaja Boolean         @default(false)
 
   deudaReposAgua  Decimal @default(0) @db.Decimal(10, 2)
   deudaReposHielo Decimal @default(0) @db.Decimal(10, 2)

@@ -77,6 +77,10 @@ export async function POST(request: NextRequest) {
         comRepartHielo: data.comRepartHielo ?? 0,
         comRepartBotellon: data.comRepartBotellon ?? 0,
         salarioFijo: data.salarioFijo ?? 0,
+        frecuenciaPago: data.frecuenciaPago ?? null,
+        diasPago: data.diasPago ?? [],
+        frecuenciaDesde: data.frecuenciaPago ? new Date() : null,
+        pagoFueraDeCaja: data.pagoFueraDeCaja ?? false,
         telefono: data.telefono,
       },
     })

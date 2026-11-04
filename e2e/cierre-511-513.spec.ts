@@ -49,8 +49,9 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     await expect(page.getByTestId('cierre-kpi-ventas')).toContainText('20.000')
     await expect(page.getByTestId('cierre-kpi-cobros')).toContainText('10.000')
     await page.getByLabel('Base de Caja', { exact: true }).fill('10000')
-    await page.getByLabel('Salarios', { exact: true }).fill('5000')
-    await expect(page.getByTestId('cierre-kpi-neto')).toContainText('15.000')
+    // #644: el campo manual «Salarios» ya no existe
+    await expect(page.getByLabel('Salarios', { exact: true })).toHaveCount(0)
+    await expect(page.getByTestId('cierre-kpi-neto')).toContainText('20.000')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await capturar(page, testInfo, 'revision')
 
@@ -61,11 +62,11 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     const dialog = page.getByRole('dialog', { name: 'Confirmar cierre del día' })
     await expect(dialog.getByRole('button', { name: 'Confirmar cierre', exact: true })).toBeDisabled()
     // #601: se confirma el conteo del efectivo contra el efectivo que debe haber (base 10.000 + Pago 5.000
-    // + abono 5.000 − salarios 5.000 = 15.000); se contaron 10.000, así que faltan 5.000.
+    // + abono 5.000 = 20.000); se contaron 10.000, así que faltan 10.000.
     await expect(dialog.getByText(/Después de cerrar no podrás cambiar/)).toBeVisible()
-    await expect(dialog.locator('dl > div').filter({ hasText: 'Efectivo que debe haber' })).toContainText('15.000')
+    await expect(dialog.locator('dl > div').filter({ hasText: 'Efectivo que debe haber' })).toContainText('20.000')
     await expect(dialog.locator('dl > div').filter({ hasText: 'Efectivo contado' })).toContainText('10.000')
-    await expect(dialog.locator('dl > div').filter({ hasText: 'Diferencia' })).toContainText(/Falta\s*\$\s*5\.000/)
+    await expect(dialog.locator('dl > div').filter({ hasText: 'Diferencia' })).toContainText(/Falta\s*\$\s*10\.000/)
     // El backdrop debe interceptar también la barra fija inferior, sin dejar
     // controles de la página por encima de una confirmación financiera.
     const cobertura = await page.evaluate(() => {
@@ -88,10 +89,10 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
 
     const guardado = await prisma.cierreDia.findUniqueOrThrow({ where: { fecha: new Date(`${fecha}T00:00:00-05:00`) } })
     expect(Number(guardado.totalVentas)).toBe(20000)
-    expect(Number(guardado.netoCaja)).toBe(15000)
-    expect(guardado.reporte).toMatchObject({ _version: '2.1', cobroVentasHoy: 5000, cobroCartera: 5000, salarios: 5000, totalContado: 10000, netoCaja: 15000, efectivoEsperado: 15000, diferenciaArqueo: -5000 })
+    expect(Number(guardado.netoCaja)).toBe(20000)
+    expect(guardado.reporte).toMatchObject({ _version: '2.1', cobroVentasHoy: 5000, cobroCartera: 5000, salarios: 0, totalContado: 10000, netoCaja: 20000, efectivoEsperado: 20000, diferenciaArqueo: -10000 })
     await page.reload()
-    await expect(page.getByTestId('cierre-kpi-neto')).toContainText('15.000')
+    await expect(page.getByTestId('cierre-kpi-neto')).toContainText('20.000')
     await capturar(page, testInfo, 'registrado')
     expect(await prisma.cierreDia.count()).toBe(1)
     await goto(page, `/cierre/reporte?fecha=${fecha}`)

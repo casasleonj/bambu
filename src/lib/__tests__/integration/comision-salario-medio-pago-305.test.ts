@@ -133,35 +133,21 @@ describe('#305 — medio de pago de comisiones y salarios (Postgres real)', () =
     expect(v16.reglas[0].cantidad).toBe(0)
   })
 
-  describe('salarios', () => {
-    const dia = '2040-05-01'
+  describe('salarios (retirado en #644)', () => {
     beforeAll(async () => {
       await testPrisma.cierreDia.create({ data: { fecha: startOfDayInBogota('2040-04-30'), cerradoPor: adminId } })
     })
 
-    it('salariosEfectivo mayor que los salarios se rechaza', async () => {
-      const res = await cerrarDia(json('/api/cierre', cierreBody({ fecha: dia, baseDia: 0, salarios: 50_000, salariosEfectivo: 60_000 })))
-      expect(res.status).toBe(400)
-      expect(await testPrisma.cierreDia.count({ where: { fecha: startOfDayInBogota(dia) } })).toBe(0)
-    })
-
-    it('solo lo pagado en efectivo resta de la caja; el total de salarios queda guardado', async () => {
+    it('el cierre ignora lo que un cliente antiguo mande en «Salarios»: ya no se resta de la caja', async () => {
+      const dia = '2040-05-01'
       const res = await cerrarDia(json('/api/cierre', cierreBody({ fecha: dia, baseDia: 0, salarios: 100_000, salariosEfectivo: 40_000 })))
       expect(res.status).toBe(201)
       const cierre = await testPrisma.cierreDia.findFirstOrThrow({ where: { fecha: startOfDayInBogota(dia) } })
-      expect(Number(cierre.salarios)).toBe(100_000)
-      expect(Number(cierre.netoCaja)).toBe(-40_000)
+      expect(Number(cierre.salarios)).toBe(0)
+      expect(Number(cierre.netoCaja)).toBe(0)
       const reporte = cierre.reporte as { salariosEfectivo: number; salariosOtrosMedios: number }
-      expect(reporte.salariosEfectivo).toBe(40_000)
-      expect(reporte.salariosOtrosMedios).toBe(60_000)
-    })
-
-    it('sin indicar salariosEfectivo se asume todo en efectivo (comportamiento anterior)', async () => {
-      await testPrisma.cierreDia.create({ data: { fecha: startOfDayInBogota('2040-05-02'), cerradoPor: adminId } })
-      const res = await cerrarDia(json('/api/cierre', cierreBody({ fecha: '2040-05-03', baseDia: 0, salarios: 30_000 })))
-      expect(res.status).toBe(201)
-      const cierre = await testPrisma.cierreDia.findFirstOrThrow({ where: { fecha: startOfDayInBogota('2040-05-03') } })
-      expect(Number(cierre.netoCaja)).toBe(-30_000)
+      expect(reporte.salariosEfectivo).toBe(0)
+      expect(reporte.salariosOtrosMedios).toBe(0)
     })
   })
 })
