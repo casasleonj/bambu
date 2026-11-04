@@ -361,6 +361,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         sueldosQueTocan: await sueldosPendientesAl(prisma, fechaStr),
         comisionesAuto: {
           sellador: comisionesAuto.sellador,
+          selladores: comisionesAuto.selladores,
           pagadoRepartidores: comisionesAuto.pagadoRepartidores,
           pagadoRepartidoresOtrosMedios: comisionesAuto.pagadoRepartidoresOtrosMedios,
           total: comisionesAuto.total,

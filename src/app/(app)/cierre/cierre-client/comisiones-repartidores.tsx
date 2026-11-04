@@ -22,12 +22,15 @@ export function ComisionesRepartidores({
   puedePagar,
   diaCerrado,
   onPagado,
+  tipo = 'repartidor',
 }: {
   fecha: string
   repartidores: Repartidor[]
   puedePagar: boolean
   diaCerrado: boolean
   onPagado: () => void
+  /** #645: el sellador se paga con el mismo bloque; cambia solo el texto de la confirmación. */
+  tipo?: 'repartidor' | 'sellador'
 }) {
   const { confirm, modal } = useConfirm()
   const [pagando, setPagando] = useState<string | null>(null)
@@ -43,7 +46,7 @@ export function ComisionesRepartidores({
     if (r.revisiones?.length) return
     const ok = await confirm({
       message: `¿Le pagaste ${formatCurrency(r.pendiente)} a ${r.nombre}?`,
-      description: 'Es su comisión por las entregas del día. Este dinero sale de la caja. Confírmalo solo si ya se lo diste: queda anotado con tu nombre y la hora.',
+      description: `${tipo === 'sellador' ? 'Es su comisión por lo producido hoy (pacas de agua, pacas de hielo y botellones llenados).' : 'Es su comisión por las entregas del día.'} Este dinero sale de la caja. Confírmalo solo si ya se lo diste: queda anotado con tu nombre y la hora.`,
       confirmLabel: 'Sí, ya le pagué',
     })
     if (!ok) return
@@ -74,7 +77,7 @@ export function ComisionesRepartidores({
   }
 
   return (
-    <div className="space-y-2" data-testid="comisiones-repartidores">
+    <div className="space-y-2" data-testid={tipo === 'sellador' ? 'comisiones-selladores' : 'comisiones-repartidores'}>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" aria-label="Resumen de comisiones">
         <div className="rounded-md bg-blue-50 p-3"><p className="text-xs text-blue-900">🚚 {visibles.some(r => r.revisiones?.length) ? 'Subtotal identificado' : 'Comisión por entregas'}</p><p className="font-bold text-blue-950">{formatCurrency(visibles.reduce((s, r) => s + r.total, 0))}</p></div>
         <div className="rounded-md bg-green-50 p-3"><p className="text-xs text-green-900">✅ Pagado</p><p className="font-bold text-green-950">{formatCurrency(visibles.reduce((s, r) => s + r.pagado, 0))}</p></div>

@@ -138,6 +138,8 @@ export interface CierreData {
   // #499: comisiones del día calculadas por el servidor (repartidores con lo pagado y lo pendiente + sellador)
   comisionesAuto?: {
     sellador: number
+    /** #645: comisión de cada sellador del día con lo pagado y lo pendiente */
+    selladores?: { trabajadorId: string; nombre: string; total: number; pagado: number; pendiente: number; detalle: { producto: string; unidades: number; comision: number }[] }[]
     pagadoRepartidores: number
     total: number
     repartidores: ({ trabajadorId: string; nombre: string; total: number; pagado: number; pendiente: number } & Partial<import('@/lib/comision-repartidor-calculo').ComisionRepartidor>)[]
