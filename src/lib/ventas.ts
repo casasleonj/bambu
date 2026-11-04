@@ -20,7 +20,10 @@ export async function getVentasDelDia(fecha?: Date): Promise<VentasDelDia> {
   const pedidos = await prisma.pedido.findMany({
     where: {
       fecha: { gte: start, lt: end },
-      estadoEntrega: 'ENTREGADO',
+      // #604: lo vendido es lo realmente entregado. Una entrega parcial (pedido que sigue PENDIENTE/EN_RUTA con
+      // unidades ya entregadas) cuenta por esas unidades; uno sin nada entregado aporta 0. Misma regla que el cierre
+      // de caja (`construirResumenCierre`) y el dashboard (#599/#600). ANULADO y CANCELADO nunca cuentan.
+      estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
     },
     select: {
       cPacaAguaEnt: true,
