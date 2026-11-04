@@ -191,6 +191,10 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
     const abonos = await resumirAbonosDelDia(prisma, startOfDay, endOfDay)
     const cobroCartera = abonos.total
     const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
+    // #601: lo que entró en la caja física (efectivo) y lo que llegó por medios digitales.
+    const cobroCarteraEfectivo = abonos.totalEfectivo
+    const cobroEfectivoHoy = efectivo + cobroCarteraEfectivo
+    const cobroDigitalHoy = (cobroVentasHoy - efectivo) + (cobroCartera - cobroCarteraEfectivo)
 
     // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6: desglose INFORMATIVO de pagos aún
     // REPORTADO cobrados HOY. NO altera netoCaja — el cierre suma todos los
@@ -257,6 +261,9 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         cobrado,
         cobroVentasHoy,
         cobroCartera,
+        cobroCarteraEfectivo,
+        cobroEfectivoHoy,
+        cobroDigitalHoy,
         abonosIndependientes: abonos.abonosIndependientes,
         ajustesDeCobros: abonos.ajustesDeCobros,
         fiado,

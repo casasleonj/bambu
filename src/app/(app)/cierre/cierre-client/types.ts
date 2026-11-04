@@ -44,6 +44,14 @@ export interface CierreData {
   cobrado: number
   cobroVentasHoy: number
   cobroCartera: number
+  /** #601: parte de `cobroCartera` recibida en efectivo (abonos independientes menos ajustes). */
+  cobroCarteraEfectivo?: number
+  /** #601: efectivo que entró en la caja hoy (pagos + abonos en efectivo). */
+  cobroEfectivoHoy?: number
+  /** #601: dinero que llegó por Nequi, transferencia, Daviplata o bono (no está en la caja). */
+  cobroDigitalHoy?: number
+  /** #601: guardado al cerrar (cierres nuevos). Los cierres anteriores no lo tienen. */
+  efectivoEsperado?: number
   abonosIndependientes?: number
   ajustesDeCobros?: number
   fiado: number

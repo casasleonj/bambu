@@ -208,13 +208,13 @@ function ReporteContent() {
           <h3 className="text-lg font-bold border-b pb-1 mb-3">Arqueo de Caja</h3>
           <table className="w-full text-sm mb-3">
             <tbody>
-              <tr><td className="py-1 font-medium">Esperado (Neto Teórico)</td><td className="text-right">{formatMoney(netoTeorico)}</td></tr>
-              <tr><td className="py-1 font-medium">Contado (Efectivo Físico)</td><td className="text-right font-bold">{formatMoney(data.totalContado)}</td></tr>
+              <tr><td className="py-1 font-medium">{data.efectivoEsperado != null ? 'Efectivo que debía haber' : 'Esperado (incluye pagos digitales)'}</td><td className="text-right">{formatMoney(data.efectivoEsperado ?? netoTeorico)}</td></tr>
+              <tr><td className="py-1 font-medium">Efectivo contado</td><td className="text-right font-bold">{formatMoney(data.totalContado)}</td></tr>
               <tr>
                 <td className="py-1 font-medium">Diferencia</td>
                 <td className={`text-right font-bold ${(data.diferenciaArqueo || 0) === 0 ? 'text-green-700' : (data.diferenciaArqueo || 0) > 0 ? 'text-blue-700' : 'text-red-700'}`}>
                   {(data.diferenciaArqueo || 0) >= 0 ? '+' : ''}{formatMoney(Math.abs(data.diferenciaArqueo || 0))}
-                  {(data.diferenciaArqueo || 0) === 0 ? ' (Cuadrado)' : (data.diferenciaArqueo || 0) > 0 ? ' (Sobrante)' : ' (Faltante)'}
+                  {(data.diferenciaArqueo || 0) === 0 ? ' (Cuadra)' : (data.diferenciaArqueo || 0) > 0 ? ' (Sobra)' : ' (Falta)'}
                 </td>
               </tr>
             </tbody>
@@ -243,7 +243,8 @@ function ReporteContent() {
         <h3 className="text-lg font-bold border-b pb-1 mb-3">Resumen de Caja</h3>
         <table className="w-full text-sm">
           <tbody>
-            <tr><td className="py-1 font-medium">Neto Teórico</td><td className="text-right font-bold">{formatMoney(netoTeorico)}</td></tr>
+            {data.efectivoEsperado != null && <tr><td className="py-1 font-medium">Efectivo que debía haber en caja</td><td className="text-right font-bold">{formatMoney(data.efectivoEsperado)}</td></tr>}
+            <tr><td className="py-1 font-medium">Neto de movimientos (incluye pagos digitales)</td><td className="text-right">{formatMoney(netoTeorico)}</td></tr>
           </tbody>
         </table>
       </section>

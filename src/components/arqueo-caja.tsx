@@ -73,12 +73,13 @@ function MonedaIcon({ valor }: { valor: number }) {
 }
 
 interface Props {
-  netoTeorico: number
+  /** Efectivo que debe haber en la caja física (#601): sin Nequi, transferencias ni demás pagos digitales. */
+  efectivoEsperado: number
   onChange: (data: { arqueo: ArqueoData; totalContado: number; diferencia: number }) => void
   onClose?: () => void
 }
 
-export default function ArqueoCajaModal({ netoTeorico, onChange, onClose }: Props) {
+export default function ArqueoCajaModal({ efectivoEsperado, onChange, onClose }: Props) {
   const [open, setOpen] = useState(false)
   const [cantidades, setCantidades] = useState<Record<number, number>>({})
   const [showResetConfirm, setShowResetConfirm] = useState(false)
@@ -87,7 +88,7 @@ export default function ArqueoCajaModal({ netoTeorico, onChange, onClose }: Prop
     return sum + (cantidades[d.valor] || 0) * d.valor
   }, 0)
 
-  const diferencia = totalContado - netoTeorico
+  const diferencia = totalContado - efectivoEsperado
 
   const emitChange = useCallback(() => {
     if (open) {
@@ -128,9 +129,9 @@ export default function ArqueoCajaModal({ netoTeorico, onChange, onClose }: Prop
   const billetes = DENOMINACIONES.filter(d => d.tipo === 'BILLETE')
   const monedas = DENOMINACIONES.filter(d => d.tipo === 'MONEDA')
 
-  const progreso = netoTeorico > 0 ? Math.min((totalContado / netoTeorico) * 100, 100) : 0
+  const progreso = efectivoEsperado > 0 ? Math.min((totalContado / efectivoEsperado) * 100, 100) : 0
   const progresoColor = diferencia === 0 ? 'bg-green-500' : diferencia > 0 ? 'bg-blue-500' : 'bg-red-500'
-  const progresoLabel = diferencia === 0 ? 'Cuadrado' : diferencia > 0 ? `Sobran $${diferencia.toLocaleString()}` : `Faltan $${Math.abs(diferencia).toLocaleString()}`
+  const progresoLabel = diferencia === 0 ? 'Cuadra' : diferencia > 0 ? `Sobran $${diferencia.toLocaleString()}` : `Faltan $${Math.abs(diferencia).toLocaleString()}`
   const progresoLabelColor = diferencia === 0 ? 'text-green-700' : diferencia > 0 ? 'text-blue-700' : 'text-red-700'
 
   if (!open) {
@@ -156,7 +157,7 @@ export default function ArqueoCajaModal({ netoTeorico, onChange, onClose }: Prop
             <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
-            <h2 className="text-xl font-bold">Arqueo Físico de Caja</h2>
+            <h2 className="text-xl font-bold">Conteo del efectivo</h2>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -169,7 +170,7 @@ export default function ArqueoCajaModal({ netoTeorico, onChange, onClose }: Prop
               onChange({ arqueo: cantidades, totalContado, diferencia })
               onClose?.()
               setOpen(false)
-            }} className="p-2 hover:bg-gray-100 rounded-lg" aria-label="Cerrar arqueo">
+            }} className="p-2 hover:bg-gray-100 rounded-lg" aria-label="Cerrar conteo del efectivo">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -182,8 +183,8 @@ export default function ArqueoCajaModal({ netoTeorico, onChange, onClose }: Prop
           <div className="flex items-center justify-between text-sm mb-1.5">
             <span className="font-medium">
               Contado <span className="text-blue-600">${totalContado.toLocaleString()}</span>
-              {' '}<span className="text-muted-foreground">/ Esperado</span>{' '}
-              <span className="font-semibold">${netoTeorico.toLocaleString()}</span>
+              {' '}<span className="text-muted-foreground">/ Debe haber</span>{' '}
+              <span className="font-semibold">${efectivoEsperado.toLocaleString()}</span>
             </span>
             <span className={`font-semibold ${progresoLabelColor}`}>{progresoLabel}</span>
           </div>
@@ -333,8 +334,8 @@ export default function ArqueoCajaModal({ netoTeorico, onChange, onClose }: Prop
           {/* Resumen */}
           <div className={`border-t pt-4 space-y-2 rounded-xl p-4 ${diferencia === 0 ? 'bg-green-50 border-green-200' : diferencia > 0 ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Neto teórico (sistema)</span>
-              <span className="font-medium">${netoTeorico.toLocaleString()}</span>
+              <span className="text-muted-foreground">Efectivo que debe haber</span>
+              <span className="font-medium">${efectivoEsperado.toLocaleString()}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Total contado (físico)</span>
@@ -343,7 +344,7 @@ export default function ArqueoCajaModal({ netoTeorico, onChange, onClose }: Prop
             <div className="flex justify-between text-lg font-bold border-t pt-2">
               <span>Diferencia</span>
               <span className={diferencia === 0 ? 'text-green-600' : diferencia > 0 ? 'text-blue-600' : 'text-red-600'}>
-                {diferencia === 0 ? '✓ Cuadrado' : diferencia > 0 ? `+ $${diferencia.toLocaleString()} (Sobrante)` : `− $${Math.abs(diferencia).toLocaleString()} (Faltante)`}
+                {diferencia === 0 ? '✓ Cuadra' : diferencia > 0 ? `+ $${diferencia.toLocaleString()} (Sobra)` : `− $${Math.abs(diferencia).toLocaleString()} (Falta)`}
               </span>
             </div>
           </div>

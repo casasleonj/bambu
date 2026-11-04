@@ -15,6 +15,7 @@ import ArqueoCaja, { type ArqueoData, DENOMINACIONES } from '@/components/arqueo
 import CierreHeader from '@/components/cierre/cierre-header'
 import { CierreEstadoConsulta, type ErrorConsultaCierre } from '@/components/cierre/cierre-estado-consulta'
 import CierreKpiGrid from '@/components/cierre/cierre-kpi-grid'
+import CierreEfectivoEsperado, { efectivoEsperadoDelCierre } from '@/components/cierre/cierre-efectivo-esperado'
 import CierreSection from '@/components/cierre/cierre-section'
 import CierreStockBlock from '@/components/cierre/cierre-stock-block'
 import CierreValidationList from '@/components/cierre/cierre-validation-list'
@@ -179,10 +180,16 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     })
   }, [data, baseDia, comisiones, salarios])
 
+  // #601: el conteo de billetes y monedas se compara con el efectivo que debe haber, no con el neto total.
+  const calcularEfectivoEsperado = useCallback(() => efectivoEsperadoDelCierre({
+    baseDia, efectivoPagos: data?.efectivo ?? 0, cobroCarteraEfectivo: data?.cobroCarteraEfectivo,
+    totalGastos: data?.totalGastos ?? 0, comisiones, salarios,
+  }), [data, baseDia, comisiones, salarios])
+
   const handleArqueoChange = useCallback((d: { arqueo: ArqueoData; totalContado: number; diferencia: number }) => {
     setArqueoData(d)
-    setNetoEnArqueo(calcularNetoCaja())
-  }, [calcularNetoCaja])
+    setNetoEnArqueo(calcularEfectivoEsperado())
+  }, [calcularEfectivoEsperado])
 
   useEffect(() => {
     if (abortControllerRef.current) abortControllerRef.current.abort()
@@ -226,11 +233,12 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       return
     }
     const neto = calcularNetoCaja()
+    const debeHaber = calcularEfectivoEsperado()
     cierreSolicitadoRef.current = true
     setCerrando(true)
     const ok = await confirm({
-      fecha, ventas: data.totalVentas, cobros: data.cobroVentasHoy + data.cobroCartera,
-      base: baseDia, gastos: data.totalGastos, comisiones, salarios, neto,
+      fecha, debeHaber, contado: currentArqueo.totalContado,
+      diferencia: Math.round((currentArqueo.totalContado - debeHaber) * 100) / 100,
     })
     if (!ok) { cierreSolicitadoRef.current = false; setCerrando(false); return }
     setCerrando(true)
@@ -317,6 +325,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   }
 
   const netoTeorico = calcularNetoCaja()
+  const efectivoEsperado = calcularEfectivoEsperado()
 
   if (yaCerrado && data) {
     const post = data.postCierre
@@ -353,12 +362,12 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
 
         {/* Arqueo */}
         {data.totalContado != null && (
-          <div className="bg-white rounded-xl border p-6">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Arqueo de Caja</h3>
+          <div className="bg-white rounded-xl border p-6" data-testid="cierre-conteo-cerrado">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Conteo del efectivo</h3>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <div className="text-xs text-muted-foreground">Esperado</div>
-                <div className="text-lg font-bold">{formatMoney(Number(data.netoCaja || 0))}</div>
+                <div className="text-xs text-muted-foreground">Debía haber</div>
+                <div className="text-lg font-bold">{formatMoney(Number(data.efectivoEsperado ?? data.netoCaja ?? 0))}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Contado</div>
@@ -368,10 +377,15 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
                 <div className="text-xs text-muted-foreground">Diferencia</div>
                 <div className={`text-lg font-bold ${(data.diferenciaArqueo || 0) === 0 ? 'text-green-600' : (data.diferenciaArqueo || 0) > 0 ? 'text-blue-600' : 'text-red-600'}`}>
                   {(data.diferenciaArqueo || 0) >= 0 ? '+' : ''}{formatMoney(Math.abs(data.diferenciaArqueo || 0))}
-                  {(data.diferenciaArqueo || 0) === 0 ? ' (Cuadrado)' : (data.diferenciaArqueo || 0) > 0 ? ' (Sobrante)' : ' (Faltante)'}
+                  {(data.diferenciaArqueo || 0) === 0 ? ' (Cuadra)' : (data.diferenciaArqueo || 0) > 0 ? ' (Sobra)' : ' (Falta)'}
                 </div>
               </div>
             </div>
+            {data.efectivoEsperado == null && (data.nequi + data.transferencia + data.daviplata + data.bono) > 0 && (
+              <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-900" data-testid="cierre-conteo-historico">
+                Este día se cerró antes de separar el efectivo de los pagos digitales: el valor «debía haber» incluye lo que llegó por Nequi y otros medios, así que la diferencia no refleja solo el efectivo.
+              </p>
+            )}
           </div>
         )}
 
@@ -469,7 +483,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       label: 'Efectivo físico contado',
       ok: arqueoData.totalContado > 0,
       detail: arqueoData.totalContado > 0
-        ? `Contado: ${formatCurrency(arqueoData.totalContado)} — ${arqueoData.diferencia === 0 ? 'Cuadrado' : arqueoData.diferencia > 0 ? `Sobrante ${formatCurrency(arqueoData.diferencia)}` : `Faltante ${formatCurrency(Math.abs(arqueoData.diferencia))}`}`
+        ? `Contado: ${formatCurrency(arqueoData.totalContado)} — ${arqueoData.diferencia === 0 ? 'Cuadra' : arqueoData.diferencia > 0 ? `Sobra ${formatCurrency(arqueoData.diferencia)}` : `Falta ${formatCurrency(Math.abs(arqueoData.diferencia))}`}`
         : 'Cuenta el efectivo en la sección 3',
     },
     {
@@ -558,6 +572,12 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         description="Revisa que los números del día cuadren. Los datos vienen del sistema."
         status={data && !fetchError ? 'completo' : 'pendiente'}
       >
+        <div className="mb-4">
+          <CierreEfectivoEsperado
+            baseDia={baseDia} efectivoPagos={data.efectivo ?? 0} cobroCarteraEfectivo={data.cobroCarteraEfectivo ?? 0}
+            totalGastos={data.totalGastos} comisiones={comisiones} salarios={salarios} pagosDigitales={data.cobroDigitalHoy ?? 0}
+          />
+        </div>
         <CierreKpiGrid data={data} netoTeorico={netoTeorico} baseDia={baseDia} comisiones={comisiones} salarios={salarios} />
       </CierreSection>
 
@@ -633,17 +653,17 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       <CierreSection
         number={3}
         title="Arqueo de Caja"
-        description="Cuenta el efectivo físico y compara con lo que dice el sistema."
+        description="Cuenta los billetes y monedas y compáralos con el efectivo que debe haber."
       >
-        <ArqueoCaja key={fecha} netoTeorico={netoTeorico} onChange={handleArqueoChange} onClose={() => {
+        <ArqueoCaja key={fecha} efectivoEsperado={efectivoEsperado} onChange={handleArqueoChange} onClose={() => {
           const latest = arqueoRef.current
           if (latest.totalContado > 0) {
             toast.success(`Conteo guardado: ${formatCurrency(latest.totalContado)}`, {
               description: latest.diferencia === 0
-                ? 'Cuadrado'
+                ? 'Cuadra'
                 : latest.diferencia > 0
-                  ? `Sobrante: ${formatCurrency(latest.diferencia)}`
-                  : `Faltante: ${formatCurrency(Math.abs(latest.diferencia))}`,
+                  ? `Sobra: ${formatCurrency(latest.diferencia)}`
+                  : `Falta: ${formatCurrency(Math.abs(latest.diferencia))}`,
             })
           }
         }} />
@@ -657,7 +677,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
 
             <div className="grid grid-cols-3 gap-4 text-center mb-5">
               <div>
-                <div className="text-xs text-muted-foreground mb-1">Esperado</div>
+                <div className="text-xs text-muted-foreground mb-1">Debe haber</div>
                 <div className="text-lg font-bold tabular-nums">{formatCurrency(netoEnArqueo)}</div>
               </div>
               <div>
@@ -678,9 +698,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
               arqueoData.diferencia > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' :
               'bg-red-50 text-red-700 border border-red-200'
             }`}>
-              {arqueoData.diferencia === 0 ? 'Cuadrado — Todo coincide' :
-                arqueoData.diferencia > 0 ? `Sobrante de ${formatCurrency(arqueoData.diferencia)}` :
-                `Faltante de ${formatCurrency(Math.abs(arqueoData.diferencia))}`}
+              {arqueoData.diferencia === 0 ? 'Cuadra — Todo coincide' :
+                arqueoData.diferencia > 0 ? `Sobra ${formatCurrency(arqueoData.diferencia)}` :
+                `Falta ${formatCurrency(Math.abs(arqueoData.diferencia))}`}
             </div>
 
             {/* Billetes */}
