@@ -192,3 +192,102 @@ Read-only. Se resuelve por `clienteId`/`negocioId` del pedido (misma regla que e
 - **ESTADO TÉCNICO ACTUAL:** el contrato de creación de recurrencias no expresa el contexto cliente/negocio (§1bis); el flujo de Pedido requiere la revisión de condiciones de entrega (`entrega-suficiencia-plan.md`).
 - **DECISIÓN:** ADMIN+ASISTENTE roles del Hub · "Generar de hoy" contextual · "esto se repite" con confirmación post-commit · cliente y negocio son contextos distintos · Venta Libre fuera del Hub · info de entrega por suficiencia no por obligatoriedad universal.
 - **PENDIENTE:** solo políticas cuantitativas de geo (si el negocio las define después).
+
+
+## 7. Reconciliación posterior — Habituales, #515 / #407 (2026-10-31)
+
+**DECISIÓN POSTERIOR:** el PO aprobó en esta tarea la maqueta V6 de Filtros y
+Habituales, incluida la revisión compacta de escritorio. Se conserva el plan
+anterior como evidencia histórica. Esta aprobación sustituye exclusivamente el
+ocultamiento de `/recurrentes` y la generación duplicada dentro del Hub:
+«Pedidos habituales» es el acceso único al catálogo y a la revisión manual, con
+productos, cantidades, contexto cliente/negocio, frecuencia y fechas. El Hub
+ofrece un enlace contextual que conserva los filtros al regresar. Siguen
+vigentes Q1–Q5, el ajuste desde el peek y los cinco tipos de decisión.
+
+**FUENTES:** diagnóstico público de [#515, comentario 6532627058](https://github.com/casasleonj/bambu/issues/515#issuecomment-6532627058),
+[#407](https://github.com/casasleonj/bambu/issues/407), y estado técnico de partida
+`main@6da8b116118f408f52e6cddac9a935629cc5ea92`. La aprobación de V6 pertenece a
+la conversación de esta tarea; no se presenta como un ADR anterior ni se
+reconstruyen Contextos Maestros privados ausentes.
+
+**IMPLEMENTACIÓN DE ESTA FASE:**
+
+- El catálogo SSR/API incluye contextos Negocio y permite consultar inactivos
+  explícitamente; la API conserva activos como valor predeterminado. Buscar o
+  abrir un habitual nunca crea pedidos. Error de revisión no equivale a cero ni
+  elimina el catálogo leído anteriormente. Las lecturas tienen `no-store` y
+  respetan el permiso existente `view:recurrentes`.
+- Se reutilizan el editor y el generador existentes. El editor de negocio
+  conserva su propietario y muestra su dirección efectiva; guardar, cancelar y
+  regresar conservan los filtros del catálogo. No se introducen nuevos roles,
+  precios, reglas de fiados, mínimos de productos ni políticas de entrega.
+- La revisión muestra únicamente objetivos vencidos para hoy en Bogotá, exige
+  selección y confirmación, y conserva las cinco decisiones. El pedido creado
+  abre mediante su ID real; no se inventan pagos ni entregas. La creación de una
+  recurrencia desde un pedido sigue siendo una confirmación separada. Con Hub
+  OFF se conserva también la entrada anterior de creación.
+- Antes del POST se guarda en el dispositivo una referencia por usuario y su
+  selección exacta. Recargar o consultar solo hace GET. Resultado incierto o
+  parcial conserva la referencia; reintentar procesa únicamente lo pendiente.
+  Una respuesta de rechazo no se interpreta como ausencia de pedidos sin
+  consultar el estado de esa misma referencia.
+- El manifiesto inmutable del intento usa la PK existente de `Historial`,
+  entidad `GeneracionRecurrentes`, acción `INTENTO`. Conserva actor, selección,
+  próxima generación y versión originales. Los recibos de cada recurrencia se
+  comprueban dentro de su transacción Serializable. Un objetivo modificado se
+  informa como saltado sin avanzar su calendario. No se añaden tablas ni
+  migraciones. Lotes históricos sin manifiesto original no se reconstruyen.
+- La respuesta distingue nuevas creaciones de resultados recuperados (#407):
+  201 y evento por cada pedido recién confirmado, incluso si falla otro del
+  lote; replay 200 sin volver a emitir. Las transacciones conservan auditoría,
+  crédito, deuda, calendario y resolución de destino canónicos.
+
+**PRUEBAS:** `habituales-intento-515.test.ts` comprueba escrituras PostgreSQL,
+parcialidad HTTP, competencia, calendario, actor, versiones obsoletas y lotes
+históricos; `use-envio-habituales.test.ts` prueba referencia persistida,
+doble clic, pestañas, almacenamiento y resultados inciertos. Los componentes se
+prueban por su comportamiento. `e2e/habituales-515.casos.ts`, incorporado en la
+suite existente `pedidos-hub-recurrentes.spec.ts`, contrasta interfaz y BD real:
+catálogo, cantidades, tamaños, errores, negocio, confirmación, respuesta perdida,
+Saltar, pausar/reactivar y permisos. Los resultados finales y SHA quedan en el
+PR, GitHub Actions y #515; enumerar aquí los casos no afirma que una ejecución
+futura haya pasado.
+
+**PENDIENTE / LÍMITES:** #515 continúa abierto por la decisión y contrato del
+cron. No se activa generación automática ni se modifica `vercel.json`. El campo
+histórico `pausaHasta` no programa reactivación en el generador vigente: se
+muestra como fecha registrada y prevalece `activo`; pausar/reactivar requiere
+acción explícita. No se cambia la gestión temporal sin embarque (#472), el
+cobro FIFO, la navegación a documentos ni los filtros independientes de Fiados y
+Alertas. El filtro horario de Embarques continúa en #516 y el excedente monetario
+en #524. No se publica documentación privada ni se crea otro backlog.
+
+
+### Reconciliación de integración — 2026-11-04
+
+**ESTADO TÉCNICO ACTUAL de la base:** `main@b0f31a73edbbea26436be99d129234e247cb3159`.
+[#581](https://github.com/casasleonj/bambu/pull/581) ya cerró #407 y sus pruebas
+PostgreSQL se conservan sin cambios. Esta fase no reclama corregirlo de nuevo:
+conserva su contrato 201/evento para creación y 200/sin evento para replay,
+y extiende la recuperación a lotes parciales y a decisiones sin pedido. El
+corte global por «existe algún pedido con este lote» se sustituye por recibos
+individuales, para que un resultado parcial no oculte lo pendiente.
+
+Se reconciliaron explícitamente los conflictos en el generador, la ruta y las
+pruebas de cadenas. Los checks de texto anteriores no verificaban la
+parcialidad; los sustituyen el contrato JSON y las pruebas de escritura real.
+Se conservan además las correcciones de fechas y los asserts de generación de
+[#558](https://github.com/casasleonj/bambu/pull/558), y las posteriores mejoras
+de lectura de facturas, cobro de pedido del día, detalle móvil y caja. No se
+alteran en esta fase sus contratos ni sus decisiones.
+
+
+**CORRECCIÓN DE CONFIABILIDAD — CI #640:** una ejecución rápida de la edición
+regresó al catálogo sin la búsqueda `q`. Los controles de filtros del HTML
+inicial permanecen deshabilitados hasta que el cliente ha registrado sus
+listeners de URL. Así no se acepta texto antes de poder procesarlo. Se mantiene
+la disposición aprobada y su estado de carga; no se cambian reglas de producto.
+La prueba de HTML inicial y la de cliente comprueban habilitación y composición
+de búsqueda/estado. El recorrido completo de edición se repite en escritorio y
+móvil; sus resultados y el commit final se registran en el PR.

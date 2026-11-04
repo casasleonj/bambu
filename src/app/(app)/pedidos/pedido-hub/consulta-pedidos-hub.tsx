@@ -298,7 +298,7 @@ export function ConsultaPedidosHub(props: Props) {
             )}
           </section>
           {/* Hasta la fase C se conserva el generador contextual existente. */}
-          <RecurrentesDelDia onGenerado={refresh} />
+          <RecurrentesDelDia />
         </>
       )}
     </div>

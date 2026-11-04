@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/empty-state'
 import { DateRangeFilter } from '@/components/date-range-filter'
 import type { Gasto } from './types'
-import { categorias } from './types'
+import { categorias, PARECE_PAGO_PERSONAL } from './types'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
 export default function GastosPage() {
@@ -139,6 +139,11 @@ export default function GastosPage() {
               <div>
                 <Label htmlFor="gasto-descripcion">Descripción <span className="text-red-500">*</span></Label>
                 <Input id="gasto-descripcion" required value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Detalle del gasto" />
+                {PARECE_PAGO_PERSONAL.test(descripcion) && (
+                  <p className="mt-1 text-sm text-amber-700" data-testid="aviso-pago-personal">
+                    Si es un pago a una persona del equipo, regístralo con «Pagar» en Nómina para que no se cuente dos veces en el cierre.
+                  </p>
+                )}
               </div>
               <div>
                 <Label htmlFor="gasto-monto">Monto <span className="text-red-500">*</span></Label>

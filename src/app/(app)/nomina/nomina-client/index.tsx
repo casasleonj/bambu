@@ -87,6 +87,8 @@ export default function NominaPage() {
   const [sortOption, setSortOption] = useState<SortOption>('fecha-desc')
   const [payingId, setPayingId] = useState<string | null>(null)
   const [confirmPayNomina, setConfirmPayNomina] = useState<Nomina | null>(null)
+  // #641: con qué se paga. Solo «EFECTIVO» baja el efectivo de la caja del cierre.
+  const [medioPago, setMedioPago] = useState<'EFECTIVO' | 'NEQUI' | 'TRANSFERENCIA' | 'DAVIPLATA' | 'FUERA_DE_CAJA'>('EFECTIVO')
   const [confirmAnularNomina, setConfirmAnularNomina] = useState<Nomina | null>(null)
 
   const fetchData = async () => {
@@ -167,11 +169,15 @@ export default function NominaPage() {
       const res = await fetch(`/api/nomina/${nom.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'PAGAR' }),
+        body: JSON.stringify({
+          action: 'PAGAR',
+          metodo: medioPago === 'FUERA_DE_CAJA' ? 'EFECTIVO' : medioPago,
+          fueraDeCaja: medioPago === 'FUERA_DE_CAJA',
+        }),
       })
       const data = await res.json()
       if (res.ok) {
-        toast.success('Nómina pagada — se registró el egreso en caja')
+        toast.success(medioPago === 'EFECTIVO' ? 'Nómina pagada — se registró el egreso en caja' : 'Nómina pagada — no baja el efectivo de la caja')
         setDetalles(null)
         setSelectedNomina(null)
         fetchData()
@@ -211,6 +217,7 @@ export default function NominaPage() {
   }
 
   const pagarNomina = (nom: Nomina) => {
+    setMedioPago('EFECTIVO')
     setConfirmPayNomina(nom)
   }
 
@@ -404,7 +411,27 @@ export default function NominaPage() {
               <div className="flex justify-between text-sm"><span className="text-muted-foreground">Período</span><span>{new Date(confirmPayNomina.fechaInicio).toLocaleDateString()} — {new Date(confirmPayNomina.fechaFin).toLocaleDateString()}</span></div>
               <div className="flex justify-between text-sm"><span className="text-muted-foreground">Total a pagar</span><span className="font-bold text-lg">${formatCOP(Number(confirmPayNomina.total))}</span></div>
             </div>
-            <p className="text-sm text-muted-foreground">Se registrará un egreso de caja automáticamente.</p>
+            <div>
+              <label htmlFor="nomina-medio-pago" className="text-sm font-medium">¿Con qué se paga?</label>
+              <select
+                id="nomina-medio-pago"
+                data-testid="nomina-medio-pago"
+                className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 py-2"
+                value={medioPago}
+                onChange={(e) => setMedioPago(e.target.value as typeof medioPago)}
+              >
+                <option value="EFECTIVO">Efectivo de la caja</option>
+                <option value="NEQUI">Nequi</option>
+                <option value="TRANSFERENCIA">Transferencia</option>
+                <option value="DAVIPLATA">Daviplata</option>
+                <option value="FUERA_DE_CAJA">Por fuera de la caja</option>
+              </select>
+            </div>
+            <p className="text-sm text-muted-foreground" data-testid="nomina-medio-efecto">
+              {medioPago === 'EFECTIVO'
+                ? 'Se registrará un egreso en la caja del cierre.'
+                : 'Queda pagada en la nómina y no baja el efectivo de la caja.'}
+            </p>
             <div className="flex gap-2 justify-end pt-2">
               <Button variant="outline" onClick={() => setConfirmPayNomina(null)}>Cancelar</Button>
               <Button onClick={() => executePay(confirmPayNomina)} disabled={payingId === confirmPayNomina.id}>{payingId === confirmPayNomina.id ? 'Procesando...' : 'Sí, pagar'}</Button>
