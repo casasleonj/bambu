@@ -95,6 +95,9 @@ export async function resumirAbonosDelDia(
   const cobros = await leerAbonosDelPeriodo(tx, desde, hasta)
   let independientes = 0
   let reversiones = 0
+  // #601: la parte en EFECTIVO (lo único que entra o sale de la caja física).
+  let independientesEfectivo = 0
+  let reversionesEfectivo = 0
   const pendientes: Array<{ id: string; referencia: string; importe: number }> =
     []
   for (const a of cobros) {
@@ -102,6 +105,10 @@ export async function resumirAbonosDelDia(
     if (clase === 'INDEPENDIENTE') {
       independientes += Math.round(Number(a.monto) * 100)
       reversiones += Math.round(Number(a.reversion) * 100)
+      if (a.metodoPago === 'EFECTIVO') {
+        independientesEfectivo += Math.round(Number(a.monto) * 100)
+        reversionesEfectivo += Math.round(Number(a.reversion) * 100)
+      }
       continue
     }
     if (clase !== 'ESPEJO') {
@@ -121,6 +128,9 @@ export async function resumirAbonosDelDia(
       a.pagoFecha < hasta
     ) {
       reversiones += Math.round(Number(a.reversion) * 100)
+      if (a.pagoMetodo === 'EFECTIVO') {
+        reversionesEfectivo += Math.round(Number(a.reversion) * 100)
+      }
     }
   }
   if (pendientes.length) throw new CobrosSinConciliarError(pendientes)
@@ -128,6 +138,8 @@ export async function resumirAbonosDelDia(
     abonosIndependientes: independientes / 100,
     ajustesDeCobros: reversiones / 100,
     total: (independientes - reversiones) / 100,
+    /** Abonos independientes menos ajustes, solo en efectivo. */
+    totalEfectivo: (independientesEfectivo - reversionesEfectivo) / 100,
   }
 }
 

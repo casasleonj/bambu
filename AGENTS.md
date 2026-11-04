@@ -515,6 +515,12 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
       - **Anti-patrón a evitar**: filtrar, ordenar o calcular totales en el cliente sobre una lista paginada.
 
 
+   31. **Cierre de caja: el conteo del efectivo se compara con el efectivo que debe haber, no con el neto (#601)**: `calcularNetoCierre` suma todos los medios (efectivo + Nequi + transferencia + Daviplata + bono) y antes el arqueo se comparaba con él, así que un día con pagos digitales mostraba un «faltante» falso (31-oct: −87.400 contra +26.300 reales).
+      - **Contrato**: `calcularEfectivoEsperado` (`src/lib/cierre-totales.ts`) = base + pagos en EFECTIVO + abonos independientes en efectivo (`resumirAbonosDelDia().totalEfectivo`) − gastos − comisiones − salarios en efectivo. `POST /api/cierre` lo calcula en el servidor, lo guarda en `reporte.efectivoEsperado` (cierres nuevos) y calcula `diferenciaArqueo` contra él. `netoCaja` y la regla V18 no cambian: el neto sigue siendo el total que incluye lo digital (dato informativo).
+      - **Cierres anteriores**: no se reescriben. Los que tienen pagos digitales muestran un aviso de que su «debía haber» incluye lo digital.
+      - **Supuesto vigente**: gastos y comisiones se restan completos (se asumen pagados en efectivo; `Gasto` no tiene medio de pago). Los pagos al personal ligados a nómina y el desglose por origen/medio son los pasos siguientes del plan.
+      - **Anti-patrón a evitar**: comparar el conteo físico de billetes y monedas con una cifra que incluye dinero que nunca estuvo en la caja.
+
 ## Registro de tareas
 
 El backlog vive en **GitHub Issues** (índice en `docs/BACKLOG.md`). Toda tarea nueva —incluida la que surge en el chat— se registra como issue **antes** de empezar, y el PR que la resuelve la cierra con `Closes #N` (el PR debe apuntar a `main`). Los hallazgos y funcionalidades nuevos se registran con el skill `/hallazgo` o con los formularios de `.github/ISSUE_TEMPLATE/`; los pendientes en el código llevan su issue (`TODO(#123)`). No guardes pendientes en este archivo ni en notas de sesión. No es solo una convención: el workflow `Backlog` (`.github/workflows/backlog.yml`) falla el PR que no cita un issue y mantiene las etiquetas `estado:*` (ver `docs/BACKLOG.md`).

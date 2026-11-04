@@ -9,6 +9,21 @@ export function calcularNetoCierre(d: {
     - centavos(d.totalGastos) - centavos(d.comisiones) - centavos(d.salarios)) / 100
 }
 
+/**
+ * #601: el efectivo que debe haber en la caja física al terminar el día. Solo cuenta billetes y
+ * monedas: los pagos por Nequi, transferencia, Daviplata o bono NO están en la caja (por eso el
+ * conteo del efectivo se compara contra este valor y no contra `calcularNetoCierre`).
+ * Gastos y comisiones se restan completos (hoy se asume que salen de la caja); los salarios,
+ * solo la parte pagada en efectivo (#305).
+ */
+export function calcularEfectivoEsperado(d: {
+  baseDia: number; efectivoPagos: number; cobroCarteraEfectivo: number;
+  totalGastos: number; comisiones: number; salariosEfectivo: number;
+}): number {
+  return (centavos(d.baseDia) + centavos(d.efectivoPagos) + centavos(d.cobroCarteraEfectivo)
+    - centavos(d.totalGastos) - centavos(d.comisiones) - centavos(d.salariosEfectivo)) / 100
+}
+
 export function resumirVentasCierre(
   pedidos: ReadonlyArray<{ total: unknown }>,
   notas: ReadonlyArray<{ monto: unknown; pedido: { fecha: Date } }>,

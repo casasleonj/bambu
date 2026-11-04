@@ -14,7 +14,7 @@ import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { whereEmbarquesPendientesCierreDia } from '@/lib/cierre-dia-embarques'
 import { CobrosSinConciliarError } from '@/lib/cobro-cartera'
 import { construirResumenCierre } from '@/lib/cierre-resumen'
-import { calcularNetoCierre } from '@/lib/cierre-totales'
+import { calcularNetoCierre, calcularEfectivoEsperado } from '@/lib/cierre-totales'
 import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
 import { analizarHueco, type DiaHueco } from '@/lib/cierre-huecos'
 
@@ -257,9 +257,15 @@ export async function POST(request: NextRequest) {
           baseDia: parsed.data.baseDia, cobroVentasHoy, cobroCartera,
           totalGastos: gastosTotal, comisiones: comisiones.total, salarios: salariosEfectivo,
         })
-        const arqueo = leerArqueoDeclarado(parsed.data.reporte, netoCaja)
+        // #601: el conteo del efectivo se compara con el efectivo esperado en la caja física
+        // (sin Nequi, transferencias ni demás pagos digitales), no con el neto total.
+        const efectivoEsperado = calcularEfectivoEsperado({
+          baseDia: parsed.data.baseDia, efectivoPagos: efectivo, cobroCarteraEfectivo: resumen.cobroCarteraEfectivo,
+          totalGastos: gastosTotal, comisiones: comisiones.total, salariosEfectivo,
+        })
+        const arqueo = leerArqueoDeclarado(parsed.data.reporte, efectivoEsperado)
         const reporteData = {
-          ...resumen, ...arqueo, _version: '2.1', netoCaja,
+          ...resumen, ...arqueo, _version: '2.1', netoCaja, efectivoEsperado,
           baseDia: parsed.data.baseDia, salarios: parsed.data.salarios, comisiones: comisiones.total,
           salariosEfectivo, salariosOtrosMedios: (Math.round(parsed.data.salarios * 100) - Math.round(salariosEfectivo * 100)) / 100,
         }
