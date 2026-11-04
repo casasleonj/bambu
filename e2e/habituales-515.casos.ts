@@ -447,6 +447,7 @@ export function definirCasosHabituales515() {
     })
     test('ASISTENTE opera el flujo existente; REPARTIDOR no recibe catálogo, precios ni estado del envío', async ({
       page,
+      browser,
     }) => {
       const { pt } = await preparar()
       await abrir(page, 'asistente')
@@ -460,19 +461,30 @@ export function definirCasosHabituales515() {
         orderBy: { fecha: 'desc' },
       })
       const batch = antes.registroId
-      await page.context().clearCookies()
-      await applyCachedRoleAuth(page, 'repartidor')
-      for (const url of [
-        '/api/recurrentes?incluirInactivos=true',
-        '/api/pedidos/recurrentes',
-        `/api/pedidos/recurrentes?offlineId=${batch}`,
-      ]) {
-        const response = await page.request.get(url)
-        expect(response.status()).toBe(403)
-        const data = await response.json()
-        expect(data).not.toHaveProperty('preview')
-        expect(data).not.toHaveProperty('recurrentes')
-        expect(data).not.toHaveProperty('items')
+      // Aislar identidades: una respuesta pendiente de la sesión del asistente
+      // no puede reponer su cookie en el contexto del repartidor.
+      const restricted = await browser.newContext()
+      try {
+        const repartidor = await restricted.newPage()
+        await applyCachedRoleAuth(repartidor, 'repartidor')
+        const identity = await (
+          await repartidor.request.get(`${BASE}/api/auth/session`)
+        ).json()
+        expect(identity.user.role).toBe('REPARTIDOR')
+        for (const url of [
+          '/api/recurrentes?incluirInactivos=true',
+          '/api/pedidos/recurrentes',
+          `/api/pedidos/recurrentes?offlineId=${batch}`,
+        ]) {
+          const response = await repartidor.request.get(`${BASE}${url}`)
+          expect(response.status()).toBe(403)
+          const data = await response.json()
+          expect(data).not.toHaveProperty('preview')
+          expect(data).not.toHaveProperty('recurrentes')
+          expect(data).not.toHaveProperty('items')
+        }
+      } finally {
+        await restricted.close()
       }
     })
   })
