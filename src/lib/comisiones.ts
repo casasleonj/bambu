@@ -6,14 +6,21 @@ export interface ComisionResult {
   total: number
 }
 
+export interface ComisionSelladorResult extends ComisionResult {
+  /** #645: comisión por botellones llenados (= los vendidos del día: se vende lo que se llenó). */
+  comBotellon: number
+}
+
 export function calcComSellador(
   prodAgua: number,
   prodHielo: number,
-  trabajador: Pick<Trabajador, 'comPacaAgua' | 'comPacaHielo'>,
-): ComisionResult {
+  trabajador: Pick<Trabajador, 'comPacaAgua' | 'comPacaHielo'> & Partial<Pick<Trabajador, 'comBotellon'>>,
+  botellonesLlenados = 0,
+): ComisionSelladorResult {
   const comAgua = prodAgua * Number(trabajador.comPacaAgua)
   const comHielo = prodHielo * Number(trabajador.comPacaHielo)
-  return { comAgua, comHielo, total: comAgua + comHielo }
+  const comBotellon = botellonesLlenados * Number(trabajador.comBotellon ?? 0)
+  return { comAgua, comHielo, comBotellon, total: comAgua + comHielo + comBotellon }
 }
 
 export function calcComRepartidor(
@@ -33,4 +40,23 @@ export function calcComRepartidor(
   const comAgua = ventasAgua * avgComAgua
   const comHielo = ventasHielo * avgComHielo
   return { comAgua, comHielo, total: comAgua + comHielo }
+}
+
+/** Ítem de Producción para los botellones llenados del día (#645). No tiene conteo ni ciclo de stock. */
+export function itemBotellon(llenados: number, comSellador: number) {
+  return {
+    producto: 'BOTELLON' as const,
+    conteoA: llenados,
+    conteoB: llenados,
+    producido: llenados,
+    stockIni: 0,
+    ventas: llenados,
+    stockFinEsperado: 0,
+    stockFinFisico: 0,
+    diferencia: 0,
+    filtradas: 0,
+    rotas: 0,
+    consumoInterno: 0,
+    comSellador,
+  }
 }

@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger'
 import { formatZodError } from '@/lib/utils'
 import { startOfDayBogota, todayStringBogota } from '@/lib/dates'
 import { nominaQueCubre } from '@/lib/nomina-cobertura'
-import { comisionDiaConEstado } from '@/lib/comision-pagada'
+import { comisionDiaConEstado, comisionSelladoresDia } from '@/lib/comision-pagada'
 
 /**
  * POST /api/nomina/dia/pagar — el ADMIN/CONTADOR marca que le pagó al repartidor la comisión
@@ -77,8 +77,12 @@ export async function POST(request: NextRequest) {
       }
 
       const filas = await comisionDiaConEstado(tx, fecha)
-      const fila = filas.find((f) => f.trabajadorId === trabajadorId)
-      if (!fila) throw new PagoComisionError(404, 'Ese trabajador no cobra comisión de repartidor', 'TRABAJADOR_SIN_COMISION')
+      const repartidor = filas.find((f) => f.trabajadorId === trabajadorId)
+      // #645: el sellador cobra su comisión de la Producción del día; se paga con el mismo botón y la misma regla.
+      const sellador = repartidor ? undefined : (await comisionSelladoresDia(tx, fecha, dia, new Date(dia.getTime() + 86_400_000)))
+        .find((f) => f.trabajadorId === trabajadorId)
+      const fila = repartidor ?? (sellador ? { total: sellador.total, pagado: sellador.pagado, pendiente: sellador.pendiente, revisiones: [] as unknown[] } : undefined)
+      if (!fila) throw new PagoComisionError(404, 'Ese trabajador no cobra comisión ese día', 'TRABAJADOR_SIN_COMISION')
       if (fila.revisiones.length > 0) throw new PagoComisionError(409, 'Hay entregas por conciliar de este repartidor. Revisa su detalle antes de pagar.', 'COMISION_POR_CONCILIAR')
       if (fila.pendiente <= 0) throw new PagoComisionError(409, 'No hay comisión pendiente de pagar ese día', 'NADA_PENDIENTE', { total: fila.total, pagado: fila.pagado })
       if (montoEsperado !== undefined && Math.abs(montoEsperado - fila.pendiente) > 0.001) {
