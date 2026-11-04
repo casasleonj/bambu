@@ -262,3 +262,22 @@ acción explícita. No se cambia la gestión temporal sin embarque (#472), el
 cobro FIFO, la navegación a documentos ni los filtros independientes de Fiados y
 Alertas. El filtro horario de Embarques continúa en #516 y el excedente monetario
 en #524. No se publica documentación privada ni se crea otro backlog.
+
+
+### Reconciliación de integración — 2026-11-04
+
+**ESTADO TÉCNICO ACTUAL de la base:** `main@b0f31a73edbbea26436be99d129234e247cb3159`.
+[#581](https://github.com/casasleonj/bambu/pull/581) ya cerró #407 y sus pruebas
+PostgreSQL se conservan sin cambios. Esta fase no reclama corregirlo de nuevo:
+conserva su contrato 201/evento para creación y 200/sin evento para replay,
+y extiende la recuperación a lotes parciales y a decisiones sin pedido. El
+corte global por «existe algún pedido con este lote» se sustituye por recibos
+individuales, para que un resultado parcial no oculte lo pendiente.
+
+Se reconciliaron explícitamente los conflictos en el generador, la ruta y las
+pruebas de cadenas. Los checks de texto anteriores no verificaban la
+parcialidad; los sustituyen el contrato JSON y las pruebas de escritura real.
+Se conservan además las correcciones de fechas y los asserts de generación de
+[#558](https://github.com/casasleonj/bambu/pull/558), y las posteriores mejoras
+de lectura de facturas, cobro de pedido del día, detalle móvil y caja. No se
+alteran en esta fase sus contratos ni sus decisiones.
