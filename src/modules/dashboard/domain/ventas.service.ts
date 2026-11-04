@@ -17,16 +17,49 @@ export function pedidosValidos(pedidos: PedidoRaw[]): PedidoRaw[] {
   )
 }
 
+const ESTADOS_SIN_VENTA = ['ANULADO', 'CANCELADO']
+
 /**
- * Calculate total sales: only ENTREGADO pedidos count as sold.
- * Pending / en ruta / no entregado orders are not revenue yet (and ANULADO /
- * CANCELADO never are), so they must not inflate the day's totals.
+ * Entrega parcial: el pedido NO está ENTREGADO (sigue pendiente/en ruta con
+ * lo que falta) pero ya entregó unidades (`cantEntrega > 0`). Esa entrega fue
+ * un domicilio exitoso y cuenta como venta por lo realmente entregado.
+ * ANULADO / CANCELADO nunca cuentan.
+ */
+export function esEntregaParcial(p: PedidoRaw): boolean {
+  if (p.estadoEntrega === 'ENTREGADO') return false
+  if (ESTADOS_SIN_VENTA.includes(p.estadoEntrega)) return false
+  return (
+    (p.items ?? []).some((i) => i.cantEntrega > 0) ||
+    (p.cPacaAguaEnt ?? 0) > 0 ||
+    (p.cPacaHieloEnt ?? 0) > 0 ||
+    (p.cBotellonFabEnt ?? 0) > 0 ||
+    (p.cBotellonDomEnt ?? 0) > 0
+  )
+}
+
+/** Valor (en centavos) de lo realmente entregado: Σ cantEntrega × precio. */
+function valorEntregadoCentavos(p: PedidoRaw): number {
+  return (p.items ?? []).reduce(
+    (acc, i) => acc + i.cantEntrega * Math.round(Number(i.precio) * 100),
+    0,
+  )
+}
+
+/**
+ * Calculate total sales: ENTREGADO pedidos count by their total; partial
+ * deliveries count by the value actually delivered. Pending / en ruta orders
+ * with nothing delivered are not revenue yet (and ANULADO / CANCELADO never
+ * are), so they must not inflate the day's totals.
  */
 export function calcularVentas(pedidos: PedidoRaw[]): number {
   return (
-    pedidos
-      .filter((p) => p.estadoEntrega === 'ENTREGADO')
-      .reduce((acc, p) => acc + Math.round(Number(p.total) * 100), 0) / 100
+    pedidos.reduce((acc, p) => {
+      if (p.estadoEntrega === 'ENTREGADO') {
+        return acc + Math.round(Number(p.total) * 100)
+      }
+      if (esEntregaParcial(p)) return acc + valorEntregadoCentavos(p)
+      return acc
+    }, 0) / 100
   )
 }
 
@@ -55,7 +88,9 @@ export function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {
   const map = new Map<string, VentaPorPrecio>()
 
   for (const pedido of pedidos) {
-    if (pedido.estadoEntrega !== 'ENTREGADO') continue
+    if (pedido.estadoEntrega !== 'ENTREGADO' && !esEntregaParcial(pedido)) {
+      continue
+    }
     if (!pedido.items) continue
     const canal: 'PUNTO' | 'DOMICILIO' =
       pedido.canal === 'PUNTO' ? 'PUNTO' : 'DOMICILIO'
@@ -90,14 +125,17 @@ export function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {
 }
 
 /**
- * Calculate sold quantities by product type from delivered pedidos.
+ * Calculate sold quantities by product type from delivered (and partially
+ * delivered) pedidos.
  */
 export function calcularVendidos(pedidos: PedidoRaw[]): {
   agua: number
   hielo: number
   botellon: number
 } {
-  const entregados = pedidos.filter((p) => p.estadoEntrega === 'ENTREGADO')
+  const entregados = pedidos.filter(
+    (p) => p.estadoEntrega === 'ENTREGADO' || esEntregaParcial(p),
+  )
 
   return {
     agua: entregados.reduce((acc, p) => acc + (p.cPacaAguaEnt || 0), 0),
