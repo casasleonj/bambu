@@ -21,6 +21,7 @@ import CierreStockBlock from '@/components/cierre/cierre-stock-block'
 import CierreValidationList from '@/components/cierre/cierre-validation-list'
 import type { CierreData } from './types'
 import { ComisionesRepartidores } from './comisiones-repartidores'
+import { SueldosQueTocan } from './sueldos-que-tocan'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
 const formatMoney = (val: number) => formatCurrency(val)
@@ -48,7 +49,8 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const [stockFinAgua, setStockFinAgua] = useState(0)
   const [stockFinHielo, setStockFinHielo] = useState(0)
   const [baseDia, setBaseDia] = useState(0)
-  const [salarios, setSalarios] = useState(0)
+  // #644: el campo manual «Salarios» se retiró; los sueldos se pagan con «Pagar» y salen como gasto de nómina.
+  const salarios = 0
   const [arqueoData, setArqueoData] = useState<{ arqueo: ArqueoData; totalContado: number; diferencia: number }>({
     arqueo: {},
     totalContado: 0,
@@ -166,7 +168,6 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     setErrorConsulta(null)
     setStatusCierre(null)
     setBaseDia(0)
-    setSalarios(0)
     setArqueoData({ arqueo: {}, totalContado: 0, diferencia: 0 })
     setStockIniAgua(0); setStockIniHielo(0)
     setProdAgua(0); setProdHielo(0)
@@ -588,8 +589,8 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         description="Confirma los valores que faltan por registrar. La base es el efectivo con que iniciaste el día."
       >
         <div className="space-y-4">
-          {/* Base, Comisiones, Salarios */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Base y comisiones */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label htmlFor="cierre-baseDia" className="text-xs text-muted-foreground">Base de Caja</label>
               <Input id="cierre-baseDia" type="number" min="0" value={baseDia} onChange={(e) => setBaseDia(Math.max(0, Number(e.target.value)))} className="mt-1" />
@@ -600,10 +601,20 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
               <p className="mt-1 flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm font-medium" data-testid="cierre-comisiones-auto">{formatMoney(comisiones)}</p>
               <p className="mt-1 text-xs text-muted-foreground">Lo pagado a repartidores hoy y la comisión de sellador.</p>
             </div>
-            <div>
-              <label htmlFor="cierre-salarios" className="text-xs text-muted-foreground">Salarios</label>
-              <Input id="cierre-salarios" type="number" min="0" value={salarios} onChange={(e) => setSalarios(Math.max(0, Number(e.target.value)))} className="mt-1" />
-            </div>
+          </div>
+
+          {/* Sueldos que tocan (#644) */}
+          <div>
+            <p className="mb-2 text-sm font-medium">Sueldos que tocan</p>
+            <SueldosQueTocan
+              sueldos={data?.sueldosQueTocan ?? []}
+              puedePagar={puedePagarComision}
+              diaCerrado={diaCerrado}
+              onPagado={() => {
+                const signal = abortControllerRef.current?.signal
+                if (signal) void fetchCierre(fecha, signal)
+              }}
+            />
           </div>
 
           {/* Comisiones de repartidores (#499) */}

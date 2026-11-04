@@ -25,6 +25,9 @@ const EMPTY_FORM: TrabajadorFormData = {
   comRepartHielo: 200,
   comRepartBotellon: 200,
   salarioFijo: 0,
+  frecuenciaPago: null,
+  diasPago: [],
+  pagoFueraDeCaja: false,
   telefono: '',
 }
 
@@ -91,6 +94,9 @@ export default function TrabajadoresClient({ initialTrabajadores, soloLectura = 
       comRepartHielo: trabajador.comRepartHielo ?? 0,
       comRepartBotellon: trabajador.comRepartBotellon ?? 0,
       salarioFijo: trabajador.salarioFijo ?? 0,
+      frecuenciaPago: trabajador.frecuenciaPago ?? null,
+      diasPago: trabajador.diasPago ?? [],
+      pagoFueraDeCaja: trabajador.pagoFueraDeCaja ?? false,
       telefono: trabajador.telefono || '',
     })
     setIsEdit(true)
