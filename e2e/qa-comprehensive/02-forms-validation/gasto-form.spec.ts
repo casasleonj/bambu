@@ -19,7 +19,7 @@ test.describe('Form Validation - Gasto', () => {
   })
 
   test('TC-GS-02: Gasto with all categories', async ({ page }) => {
-    const cats = ['ARRIENDO', 'SERVICIOS', 'INSUMOS', 'MANTENIMIENTO', 'TRANSPORTE', 'NOMINA', 'OTRO']
+    const cats = ['ARRIENDO', 'SERVICIOS', 'INSUMOS', 'MANTENIMIENTO', 'TRANSPORTE', 'OTRO']
     for (const categoria of cats) {
       const res = await apiPost(page, '/api/gastos', {
         categoria,
@@ -28,6 +28,11 @@ test.describe('Form Validation - Gasto', () => {
       })
       await expectStatus(res, [200, 201])
     }
+  })
+
+  test('TC-GS-02b (#641): un gasto manual de NOMINA se rechaza', async ({ page }) => {
+    const res = await apiPost(page, '/api/gastos', { categoria: 'NOMINA', descripcion: 'Pago a Carlos', monto: 5000 })
+    await expectStatus(res, [422])
   })
 
   test('TC-GS-03: Gasto with invalid categoria is rejected', async ({ page }) => {

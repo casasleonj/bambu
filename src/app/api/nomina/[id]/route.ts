@@ -4,6 +4,14 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
+import { z } from 'zod'
+import { formatZodError } from '@/lib/utils'
+
+// #641: con qué se paga la nómina. Solo EFECTIVO dentro de la caja genera el egreso que resta del cierre.
+const PagarNominaSchema = z.object({
+  metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA']).default('EFECTIVO'),
+  fueraDeCaja: z.boolean().default(false),
+})
 
 export async function PUT(
   request: NextRequest,
@@ -20,6 +28,10 @@ export async function PUT(
     const userId = (authResult.user as { id?: string } | undefined)?.id
 
     if (body.action === 'PAGAR') {
+      const parsedPago = PagarNominaSchema.safeParse(body)
+      if (!parsedPago.success) return apiError(formatZodError(parsedPago.error), 400)
+      const { metodo, fueraDeCaja } = parsedPago.data
+      const afectaCaja = metodo === 'EFECTIVO' && !fueraDeCaja
       const result = await prisma.$transaction(async (tx) => {
         // FIX F-N9 (hallazgo 15): atomic check-and-set.
         // Antes: findUnique + check + update (3 queries). Dos requests
@@ -34,7 +46,7 @@ export async function PUT(
         // ve count=0 porque la fila ya no tiene estado PENDIENTE.
         const updateResult = await tx.nomina.updateMany({
           where: { id, estado: 'PENDIENTE' },
-          data: { estado: 'PAGADA', fechaPago: new Date() },
+          data: { estado: 'PAGADA', fechaPago: new Date(), metodoPago: metodo, pagoFueraDeCaja: fueraDeCaja },
         })
 
         if (updateResult.count === 0) {
@@ -53,16 +65,21 @@ export async function PUT(
         })
         if (!updated) throw new Error('Nómina no encontrada')  // no debería pasar
 
-        const periodo = `${new Date(updated.fechaInicio).toLocaleDateString()} - ${new Date(updated.fechaFin).toLocaleDateString()}`
-        await tx.gasto.create({
-          data: {
-            categoria: 'NOMINA',
-            descripcion: `Pago nómina - ${updated.trabajador.nombre} (${periodo})`,
-            monto: Number(updated.total),
-            responsable: updated.trabajador.nombre,
-            fecha: new Date(),
-          },
-        })
+        // #641: el egreso de caja solo existe si se pagó en efectivo y dentro de la caja; así el dinero
+        // se cuenta una sola vez y un pago por Nequi o por fuera de la caja no baja el efectivo del cierre.
+        if (afectaCaja) {
+          const periodo = `${new Date(updated.fechaInicio).toLocaleDateString()} - ${new Date(updated.fechaFin).toLocaleDateString()}`
+          await tx.gasto.create({
+            data: {
+              categoria: 'NOMINA',
+              descripcion: `Pago nómina - ${updated.trabajador.nombre} (${periodo})`,
+              monto: Number(updated.total),
+              responsable: updated.trabajador.nombre,
+              trabajadorId: updated.trabajadorId,
+              fecha: new Date(),
+            },
+          })
+        }
 
         return updated
       })
@@ -104,8 +121,10 @@ export async function PUT(
           throw new Error('La nómina ya está anulada')
         }
 
-        // Si estaba PAGADA, revertir el gasto correspondiente
-        if (before.estado === 'PAGADA') {
+        // Si estaba PAGADA, revertir el gasto correspondiente. Las pagadas con medio distinto de efectivo
+        // o por fuera de la caja (#641) nunca generaron egreso, así que no hay nada que revertir.
+        const generoEgreso = before.metodoPago === null || (before.metodoPago === 'EFECTIVO' && !before.pagoFueraDeCaja)
+        if (before.estado === 'PAGADA' && generoEgreso) {
           const periodo = `${new Date(before.fechaInicio).toLocaleDateString()} - ${new Date(before.fechaFin).toLocaleDateString()}`
           await tx.gasto.create({
             data: {
