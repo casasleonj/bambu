@@ -143,6 +143,9 @@ export interface CierreData {
     repartidores: ({ trabajadorId: string; nombre: string; total: number; pagado: number; pendiente: number } & Partial<import('@/lib/comision-repartidor-calculo').ComisionRepartidor>)[]
   }
 
+  // #644: sueldos fijos con fecha de pago cumplida y sin pagar
+  sueldosQueTocan?: { trabajadorId: string; nombre: string; rol: string; fecha: string; monto: number; fueraDeCaja: boolean }[]
+
   // Cierre
   netoCaja: number
   baseDia?: number

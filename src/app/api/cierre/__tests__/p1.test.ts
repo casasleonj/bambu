@@ -6,6 +6,7 @@ import { construirResumenCierre } from '@/lib/cierre-resumen'
 
 vi.mock('@/lib/comision-pagada', () => ({ comisionesDelCierre: vi.fn(async () => ({ sellador: 0, pagadoRepartidores: 0, total: 0, repartidores: [] })) }))
 vi.mock('@/lib/cobro-cartera', () => ({ resumirAbonosDelDia: vi.fn(async () => ({ total: 0, abonosIndependientes: 0, ajustesDeCobros: 0 })) }))
+vi.mock('@/lib/sueldos-pendientes', () => ({ sueldosPendientesAl: vi.fn(async () => []) }))
 const pagos = [
   { metodo: 'EFECTIVO', monto: '123.10' }, { metodo: 'TRANSFERENCIA', monto: '234.20' },
   { metodo: 'NEQUI', monto: '345.30' }, { metodo: 'DAVIPLATA', monto: '456.40' }, { metodo: 'BONO', monto: '567.00' },

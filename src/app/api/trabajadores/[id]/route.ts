@@ -52,10 +52,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     const raw = parsed.data
     const data = normalizeTrabajador(raw)
+    // #644: si cambia la frecuencia o los días de pago, el plan rige desde hoy (no se listan pagos anteriores como pendientes).
+    let frecuenciaDesde: Date | null | undefined
+    if (data.frecuenciaPago !== undefined || data.diasPago !== undefined) {
+      const actual = await prisma.trabajador.findUnique({ where: { id }, select: { frecuenciaPago: true, diasPago: true } })
+      const nuevaFrecuencia = data.frecuenciaPago === undefined ? actual?.frecuenciaPago ?? null : data.frecuenciaPago
+      const nuevosDias = data.diasPago ?? actual?.diasPago ?? []
+      const cambio = !actual || nuevaFrecuencia !== actual.frecuenciaPago
+        || nuevosDias.length !== actual.diasPago.length || nuevosDias.some((d, i) => d !== actual.diasPago[i])
+      if (cambio) frecuenciaDesde = nuevaFrecuencia ? new Date() : null
+    }
     const trabajador = await prisma.trabajador.update({
       where: { id },
       data: {
         ...data,
+        ...(frecuenciaDesde !== undefined ? { frecuenciaDesde } : {}),
         comRepartAgua: data.comRepartAgua ?? 0,
         comRepartHielo: data.comRepartHielo ?? 0,
         comRepartBotellon: data.comRepartBotellon ?? 0,

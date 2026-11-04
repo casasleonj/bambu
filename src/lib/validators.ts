@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { validarPlanPago } from '@/lib/sueldos-fijos'
 import { importeFiadoSchema, metodoFiadoSchema, sumarCobroFiado } from './fiados-cobro'
 import { normalizarTelefono } from "./telefono";
 
@@ -759,7 +760,9 @@ export const CierreCreateSchema = z.object({
   stockFinHielo: z.coerce.number().int().min(0),
   // #499: el servidor calcula las comisiones; si llega, se ignora (compat. con clientes viejos).
   comisiones: z.coerce.number().min(0).optional(),
-  salarios: z.coerce.number().min(0),
+  // #644: el campo manual «Salarios» se retiró del cierre; los sueldos se pagan con «Pagar» (Nómina) y salen como gasto
+  // de nómina. Se acepta por compatibilidad con clientes antiguos, pero el servidor lo ignora.
+  salarios: z.coerce.number().min(0).default(0),
   // #305: de los salarios, cuánto se pagó en EFECTIVO de la caja. Sin indicarlo se asume todo (clientes
   // anteriores). Lo pagado por otro medio no resta de la caja del cierre.
   salariosEfectivo: z.coerce.number().min(0).optional(),
@@ -982,8 +985,20 @@ const TrabajadorBaseObject = z.object({
   comRepartHielo: z.coerce.number().min(0).optional(),
   comRepartBotellon: z.coerce.number().min(0).optional(),
   salarioFijo: z.coerce.number().min(0).optional(),
+  // #644: cada cuánto se paga el sueldo fijo (null = una vez por nómina) y en qué días.
+  frecuenciaPago: z.enum(['SEMANAL', 'QUINCENAL', 'MENSUAL', 'FECHAS']).nullable().optional(),
+  diasPago: z.array(z.number().int().min(0).max(31)).max(31).optional(),
+  pagoFueraDeCaja: z.boolean().optional(),
   telefono: TelefonoOpcionalSinMinSchema,
 })
+
+type PlanPagoEntrada = { frecuenciaPago?: 'SEMANAL' | 'QUINCENAL' | 'MENSUAL' | 'FECHAS' | null; diasPago?: number[] }
+/** #644: el plan de pago del formulario debe ser coherente (días acordes a la frecuencia). */
+const planPagoValido = (d: PlanPagoEntrada) =>
+  d.frecuenciaPago === undefined && d.diasPago === undefined
+    ? true
+    : validarPlanPago({ frecuenciaPago: d.frecuenciaPago ?? null, diasPago: d.diasPago ?? [] }) === null
+const planPagoError = { message: 'El plan de pago no es válido: elige la frecuencia y los días que corresponden', path: ['diasPago'] }
 
 /**
  * Normaliza los campos de comisión de un trabajador según su rol y uso de moto.
@@ -1029,9 +1044,9 @@ export function normalizeTrabajador<T extends { usaMoto?: boolean | null; tipoPa
 export const TrabajadorCreateSchema = TrabajadorBaseObject.refine(
   (data) => !(data.usaMoto && (!data.capacidadKg || data.capacidadKg <= 0)),
   { message: 'Capacidad es requerida cuando usa moto', path: ['capacidadKg'] }
-)
+).refine(planPagoValido, planPagoError)
 
-export const TrabajadorUpdateSchema = TrabajadorBaseObject.partial()
+export const TrabajadorUpdateSchema = TrabajadorBaseObject.partial().refine(planPagoValido, planPagoError)
 
 // ====================
 // PAGAR FIADO
