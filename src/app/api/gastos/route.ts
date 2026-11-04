@@ -73,6 +73,16 @@ export async function POST(request: NextRequest) {
     }
     const { categoria, descripcion, monto, responsable, notas, fecha } = parsed.data
 
+    // #641: los pagos al personal se registran con «Pagar» en Nómina (con su medio de pago). Como gasto
+    // manual se contarían dos veces en el cierre de caja.
+    if (categoria === 'NOMINA') {
+      return apiError(
+        'Los pagos al personal se registran con «Pagar» en Nómina, no como gasto.',
+        422,
+        { code: 'NOMINA_NO_ES_GASTO' },
+      )
+    }
+
     const gasto = await prisma.gasto.create({
       data: {
         categoria,

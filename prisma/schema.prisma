@@ -887,6 +887,11 @@ model Nomina {
   estado    EstadoNomina @default(PENDIENTE)
   fechaPago DateTime?    @db.Timestamptz()
 
+  // #641: con qué se pagó. NULL = pagada antes de registrar el medio (su egreso ya quedó como Gasto).
+  // Solo EFECTIVO dentro de la caja genera el egreso que resta del cierre.
+  metodoPago      MetodoPago?
+  pagoFueraDeCaja Boolean     @default(false)
+
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
 
