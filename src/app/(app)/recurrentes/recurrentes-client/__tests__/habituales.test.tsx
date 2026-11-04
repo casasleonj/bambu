@@ -6,6 +6,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import { renderToString } from 'react-dom/server'
 import type { Recurrente, PreviewItem } from '../types'
 import type { EnvioHabituales } from '@/lib/habituales-contrato'
 vi.mock('next/navigation', () => ({
@@ -109,6 +110,39 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Catálogo independiente de la revisión', () => {
+  it('no acepta filtros en el HTML previo a hidratar y conserva búsqueda más estado al habilitarlos', async () => {
+    fetchMock.mockImplementation(async () =>
+      json({ success: true, hoy: '2026-10-30', preview: [] }),
+    )
+    const server = document.createElement('div')
+    server.innerHTML = renderToString(
+      <RecurrentesClient initialRecurrentes={[tienda, persona]} />,
+    )
+    expect(
+      within(server).getByRole('searchbox', {
+        name: 'Buscar cliente o negocio',
+      }),
+    ).toBeDisabled()
+    expect(
+      within(server).getByRole('button', { name: 'Activos' }),
+    ).toBeDisabled()
+    render(<RecurrentesClient initialRecurrentes={[tienda, persona]} />)
+    const input = screen.getByRole('searchbox', {
+      name: 'Buscar cliente o negocio',
+    })
+    expect(input).toBeEnabled()
+    fireEvent.change(input, { target: { value: 'Ana' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Activos' }))
+    const href = within(screen.getByTestId('habitual-t1'))
+      .getByRole('link', { name: 'Ver y ajustar →' })
+      .getAttribute('href')!
+    const back = new URL(href, 'https://bambu.invalid').searchParams.get(
+      'volverHabituales',
+    )!
+    const query = new URL(back, 'https://bambu.invalid').searchParams
+    expect(query.get('q')).toBe('Ana')
+    expect(query.get('estado')).toBe('activos')
+  })
   it('muestra negocio-only, productos y cantidades aunque falle la revisión del día', async () => {
     fetchMock.mockImplementation(async () =>
       json(

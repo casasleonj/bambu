@@ -281,3 +281,13 @@ Se conservan además las correcciones de fechas y los asserts de generación de
 [#558](https://github.com/casasleonj/bambu/pull/558), y las posteriores mejoras
 de lectura de facturas, cobro de pedido del día, detalle móvil y caja. No se
 alteran en esta fase sus contratos ni sus decisiones.
+
+
+**CORRECCIÓN DE CONFIABILIDAD — CI #640:** una ejecución rápida de la edición
+regresó al catálogo sin la búsqueda `q`. Los controles de filtros del HTML
+inicial permanecen deshabilitados hasta que el cliente ha registrado sus
+listeners de URL. Así no se acepta texto antes de poder procesarlo. Se mantiene
+la disposición aprobada y su estado de carga; no se cambian reglas de producto.
+La prueba de HTML inicial y la de cliente comprueban habilitación y composición
+de búsqueda/estado. El recorrido completo de edición se repite en escritorio y
+móvil; sus resultados y el commit final se registran en el PR.

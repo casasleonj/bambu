@@ -25,6 +25,13 @@ export default function RecurrentesClient({
   const actor = session?.user?.id ?? ''
   const rol = session?.user?.role ?? ''
   const params = useShallowSearchParams()
+  const [interactivo, setInteractivo] = useState(false)
+  useEffect(() => {
+    // La URL ya tiene sus listeners: no aceptar texto antes de hidratar,
+    // cuando un cambio podría perderse y el enlace de regreso quedar viejo.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setInteractivo(true)
+  }, [])
   const search = params.get('q') ?? ''
   const filtro = ['activos', 'inactivos'].includes(params.get('estado') ?? '')
     ? params.get('estado')!
@@ -160,7 +167,7 @@ export default function RecurrentesClient({
           <button
             type="button"
             onClick={() => void cargar()}
-            disabled={loading}
+            disabled={loading || !interactivo}
             className="min-h-11 rounded-lg border border-stone-300 px-3 text-sm font-semibold disabled:opacity-50"
           >
             {loading ? 'Consultando…' : '↻ Actualizar lista'}
@@ -170,6 +177,7 @@ export default function RecurrentesClient({
           Buscar cliente o negocio
           <input
             type="search"
+            disabled={!interactivo}
             value={search}
             maxLength={200}
             onChange={(e) =>
@@ -195,6 +203,7 @@ export default function RecurrentesClient({
             <button
               key={key}
               type="button"
+              disabled={!interactivo}
               aria-pressed={filtro === key}
               onClick={() =>
                 params.set(
