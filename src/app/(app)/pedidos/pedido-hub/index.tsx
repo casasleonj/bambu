@@ -249,7 +249,7 @@ export function PedidoHub({
       )}
 
       {/* F8-iv: "Generar pedidos habituales de hoy" — CTA contextual (Q3) */}
-      {!consulta && <RecurrentesDelDia onGenerado={() => onRefetch?.()} />}
+      {!consulta && <RecurrentesDelDia />}
 
       {/* desktop: lista + peek lado a lado; mobile: lista + peek como bottom sheet */}
       {viewport === 'desktop' && peekNode ? (

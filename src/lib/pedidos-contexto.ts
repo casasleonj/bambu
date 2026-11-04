@@ -12,6 +12,15 @@ export function vueltaAPedidos(value: unknown): string | null {
   }
 }
 
+/** Regreso al catálogo de habituales, conservando su búsqueda y estado. */
+export function vueltaAHabituales(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.startsWith('/')) return null
+  try {
+    const url = new URL(value, 'https://contexto.invalid')
+    return url.origin === 'https://contexto.invalid' && url.pathname === '/recurrentes' ? `${url.pathname}${url.search}` : null
+  } catch { return null }
+}
+
 /** Enlace al pedido exacto conservando únicamente una consulta interna válida. */
 export function pedidoEnConsulta(id: string, volver?: string | null): string {
   const url = new URL(

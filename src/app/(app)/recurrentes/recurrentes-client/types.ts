@@ -1,6 +1,10 @@
 export interface Recurrente {
   id: string
-  cliente: { id: string; nombre: string; telefono: string }
+  activo: boolean
+  clienteId: string | null
+  negocioId: string | null
+  cliente: { id: string; nombre: string; telefono: string } | null
+  negocio: { id: string; nombre: string; cliente: { id: string; nombre: string } | null } | null
   cadaNDias: number
   tipo: string
   canal: string
@@ -15,6 +19,9 @@ export interface Recurrente {
 
 export interface PreviewItem {
   recurrenteId: string
+  version: string
+  negocioId: string | null
+  negocioNombre: string | null
   clienteNombre: string
   cadaNDias: number
   proximaFecha: string
@@ -67,4 +74,6 @@ export interface PreviewItem {
   }>
   saltos: string[]
   cumpleMinimo: boolean
+  entregaInsuficiente: boolean
+  cantidadBase: Record<string, number>
 }
