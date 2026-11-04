@@ -29,7 +29,8 @@ async function pedidoPagado(dia: string, total: number, pagos: Array<{ metodo: '
   const pagado = pagos.reduce((s, p) => s + p.monto, 0)
   const p = await testPrisma.pedido.create({ data: {
     clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO', fecha: mediodia(dia),
-    estado: 'ENTREGADO', estadoEntrega: 'ENTREGADO', estadoPago: pagado >= total ? 'PAGADO' : 'PARCIAL',
+    // La base exige que estadoPago sea el que corresponde a lo pagado (chk_pedido_estadopago_proyectado).
+    estado: 'ENTREGADO', estadoEntrega: 'ENTREGADO', estadoPago: pagado >= total ? 'PAGADO' : pagado > 0 ? 'PARCIAL' : 'PENDIENTE',
     total, totalPagado: pagado, saldo: total - pagado,
   } })
   for (const pg of pagos) {
