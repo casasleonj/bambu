@@ -30,7 +30,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { getVentasDelDia } from '@/lib/ventas'
-import { calcComSellador } from '@/lib/comisiones'
+import { calcComSellador, itemBotellon } from '@/lib/comisiones'
 import { startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
@@ -150,15 +150,24 @@ export async function PUT(
         // 8. Recalcular comisiones del sellador
         const trabajador = await tx.trabajador.findUnique({
           where: { id: existing.trabajadorId },
-          select: { comPacaAgua: true, comPacaHielo: true },
+          select: { comPacaAgua: true, comPacaHielo: true, comBotellon: true },
         })
         if (!trabajador) {
           throw new Error('TRABAJADOR_NO_ENCONTRADO')
         }
-        const comSell = calcComSellador(prodAgua, prodHielo, trabajador)
+        const comSell = calcComSellador(prodAgua, prodHielo, trabajador, ventas.botellonVendido)
         // Los updates a Prisma.Decimal se hacen via Prisma.Decimal wrapper
         itemAgua.comSellador = new Prisma.Decimal(comSell.comAgua)
         itemHielo.comSellador = new Prisma.Decimal(comSell.comHielo)
+        // #645: los botellones llenados (= vendidos) se recalculan; los registros anteriores no tenían este ítem.
+        const itemBot = updatedItems.find(i => i.producto === 'BOTELLON')
+        if (itemBot) {
+          itemBot.conteoA = ventas.botellonVendido
+          itemBot.conteoB = ventas.botellonVendido
+          itemBot.producido = ventas.botellonVendido
+          itemBot.ventas = ventas.botellonVendido
+          itemBot.comSellador = new Prisma.Decimal(comSell.comBotellon)
+        }
 
         // 9. Persistir cambios (Produccion + items)
         // Construir lista de updates para ProduccionItem
@@ -185,7 +194,10 @@ export async function PUT(
             obs: obsFinal,
             comSellTotal: comSell.total,
             // Updates anidados de items
-            items: { update: itemUpdates },
+            items: {
+              update: itemUpdates,
+              ...(itemBot ? {} : { create: [itemBotellon(ventas.botellonVendido, comSell.comBotellon)] }),
+            },
           },
           include: { items: true, trabajador: true },
         })

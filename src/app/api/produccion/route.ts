@@ -9,7 +9,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { getVentasDelDia } from '@/lib/ventas'
-import { calcComSellador } from '@/lib/comisiones'
+import { calcComSellador, itemBotellon } from '@/lib/comisiones'
 import { getTodayRange, getDateRange } from '@/lib/dates'
 import { startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
@@ -166,6 +166,7 @@ export async function POST(request: NextRequest) {
             select: {
               comPacaAgua: true,
               comPacaHielo: true,
+              comBotellon: true,
               rol: true,
             },
           })
@@ -177,7 +178,8 @@ export async function POST(request: NextRequest) {
             throw new Error('TRABAJADOR_NO_SELLADOR')
           }
 
-          const comSell = calcComSellador(prodAgua, prodHielo, trabajador)
+          // #645: un botellón vendido es un botellón llenado; el sellador comisiona por ellos sin capturarlos aparte.
+          const comSell = calcComSellador(prodAgua, prodHielo, trabajador, ventas.botellonVendido)
 
           const embarquesHoy = await tx.embarque.findMany({
             where: {
@@ -259,6 +261,8 @@ export async function POST(request: NextRequest) {
                     consumoInterno: itemHielo.consumoInterno,
                     comSellador: comSell.comHielo,
                   },
+                  // #645: botellones llenados = vendidos del día (sin ciclo de stock: solo para la comisión).
+                  itemBotellon(ventas.botellonVendido, comSell.comBotellon),
                 ],
               },
             },

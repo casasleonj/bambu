@@ -599,7 +599,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             <div>
               <p className="text-xs text-muted-foreground">Comisiones (automático)</p>
               <p className="mt-1 flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm font-medium" data-testid="cierre-comisiones-auto">{formatMoney(comisiones)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Lo pagado a repartidores hoy y la comisión de sellador.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Lo pagado hoy en efectivo a repartidores y selladores.</p>
             </div>
           </div>
 
@@ -631,6 +631,24 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
               }}
             />
           </div>
+
+          {/* Comisión del sellador (#645): se paga como la del repartidor; solo el efectivo baja la caja */}
+          {(data?.comisionesAuto?.selladores?.length ?? 0) > 0 && (
+            <div>
+              <p className="mb-2 text-sm font-medium">Comisión del sellador</p>
+              <ComisionesRepartidores
+                tipo="sellador"
+                fecha={fecha}
+                repartidores={data?.comisionesAuto?.selladores ?? []}
+                puedePagar={puedePagarComision}
+                diaCerrado={diaCerrado}
+                onPagado={() => {
+                  const signal = abortControllerRef.current?.signal
+                  if (signal) void fetchCierre(fecha, signal)
+                }}
+              />
+            </div>
+          )}
 
           {/* Stock blocks */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

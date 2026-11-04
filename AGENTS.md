@@ -536,6 +536,12 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
       - **Migración** `20261105_trabajador_frecuencia_pago` (aditiva, idempotente; aplicar en producción antes del merge). Falta el administrador como trabajador en producción (lo crea el PO).
       - Pruebas: `integration/sueldos-fijos-644.test.ts`, `sueldos-fijos.test.ts`, `sueldos-que-tocan.test.tsx`.
 
+   35. **Comisión del sellador con botellón llenado, pagada desde el cierre (#645 / #623)**: la comisión del sellador (`Produccion.comSellTotal`) se restaba sola de la caja del cierre (sin pago) y, además, la nómina creaba otro gasto por el mismo dinero.
+      - **Contrato**: `calcComSellador` suma `comPacaAgua`/`comPacaHielo`/`comBotellon` por unidad. Un botellón vendido es un botellón llenado: Producción (`POST/PUT /api/produccion`) agrega sola el ítem `BOTELLON` con los vendidos del día (`itemBotellon`, `src/lib/comisiones.ts`), sin capturarlos; los registros anteriores lo reciben al corregirlos.
+      - **Cierre**: `comisionesAuto.total` (lo que resta de la caja) es solo lo PAGADO en efectivo (repartidores y selladores). `comisionesAuto.selladores` lista cada sellador con total, pagado, pendiente y desglose por producto (`comisionSelladoresDia`). Se paga con el mismo `POST /api/nomina/dia/pagar` (acepta selladores) y su medio; se guarda en `PagoComisionRepartidor`, que la nómina del período y la regla V16 ya descuentan/verifican: no se paga dos veces.
+      - **Pendiente de #645 (2c-2)**: que el formulario rápido de producción del cierre guarde en el mismo registro de Producción (hoy la tabla sigue vacía en producción porque se teclea en el cierre). Requiere maqueta aprobada.
+      - Sin migración. Pruebas: `integration/sellador-comision-645.test.ts`, `comisiones.test.ts`, `comisiones-repartidores.test.tsx`.
+
 ## Registro de tareas
 
 El backlog vive en **GitHub Issues** (índice en `docs/BACKLOG.md`). Toda tarea nueva —incluida la que surge en el chat— se registra como issue **antes** de empezar, y el PR que la resuelve la cierra con `Closes #N` (el PR debe apuntar a `main`). Los hallazgos y funcionalidades nuevos se registran con el skill `/hallazgo` o con los formularios de `.github/ISSUE_TEMPLATE/`; los pendientes en el código llevan su issue (`TODO(#123)`). No guardes pendientes en este archivo ni en notas de sesión. No es solo una convención: el workflow `Backlog` (`.github/workflows/backlog.yml`) falla el PR que no cita un issue y mantiene las etiquetas `estado:*` (ver `docs/BACKLOG.md`).
