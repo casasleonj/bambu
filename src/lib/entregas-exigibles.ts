@@ -68,3 +68,17 @@ export function validarInvariantesExigibles(
   if (cent(real) !== cent(exigibleEsperado(entregas, pedido)))
     throw new Error('INVARIANTE: Σ exigible no coincide con min(valorEntregado − totalPagado, saldo)')
 }
+
+/**
+ * Exigible total del pedido, con la regla de transición (decisión PO, opción 2):
+ * - Con filas de entrega: aplica la regla 3.
+ * - Sin filas (pedido anterior a la tabla): conserva el comportamiento actual, es decir, el saldo
+ *   cuenta solo si el pedido está ENTREGADO. Un parcial viejo sin filas no suma saldo no entregado.
+ */
+export function exigibleDelPedido(
+  entregas: EntregaExigibleCalc[],
+  pedido: { total: number; totalPagado: number; saldo: number; estadoEntrega: string },
+): number {
+  if (entregas.length > 0) return exigibleEsperado(entregas, pedido)
+  return pedido.estadoEntrega === 'ENTREGADO' && pedido.saldo > 0 ? pedido.saldo : 0
+}
