@@ -67,11 +67,7 @@ export function calcularVentas(pedidos: PedidoRaw[]): number {
  * Calculate pending (fiado) amounts.
  */
 export function calcularFiados(pedidos: PedidoRaw[]): number {
-  return (
-    pedidos
-      .filter((p) => Number(p.saldo) > 0 && p.estadoEntrega === 'ENTREGADO')
-      .reduce((acc, p) => acc + Math.round(Number(p.saldo) * 100), 0) / 100
-  )
+  return pedidos.reduce((sum, p) => sum + Math.round((p.exigible ?? (p.estadoEntrega === 'ENTREGADO' ? Number(p.saldo) : 0)) * 100), 0) / 100
 }
 
 /**

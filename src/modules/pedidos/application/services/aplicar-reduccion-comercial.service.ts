@@ -100,6 +100,14 @@ export async function aplicarReduccionComercial(
     throw new Error('REDUCCION_OBSOLETA: el monto cambió desde que se solicitó. Solicita la reducción de nuevo.')
   }
 
+  // #660: cambia el compromiso, no el hecho físico. Si ya se cumplió todo el
+  // nuevo pedido, deja de estar parcial; no genera otra entrega ni devolución.
+  const compromisoCumplido = pedido.items.every(i =>
+    (i.id === item.id ? calculo.cantPedidoNueva : i.cantPedido) === i.cantEntrega &&
+      i.cantEntrega >= entregadoLegacy(pedido, i.producto),
+  )
+  const estadoEntregaNuevo = compromisoCumplido ? 'ENTREGADO' : pedido.estadoEntrega
+
   await tx.pedidoItem.update({
     where: { id: item.id },
     data: {
@@ -123,15 +131,16 @@ export async function aplicarReduccionComercial(
     where: { id: pedido.id },
     data: {
       ...legacyReducido(pedido, r.producto, r.cantidadReducida),
+      ...(compromisoCumplido ? { estadoEntrega: 'ENTREGADO', estado: 'ENTREGADO' } : {}),
       total: calculo.totalNuevo,
       totalPagado: calculo.totalPagadoNuevo,
       saldo: calculo.saldoNuevo,
-      estadoPago: calcularEstadoPago(calculo.totalNuevo, calculo.totalPagadoNuevo, pedido.estadoEntrega),
+      estadoPago: calcularEstadoPago(calculo.totalNuevo, calculo.totalPagadoNuevo, estadoEntregaNuevo),
     },
   })
 
   if (factura) {
-    const montoPagadoFactura = Math.max(0, redondear(num(factura.montoPagado) - calculo.excedente))
+    const montoPagadoFactura = calculo.totalPagadoNuevo // Pedido es la fuente canónica, también si la proyección anterior tenía deriva.
     await tx.factura.update({
       where: { id: factura.id },
       data: {
@@ -177,6 +186,9 @@ export async function aplicarReduccionComercial(
       datos: {
         reduccionComercial: {
           reduccionId: r.id,
+          estadoEntregaAntes: pedido.estadoEntrega,
+          estadoEntregaDespues: estadoEntregaNuevo,
+          compromisoCumplido,
           producto: r.producto,
           cantidadReducida: r.cantidadReducida,
           cantPedidoAntes: r.cantPedidoAntes,

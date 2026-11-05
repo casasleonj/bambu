@@ -55,12 +55,12 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
   const rows = useMemo(() => {
     const grouped = new Map<string, FiadoRow>()
     for (const p of filtrarPorPeriodo(pedidos, periodo)) {
-      if (p.estadoEntrega !== 'ENTREGADO' || Number(p.saldo) <= 0 || p.clienteId === 'CONSUMIDOR_FINAL') continue
+      if (['ANULADO', 'CANCELADO'].includes(p.estadoEntrega) || (p.exigible ?? (p.estadoEntrega === 'ENTREGADO' ? Number(p.saldo) : 0)) <= 0 || p.clienteId === 'CONSUMIDOR_FINAL') continue
       const row = grouped.get(p.clienteId)
-      if (row) { row.pedidos.push(p); row.deuda += Number(p.saldo); if (new Date(p.fecha) < row.antigua) row.antigua = new Date(p.fecha) }
+      if (row) { row.pedidos.push(p); row.deuda += p.exigible ?? Number(p.saldo); if (new Date(p.fecha) < row.antigua) row.antigua = new Date(p.fecha) }
       else grouped.set(p.clienteId, { clienteId: p.clienteId, nombreCli: p.nombreCli, apellidoCli: p.apellidoCli,
         telefonoCli: p.telefonoCli, negocioId: p.negocioId, nombreNegocioCli: p.nombreNegocioCli,
-        pedidos: [p], deuda: Number(p.saldo), antigua: new Date(p.fecha) })
+        pedidos: [p], deuda: p.exigible ?? Number(p.saldo), antigua: new Date(p.fecha) })
     }
     return [...grouped.values()]
   }, [pedidos, periodo])
@@ -94,15 +94,16 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
   const limiteBadge = (row: FiadoRow) => {
     const cliente = clientes.find(c => c.id === row.clienteId)
     const limite = resolverLimiteFiados(cliente ?? {}, limiteGlobal == null ? null : String(limiteGlobal))
-    const todos = pedidos.filter(p => p.clienteId === row.clienteId && p.estadoEntrega === 'ENTREGADO' && Number(p.saldo) > 0)
-    const estado = getEstadoFiados(todos.map(p => ({ id: p.id, numero: p.numero, saldo: Number(p.saldo) })), limite)
+    const todos = pedidos.filter(p => p.clienteId === row.clienteId && (p.exigible ?? (p.estadoEntrega === 'ENTREGADO' ? Number(p.saldo) : 0)) > 0)
+    const estado = getEstadoFiados(todos.map(p => ({ id: p.id, numero: p.numero, saldo: p.exigible ?? Number(p.saldo) })), limite)
     const color = estado.nivel === 'limite' ? 'bg-red-100 text-red-700' : estado.nivel === 'cerca' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
-    return <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${color}`} title="Pedidos entregados con deuda de todas las fechas / límite configurado">{estado.count}/{estado.limite} fiados en total</span>
+    return <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${color}`} title="Pedidos con deuda exigible de todas las fechas / límite configurado">{estado.count}/{estado.limite} fiados en total</span>
   }
   const detalle = (row: FiadoRow) => <div className="space-y-3 rounded-lg bg-gray-50 p-3">
     {[...row.pedidos].sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero - b.numero).map(p => <div key={p.id} className="border-b py-2 last:border-0">
       <p className="text-sm font-medium">Pedido #{p.numero} · {new Date(p.fecha).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}</p>
-      <p className="text-sm text-gray-600">Saldo <MoneyDisplay value={Number(p.saldo)} userRole={userRole} /> · Total <MoneyDisplay value={Number(p.total)} userRole={userRole} /></p>
+      <p className="text-sm text-gray-600">Por cobrar <MoneyDisplay value={p.exigible ?? Number(p.saldo)} userRole={userRole} /> · Saldo del pedido <MoneyDisplay value={Number(p.saldo)} userRole={userRole} /> · Total <MoneyDisplay value={Number(p.total)} userRole={userRole} /></p>
+      <p className="text-sm text-gray-600">Pagado <MoneyDisplay value={Number(p.totalPagado)} userRole={userRole} /> · {p.estadoEntrega === 'ENTREGADO' ? 'Entrega completa' : 'Entrega parcial'}</p>
       <PedidoDocumentLinks pedidoId={p.id} numero={p.numero} facturaId={p.factura?.id} facturaNumero={p.factura?.numero}
         userRole={userRole} onOpenPedido={onOpenPedido} onOpenFactura={onOpenFactura} />
     </div>)}
@@ -115,7 +116,7 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
   </div>
   return <section className="space-y-4" aria-label="Consulta de Fiados">
     <div className="rounded-xl border border-red-200 bg-red-50 p-4"><h2 className="text-lg font-bold text-red-900">Control de Fiados</h2>
-      <p className="mt-1 text-sm text-red-800">Consulta la deuda de pedidos entregados, agrupada por cliente. Los pedidos sin entregar no se cobran automáticamente desde Fiados.</p>
+      <p className="mt-1 text-sm text-red-800">Consulta lo entregado y pendiente de pago, agrupado por cliente. Incluye entregas parciales; la mercancía pendiente de entrega no se cobra aquí.</p>
       <p className="mt-1 text-sm text-red-700">Todas las fechas por defecto. Este período es independiente del filtro de Pedidos.</p>
       <div className="mt-3 flex flex-wrap gap-2" aria-label="Período de Fiados">{PERIODOS.map(p => <button key={p.key} type="button" aria-pressed={periodo === p.key}
         className={`min-h-11 rounded-lg border px-3 text-sm ${periodo === p.key ? 'border-red-600 bg-red-600 text-white' : 'border-red-200 bg-white text-red-700'}`}

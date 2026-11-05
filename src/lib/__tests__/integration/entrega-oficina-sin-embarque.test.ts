@@ -207,6 +207,10 @@ describe('#472 — entrega de oficina sin embarque (Postgres real)', () => {
     expect(otra.status).toBe(200)
     expect(otra.body.deduped).toBe(true)
     expect(await pagos(id)).toHaveLength(2)
+    const cambiada = await post(id, { ...cuerpo, fechaEntrega: mediodia(diaBogota(1)) })
+    expect(cambiada.status).toBe(409)
+    expect(cambiada.body.error.code).toBe('ENTREGA_IDEMPOTENCIA_CONFLICTO')
+    expect(await pagos(id)).toHaveLength(2)
   })
 
   it('el dinero que se pagó en la oficina NO queda a nombre del repartidor', async () => {

@@ -1,3 +1,4 @@
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/shared/infrastructure'
 import { leerCobrosPeriodo, type CobrosPeriodo } from '@/lib/cobros-periodo'
@@ -49,14 +50,9 @@ export class PrismaFinanzasRepository implements FinanzasRepository {
           config.getBaseDia(`BASE_DIA_${dia}`),
           gastos.sumByDateRange(hoy.start, hoy.end),
           pedidos.sumFiadosEntregados(),
-          tx.cliente.count({
-            where: {
-              activo: true,
-              pedidos: {
-                some: { saldo: { gt: 0 }, estadoEntrega: 'ENTREGADO' },
-              },
-            },
-          }),
+          leerExigibles(tx, { saldo: { gt: 0 } }).then(exigibles => tx.cliente.count({
+            where: { activo: true, pedidos: { some: { id: { in: [...exigibles].filter(([, n]) => n > 0).map(([id]) => id) } } } },
+          })),
           leerCobrosPeriodo(tx, hoy.start, hoy.end),
         ])
         return {

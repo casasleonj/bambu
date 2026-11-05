@@ -1,3 +1,4 @@
+import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { NextRequest } from 'next/server'
 import { requireRole } from '@/lib/auth-check'
 import { PagarFiadoSchema } from '@/lib/validators'
@@ -114,6 +115,8 @@ export async function POST(request: NextRequest) {
         ocurridoAt = diaBogota(fecha) !== todayStringBogota() ? fecha : null
         recepcion = { quien: recibioDinero, nombre: nombreReceptor, fecha: fecha.toISOString() }
       }
+      const candidatos = await tx.pedido.findMany({ where: { clienteId, saldo: { gt: 0 } }, select: { id: true }, orderBy: { id: 'asc' } })
+      for (const p of candidatos) await acquireAdvisoryLockTx(tx, 'PEDIDO', p.id)
       const preparacion = await prepararCobroFiado(clienteId, tx, pedidoId)
       if (!preparacion) return apiError('Cliente no encontrado', 404)
       if (pedidoId) {
@@ -130,18 +133,19 @@ export async function POST(request: NextRequest) {
       for (const pedido of preparacion.pedidos) {
         let saldo = Math.round(pedido.saldo * 100)
         let pagado = Math.round(pedido.totalPagado * 100)
+        let exigible = Math.round((pedido.exigible ?? pedido.saldo) * 100)
         let aplicado = 0
         for (const fondo of fondos) {
-          const centavos = Math.min(saldo, fondo.restante)
+          const centavos = Math.min(saldo, exigible, fondo.restante)
           if (centavos <= 0) continue
           const montoAplicar = centavos / 100
           const pago = await tx.pago.create({ data: { pedidoId: pedido.id, metodo: fondo.metodo,
             monto: montoAplicar, offlineId: offlineId ?? null, ...(oficina ? { recibidoPorId, ocurridoAt } : {}),
             ...datosConfirmacionInicial(fondo.metodo, preparacion.metodosPorConfirmar) } })
-          saldo -= centavos; pagado += centavos; aplicado += centavos
+          saldo -= centavos; exigible -= centavos; pagado += centavos; aplicado += centavos
           fondo.restante -= centavos; fondo.aplicado += centavos
           await tx.pedido.update({ where: { id: pedido.id }, data: { totalPagado: pagado / 100,
-            saldo: saldo / 100, estadoPago: calcularEstadoPago(pedido.total, pagado / 100, 'ENTREGADO') } })
+            saldo: saldo / 100, estadoPago: calcularEstadoPago(pedido.total, pagado / 100, pedido.estadoEntrega ?? 'ENTREGADO') } })
           await registrarReceivableEntry(tx, { pedidoId: pedido.id, facturaId: pedido.factura?.id,
             clienteId, tipo: 'PAGO', monto: montoAplicar, saldoResultante: saldo / 100,
             totalPagadoResultante: pagado / 100, offlineId })
@@ -159,7 +163,7 @@ export async function POST(request: NextRequest) {
         if (aplicado > 0) {
           pagosAplicados.push({ pedidoId: pedido.id, numero: pedido.numero, montoAplicado: aplicado / 100,
             saldoRestante: saldo / 100, facturaId: pedido.factura?.id, facturaNumero: pedido.factura?.numero, abonoCreado: !!pedido.factura })
-          if (shouldFireCulminado('ENTREGADO', calcularEstadoPago(pedido.total, pagado / 100, 'ENTREGADO'))) culminados.push({ pedidoId: pedido.id, numero: pedido.numero })
+          if (shouldFireCulminado(pedido.estadoEntrega ?? 'ENTREGADO', calcularEstadoPago(pedido.total, pagado / 100, pedido.estadoEntrega ?? 'ENTREGADO'))) culminados.push({ pedidoId: pedido.id, numero: pedido.numero })
         }
         if (fondos.every(f => f.restante <= 0)) break
       }

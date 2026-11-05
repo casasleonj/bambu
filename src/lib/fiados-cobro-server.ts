@@ -1,3 +1,4 @@
+import { leerExigibles } from './entregas-exigibles-db'
 import { createHash } from 'node:crypto'
 import type { Prisma } from '@prisma/client'
 import { prisma } from './prisma'
@@ -17,32 +18,34 @@ export const huellaCobroFiado = (value: unknown) => createHash('sha256').update(
  * ANTES otra deuda del cliente (`deudaAnterior`): en ese caso el dinero no debe ir a este pedido.
  */
 export async function prepararCobroFiado(clienteId: string, db: Lectura = prisma, pedidoId?: string): Promise<PreparacionCobroFiado | null> {
-  const [cliente, todas, metodosPorConfirmar] = await Promise.all([
+  const [cliente, candidatas, metodosPorConfirmar] = await Promise.all([
     db.cliente.findUnique({ where: { id: clienteId }, select: { nombre: true, apellido: true } }),
-    db.pedido.findMany({ where: { clienteId, estadoEntrega: 'ENTREGADO', saldo: { gt: 0 } },
+    db.pedido.findMany({ where: { clienteId, estadoEntrega: { notIn: ['CANCELADO', 'ANULADO'] }, saldo: { gt: 0 } },
       orderBy: [{ fecha: 'asc' }, { numero: 'asc' }],
-      select: { id: true, numero: true, fecha: true, total: true, totalPagado: true, saldo: true,
+      select: { id: true, numero: true, fecha: true, total: true, totalPagado: true, saldo: true, estadoEntrega: true,
         factura: { select: { id: true, numero: true, estado: true, saldo: true, montoPagado: true } },
         entregadoAt: true, promesaPagoFecha: true },
     }),
     leerMetodosRequierenConfirmacion(db),
   ])
   if (!cliente) return null
+  const exigibles = await leerExigibles(db, { id: { in: candidatas.map(p => p.id) } })
+  const todas = candidatas.filter(p => (exigibles.get(p.id) ?? 0) > 0)
   // El orden de `todas` es el del reparto (fecha, número): lo que esté antes del pedido se paga antes.
   const indice = pedidoId ? todas.findIndex(p => p.id === pedidoId) : -1
   const raw = pedidoId ? (indice >= 0 ? [todas[indice]] : []) : todas
   const anteriores = indice > 0 ? todas.slice(0, indice) : []
   const pedidos: DeudaFiado[] = raw.map(p => ({ id: p.id, numero: p.numero, fecha: p.fecha.toISOString(),
-    total: Number(p.total), totalPagado: Number(p.totalPagado), saldo: Number(p.saldo),
+    total: Number(p.total), totalPagado: Number(p.totalPagado), saldo: Number(p.saldo), exigible: exigibles.get(p.id) ?? 0, estadoEntrega: p.estadoEntrega,
     factura: p.factura ? { id: p.factura.id, numero: p.factura.numero } : null,
     ...(pedidoId ? { entregadoAt: p.entregadoAt?.toISOString() ?? null, promesaPagoFecha: p.promesaPagoFecha?.toISOString() ?? null } : {}) }))
   // La versión no cambia para el cobro de Fiados: no incluye los campos agregados por #597.
   const base = raw.map(({ entregadoAt: _e, promesaPagoFecha: _p, ...resto }) => resto)
   return { clienteId, clienteNombre: [cliente.nombre, cliente.apellido].filter(Boolean).join(' '), pedidos,
-    deudaTotal: pedidos.reduce((sum, p) => sum + Math.round(p.saldo * 100), 0) / 100,
+    deudaTotal: pedidos.reduce((sum, p) => sum + Math.round((p.exigible ?? p.saldo) * 100), 0) / 100,
     metodosPorConfirmar,
     ...(pedidoId ? { deudaAnterior: { cantidad: anteriores.length, masAntiguaNumero: anteriores[0]?.numero ?? 0 } } : {}),
-    version: huellaCobroFiado({ clienteId, raw: base, metodosPorConfirmar,
+    version: huellaCobroFiado({ clienteId, raw: base, exigibles: pedidos.map(p => p.exigible), metodosPorConfirmar,
       ...(pedidoId ? { pedidoId, anteriores: anteriores.length } : {}) }),
   }
 }
@@ -87,7 +90,7 @@ export function errorCobroPedido(prep: PreparacionCobroFiado, clienteId: string,
     message: 'Este pedido se vendió fiado. Cóbralo en la pestaña Fiados.' }
   if (prep.deudaAnterior && prep.deudaAnterior.cantidad > 0) return { code: 'CLIENTE_CON_DEUDA_ANTERIOR', status: 409,
     message: `Este cliente tiene deuda anterior (la más antigua es el pedido #${prep.deudaAnterior.masAntiguaNumero}). El pago se aplica primero a la más antigua: cóbralo en la pestaña Fiados.` }
-  if (montoCentavos !== undefined && montoCentavos > Math.round(pedido.saldo * 100)) return { code: 'MONTO_EXCEDE_PEDIDO', status: 400,
+  if (montoCentavos !== undefined && montoCentavos > Math.round((pedido.exigible ?? pedido.saldo) * 100)) return { code: 'MONTO_EXCEDE_PEDIDO', status: 400,
     message: `El monto supera el saldo del pedido (${pedido.saldo}). Registra como máximo el saldo pendiente.` }
   return null
 }

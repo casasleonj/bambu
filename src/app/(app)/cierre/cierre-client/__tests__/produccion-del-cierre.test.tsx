@@ -47,7 +47,7 @@ describe('ProduccionDelCierre (#645)', () => {
     const p = montar({ fecha: '2026-11-09', esperadoPrevio: { agua: 15, hielo: 3, botellon: 20 } })
     await screen.findByRole('option', { name: 'Carlos Pérez' })
     fireEvent.change(screen.getByLabelText(/Sellador/), { target: { value: 's1' } })
-    fireEvent.change(screen.getByLabelText(/Turno/), { target: { value: 'JORNADA' } })
+    fireEvent.click(screen.getByRole('radio', { name: /Jornada completa/ }))
     escribir('pc-prod-agua', '60'); escribir('pc-prod-hielo', '30')
     escribir('pc-merma-agua', '2')
     escribir('pc-fin-agua', '73'); escribir('pc-fin-hielo', '33') // 15+60−2 = 73 · 3+30 = 33
@@ -159,5 +159,90 @@ describe('ProduccionDelCierre (#645)', () => {
     montar({ diaCerrado: true })
     expect(screen.queryByTestId('form-produccion-cierre')).toBeNull()
     expect(screen.queryByTestId('sin-produccion')).toBeNull()
+  })
+
+  // #646 (PR C): formulario al estilo de las tarjetas de stock
+  describe('tarjetas por producto (#646)', () => {
+    const esperar = async () => { await screen.findByTestId('form-produccion-cierre') }
+
+    it('turno es un grupo de botones: Mañana viene elegido y se cambia con un toque', async () => {
+      montar(); await esperar()
+      const grupo = screen.getByRole('radiogroup', { name: /Turno/ })
+      expect(screen.getByRole('radio', { name: /Mañana/ })).toHaveAttribute('aria-checked', 'true')
+      fireEvent.click(screen.getByRole('radio', { name: /Noche/ }))
+      expect(screen.getByRole('radio', { name: /Noche/ })).toHaveAttribute('aria-checked', 'true')
+      expect(screen.getByRole('radio', { name: /Mañana/ })).toHaveAttribute('aria-checked', 'false')
+      expect(grupo).toBeInTheDocument()
+    })
+
+    it('vacío: cada tarjeta dice «Falta llenar», no se muestra la diferencia y el botón explica por qué está bloqueado', async () => {
+      montar(); await esperar()
+      for (const k of ['agua', 'hielo', 'botellon']) expect(screen.getByTestId(`produccion-estado-${k}`)).toHaveTextContent('Falta llenar')
+      expect(screen.queryByTestId('produccion-diferencia')).toBeNull()
+      expect(screen.getByTestId('guardar-produccion')).toBeDisabled()
+      expect(screen.getByTestId('produccion-motivo')).toHaveTextContent('Falta elegir el sellador')
+    })
+
+    it('cada tarjeta dice Cuadra o No cuadra con su diferencia y la fórmula viva', async () => {
+      montar(); await esperar()
+      escribir('pc-prod-agua', '60'); escribir('pc-fin-agua', '75') // 15 + 60 = 75
+      expect(screen.getByTestId('produccion-estado-agua')).toHaveTextContent('Cuadra')
+      expect(screen.getByTestId('produccion-tarjeta-agua')).toHaveTextContent('Sin esta producción 15 + producido 60 − pérdidas 0 = debería haber 75')
+      escribir('pc-prod-hielo', '30'); escribir('pc-fin-hielo', '31') // esperado 33
+      expect(screen.getByTestId('produccion-estado-hielo')).toHaveTextContent('No cuadra')
+      expect(screen.getByTestId('produccion-tarjeta-hielo')).toHaveTextContent('Faltan 2')
+      escribir('pc-botellones', '8'); escribir('pc-fin-botellones', '30') // esperado 28
+      expect(screen.getByTestId('produccion-tarjeta-botellon')).toHaveTextContent('Sobran 2')
+    })
+
+    it('las pérdidas van en un desplegable cerrado con contador y se descuentan en la fórmula', async () => {
+      montar(); await esperar()
+      const perdidas = screen.getByTestId('produccion-perdidas')
+      expect(perdidas.tagName).toBe('DETAILS')
+      expect(perdidas.hasAttribute('open')).toBe(false)
+      expect(perdidas).toHaveTextContent('Pérdidas del día (opcional)')
+      escribir('pc-merma-agua', '2'); escribir('pc-cons-agua', '1')
+      expect(perdidas).toHaveTextContent('3 · agua')
+      expect(screen.getByTestId('produccion-tarjeta-agua')).toHaveTextContent('pérdidas 3')
+    })
+
+    it('con diferencia pide explicarla y el motivo del botón cambia; al explicar se habilita', async () => {
+      montar(); await esperar()
+      await screen.findByRole('option', { name: 'Carlos Pérez' })
+      fireEvent.change(screen.getByLabelText(/Sellador/), { target: { value: 's1' } })
+      escribir('pc-prod-agua', '60'); escribir('pc-fin-agua', '70'); escribir('pc-fin-botellones', '20')
+      expect(screen.getByTestId('produccion-diferencia')).toHaveTextContent('Hay una diferencia')
+      expect(screen.getByTestId('produccion-motivo')).toHaveTextContent('Falta explicar la diferencia')
+      fireEvent.change(document.getElementById('pc-obs') as HTMLTextAreaElement, { target: { value: 'Se cayeron 5 pacas' } })
+      expect(screen.queryByTestId('produccion-motivo')).toBeNull()
+      expect(screen.getByTestId('guardar-produccion')).not.toBeDisabled()
+    })
+
+    it('teclear en un campo no pierde el foco (las tarjetas no se vuelven a montar)', async () => {
+      montar(); await esperar()
+      const campo = document.getElementById('pc-prod-agua') as HTMLInputElement
+      campo.focus()
+      fireEvent.change(campo, { target: { value: '5' } })
+      fireEvent.change(campo, { target: { value: '56' } })
+      expect(document.getElementById('pc-prod-agua')).toBe(campo)
+      expect(document.activeElement).toBe(campo)
+    })
+
+    it('si falla la lista de selladores avisa y permite reintentar', async () => {
+      let intento = 0
+      fetchMock.mockImplementation(async (url: string) => {
+        if (String(url).startsWith('/api/trabajadores')) {
+          intento += 1
+          if (intento === 1) throw new TypeError('sin red')
+          return { ok: true, status: 200, json: async () => ({ trabajadores: [{ id: 's1', nombre: 'Carlos Pérez' }] }) }
+        }
+        return { ok: true, status: 201, json: async () => ({}) }
+      })
+      montar()
+      expect(await screen.findByTestId('produccion-error-selladores')).toHaveTextContent('No se pudo cargar la lista de selladores')
+      fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+      expect(await screen.findByRole('option', { name: 'Carlos Pérez' })).toBeInTheDocument()
+      expect(screen.queryByTestId('produccion-error-selladores')).toBeNull()
+    })
   })
 })
