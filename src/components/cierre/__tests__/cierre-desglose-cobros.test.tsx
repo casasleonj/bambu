@@ -1,6 +1,6 @@
 // @tests #631 — bloque del cierre: de dónde viene lo cobrado, pagos por confirmar y a quién se fió hoy.
 import { afterEach, describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import CierreDesgloseCobros from '../cierre-desglose-cobros'
 import type { CierreData } from '@/app/(app)/cierre/cierre-client/types'
 import type { DesgloseCobros } from '@/lib/cierre-desglose-cobros'
@@ -37,8 +37,8 @@ describe('#631 CierreDesgloseCobros', () => {
       ventasHoy: parte(320000, 0), fiadosAnteriores: parte(0, 0), efectivo: 320000, digital: 0, total: 320000, esperado: 320000,
     }) })} />)
     expect(screen.queryByTestId('cierre-cobro-digital')).toBeNull()
-    expect(screen.getByTestId('cierre-desglose-tabla').textContent).not.toContain('Digital')
-    expect(screen.getByTestId('cierre-desglose-tabla').textContent).not.toContain('Fiados de días anteriores')
+    expect(screen.getByTestId('cierre-cobro-efectivo').textContent).toContain('Ventas de hoy')
+    expect(screen.getByTestId('cierre-cobro-efectivo').textContent).not.toContain('Fiados anteriores')
   })
 
   it('sin cobros dice que no hubo cobros', () => {
@@ -96,7 +96,7 @@ describe('#631 CierreDesgloseCobros', () => {
     const caja = screen.getByTestId('cierre-por-confirmar')
     expect(caja.textContent).toContain('2')
     expect(caja.textContent).toContain('170.000')
-    expect(within(screen.getByTestId('cierre-por-confirmar-hoy')).getAllByText('F-0318').length).toBeGreaterThan(0)
+    expect(screen.getByTestId('cierre-por-confirmar-hoy')).toHaveTextContent('F-0318')
     expect(screen.getByTestId('cierre-por-confirmar-previos').textContent).toContain('no bloquea el cierre')
     expect(screen.getByTestId('cierre-por-confirmar-previos').textContent).toContain('Sin factura')
   })
@@ -132,5 +132,76 @@ describe('#631 botón «Confirmar →» (con la confirmación de pagos activa)',
   it('con la confirmación desactivada solo informa, sin botón', () => {
     render(<CierreDesgloseCobros data={datos({ porConfirmar, confirmaPagos: { puede: true, nombre: null } })} />)
     expect(screen.queryByTestId('cierre-confirmar-pago')).toBeNull()
+  })
+})
+
+describe('#646 desplegables: gastos, abonos y correcciones, listas largas', () => {
+  const gasto = (n: number, over = {}) => ({ id: `g${n}`, categoria: 'Combustible', descripcion: `Gasto ${n}`, monto: 1000 * n, fecha: '2026-11-05T13:15:00.000Z', registro: 'Carlos', ...over })
+
+  it('los gastos se listan con descripción, categoría, hora, quién registró e importe, y suman el total', () => {
+    render(<CierreDesgloseCobros data={datos({ totalGastos: 3000, gastosDelDia: [gasto(1), gasto(2)] })} />)
+    const caja = screen.getByTestId('cierre-gastos-del-dia')
+    expect(caja.tagName).toBe('DETAILS')
+    expect(caja.hasAttribute('open')).toBe(false) // cerrado por defecto
+    expect(caja).toHaveTextContent('2 gastos')
+    expect(caja).toHaveTextContent('Gasto 1')
+    expect(caja).toHaveTextContent('Combustible')
+    expect(caja).toHaveTextContent('registró: Carlos')
+    expect(caja).toHaveTextContent('Total de gastos')
+    expect(caja).toHaveTextContent('3.000')
+  })
+
+  it('sin gastos no aparece el desplegable', () => {
+    render(<CierreDesgloseCobros data={datos({ totalGastos: 0, gastosDelDia: [] })} />)
+    expect(screen.queryByTestId('cierre-gastos-del-dia')).toBeNull()
+  })
+
+  it('cierres anteriores sin lista de gastos muestran el detalle por categoría', () => {
+    render(<CierreDesgloseCobros data={datos({ totalGastos: 5000, gastosPorCategoria: [{ categoria: 'Insumos', cantidad: 2, total: 5000 }] })} />)
+    expect(screen.getByTestId('cierre-gastos-del-dia')).toHaveTextContent('Insumos')
+  })
+
+  it('una lista larga muestra 5 filas y «Ver los N restantes» abre el resto', () => {
+    const muchos = Array.from({ length: 8 }, (_, i) => gasto(i + 1))
+    render(<CierreDesgloseCobros data={datos({ totalGastos: 36000, gastosDelDia: muchos })} />)
+    const caja = screen.getByTestId('cierre-gastos-del-dia')
+    expect(caja).toHaveTextContent('Gasto 5')
+    expect(caja).not.toHaveTextContent('Gasto 6')
+    fireEvent.click(within(caja).getByTestId('ver-restantes'))
+    expect(caja).toHaveTextContent('Gasto 8')
+    expect(within(caja).queryByTestId('ver-restantes')).toBeNull()
+  })
+
+  it('abonos y correcciones: dice cuáles son, de quién, qué factura y por qué se corrigieron', () => {
+    render(<CierreDesgloseCobros data={datos({ abonosDelDia: {
+      abonos: [{ abonoId: 'a1', numero: 'AB-000123', cliente: 'Tienda La Esperanza', factura: 'F-0318', pedidoId: 'p1', pedidoNumero: 1042, metodo: 'EFECTIVO', monto: 30000, fecha: '2026-11-05T15:42:00.000Z', corregido: 20000 }],
+      correcciones: [{ numero: 'COR-000007', abonoNumero: 'AB-000123', tipo: 'FACTURA', monto: 20000, motivo: 'Lo anotaron en la factura equivocada', autorizadoPor: 'Carlos', cliente: 'Tienda La Esperanza', pedidoId: 'p1', pedidoNumero: 1042, fecha: '2026-11-05T16:00:00.000Z' }],
+    } })} />)
+    const caja = screen.getByTestId('cierre-abonos-correcciones')
+    expect(caja).toHaveTextContent('1 abono · 1 corrección')
+    expect(caja).toHaveTextContent('AB-000123')
+    expect(caja).toHaveTextContent('Factura F-0318')
+    expect(caja).toHaveTextContent(/\+\$\s*30\.000/)
+    expect(caja).toHaveTextContent('Se pasó a otra factura')
+    expect(caja).toHaveTextContent('Lo anotaron en la factura equivocada')
+    expect(caja).toHaveTextContent('autorizó: Carlos')
+    expect(caja).toHaveTextContent('Neto de abonos y correcciones')
+    expect(within(caja).getByText('#1042').getAttribute('href')).toBe('/pedidos?openPedido=p1')
+  })
+
+  it('sin abonos ni correcciones no aparece el desplegable', () => {
+    render(<CierreDesgloseCobros data={datos({ abonosDelDia: { abonos: [], correcciones: [] } })} />)
+    expect(screen.queryByTestId('cierre-abonos-correcciones')).toBeNull()
+  })
+
+  it('pagos por confirmar y fiados también son desplegables cerrados con su resumen a la vista', () => {
+    render(<CierreDesgloseCobros data={datos({
+      porConfirmar: { total: 90000, count: 1, porMetodo: {}, diasPreviosCount: 0, diasPreviosTotal: 0, detalleHoy: [fila()], detalleDiasPrevios: [] },
+      fiadosDelDia: [{ pedidoId: 'p1', numero: 1042, clienteId: 'c1', cliente: 'Tienda', total: 96000, pagado: 0, saldo: 96000, promesaPago: null }],
+    })} />)
+    expect(screen.getByTestId('cierre-por-confirmar').hasAttribute('open')).toBe(false)
+    expect(screen.getByTestId('cierre-por-confirmar')).toHaveTextContent('90.000')
+    expect(screen.getByTestId('cierre-fiados-del-dia').hasAttribute('open')).toBe(false)
+    expect(screen.getByTestId('cierre-fiados-del-dia')).toHaveTextContent('1 pedido')
   })
 })

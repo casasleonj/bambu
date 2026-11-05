@@ -1,6 +1,7 @@
 'use client'
 
 import { AlertTriangle } from 'lucide-react'
+import { Desplegable } from '@/components/ui/desplegable'
 
 export interface UnidadAproximada {
   pedidoId: string
@@ -47,23 +48,23 @@ export default function AvisoUnidadesAproximadas({
     )
   }
   if (!aproximadas?.length) return null
+  const total = (clave: 'agua' | 'hielo') => unidadesAproximadasDe(aproximadas, clave)
   return (
-    <div data-testid="aviso-unidades-aproximadas" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-      <p className="flex items-center gap-2 font-medium">
-        <AlertTriangle className="h-4 w-4" /> Unidades que no se pudieron repartir por día
+    <Desplegable testid="aviso-unidades-aproximadas" tono="ambar" icono="⚠️" titulo="Unidades sin repartir por día" insignia={`${aproximadas.length} pedido${aproximadas.length === 1 ? '' : 's'}`}
+      ayuda="Son pedidos antiguos que no guardaron en qué día se entregó cada parte. Sus unidades se cuentan en el día en que se creó el pedido."
+      resumen={[total('agua') > 0 ? `${total('agua')} agua` : '', total('hielo') > 0 ? `${total('hielo')} hielo` : ''].filter(Boolean).join(' · ') || undefined}>
+      <p className="mb-2 rounded-lg bg-white p-2 text-[11px] text-amber-900">
+        Son pedidos antiguos que no guardaron en qué día se entregó cada parte. Sus unidades se cuentan en el <b>día en que se creó el pedido</b>.
+        Si tu conteo físico no coincide por esto, cierra con tu conteo real. No bloquea el cierre.
       </p>
-      <ul className="mt-2 space-y-1">
+      <ul className="space-y-1 text-amber-900">
         {aproximadas.map((p) => (
-          <li key={p.pedidoId}>
-            Pedido #{p.numero ?? '—'}:{' '}
-            {NOMBRES.filter(([k]) => p.unidades[k] > 0)
-              .map(([k, n]) => `${p.unidades[k]} de ${n}`)
-              .join(', ')}{' '}
-            (creado el {p.fechaCreacion.slice(0, 10)})
+          <li key={p.pedidoId} className="flex justify-between gap-3 border-b border-amber-100 py-1 last:border-0">
+            <span className="font-semibold">Pedido #{p.numero ?? '—'}: {NOMBRES.filter(([k]) => p.unidades[k] > 0).map(([k, n]) => `${p.unidades[k]} de ${n}`).join(', ')}</span>
+            <span className="whitespace-nowrap text-[11px]">(creado el {p.fechaCreacion.slice(0, 10)})</span>
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-xs">Si tu conteo físico no coincide por esto, cierra con tu conteo real. No bloquea el cierre.</p>
-    </div>
+    </Desplegable>
   )
 }

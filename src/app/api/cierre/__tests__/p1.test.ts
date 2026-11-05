@@ -20,7 +20,7 @@ const tx = {
   produccion: { findMany: vi.fn(async () => []) },
   cierreDia: { findFirst: vi.fn(async () => null) },
   config: { findMany: vi.fn(async () => []) },
-  gasto: { aggregate: vi.fn(async () => ({ _sum: { monto: 0 } })), groupBy: vi.fn(async () => []) },
+  gasto: { aggregate: vi.fn(async () => ({ _sum: { monto: 0 } })), groupBy: vi.fn(async () => []), findMany: vi.fn(async () => []) },
   notaCredito: { findMany: vi.fn(async () => []) }, factura: { findMany: vi.fn(async () => []) },
   cliente: { count: vi.fn(async () => 0) }, descuentoRepartidor: { findMany: vi.fn(async () => []) },
   pago: { findMany: pagoFind, aggregate: vi.fn(async () => ({ _count: 0, _sum: { monto: 0 } })) },
