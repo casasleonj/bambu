@@ -1,3 +1,4 @@
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { listarPedidosUseCase } from '@/modules/pedidos'
@@ -160,6 +161,7 @@ export default async function PedidosPage({
     const clienteById = new Map(clientes.map(c => [c.id, c]))
     const negocioById = new Map(negocios.map(n => [n.id, n]))
 
+    const exigibles = await leerExigibles(prisma, { id: { in: result.pedidos.map(p => p.id) } })
     const enriched = result.pedidos.map(p => {
       const cliente = clienteById.get(p.clienteId)
       const negocio = p.negocioId ? negocioById.get(p.negocioId) : undefined
@@ -177,6 +179,7 @@ export default async function PedidosPage({
       })
       return {
         ...p,
+        exigible: exigibles.get(p.id) ?? 0,
         nombreCli: getAnonymousClientDisplayName(p.clienteId, 'short') ?? (cliente?.nombre || 'Desconocido'),
         apellidoCli: cliente?.apellido || null,
         telefonoCli: cliente?.telefono || '',

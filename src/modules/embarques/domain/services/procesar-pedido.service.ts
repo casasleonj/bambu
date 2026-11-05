@@ -1,3 +1,4 @@
+import { registrarEntregaExigible } from '@/lib/entregas-exigibles-db'
 /**
  * ProcesarPedido Domain Service.
  *
@@ -555,6 +556,21 @@ export class ProcesarPedidoService {
         }
       : {}
 
+    const precioPorProducto: Record<string, number> = {
+      PACA_AGUA: precios.precioPacaAgua ?? toNumber(pedido.precioPacaAgua),
+      PACA_HIELO: precios.precioPacaHielo ?? toNumber(pedido.precioPacaHielo),
+      BOTELLON: (pedido.cBotellonFabPed > 0 ? precios.precioBotellonFab ?? toNumber(pedido.precioBotellonFab) : precios.precioBotellonDom ?? toNumber(pedido.precioBotellonDom)),
+      BOLSA_AGUA: precios.precioBolsaAgua ?? toNumber(pedido.precioBolsaAgua),
+      BOLSA_HIELO: precios.precioBolsaHielo ?? toNumber(pedido.precioBolsaHielo),
+    }
+    await registrarEntregaExigible(client as unknown as Parameters<typeof registrarEntregaExigible>[0], {
+        pedidoId: pedido.id, eventoId: `cierre:${pedido.embarqueId}:${pedido.id}`,
+        entregadoAt: new Date(),
+        lineas: construirEntregasAValidar(pedido, entProd).map(e => ({ producto: e.producto,
+          cantidad: e.cantidadAEntregar,
+          precioCents: Math.round((precioPorProducto[e.producto] ?? 0) * 100) })),
+        pedido: { total: Number(pedido.total), totalPagado: Number(pedido.totalPagado), saldo: Math.max(0, toNumber(pedido.total) - toNumber(pedido.totalPagado)) },
+      })
     await tx.pedido.update({
       where: { id: pedido.id },
       data: {

@@ -11,6 +11,7 @@ import type { ProductCode } from '@/shared/domain'
 // ── Raw Pedido (from Prisma) ────────────────────────────────────────────
 
 export interface PedidoRaw {
+  exigible?: number
   id: string
   numero: number
   fecha: Date | string

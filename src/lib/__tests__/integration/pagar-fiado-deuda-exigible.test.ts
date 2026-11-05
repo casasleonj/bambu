@@ -1,3 +1,6 @@
+import { REGLAS, PARAMETROS_POR_DEFECTO } from '@/lib/integridad/reglas'
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
+import { entregarPedidoUseCase } from '@/modules/pedidos'
 // @tests #514 — `pagar-fiado` reparte únicamente sobre deuda ENTREGADA.
 // No convierte un cobro de cartera en un anticipo no elegido. El excedente conserva
 // el tratamiento de saldo a favor aprobado en ADR-CORRECCION-MONETARIA-001 D.6.
@@ -227,4 +230,85 @@ describe('#514 — pagar-fiado cobra únicamente deuda exigible (Postgres real)'
     expect(await testPrisma.pago.count({ where: { pedidoId: anterior } })).toBe(1)
     expect(await testPrisma.pago.count({ where: { pedidoId: pendiente } })).toBe(0)
   })
+  it('parcial real: cobra solo lo entregado y conserva saldo contractual y estado físico', async () => {
+    const c = await nuevoCliente()
+    const id = await pedidoDebido(c.id, 'EN_RUTA', 1)
+    const total = await totalDe(id)
+    await entregarPedidoUseCase.execute({ pedidoId: id, itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 5 }], offlineId: unico() })
+    expect((await leerExigibles(testPrisma, { id })).get(id)).toBe(total / 2)
+    await cobrar(c.id, total / 2)
+    const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id } })
+    expect(Number(p.saldo)).toBe(total / 2)
+    expect(p.estadoEntrega).toBe('PENDIENTE')
+    expect(p.estadoPago).toBe('PARCIAL')
+    expect((await leerExigibles(testPrisma, { id })).get(id)).toBe(0)
+  })
+
+  it('dos cobros simultáneos no aplican dos veces el exigible parcial', async () => {
+    const c = await nuevoCliente()
+    const id = await pedidoDebido(c.id, 'EN_RUTA', 1)
+    const total = await totalDe(id)
+    await entregarPedidoUseCase.execute({ pedidoId: id, itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 5 }], offlineId: unico() })
+    const request = () => pagarFiado(new NextRequest('http://localhost/api/pedidos/pagar-fiado', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clienteId: c.id, monto: total / 2, metodo: 'EFECTIVO', offlineId: unico() }),
+    }))
+    const responses = await Promise.all([request(), request()])
+    expect(responses.map(r => r.status).sort()).toEqual([200, 400])
+    expect(await saldoDe(id)).toBe(total / 2)
+  })
+
+  it('replay A/B/A sin evento físico no duplica cantidades ni exigible; payload cambiado se rechaza', async () => {
+    const c = await nuevoCliente()
+    const id = await pedidoDebido(c.id, 'EN_RUTA', 1)
+    const a = { pedidoId: id, itemsEntregados: [{ producto: 'PACA_AGUA' as const, cantidad: 2 }], offlineId: unico() }
+    await entregarPedidoUseCase.execute(a)
+    await testPrisma.pedido.update({ where: { id }, data: { estado: 'EN_RUTA', estadoEntrega: 'EN_RUTA' } })
+    await entregarPedidoUseCase.execute({ ...a, offlineId: unico() })
+    expect((await entregarPedidoUseCase.execute(a)).deduped).toBe(true)
+    expect((await testPrisma.pedidoItem.findFirstOrThrow({ where: { pedidoId: id } })).cantEntrega).toBe(4)
+    expect(await testPrisma.entregaExigible.count({ where: { pedidoId: id } })).toBe(2)
+    await expect(entregarPedidoUseCase.execute({ ...a, itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 3 }] })).rejects.toThrow('ENTREGA_IDEMPOTENCIA_CONFLICTO')
+  })
+
+  it('revierte toda la entrega si registrar el hecho falla dentro de la transacción', async () => {
+    const c = await nuevoCliente()
+    const id = await pedidoDebido(c.id, 'EN_RUTA', 1)
+    await testPrisma.$executeRawUnsafe(`CREATE FUNCTION rechazar_exigible_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'rollback test'; END $$`)
+    await testPrisma.$executeRawUnsafe(`CREATE TRIGGER rechazar_exigible_test BEFORE INSERT ON "EntregaExigible" FOR EACH ROW EXECUTE FUNCTION rechazar_exigible_test()`)
+    try {
+      await expect(entregarPedidoUseCase.execute({ pedidoId: id, itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 5 }], offlineId: unico() })).rejects.toThrow()
+      expect((await testPrisma.pedidoItem.findFirstOrThrow({ where: { pedidoId: id } })).cantEntrega).toBe(0)
+      expect((await testPrisma.pedido.findUniqueOrThrow({ where: { id } })).estadoEntrega).toBe('EN_RUTA')
+    } finally {
+      await testPrisma.$executeRawUnsafe('DROP TRIGGER rechazar_exigible_test ON "EntregaExigible"')
+      await testPrisma.$executeRawUnsafe('DROP FUNCTION rechazar_exigible_test()')
+    }
+  })
+
+  it('rebajar el precio tras una parcial no bloquea la siguiente entrega y revalora la deuda', async () => {
+    const c = await nuevoCliente()
+    const id = await pedidoDebido(c.id, 'EN_RUTA', 1)
+    const item = await testPrisma.pedidoItem.findFirstOrThrow({ where: { pedidoId: id } })
+    const precio = Number(item.precio) / 2
+    await entregarPedidoUseCase.execute({ pedidoId: id, itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 5 }], offlineId: unico() })
+    await testPrisma.$transaction(async tx => {
+      await tx.pedidoItem.update({ where: { id: item.id }, data: { precio, subtotal: precio * 10 } })
+      await tx.pedido.update({ where: { id }, data: { precioPacaAgua: precio, total: precio * 10, saldo: precio * 10, estado: 'EN_RUTA', estadoEntrega: 'EN_RUTA' } })
+      await tx.factura.update({ where: { pedidoId: id }, data: { total: precio * 10, subtotal: precio * 10, saldo: precio * 10 } })
+    })
+    expect((await leerExigibles(testPrisma, { id })).get(id)).toBe(precio * 5)
+    await entregarPedidoUseCase.execute({ pedidoId: id, itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 2 }], offlineId: unico() })
+    expect((await leerExigibles(testPrisma, { id })).get(id)).toBe(precio * 7)
+  })
+
+  it('V19 detecta un hecho mal formado sin confundir el saldo contractual con exigible', async () => {
+    const c = await nuevoCliente()
+    const id = await pedidoDebido(c.id, 'EN_RUTA', 1)
+    const fila = await testPrisma.entregaExigible.create({ data: { pedidoId: id, entregadoAt: new Date(), valorEntregado: 0, lineas: { invalido: true } } })
+    const regla = REGLAS.find(r => r.id === 'V19')!
+    const hallazgos = await testPrisma.$queryRaw<Array<{ ref: string }>>(regla.consulta(PARAMETROS_POR_DEFECTO))
+    expect(hallazgos.some(h => h.ref === fila.id)).toBe(true)
+  })
+
 })

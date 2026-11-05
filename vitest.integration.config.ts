@@ -14,6 +14,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    env: { FIADO_ENTREGA_PARCIAL: 'true' },
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/lib/__tests__/integration/**/*.test.ts'],
     exclude: ['node_modules/**', '.opencode/**', 'e2e/**', '.next/**'],

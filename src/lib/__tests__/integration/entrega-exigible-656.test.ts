@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { testPrisma as db, resetAndSeed } from './setup'
+import { proyectarPagoFIFO } from '@/lib/entregas-exigibles'
 import { registrarEntregaExigible } from '@/lib/entregas-exigibles-db'
 
 const d3 = new Date('2031-05-03T14:00:00-05:00')
@@ -33,7 +34,7 @@ describe('registrarEntregaExigible (#656 caso 693)', () => {
     const filas = await db.entregaExigible.findMany({ where: { pedidoId }, orderBy: { entregadoAt: 'asc' } })
     expect(filas).toHaveLength(1)
     expect(Number(filas[0].valorEntregado)).toBe(7500)
-    expect(Number(filas[0].asignado)).toBe(7500)
+    expect(proyectarPagoFIFO(filas.map(f => ({ ...f, valorEntregado: Number(f.valorEntregado), asignado: 0 })), 10000)[0].asignado).toBe(7500)
   })
 
   it('segunda entrega (10 hielo, 15.000) queda con 2.500 asignados y 12.500 exigibles', async () => {
@@ -43,9 +44,10 @@ describe('registrarEntregaExigible (#656 caso 693)', () => {
       pedido: { total: 30000, totalPagado: 10000, saldo: 20000 },
     })
     const filas = await db.entregaExigible.findMany({ where: { pedidoId }, orderBy: { entregadoAt: 'asc' } })
-    const exigible = filas.reduce((t, f) => t + Number(f.valorEntregado) - Number(f.asignado), 0)
+    const proyeccion = proyectarPagoFIFO(filas.map(f => ({ ...f, valorEntregado: Number(f.valorEntregado), asignado: 0 })), 10000)
+    const exigible = proyeccion.reduce((t, f) => t + f.valorEntregado - f.asignado, 0)
     expect(filas).toHaveLength(2)
-    expect(Number(filas[1].asignado)).toBe(2500)
+    expect(proyeccion[1].asignado).toBe(2500)
     expect(exigible).toBe(12500)
   })
 

@@ -1,3 +1,4 @@
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
@@ -32,7 +33,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     const totalComprado = pedidos.reduce((s, p) => s + Number(p.total), 0)
     const totalPagado = pedidos.reduce((s, p) => s + Number(p.totalPagado), 0)
-    const totalFiado = pedidos.reduce((s, p) => s + Number(p.saldo), 0)
+    const exigibles = await leerExigibles(prisma, { clienteId: id })
+    const totalFiado = [...exigibles.values()].reduce((s, n) => s + Math.round(n * 100), 0) / 100
     const cantidadPedidos = pedidos.length
     const cantidadPedidosUltimos30 = pedidos.filter(p => new Date(p.fecha) >= hace30).length
     const cantidadPedidosUltimos90 = pedidos.filter(p => new Date(p.fecha) >= hace90).length

@@ -1,3 +1,4 @@
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
 /**
  * Alertas Repository.
  *
@@ -87,16 +88,9 @@ export class PrismaAlertasRepository implements AlertasRepository {
   }
 
   async countClientesConFiado(): Promise<number> {
-    return prisma.cliente.count({
-      where: {
-        activo: true,
-        pedidos: {
-          some: {
-            saldo: { gt: 0 },
-            estadoEntrega: 'ENTREGADO',
-          },
-        },
-      },
-    })
+    const exigibles = await leerExigibles(prisma, { saldo: { gt: 0 } })
+    return prisma.cliente.count({ where: { activo: true, pedidos: { some: {
+      id: { in: [...exigibles].filter(([, n]) => n > 0).map(([id]) => id) },
+    } } } })
   }
 }

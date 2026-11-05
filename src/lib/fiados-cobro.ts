@@ -7,6 +7,7 @@ export type MetodoFiado = z.infer<typeof metodoFiadoSchema>
 export interface LineaCobroFiado { metodo: MetodoFiado; monto: number }
 export interface DeudaFiado {
   id: string; numero: number; fecha: string; total: number; totalPagado: number; saldo: number
+  exigible?: number; estadoEntrega?: string
   factura: { id: string; numero: string } | null
   /** #597: solo se informan al cobrar UN pedido (para decidir si se cobra ahí o en Fiados). */
   entregadoAt?: string | null; promesaPagoFecha?: string | null
@@ -42,7 +43,7 @@ export function repartirCobroFiado(pedidos: DeudaFiado[], monto: number) {
   const aplicaciones: AplicacionFiado[] = []
   for (const pedido of [...pedidos].sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero - b.numero)) {
     if (resto <= 0) break
-    const aplicar = Math.min(resto, Math.round(pedido.saldo * 100))
+    const aplicar = Math.min(resto, Math.round((pedido.exigible ?? pedido.saldo) * 100))
     if (aplicar <= 0) continue
     aplicaciones.push({ pedidoId: pedido.id, numero: pedido.numero,
       facturaId: pedido.factura?.id, facturaNumero: pedido.factura?.numero,

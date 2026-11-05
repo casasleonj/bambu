@@ -1,3 +1,4 @@
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { Prisma } from '@prisma/client'
@@ -198,6 +199,7 @@ export async function GET(request: NextRequest) {
     const negocioById = new Map(negocios.map(n => [n.id, n]))
     const facturaByPedido = new Map(facturas.map(f => [f.pedidoId, f]))
 
+    const exigibles = await leerExigibles(prisma, { id: { in: result.pedidos.map(p => p.id) } })
     const enriched = result.pedidos.map(p => {
       const cliente = clienteById.get(p.clienteId)
       const negocio = p.negocioId ? negocioById.get(p.negocioId) : undefined
@@ -218,6 +220,7 @@ export async function GET(request: NextRequest) {
 
       return {
         ...p,
+        exigible: exigibles.get(p.id) ?? 0,
         ...(scoped ? { factura: facturaByPedido.get(p.id) ?? null } : {}),
         nombreCli: getAnonymousClientDisplayName(p.clienteId, 'short') ?? (cliente?.nombre || 'Desconocido'),
         apellidoCli: cliente?.apellido || null,

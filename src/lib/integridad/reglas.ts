@@ -1,3 +1,4 @@
+import { exigiblesActivos } from '@/lib/exigibles-flag'
 import { Prisma } from '@prisma/client'
 
 /**
@@ -393,6 +394,17 @@ export const REGLAS: readonly Regla[] = [
         AND (CASE WHEN jsonb_typeof(c.reporte->v.campo) = 'number'
           THEN (c.reporte->>v.campo)::numeric END) IS DISTINCT FROM v.canonico
       ORDER BY c.id, v.campo`,
+  },
+
+  {
+    id: 'V19', titulo: 'Hecho de entrega exigible con detalle o valor histórico inválido', severidad: 'ALTA',
+    consulta: () => !exigiblesActivos() ? Prisma.sql`SELECT NULL::text AS ref, NULL::int AS numero, '{}'::json AS detalle WHERE false` : Prisma.sql`
+      SELECT e.id AS ref, p.numero,
+        json_build_object('pedidoId', e."pedidoId", 'valorEntregado', e."valorEntregado", 'lineas', e.lineas) AS detalle
+      FROM "EntregaExigible" e JOIN "Pedido" p ON p.id = e."pedidoId"
+      WHERE jsonb_typeof(e.lineas) <> 'array' OR e."valorEntregado" < 0
+        OR (e."eventoId" IS NOT NULL AND e."huella" IS NULL AND e."eventoId" NOT LIKE 'cierre:%')
+      ORDER BY e.id`,
   },
 
 ]

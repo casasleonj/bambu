@@ -24,7 +24,7 @@ describe('asignarPagoFIFO (#656)', () => {
 })
 
 describe('exigibleEsperado (regla 3)', () => {
-  it('caso 693: 5 el día 3 y 10 el día 4 con 10.000 pagados → 2.500 de la primera', () => {
+  it('caso 693: 5 el día 3 y 10 el día 4 con 10.000 pagados → 12.500 de la segunda', () => {
     // valor entregado total 22.500; pagado 10.000; saldo 20.000 → exigible 12.500
     const entregas = [e('a', 3, 7500), e('b', 4, 15000)]
     expect(exigibleEsperado(entregas, { total: 30000, totalPagado: 10000, saldo: 20000 })).toBe(12500)

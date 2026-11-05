@@ -216,8 +216,8 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
         prep = data.preparacion
       }
       if (prep.clienteId !== actual.cliente.id) throw new Error('La consulta no corresponde al cliente elegido.')
-      if (!prep.pedidos.length) throw new Error(actual.cliente.pedido ? 'Este pedido ya no tiene saldo por cobrar.' : 'El cliente no tiene deuda pendiente de pedidos entregados. Actualiza Fiados.')
-      if (actual.cliente.pedido && sumarCobroFiado(pagos) > prep.pedidos[0].saldo) throw new Error(`El monto supera el saldo del pedido (${dinero(prep.pedidos[0].saldo)}). Registra como máximo el saldo pendiente.`)
+      if (!prep.pedidos.length) throw new Error(actual.cliente.pedido ? 'Este pedido ya no tiene deuda exigible por cobrar.' : 'El cliente no tiene deuda exigible por entregas. Actualiza Fiados.')
+      if (actual.cliente.pedido && sumarCobroFiado(pagos) > (prep.pedidos[0].exigible ?? prep.pedidos[0].saldo)) throw new Error(`El monto supera el saldo del pedido (${dinero(prep.pedidos[0].exigible ?? prep.pedidos[0].saldo)}). Registra como máximo el saldo pendiente.`)
       const cuerpo: Payload = { clienteId: actual.cliente.id, ...(actual.cliente.pedido ? { pedidoId: actual.cliente.pedido.id } : {}), pagos, offlineId: actual.referencia,
         versionDeuda: prep.version, ...(gestion.activa ? camposCobro(actual.cobro) : {}) }
       if (draftRef.current?.referencia !== actual.referencia) return

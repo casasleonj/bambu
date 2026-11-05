@@ -1,3 +1,4 @@
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
 /**
  * PrismaPedidoRepository.
  *
@@ -116,7 +117,7 @@ export class PrismaPedidoRepository implements IPedidoRepository {
     tx?: TransactionClient,
   ): Promise<Pedido[]> {
     const client = tx || prisma
-    const where = this.buildWhere(filter)
+    const where = await this.buildWhere(filter, client)
     const raw = await client.pedido.findMany({
       where,
       orderBy: { numero: options?.orderBy ?? 'desc' },
@@ -129,7 +130,7 @@ export class PrismaPedidoRepository implements IPedidoRepository {
 
   async count(filter?: PedidoFilter, tx?: TransactionClient): Promise<number> {
     const client = tx || prisma
-    const where = this.buildWhere(filter)
+    const where = await this.buildWhere(filter, client)
     return client.pedido.count({ where })
   }
 
@@ -221,24 +222,10 @@ export class PrismaPedidoRepository implements IPedidoRepository {
     tx?: TransactionClient,
   ): Promise<Array<{ id: string; numero: number; saldo: number }>> {
     const client = tx || prisma
-    // FIX C-FIADOS-1: solo pedidos ENTREGADOS con saldo > 0 cuentan para el
-    // límite de fiados. Pedidos PENDIENTE/EN_RUTA/NO_ENTREGADO no generan
-    // deuda real hasta ser entregados.
-    const raw = await client.pedido.findMany({
-      where: {
-        clienteId,
-        estadoEntrega: 'ENTREGADO',
-        saldo: { gt: 0 },
-        estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
-      },
-      orderBy: { numero: 'asc' },
-      select: { id: true, numero: true, saldo: true },
-    })
-    return raw.map(r => ({
-      id: r.id,
-      numero: r.numero,
-      saldo: typeof r.saldo === 'number' ? r.saldo : (r.saldo as { toNumber: () => number }).toNumber(),
-    }))
+    const exigibles = await leerExigibles(client, { clienteId, saldo: { gt: 0 } })
+    const raw = await client.pedido.findMany({ where: { id: { in: [...exigibles].filter(([, n]) => n > 0).map(([id]) => id) } },
+      select: { id: true, numero: true }, orderBy: { numero: 'asc' } })
+    return raw.map(p => ({ id: p.id, numero: p.numero, saldo: exigibles.get(p.id) ?? 0 }))
   }
 
   async countByClienteAndDate(clienteId: string, date: Date, tx?: TransactionClient): Promise<number> {
@@ -256,7 +243,7 @@ export class PrismaPedidoRepository implements IPedidoRepository {
     })
   }
 
-  private buildWhere(filter?: PedidoFilter): Record<string, unknown> {
+  private async buildWhere(filter: PedidoFilter | undefined, client: Pick<TransactionClient, 'pedido'>): Promise<Record<string, unknown>> {
     const where: Record<string, unknown> = {}
     // #515: las consultas de Fiados/Alertas tienen alcance propio. Una fecha,
     // canal o estado conservados en la URL de Pedidos no limitan estas vistas.
@@ -265,7 +252,8 @@ export class PrismaPedidoRepository implements IPedidoRepository {
       if (filter.clienteId) where.clienteId = filter.clienteId
       if (filter.embarqueId !== undefined) where.embarqueId = filter.embarqueId
       if (filter.scope === 'fiados') {
-        where.estadoEntrega = 'ENTREGADO'
+        const exigibles = await leerExigibles(client, { clienteId: filter.clienteId, saldo: { gt: 0 }, estadoEntrega: { notIn: ['CANCELADO', 'ANULADO'] } })
+        where.id = { in: [...exigibles].filter(([, monto]) => monto > 0).map(([id]) => id) }
         where.saldo = { gt: 0 }
         if (!filter.clienteId) where.clienteId = { not: CANONICAL_CONSUMIDOR_FINAL_ID }
       }

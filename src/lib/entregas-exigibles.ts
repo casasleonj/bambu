@@ -79,6 +79,51 @@ export function exigibleDelPedido(
   entregas: EntregaExigibleCalc[],
   pedido: { total: number; totalPagado: number; saldo: number; estadoEntrega: string },
 ): number {
+  if (['ANULADO', 'CANCELADO'].includes(pedido.estadoEntrega)) return 0
+  if (pedido.estadoEntrega === 'ENTREGADO') return Math.max(0, pedido.saldo)
   if (entregas.length > 0) return exigibleEsperado(entregas, pedido)
   return pedido.estadoEntrega === 'ENTREGADO' && pedido.saldo > 0 ? pedido.saldo : 0
+}
+
+/** Recalcula desde cero: correcciones de pago y entregas retroactivas no conservan asignaciones viejas. */
+export function proyectarPagoFIFO(entregas: EntregaExigibleCalc[], totalPagado: number): EntregaExigibleCalc[] {
+  const base = entregas.map(e => ({ ...e, asignado: 0 }))
+  const { deltas } = asignarPagoFIFO(base, totalPagado)
+  return base.sort(orden).map(e => ({ ...e, asignado: deltas.get(e.id) ?? 0 }))
+}
+
+interface HechoEntrega { valorEntregado: unknown; lineas?: unknown }
+interface ItemVigente { producto: string; cantEntrega: number; precio: unknown }
+export interface PedidoExigible {
+  total: unknown; totalPagado: unknown; saldo: unknown; estadoEntrega: string
+  items: ItemVigente[]; entregasExigibles: HechoEntrega[]
+}
+
+/** Hechos nuevos por producto, valorados al precio comercial vigente y acotados al cumplimiento actual.
+ * Las filas anteriores sin detalle conservan su valor histórico; no se inventan productos ni fechas.
+ */
+export function calcularExigibleVigente(p: PedidoExigible): number {
+  if (['ANULADO', 'CANCELADO'].includes(p.estadoEntrega)) return 0
+  const saldo = Math.max(0, cent(Number(p.saldo)))
+  if (p.estadoEntrega === 'ENTREGADO') return saldo / 100
+  if (!p.entregasExigibles.length) return 0
+  const cantidades = new Map<string, number>()
+  let historico = 0
+  for (const e of p.entregasExigibles) {
+    if (!Array.isArray(e.lineas) || !e.lineas.length) { historico += cent(Number(e.valorEntregado)); continue }
+    for (const l of e.lineas) {
+      if (!l || typeof l !== 'object' || typeof l.producto !== 'string' ||
+          typeof l.cantidad !== 'number' || !Number.isSafeInteger(l.cantidad) || l.cantidad < 0)
+        throw new Error('ENTREGA_EXIGIBLE_INVALIDA')
+      cantidades.set(l.producto, (cantidades.get(l.producto) ?? 0) + l.cantidad)
+    }
+  }
+  const valorActual = p.items.reduce((sum, i) => sum + Math.max(0, i.cantEntrega) * cent(Number(i.precio)), 0)
+  const porAsignar = new Map(cantidades)
+  const valorRegistrado = p.items.reduce((sum, i) => {
+    const cantidad = Math.min(Math.max(0, i.cantEntrega), porAsignar.get(i.producto) ?? 0)
+    porAsignar.set(i.producto, Math.max(0, (porAsignar.get(i.producto) ?? 0) - cantidad))
+    return sum + cantidad * cent(Number(i.precio))
+  }, historico)
+  return Math.max(0, Math.min(saldo, Math.min(valorActual, valorRegistrado) - cent(Number(p.totalPagado)))) / 100
 }
