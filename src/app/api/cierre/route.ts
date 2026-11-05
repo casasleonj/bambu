@@ -17,6 +17,7 @@ import { construirResumenCierre } from '@/lib/cierre-resumen'
 import { calcularNetoCierre, calcularEfectivoEsperado } from '@/lib/cierre-totales'
 import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
 import { analizarHueco, type DiaHueco } from '@/lib/cierre-huecos'
+import { getConfig } from '@/lib/config'
 
 /** #306: hay días anteriores sin cerrar que tuvieron operación (o son demasiados para revisarlos). */
 class HuecoConOperacionError extends Error {
@@ -160,7 +161,14 @@ export async function GET(request: NextRequest) {
       tx => construirResumenCierre(tx, fechaStr),
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 15000 },
     )
-    return apiSuccess(resumen)
+    // #631: ¿quien cierra puede confirmar los pagos digitales? Si no, el cierre solo dice quién los confirma.
+    const userId = (authResult.user as { id?: string } | undefined)?.id
+    const confirmadorId = await getConfig('USUARIO_CONFIRMA_PAGOS').catch(() => null)
+    const confirmador = confirmadorId && confirmadorId !== userId
+      ? await prisma.user.findUnique({ where: { id: confirmadorId }, select: { nombre: true, username: true } }).catch(() => null)
+      : null
+    const confirmaPagos = { puede: !!confirmadorId && confirmadorId === userId, nombre: confirmador ? (confirmador.nombre.trim() || confirmador.username) : null }
+    return apiSuccess({ ...resumen, cierre: { ...resumen.cierre, confirmaPagos } })
   } catch (error) {
     if (error instanceof CobrosSinConciliarError) return apiError(error.message, 409, {
       code: error.code, cobrosPendientes: error.cobros.map(({ referencia, importe }) => ({ referencia, importe })),
