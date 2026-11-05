@@ -442,6 +442,7 @@ export class ProcesarPedidoService {
           fecha: new Date(),
           total: totalObligacion,
           saldo: totalObligacion - nuevoTotalPagado,
+          montoPagado: nuevoTotalPagado,
           estado: nuevoTotalPagado >= totalObligacion ? 'PAGADA' : (nuevoTotalPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
         },
       })
@@ -630,16 +631,16 @@ export class ProcesarPedidoService {
       }
     }
 
-    // Si la acumulación completa el pedido, se sincroniza la factura (fecha /
-    // estado) igual que la rama ENTREGADO — sin tocar el dinero (obligación
-    // intacta): `saldo = total - totalPagado` con los valores ya persistidos.
-    if (completo && pedido.factura) {
+    // #660: un cobro parcial también mueve la factura. El dinero siempre
+    // sale del pedido canónico; la fecha solo cambia al completar la entrega.
+    if ((completo || montoPagado > 0) && pedido.factura) {
       await tx.factura.update({
         where: { id: pedido.factura.id },
         data: {
-          fecha: new Date(),
+          ...(completo ? { fecha: new Date() } : {}),
           total: totalObligacionPed,
           saldo: totalObligacionPed - nuevoTotalPagado,
+          montoPagado: nuevoTotalPagado,
           estado: nuevoTotalPagado >= totalObligacionPed ? 'PAGADA' : (nuevoTotalPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
         },
       })

@@ -29,3 +29,14 @@ Rollback de comportamiento: volver el flag a false. Los hechos ya capturados que
 Las pruebas nuevas cubren prepago menor/igual/mayor, pago posterior sin completar el pedido, saldo contractual, dos cobros concurrentes, replay A/B/A, payload cambiado, rollback transaccional, rebaja seguida de nueva entrega, FIFO retroactivo, transición histórica, estados terminales, producto duplicado y modo OFF sin tabla. La UI revisa el exigible y el excedente antes de registrar.
 
 Limitación operativa conservada: el cron que genera automáticamente deuda de trabajador sigue limitado a pedidos completos con embarque; no se atribuye por suposición el fiado parcial al último repartidor. No se alteraron fechas ni cifras de ventas/caja.
+
+
+## Seguimiento #660: reducción del remanente
+
+Al autorizar que el cliente deje de recibir el remanente, el estado se reconcilia con las cantidades que siguen comprometidas. Si todas las líneas quedaron satisfechas, se marca ENTREGADO y se proyecta el pago desde ese estado (PAGADO si el total ya está cubierto). Si queda pendiente cualquier producto, conserva el estado físico previo. La fecha y las cantidades de la entrega real se conservan; no se crea otro evento físico.
+
+Una reducción no es una devolución. No escribe stock, producción, cargas, movimientos físicos ni cantidades devueltas. Si había 20 cargadas y se entregaron 5, retirar las otras 15 del compromiso deja las 15 en custodia del vehículo hasta que el cierre/retorno registre lo ocurrido. El cierre diario y dashboard conservan 5 entregadas; la caja conserva el pago original. La factura baja al nuevo total y la nota de crédito se trata una sola vez, con la regla temporal ya existente.
+
+Regresión nueva: `reduccion-cumplimiento-stock-660.test.ts`, 8 casos PostgreSQL con comandos reales y factura, impago/pago parcial/completo, múltiples productos, conservación de stock/carga/devoluciones, conteos del cierre y dashboard, nota del día/venta anterior y reintento de autorización. Las pruebas locales corren sobre `bambu660_tests`, separada de la demo que usa el usuario.
+
+La prueba de factura detectó además una proyección rezagada en cobros de entrega parcial: ahora cualquier cobro de entrega y de cierre actualiza `Factura.montoPagado/saldo/estado` desde el pedido canónico. La reducción también toma el pagado canónico al recalcular la factura, en vez de propagar un valor previo rezagado. La fecha de factura se conserva cuando el cierre sigue parcial.

@@ -297,15 +297,14 @@ export class EntregarPedidoUseCase {
         })
       }
 
-      // PR-1 (integridad de entrega parcial): la factura solo se sincroniza
-      // cuando el cumplimiento es total. Una entrega parcial deja el pedido
-      // PENDIENTE y no debe tocar la factura (montos/estado) ni fijar su fecha.
+      // #660: toda captura de dinero actualiza la proyección de factura,
+      // incluida una entrega parcial. La entrega física sin cobro conserva
+      // la obligación y una parcial nunca fija otra fecha de factura.
       const entregaCompleta = updated.estadoEntrega.get() === 'ENTREGADO'
       const factura = await this.facturaRepo.findByPedidoId(pedido.id.get(), tx)
       // Un cobro SIEMPRE mueve el saldo del pedido, así que la factura debe
       // seguirlo aunque la entrega sea parcial (V3: mismo saldo que el pedido).
-      const cobroOficina = Boolean(oficina) && tieneCobro(input)
-      if (factura && (entregaCompleta || cobroOficina)) {
+      if (factura && (entregaCompleta || tieneCobro(input))) {
         await this.facturaRepo.update({
           ...factura,
           total: updated.total.toDecimal(),
