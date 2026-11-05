@@ -1,4 +1,5 @@
-import type { DesgloseCobros, FiadoDelDia, PagoPorConfirmarDetalle } from '@/lib/cierre-desglose-cobros'
+import type { DesgloseCobros, FiadoDelDia, GastoDelDia, PagoPorConfirmarDetalle } from '@/lib/cierre-desglose-cobros'
+import type { AbonoDelDia, CorreccionDelDia } from '@/lib/cobro-cartera'
 export interface VentaPorOrigen {
   origen: string
   total: number
@@ -74,6 +75,10 @@ export interface CierreData {
   /** #631: de dónde viene lo cobrado y a quién se fió (cierres anteriores no lo traen). */
   desgloseCobros?: DesgloseCobros
   fiadosDelDia?: FiadoDelDia[]
+  /** #646: cada gasto del día (descripción, categoría, hora, quién registró, importe). */
+  gastosDelDia?: GastoDelDia[]
+  /** #646: cuáles son los abonos (suman) y las correcciones (restan) de cobros del día. */
+  abonosDelDia?: { abonos: AbonoDelDia[]; correcciones: CorreccionDelDia[] }
   /** #631: ¿quien consulta puede confirmar pagos digitales? Si no, quién los confirma. */
   confirmaPagos?: { puede: boolean; nombre: string | null }
 

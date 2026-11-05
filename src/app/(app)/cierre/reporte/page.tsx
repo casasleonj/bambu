@@ -73,27 +73,31 @@ function ReporteContent() {
       </div>
 
       <section className="mb-6">
-        <h3 className="text-lg font-bold border-b pb-1 mb-3">Resumen Financiero</h3>
+        <h3 className="text-lg font-bold border-b pb-1 mb-3">Dinero del día</h3>
         <table className="w-full text-sm">
           <tbody>
             <tr><td className="py-1 font-medium">Pedidos</td><td className="text-right">{data.numPedidos}</td></tr>
-            <tr><td className="py-1 font-medium">Ventas Totales</td><td className="text-right">{formatMoney(data.totalVentas)}</td></tr>
-            <tr><td className="py-1 font-medium">Pagos registrados en la fecha (incluye pedidos anteriores)</td><td className="text-right">{formatMoney(data.cobroVentasHoy)}</td></tr>
-            <tr><td className="py-1 font-medium">Abonos independientes y ajustes de cobros</td><td className="text-right">{formatMoney(data.cobroCartera)}</td></tr>
-            <tr><td className="py-1 font-medium">Total cobros de la fecha</td><td className="text-right">{formatMoney(data.cobroVentasHoy + data.cobroCartera)}</td></tr>
-            <tr><td className="py-1 font-medium">Fiado</td><td className="text-right">{formatMoney(data.fiado)}</td></tr>
-            <tr><td className="py-1 font-medium">Notas de crédito emitidas (no se restan otra vez)</td><td className="text-right">{formatMoney(data.totalNotasCredito)}</td></tr>
+            <tr><td className="py-1 font-medium">Ventas del día *</td><td className="text-right">{formatMoney(data.totalVentas)}</td></tr>
+            <tr><td className="py-1 font-medium">Cobros de pedidos (incluye pedidos de días anteriores)</td><td className="text-right">{formatMoney(data.cobroVentasHoy)}</td></tr>
+            <tr><td className="py-1 font-medium">Abonos a facturas menos correcciones de cobros</td><td className="text-right">{formatMoney(data.cobroCartera)}</td></tr>
+            <tr><td className="py-1 font-medium">Dinero cobrado hoy **</td><td className="text-right">{formatMoney(data.cobroVentasHoy + data.cobroCartera)}</td></tr>
+            <tr><td className="py-1 font-medium">Quedó fiado (por cobrar) ***</td><td className="text-right">{formatMoney(data.fiado)}</td></tr>
+            <tr><td className="py-1 font-medium">Notas de crédito emitidas hoy (no se restan otra vez)</td><td className="text-right">{formatMoney(data.totalNotasCredito)}</td></tr>
             {data.notasCreditoVentasAnteriores !== undefined && (
-              <tr><td className="py-1 font-medium">De ellas, ajuste de ventas anteriores ya incluido en ventas netas</td><td className="text-right">{formatMoney(data.notasCreditoVentasAnteriores)}</td></tr>
+              <tr><td className="py-1 font-medium">De ellas, devoluciones de ventas de días anteriores ya descontadas de las ventas</td><td className="text-right">{formatMoney(data.notasCreditoVentasAnteriores)}</td></tr>
             )}
             {process.env.NEXT_PUBLIC_PAGO_CONFIRMACION === 'true' && (data.porConfirmar?.count ?? 0) > 0 && (
               <tr className="text-amber-700">
-                <td className="py-1 font-medium">Pagos sin confirmar (informativo)</td>
+                <td className="py-1 font-medium">Pagos por confirmar (informativo)</td>
                 <td className="text-right">{formatMoney(data.porConfirmar!.total)} · {data.porConfirmar!.count}</td>
               </tr>
             )}
           </tbody>
         </table>
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="reporte-notas-al-pie">
+          * Pedidos de la fecha sin anulados, menos devoluciones de días anteriores (por fecha del pedido). ** Efectivo y digital que entró hoy, de pedidos de hoy y de días anteriores.
+          *** Saldo que los clientes quedaron debiendo de los pedidos de esta fecha.
+        </p>
         {process.env.NEXT_PUBLIC_PAGO_CONFIRMACION === 'true' && (data.porConfirmar?.diasPreviosCount ?? 0) > 0 && (
           <p className="mt-2 text-xs text-amber-700">
             ⚠ {data.porConfirmar!.diasPreviosCount} pago(s) de días anteriores siguen sin confirmar
@@ -103,7 +107,7 @@ function ReporteContent() {
       </section>
 
       <section className="mb-6">
-        <h3 className="text-lg font-bold border-b pb-1 mb-3">Cobros por Método</h3>
+        <h3 className="text-lg font-bold border-b pb-1 mb-3">Cobrado por medio de pago</h3>
         <table className="w-full text-sm">
           <tbody>
             <tr><td className="py-1">Efectivo</td><td className="text-right">{formatMoney(data.efectivo)}</td></tr>
@@ -205,10 +209,10 @@ function ReporteContent() {
 
       {data.totalContado != null && (
         <section className="mb-6">
-          <h3 className="text-lg font-bold border-b pb-1 mb-3">Arqueo de Caja</h3>
+          <h3 className="text-lg font-bold border-b pb-1 mb-3">Conteo del efectivo</h3>
           <table className="w-full text-sm mb-3">
             <tbody>
-              <tr><td className="py-1 font-medium">{data.efectivoEsperado != null ? 'Efectivo que debía haber' : 'Esperado (incluye pagos digitales)'}</td><td className="text-right">{formatMoney(data.efectivoEsperado ?? netoTeorico)}</td></tr>
+              <tr><td className="py-1 font-medium">{data.efectivoEsperado != null ? 'Efectivo que debía haber' : 'Debía haber (incluye pagos digitales)'}</td><td className="text-right">{formatMoney(data.efectivoEsperado ?? netoTeorico)}</td></tr>
               <tr><td className="py-1 font-medium">Efectivo contado</td><td className="text-right font-bold">{formatMoney(data.totalContado)}</td></tr>
               <tr>
                 <td className="py-1 font-medium">Diferencia</td>
@@ -240,11 +244,11 @@ function ReporteContent() {
       )}
 
       <section className="mb-6">
-        <h3 className="text-lg font-bold border-b pb-1 mb-3">Resumen de Caja</h3>
+        <h3 className="text-lg font-bold border-b pb-1 mb-3">Resumen de la caja</h3>
         <table className="w-full text-sm">
           <tbody>
             {data.efectivoEsperado != null && <tr><td className="py-1 font-medium">Efectivo que debía haber en caja</td><td className="text-right font-bold">{formatMoney(data.efectivoEsperado)}</td></tr>}
-            <tr><td className="py-1 font-medium">Neto de movimientos (incluye pagos digitales)</td><td className="text-right">{formatMoney(netoTeorico)}</td></tr>
+            <tr><td className="py-1 font-medium">Dinero total del día (con lo digital)</td><td className="text-right">{formatMoney(netoTeorico)}</td></tr>
           </tbody>
         </table>
       </section>

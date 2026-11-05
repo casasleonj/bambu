@@ -2,6 +2,7 @@
 
 import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { AyudaTermino } from '@/components/ui/ayuda-termino'
 import { cn } from '@/lib/utils'
 
 interface CierreStockBlockProps {
@@ -47,7 +48,7 @@ export default function CierreStockBlock({ label, icon, ini, prod, vend, perdida
       {/* Fórmula visual: Inicial + Producido − Vendido − Pérdidas = Esperado (botellones: sin pérdidas) */}
       <div className="flex items-center gap-2 text-sm flex-wrap mb-3">
         <div className="flex flex-col items-center">
-          <span className="text-xs text-muted-foreground">Inicial</span>
+          <span className="text-xs text-muted-foreground">Había al empezar</span>
           <span className="font-bold text-lg">{ini}</span>
         </div>
         <span className="text-muted-foreground text-lg font-medium">+</span>
@@ -64,14 +65,14 @@ export default function CierreStockBlock({ label, icon, ini, prod, vend, perdida
           <>
             <span className="text-muted-foreground text-lg font-medium">−</span>
             <div className="flex flex-col items-center">
-              <span className="text-xs text-muted-foreground">Pérdidas</span>
+              <span className="text-xs text-muted-foreground">Pérdidas<AyudaTermino texto="Lo que se filtró, se rompió o se consumió en la fábrica. No es venta ni queda en el stock." /></span>
               <span className="font-bold text-lg">{perdidas}</span>
             </div>
           </>
         )}
         <span className="text-muted-foreground text-lg font-medium">=</span>
         <div className="flex flex-col items-center">
-          <span className="text-xs text-muted-foreground">Esperado</span>
+          <span className="text-xs text-muted-foreground">Debería haber<AyudaTermino texto="Lo que había al empezar + lo producido − lo vendido − las pérdidas. Compáralo con tu conteo final." /></span>
           <span className={cn('font-bold text-lg', falta ? '' : cuadra ? 'text-green-600' : 'text-red-600')}>{falta ? '—' : esperado}</span>
         </div>
       </div>

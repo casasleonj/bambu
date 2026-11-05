@@ -48,10 +48,11 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     await goto(page, `/cierre?fecha=${fecha}`)
     await expect(page.getByTestId('cierre-kpi-ventas')).toContainText('20.000')
     await expect(page.getByTestId('cierre-kpi-cobros')).toContainText('10.000')
-    await page.getByLabel('Base de Caja', { exact: true }).fill('10000')
+    await page.getByLabel('Efectivo con el que empezó el día', { exact: true }).fill('10000')
     // #644: el campo manual «Salarios» ya no existe
     await expect(page.getByLabel('Salarios', { exact: true })).toHaveCount(0)
-    await expect(page.getByTestId('cierre-kpi-neto')).toContainText('20.000')
+    // #646: la respuesta es el efectivo que debe haber (10.000 + 5.000 de pago + 5.000 de abono); el «neto» ya no se muestra
+    await expect(page.getByTestId('efectivo-debe-haber')).toContainText('20.000')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await capturar(page, testInfo, 'revision')
 
@@ -92,12 +93,12 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     expect(Number(guardado.netoCaja)).toBe(20000)
     expect(guardado.reporte).toMatchObject({ _version: '2.1', cobroVentasHoy: 5000, cobroCartera: 5000, salarios: 0, totalContado: 10000, netoCaja: 20000, efectivoEsperado: 20000, diferenciaArqueo: -10000 })
     await page.reload()
-    await expect(page.getByTestId('cierre-kpi-neto')).toContainText('20.000')
+    await expect(page.getByTestId('cierre-kpi-cobros')).toContainText('10.000')
     await capturar(page, testInfo, 'registrado')
     expect(await prisma.cierreDia.count()).toBe(1)
     await goto(page, `/cierre/reporte?fecha=${fecha}`)
     await expect(page.getByRole('button', { name: 'Imprimir / Guardar como PDF' })).toBeVisible()
-    await expect(page.getByRole('row').filter({ hasText: 'Total cobros de la fecha' })).toContainText('10.000')
+    await expect(page.getByRole('row').filter({ hasText: 'Dinero cobrado hoy' })).toContainText('10.000')
   })
 
   test('legado sin evidencia muestra referencias y bloquea solo la fecha afectada', async ({ page }, testInfo) => {

@@ -7,6 +7,7 @@ import { formatCurrency } from '@/lib/utils'
 /**
  * #601: «¿Cuánto efectivo debe haber en la caja?». Solo billetes y monedas: lo que llegó por Nequi,
  * transferencia, Daviplata o bono no está en la caja y se informa aparte.
+ * #646: la respuesta va grande y la cuenta como fichas; «Gastos» abre su lista y «Comisiones» lleva a su bloque.
  */
 export function efectivoEsperadoDelCierre(d: {
   baseDia: number; efectivoPagos: number; cobroCarteraEfectivo?: number;
@@ -18,18 +19,29 @@ export function efectivoEsperadoDelCierre(d: {
   })
 }
 
-function Fila({ etiqueta, valor, tono, total, ayuda }: {
-  etiqueta: string; valor: number; tono?: 'mas' | 'menos'; total?: boolean; ayuda?: string;
+function irA(id: string) {
+  return (e: React.MouseEvent) => {
+    const el = document.getElementById(id)
+    if (!el) return
+    e.preventDefault()
+    if (el instanceof HTMLDetailsElement) el.open = true
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+}
+
+function Ficha({ texto, valor, tono, destino, ayuda }: {
+  texto: string; valor: number; tono?: 'mas' | 'menos'; destino?: string; ayuda?: string
 }) {
+  const clases = `inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold ${
+    tono === 'mas' ? 'border-green-200 bg-green-50 text-green-800' : tono === 'menos' ? 'border-red-200 bg-red-50 text-red-800' : 'border-slate-200 bg-white text-slate-700'}`
+  const contenido = <>{texto} <span className="tabular-nums">{formatCurrency(valor)}</span>{destino ? ' ↓' : ''}</>
   return (
-    <div className={`flex items-start justify-between gap-4 py-2.5 ${total ? 'border-t-2 border-slate-200 pt-3' : 'border-b border-slate-100'}`}>
-      <dt className={total ? 'font-bold text-slate-900' : 'text-slate-600'}>
-        {etiqueta}{ayuda && <> <AyudaTermino texto={ayuda} /></>}
-      </dt>
-      <dd className={`whitespace-nowrap font-semibold tabular-nums ${total ? 'text-2xl font-bold text-slate-900' : tono === 'mas' ? 'text-green-700' : tono === 'menos' ? 'text-red-700' : ''}`}>
-        {formatCurrency(valor)}
-      </dd>
-    </div>
+    <span className="inline-flex items-center">
+      {destino
+        ? <a href={`#${destino}`} onClick={irA(destino)} className={`${clases} hover:underline`}>{contenido}</a>
+        : <span className={clases}>{contenido}</span>}
+      {ayuda && <AyudaTermino texto={ayuda} />}
+    </span>
   )
 }
 
@@ -39,22 +51,22 @@ export default function CierreEfectivoEsperado({ baseDia, efectivoPagos, cobroCa
 }) {
   const debeHaber = efectivoEsperadoDelCierre({ baseDia, efectivoPagos, cobroCarteraEfectivo, totalGastos, comisiones, salarios })
   return (
-    <section aria-labelledby="cierre-debe-haber" data-testid="cierre-efectivo-esperado" className="rounded-xl border-2 border-blue-600 bg-white p-4">
-      <h3 id="cierre-debe-haber" className="mb-2 flex items-center gap-2 text-base font-semibold text-slate-900">
+    <section aria-labelledby="cierre-debe-haber" data-testid="cierre-efectivo-esperado"
+      className="rounded-2xl border-2 border-blue-600 bg-gradient-to-br from-blue-50 to-white p-4">
+      <h3 id="cierre-debe-haber" className="flex items-center gap-1 text-sm font-semibold text-slate-900">
         ¿Cuánto efectivo debe haber en la caja?
         <AyudaTermino texto="Es solo el dinero en billetes y monedas. No incluye lo que llegó por Nequi, transferencia o Daviplata, ni lo que quedó fiado." />
       </h3>
-      <dl className="text-sm">
-        <Fila etiqueta="Efectivo con el que empezó el día" valor={baseDia} ayuda="Antes se llamaba «base de caja»: el efectivo que había en la caja al abrir." />
-        <Fila etiqueta="+ Efectivo cobrado hoy" valor={efectivoPagos} tono="mas" ayuda="Ventas de hoy y pagos de deudas anteriores (fiados) que se recibieron en efectivo." />
-        {cobroCarteraEfectivo !== 0 && (
-          <Fila etiqueta="+ Abonos a deudas en efectivo" valor={cobroCarteraEfectivo} tono="mas" />
-        )}
-        <Fila etiqueta="− Gastos" valor={totalGastos} tono="menos" />
-        <Fila etiqueta="− Comisiones pagadas" valor={comisiones} tono="menos" />
-        {salarios > 0 && <Fila etiqueta="− Salarios" valor={salarios} tono="menos" />}
-        <Fila etiqueta="Efectivo que debe haber en caja" valor={debeHaber} total />
-      </dl>
+      <div data-testid="efectivo-debe-haber" className="my-1 text-4xl font-extrabold tabular-nums text-blue-900">{formatCurrency(debeHaber)}</div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Ficha texto="Empezó con" valor={baseDia} ayuda="Antes se llamaba «base de caja»: el efectivo que había en la caja al abrir." />
+        <Ficha texto="+ Cobrado en efectivo" valor={efectivoPagos} tono="mas" ayuda="Ventas de hoy y pagos de deudas anteriores (fiados) que se recibieron en efectivo." />
+        {cobroCarteraEfectivo !== 0 && <Ficha texto="+ Abonos en efectivo" valor={cobroCarteraEfectivo} tono="mas" ayuda="Dinero que un cliente pagó a una factura por aparte, en efectivo." />}
+        {totalGastos !== 0 && <Ficha texto="− Gastos" valor={totalGastos} tono="menos" destino="cierre-gastos" />}
+        {comisiones !== 0 && <Ficha texto="− Comisiones pagadas" valor={comisiones} tono="menos" destino="cierre-comisiones"
+          ayuda="Solo lo que ya se le pagó en efectivo a repartidores y selladores. Lo pendiente no resta hasta que se pague." />}
+        {salarios > 0 && <Ficha texto="− Salarios" valor={salarios} tono="menos" />}
+      </div>
       {pagosDigitales > 0 && (
         <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600" data-testid="cierre-pagos-digitales">
           Además entraron {formatCurrency(pagosDigitales)} por Nequi, transferencia u otros medios. Ese dinero llegó a la cuenta, no a la caja: no cuenta para el conteo del efectivo.
