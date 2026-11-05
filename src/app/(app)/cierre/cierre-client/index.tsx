@@ -22,8 +22,7 @@ import CierreStockBlock from '@/components/cierre/cierre-stock-block'
 import AvisoUnidadesAproximadas, { unidadesAproximadasDe } from '@/components/cierre/aviso-unidades-aproximadas'
 import CierreValidationList from '@/components/cierre/cierre-validation-list'
 import type { CierreData } from './types'
-import { ComisionesRepartidores } from './comisiones-repartidores'
-import { SueldosQueTocan } from './sueldos-que-tocan'
+import { PagosPersonal, resumenPagosPersonal } from './pagos-personal'
 import { ProduccionDelCierre } from './produccion-del-cierre'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
@@ -513,7 +512,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       ok: arqueoData.totalContado > 0,
       detail: arqueoData.totalContado > 0
         ? `Contado: ${formatCurrency(arqueoData.totalContado)} — ${arqueoData.diferencia === 0 ? 'Cuadra' : arqueoData.diferencia > 0 ? `Sobra ${formatCurrency(arqueoData.diferencia)}` : `Falta ${formatCurrency(Math.abs(arqueoData.diferencia))}`}`
-        : 'Cuenta el efectivo en la sección 3',
+        : 'Cuenta el efectivo en la sección 4',
     },
     {
       label: 'Stock cuadrado',
@@ -536,9 +535,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   // Next step hint
   const getNextStep = () => {
     if (baseDia === 0) return { label: 'Ingresa el efectivo con el que empezó el día', section: 2 }
-    if (arqueoData.totalContado === 0) return { label: 'Cuenta el efectivo físico', section: 3 }
+    if (arqueoData.totalContado === 0) return { label: 'Cuenta el efectivo físico', section: 4 }
     if (statusCierre === 'INCOMPLETO') return { label: 'Cierra los embarques pendientes', section: 1 }
-    return { label: 'Listo para cerrar el día', section: 4 }
+    return { label: 'Listo para cerrar el día', section: 5 }
   }
 
   const nextStep = getNextStep()
@@ -614,73 +613,19 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         <CierreDetalleVentas data={data} />
       </CierreSection>
 
-      {/* Section 2: Stock y Base de Caja */}
+      {/* Section 2: Inventario y efectivo inicial */}
       <CierreSection
         number={2}
         title="Inventario y efectivo inicial"
         description="Confirma los valores que faltan por registrar. El efectivo inicial es el que había en la caja al empezar el día."
       >
         <div className="space-y-4">
-          {/* Base y comisiones */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="cierre-baseDia" className="text-xs text-muted-foreground">Efectivo con el que empezó el día</label>
-              <Input id="cierre-baseDia" type="number" min="0" value={baseDia} onChange={(e) => setBaseDia(Math.max(0, Number(e.target.value)))} className="mt-1" />
-              {baseDia <= 0 && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Requerido para cerrar</p>}
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Comisiones (automático)</p>
-              <p className="mt-1 flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm font-medium" data-testid="cierre-comisiones-auto">{formatMoney(comisiones)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Lo pagado hoy en efectivo a repartidores y selladores.</p>
-            </div>
+          {/* Efectivo con el que empezó el día */}
+          <div className="max-w-sm">
+            <label htmlFor="cierre-baseDia" className="text-xs text-muted-foreground">Efectivo con el que empezó el día</label>
+            <Input id="cierre-baseDia" type="number" min="0" value={baseDia} onChange={(e) => setBaseDia(Math.max(0, Number(e.target.value)))} className="mt-1" />
+            {baseDia <= 0 && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Requerido para cerrar</p>}
           </div>
-
-          {/* Sueldos que tocan (#644) */}
-          <div>
-            <p className="mb-2 text-sm font-medium">Sueldos que tocan</p>
-            <SueldosQueTocan
-              sueldos={data?.sueldosQueTocan ?? []}
-              puedePagar={puedePagarComision}
-              diaCerrado={diaCerrado}
-              onPagado={() => {
-                const signal = abortControllerRef.current?.signal
-                if (signal) void fetchCierre(fecha, signal)
-              }}
-            />
-          </div>
-
-          {/* Comisiones de repartidores (#499) */}
-          <div id="cierre-comisiones">
-            <p className="mb-2 text-sm font-medium">Comisiones de repartidores</p>
-            <ComisionesRepartidores
-              fecha={fecha}
-              repartidores={data?.comisionesAuto?.repartidores ?? []}
-              puedePagar={puedePagarComision}
-              diaCerrado={diaCerrado}
-              onPagado={() => {
-                const signal = abortControllerRef.current?.signal
-                if (signal) void fetchCierre(fecha, signal)
-              }}
-            />
-          </div>
-
-          {/* Comisión del sellador (#645): se paga como la del repartidor; solo el efectivo baja la caja */}
-          {(data?.comisionesAuto?.selladores?.length ?? 0) > 0 && (
-            <div>
-              <p className="mb-2 text-sm font-medium">Comisión del sellador</p>
-              <ComisionesRepartidores
-                tipo="sellador"
-                fecha={fecha}
-                repartidores={data?.comisionesAuto?.selladores ?? []}
-                puedePagar={puedePagarComision}
-                diaCerrado={diaCerrado}
-                onPagado={() => {
-                  const signal = abortControllerRef.current?.signal
-                  if (signal) void fetchCierre(fecha, signal)
-                }}
-              />
-            </div>
-          )}
 
           {/* #650 (2b): unidades sin detalle por día / error de reparto */}
           <AvisoUnidadesAproximadas
@@ -755,9 +700,28 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         </div>
       </CierreSection>
 
-      {/* Section 3: Arqueo de Caja */}
+      {/* Section 3: Pagos al personal (#646): comisiones de repartidores y selladores + sueldos que tocan */}
       <CierreSection
         number={3}
+        title="Pagos al personal"
+        description="Paga las comisiones y los sueldos que tocan. Lo que pagues en efectivo sale de la caja de hoy."
+        status={resumenPagosPersonal(data).pendiente > 0 ? 'actual' : 'completo'}
+      >
+        <PagosPersonal
+          data={data}
+          fecha={fecha}
+          puedePagar={puedePagarComision}
+          diaCerrado={diaCerrado}
+          onPagado={() => {
+            const signal = abortControllerRef.current?.signal
+            if (signal) void fetchCierre(fecha, signal)
+          }}
+        />
+      </CierreSection>
+
+      {/* Section 4: Conteo del efectivo */}
+      <CierreSection
+        number={4}
         title="Conteo del efectivo"
         description="Cuenta los billetes y monedas y compáralos con el efectivo que debe haber."
       >
@@ -856,9 +820,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         )}
       </CierreSection>
 
-      {/* Section 4: Cerrar Día */}
+      {/* Section 5: Cerrar Día */}
       <CierreSection
-        number={4}
+        number={5}
         title="Cerrar el Día"
         description="Al cerrar, bloqueas el día permanentemente. No podrás editar pedidos ni embarques."
       >
