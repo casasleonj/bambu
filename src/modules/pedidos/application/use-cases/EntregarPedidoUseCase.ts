@@ -9,6 +9,7 @@ import type { IFacturaRepository } from '../../domain/repositories/IFacturaRepos
 import type { IPagoRepository } from '../../domain/repositories/IPagoRepository'
 import type { ITransactionManager, TransactionClient } from '../../infrastructure/transactions/PrismaTransactionManager'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
+import { registrarEntregaExigible } from '@/lib/entregas-exigibles-db'
 import { leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import { aplicarEntregaConObligacion } from '@/lib/obligacion-guard'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
@@ -234,6 +235,22 @@ export class EntregarPedidoUseCase {
 
       // Persist pedido
       const updated = await this.pedidoRepo.update(pedido, tx)
+
+      // #656: cada entrega registra su valor exigible en la MISMA transacción. Precio tomado del item del pedido.
+      await registrarEntregaExigible(tx, {
+        pedidoId: input.pedidoId,
+        entregadoAt: oficina ? oficina.fechaEntrega : (input.entregadoAt ? new Date(input.entregadoAt) : new Date()),
+        lineas: entregasClampeadas.map(e => ({
+          producto: e.producto,
+          cantidad: e.cantidadAEntregar,
+          precioCents: pedido.items.find(i => i.producto === e.producto)?.precio.cents ?? 0,
+        })),
+        pedido: {
+          total: updated.total.cents / 100,
+          totalPagado: updated.totalPagado.cents / 100,
+          saldo: updated.saldo.cents / 100,
+        },
+      })
 
       // Fiado de la oficina: la promesa de pago queda en el pedido (misma
       // columna que usa el antifraude #318 y el cron de vencimientos).
