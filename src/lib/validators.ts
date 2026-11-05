@@ -673,6 +673,8 @@ export const ProduccionCreateSchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)').optional(),
   // #645: botellones llenados (se digitan; llenados ≠ vendidos). La comisión del sellador usa los llenados.
   botellonesLlenados: z.coerce.number().int().min(0).default(0),
+  // #618: conteo final de botellones llenos (sin él se asume que cuadra, para clientes anteriores).
+  stockFinBotellones: z.coerce.number().int().min(0).optional(),
   // Items: exactamente 2 (PACA_AGUA, PACA_HIELO). El server completa el
   // resto (producido, stockIni, ventas, stockFinEsperado, diferencia).
   items: z.array(ProduccionItemCreateSchema).length(2),
@@ -708,12 +710,13 @@ export const ProduccionUpdateSchema = z.object({
   items: z.array(ProduccionItemUpdateSchema).length(2).optional(),
   // #645: corrige los botellones llenados.
   botellonesLlenados: z.coerce.number().int().min(0).optional(),
+  stockFinBotellones: z.coerce.number().int().min(0).optional(),
   obs: z.string().max(500).optional(),
   // El cliente puede pasar obs='' explícitamente para "borrar" la observación.
   // Si no se envía obs, no se modifica.
 }).strict().refine(
-  (data) => data.items !== undefined || data.obs !== undefined || data.botellonesLlenados !== undefined,
-  { message: 'Debe enviar al menos un campo (items, obs o botellonesLlenados)' },
+  (data) => data.items !== undefined || data.obs !== undefined || data.botellonesLlenados !== undefined || data.stockFinBotellones !== undefined,
+  { message: 'Debe enviar al menos un campo (items, obs, botellonesLlenados o stockFinBotellones)' },
 ).refine(
   (data) => {
     if (!data.items) return true
@@ -765,6 +768,10 @@ export const CierreCreateSchema = z.object({
   stockIniHielo: z.coerce.number().int().min(0),
   prodHielo: z.coerce.number().int().min(0),
   stockFinHielo: z.coerce.number().int().min(0),
+  // #618: inventario de botellones llenos (opcional: clientes anteriores no lo envían y quedan en NULL).
+  stockIniBotellon: z.coerce.number().int().min(0).optional(),
+  prodBotellon: z.coerce.number().int().min(0).optional(),
+  stockFinBotellon: z.coerce.number().int().min(0).optional(),
   // #499: el servidor calcula las comisiones; si llega, se ignora (compat. con clientes viejos).
   comisiones: z.coerce.number().min(0).optional(),
   // #644: el campo manual «Salarios» se retiró del cierre; los sueldos se pagan con «Pagar» (Nómina) y salen como gasto

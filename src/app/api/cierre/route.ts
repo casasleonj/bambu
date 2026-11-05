@@ -295,6 +295,10 @@ export async function POST(request: NextRequest) {
             stockIniHielo: parsed.data.stockIniHielo,
             prodHielo: parsed.data.prodHielo,
             stockFinHielo: parsed.data.stockFinHielo,
+            // #618: NULL si el cliente no manda botellones (cierre anterior a este cambio)
+            stockIniBotellon: parsed.data.stockIniBotellon ?? null,
+            prodBotellon: parsed.data.prodBotellon ?? null,
+            stockFinBotellon: parsed.data.stockFinBotellon ?? null,
             aguaVendida: resumen.aguaVendida,
             hieloVendido: resumen.hieloVendido,
             botellonVendido: resumen.botellonVendido,

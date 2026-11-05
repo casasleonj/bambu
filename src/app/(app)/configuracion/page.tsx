@@ -25,6 +25,9 @@ export default async function ConfiguracionPage() {
     HORARIO_TARDE_INICIO: configMap.HORARIO_TARDE_INICIO || '14:00',
     HORARIO_TARDE_FIN: configMap.HORARIO_TARDE_FIN || '17:00',
     UMBRAL_HORAS_HABILES_RIESGO: configMap.UMBRAL_HORAS_HABILES_RIESGO || '2',
+    STOCK_INI_AGUA: configMap.STOCK_INI_AGUA || '0',
+    STOCK_INI_HIELO: configMap.STOCK_INI_HIELO || '0',
+    STOCK_INI_BOTELLON: configMap.STOCK_INI_BOTELLON || '0',
   }
 
   // TEMPORAL-SIN-EMBARQUE(#472): estado del interruptor y «último cambio» (quién y cuándo).

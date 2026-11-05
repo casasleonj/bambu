@@ -27,6 +27,7 @@ interface EditFormData {
   consumoInternoAgua: number
   consumoInternoHielo: number
   botellonesLlenados: number
+  stockFinBotellones: number
   obs: string
 }
 
@@ -39,6 +40,7 @@ function buildInitialForm(registro: ProduccionRegistro | null): EditFormData {
       rotasAgua: 0, rotasHielo: 0,
       consumoInternoAgua: 0, consumoInternoHielo: 0,
       botellonesLlenados: 0,
+      stockFinBotellones: 0,
       obs: '',
     }
   }
@@ -58,6 +60,7 @@ function buildInitialForm(registro: ProduccionRegistro | null): EditFormData {
     consumoInternoAgua: agua?.consumoInterno ?? 0,
     consumoInternoHielo: hielo?.consumoInterno ?? 0,
     botellonesLlenados: registro.items.find(i => i.producto === 'BOTELLON')?.producido ?? 0,
+    stockFinBotellones: registro.items.find(i => i.producto === 'BOTELLON')?.stockFinFisico ?? 0,
     obs: registro.obs ?? '',
   }
 }
@@ -86,7 +89,10 @@ export function ProduccionEditModal({ open, onClose, registro, onSaved }: Produc
   const diferenciaAgua = useMemo(() => stockFinEsperadoAgua - formData.stockFinFisicoAgua - perdidasAgua, [stockFinEsperadoAgua, formData.stockFinFisicoAgua, perdidasAgua])
   const diferenciaHielo = useMemo(() => stockFinEsperadoHielo - formData.stockFinFisicoHielo - perdidasHielo, [stockFinEsperadoHielo, formData.stockFinFisicoHielo, perdidasHielo])
 
-  const hayDiferencia = diferenciaAgua !== 0 || diferenciaHielo !== 0
+  // #618: botellones llenos (sin pérdidas)
+  const botellon = registro?.items.find(i => i.producto === 'BOTELLON')
+  const diferenciaBotellon = (botellon?.stockIni ?? 0) + formData.botellonesLlenados - (botellon?.ventas ?? 0) - formData.stockFinBotellones
+  const hayDiferencia = diferenciaAgua !== 0 || diferenciaHielo !== 0 || (botellon !== undefined && diferenciaBotellon !== 0)
 
   const handleSubmit = async () => {
     if (!registro) return
@@ -103,6 +109,8 @@ export function ProduccionEditModal({ open, onClose, registro, onSaved }: Produc
         body: JSON.stringify({
           obs: formData.obs,
           botellonesLlenados: formData.botellonesLlenados,
+          // Registros anteriores a #618 no tienen ítem de botellones: sin conteo se asume que cuadra.
+          ...(botellon ? { stockFinBotellones: formData.stockFinBotellones } : {}),
           items: [
             {
               producto: 'PACA_AGUA',
@@ -194,7 +202,10 @@ export function ProduccionEditModal({ open, onClose, registro, onSaved }: Produc
 
         <div className="bg-gray-50 border p-4 rounded-xl">
           <h3 className="font-semibold text-gray-800 mb-3">🫙 Botellones de agua</h3>
-          {numberField('Botellones llenados', formData.botellonesLlenados, (v) => setFormData({ ...formData, botellonesLlenados: v }))}
+          <div className="grid grid-cols-2 gap-3">
+            {numberField('Botellones llenados', formData.botellonesLlenados, (v) => setFormData({ ...formData, botellonesLlenados: v }))}
+            {numberField('Conteo final botellones', formData.stockFinBotellones, (v) => setFormData({ ...formData, stockFinBotellones: v }))}
+          </div>
           <p className="text-xs text-gray-500 mt-2">Llenados, no vendidos: la comisión del sellador usa los llenados.</p>
         </div>
 

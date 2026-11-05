@@ -26,7 +26,7 @@ afterEach(() => vi.useRealTimers())
 
 function montar(over: Partial<React.ComponentProps<typeof ProduccionDelCierre>> = {}) {
   const props = {
-    fecha: HOY, diaCerrado: false, producciones: [], esperadoPrevio: { agua: 15, hielo: 3 }, botellonesVendidos: 3,
+    fecha: HOY, diaCerrado: false, producciones: [], esperadoPrevio: { agua: 15, hielo: 3, botellon: 20 }, botellonesVendidos: 3,
     sinProduccion: false, onSinProduccionChange: vi.fn(), onGuardada: vi.fn(), ...over,
   }
   render(<ProduccionDelCierre {...props} />)
@@ -44,20 +44,20 @@ describe('ProduccionDelCierre (#645)', () => {
   })
 
   it('guardar manda la fecha del cierre, una cifra por producto como conteo A = B, pérdidas y botellones llenados', async () => {
-    const p = montar({ fecha: '2026-11-09', esperadoPrevio: { agua: 15, hielo: 3 } })
+    const p = montar({ fecha: '2026-11-09', esperadoPrevio: { agua: 15, hielo: 3, botellon: 20 } })
     await screen.findByRole('option', { name: 'Carlos Pérez' })
     fireEvent.change(screen.getByLabelText(/Sellador/), { target: { value: 's1' } })
     fireEvent.change(screen.getByLabelText(/Turno/), { target: { value: 'JORNADA' } })
     escribir('pc-prod-agua', '60'); escribir('pc-prod-hielo', '30')
     escribir('pc-merma-agua', '2')
     escribir('pc-fin-agua', '73'); escribir('pc-fin-hielo', '33') // 15+60−2 = 73 · 3+30 = 33
-    escribir('pc-botellones', '8')
+    escribir('pc-botellones', '8'); escribir('pc-fin-botellones', '28') // 20 + 8 = 28
     expect(screen.queryByTestId('produccion-diferencia')).toBeNull()
     fireEvent.click(screen.getByTestId('guardar-produccion'))
     await waitFor(() => expect(p.onGuardada).toHaveBeenCalled())
     const [, init] = llamadasPost()[0]
     const cuerpo = JSON.parse(init.body)
-    expect(cuerpo).toMatchObject({ trabajadorId: 's1', turno: 'JORNADA', fecha: '2026-11-09', botellonesLlenados: 8 })
+    expect(cuerpo).toMatchObject({ trabajadorId: 's1', turno: 'JORNADA', fecha: '2026-11-09', botellonesLlenados: 8, stockFinBotellones: 28 })
     expect(cuerpo.offlineId).toMatch(/^[0-9a-f-]{36}$/)
     expect(cuerpo.items[0]).toMatchObject({ producto: 'PACA_AGUA', conteoA: 60, conteoB: 60, stockFinFisico: 73, rotas: 2, filtradas: 0, consumoInterno: 0 })
     expect(cuerpo.items[1]).toMatchObject({ producto: 'PACA_HIELO', conteoA: 30, conteoB: 30, stockFinFisico: 33 })
@@ -67,11 +67,22 @@ describe('ProduccionDelCierre (#645)', () => {
     montar()
     await screen.findByRole('option', { name: 'Carlos Pérez' })
     fireEvent.change(screen.getByLabelText(/Sellador/), { target: { value: 's1' } })
-    escribir('pc-prod-agua', '60'); escribir('pc-fin-agua', '70') // esperado 75
+    escribir('pc-prod-agua', '60'); escribir('pc-fin-agua', '70'); escribir('pc-fin-botellones', '20') // agua esperada 75; botellones 20 cuadran
     expect(screen.getByTestId('produccion-diferencia')).toHaveTextContent('esperado 75, contaste 70 (-5)')
     expect(screen.getByTestId('guardar-produccion')).toBeDisabled()
     fireEvent.change(document.getElementById('pc-obs') as HTMLTextAreaElement, { target: { value: 'Se cayeron 5 pacas' } })
     expect(screen.getByTestId('guardar-produccion')).not.toBeDisabled()
+  })
+
+  it('#618: una diferencia en los botellones llenos también obliga a explicar', async () => {
+    montar() // botellones esperados: 20 + 0 = 20
+    await screen.findByRole('option', { name: 'Carlos Pérez' })
+    fireEvent.change(screen.getByLabelText(/Sellador/), { target: { value: 's1' } })
+    escribir('pc-prod-agua', '60'); escribir('pc-prod-hielo', '30')
+    escribir('pc-fin-agua', '75'); escribir('pc-fin-hielo', '33')
+    escribir('pc-botellones', '8'); escribir('pc-fin-botellones', '25') // esperado 28, contó 25
+    expect(screen.getByTestId('produccion-diferencia')).toHaveTextContent('Botellones: esperado 28, contaste 25 (-3)')
+    expect(screen.getByTestId('guardar-produccion')).toBeDisabled()
   })
 
   it('sin elegir sellador no se puede guardar', async () => {
@@ -84,7 +95,7 @@ describe('ProduccionDelCierre (#645)', () => {
     fetchMock.mockImplementation(async (url: string) => String(url).startsWith('/api/trabajadores')
       ? { ok: true, status: 200, json: async () => ({ trabajadores: [{ id: 's1', nombre: 'Carlos Pérez' }] }) }
       : { ok: false, status: 500, json: async () => ({ error: { message: 'Error al registrar la producción' } }) })
-    montar({ esperadoPrevio: { agua: 0, hielo: 0 } })
+    montar({ esperadoPrevio: { agua: 0, hielo: 0, botellon: 0 } })
     await screen.findByRole('option', { name: 'Carlos Pérez' })
     fireEvent.change(screen.getByLabelText(/Sellador/), { target: { value: 's1' } })
     fireEvent.click(screen.getByTestId('guardar-produccion'))
@@ -98,7 +109,7 @@ describe('ProduccionDelCierre (#645)', () => {
     fetchMock.mockImplementation(async (url: string) => String(url).startsWith('/api/trabajadores')
       ? { ok: true, status: 200, json: async () => ({ trabajadores: [{ id: 's1', nombre: 'Carlos Pérez' }] }) }
       : { ok: false, status: 409, json: async () => ({ error: { message: 'Ya existe producción registrada para este trabajador en el turno MANANA de ese día' } }) })
-    montar({ esperadoPrevio: { agua: 0, hielo: 0 } })
+    montar({ esperadoPrevio: { agua: 0, hielo: 0, botellon: 0 } })
     await screen.findByRole('option', { name: 'Carlos Pérez' })
     fireEvent.change(screen.getByLabelText(/Sellador/), { target: { value: 's1' } })
     fireEvent.click(screen.getByTestId('guardar-produccion'))
@@ -110,7 +121,7 @@ describe('ProduccionDelCierre (#645)', () => {
       if (String(url).startsWith('/api/trabajadores')) return { ok: true, status: 200, json: async () => ({ trabajadores: [{ id: 's1', nombre: 'Carlos Pérez' }] }) }
       throw new TypeError('network')
     })
-    montar({ esperadoPrevio: { agua: 0, hielo: 0 } })
+    montar({ esperadoPrevio: { agua: 0, hielo: 0, botellon: 0 } })
     await screen.findByRole('option', { name: 'Carlos Pérez' })
     fireEvent.change(screen.getByLabelText(/Sellador/), { target: { value: 's1' } })
     fireEvent.click(screen.getByTestId('guardar-produccion'))

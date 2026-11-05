@@ -88,6 +88,9 @@ export async function GET(request: NextRequest) {
     return apiSuccess({
       stockIniAgua: stockInicial.stockIniAgua + netoPrevioDelDia(previas, 'PACA_AGUA'),
       stockIniHielo: stockInicial.stockIniHielo + netoPrevioDelDia(previas, 'PACA_HIELO'),
+      // #618: botellones llenos al empezar (lo llenado por producciones anteriores del día se suma)
+      stockIniBotellon: stockInicial.stockIniBotellon + netoPrevioDelDia(previas, 'BOTELLON'),
+      ventasBotellon: ventas.botellonVendido,
       ventasAgua: ventas.aguaVendida,
       ventasHielo: ventas.hieloVendido,
       repartidores,

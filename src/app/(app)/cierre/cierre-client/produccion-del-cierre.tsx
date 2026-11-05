@@ -25,7 +25,7 @@ interface Props {
   diaCerrado: boolean
   producciones: NonNullable<CierreData['producciones']>
   /** Stock esperado del día SIN la producción que se va a registrar: inicial + producido − vendido − pérdidas. */
-  esperadoPrevio: { agua: number; hielo: number }
+  esperadoPrevio: { agua: number; hielo: number; botellon: number }
   botellonesVendidos: number
   sinProduccion: boolean
   onSinProduccionChange: (v: boolean) => void
@@ -33,7 +33,7 @@ interface Props {
 }
 
 const VACIO = {
-  trabajadorId: '', turno: 'MANANA', prodAgua: 0, prodHielo: 0, finAgua: 0, finHielo: 0, botellones: 0,
+  trabajadorId: '', turno: 'MANANA', prodAgua: 0, prodHielo: 0, finAgua: 0, finHielo: 0, botellones: 0, finBotellones: 0,
   filtAgua: 0, mermaAgua: 0, consAgua: 0, filtHielo: 0, mermaHielo: 0, consHielo: 0, obs: '',
 }
 
@@ -80,7 +80,10 @@ export function ProduccionDelCierre({ fecha, diaCerrado, producciones, esperadoP
   const esperadoHielo = esperadoPrevio.hielo + form.prodHielo - perdidasHielo
   const difAgua = form.finAgua - esperadoAgua
   const difHielo = form.finHielo - esperadoHielo
-  const hayDiferencia = difAgua !== 0 || difHielo !== 0
+  // #618: botellones llenos: Inicial + Llenados − Vendidos (sin pérdidas) contra el conteo final
+  const esperadoBotellon = esperadoPrevio.botellon + form.botellones
+  const difBotellon = form.finBotellones - esperadoBotellon
+  const hayDiferencia = difAgua !== 0 || difHielo !== 0 || difBotellon !== 0
   const falta = !form.trabajadorId
   const faltaObs = hayDiferencia && form.obs.trim() === ''
 
@@ -95,7 +98,7 @@ export function ProduccionDelCierre({ fecha, diaCerrado, producciones, esperadoP
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           trabajadorId: form.trabajadorId, turno: form.turno, fecha, offlineId: claveRef.current,
-          botellonesLlenados: form.botellones, obs: form.obs.trim() || undefined,
+          botellonesLlenados: form.botellones, stockFinBotellones: form.finBotellones, obs: form.obs.trim() || undefined,
           items: [
             { producto: 'PACA_AGUA', conteoA: form.prodAgua, conteoB: form.prodAgua, stockFinFisico: form.finAgua, filtradas: form.filtAgua, rotas: form.mermaAgua, consumoInterno: form.consAgua },
             { producto: 'PACA_HIELO', conteoA: form.prodHielo, conteoB: form.prodHielo, stockFinFisico: form.finHielo, filtradas: form.filtHielo, rotas: form.mermaHielo, consumoInterno: form.consHielo },
@@ -196,6 +199,7 @@ export function ProduccionDelCierre({ fecha, diaCerrado, producciones, esperadoP
 
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
             {campo('Botellones llenados *', form.botellones, (v) => set('botellones', v), 'pc-botellones', `Vendidos ese día: ${botellonesVendidos} (referencia)`)}
+            {campo('Conteo final botellones *', form.finBotellones, (v) => set('finBotellones', v), 'pc-fin-botellones', 'Llenos que quedaron')}
           </div>
 
           <h5 className="mt-4 text-sm font-semibold">Pérdidas del día <span className="text-xs font-normal text-muted-foreground">(opcionales; si no hubo, déjalas en 0)</span></h5>
@@ -214,6 +218,7 @@ export function ProduccionDelCierre({ fecha, diaCerrado, producciones, esperadoP
               <p className="rounded-md bg-red-50 p-2 text-sm text-red-800">
                 {difAgua !== 0 && <>Agua: esperado {esperadoAgua}, contaste {form.finAgua} ({difAgua > 0 ? '+' : ''}{difAgua}). </>}
                 {difHielo !== 0 && <>Hielo: esperado {esperadoHielo}, contaste {form.finHielo} ({difHielo > 0 ? '+' : ''}{difHielo}). </>}
+                {difBotellon !== 0 && <>Botellones: esperado {esperadoBotellon}, contaste {form.finBotellones} ({difBotellon > 0 ? '+' : ''}{difBotellon}). </>}
                 Explica la causa para guardar.
               </p>
               <label htmlFor="pc-obs" className="text-xs text-muted-foreground">Observación (obligatoria con diferencia) *</label>
