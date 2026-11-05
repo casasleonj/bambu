@@ -232,40 +232,40 @@ enum ImportDecision {
 // ====================
 
 model User {
-  id                             String     @id @default(cuid())
-  username                       String     @unique
-  password                       String
-  nombre                         String     @default("")
-  apellido                       String     @default("")
-  rol                            RolUsuario @default(ASISTENTE)
-  activo                         Boolean    @default(true)
-  mustChangePassword             Boolean    @default(false)
+  id                               String     @id @default(cuid())
+  username                         String     @unique
+  password                         String
+  nombre                           String     @default("")
+  apellido                         String     @default("")
+  rol                              RolUsuario @default(ASISTENTE)
+  activo                           Boolean    @default(true)
+  mustChangePassword               Boolean    @default(false)
   // F2 (Excepciones de Crédito, Plan Maestro §11): capacidad explícita por
   // usuario, deliberadamente independiente de `rol` — "ser ADMIN no debe
   // ser la única definición conceptual de autoridad".
-  puedeAutorizarExcepcionCredito Boolean    @default(false)
+  puedeAutorizarExcepcionCredito   Boolean    @default(false)
   /// #451: permiso por usuario (no por rol) para autorizar una reducción comercial.
-  puedeAutorizarReduccionComercial Boolean  @default(false)
-  createdAt                      DateTime   @default(now()) @db.Timestamptz()
-  updatedAt                      DateTime   @updatedAt @db.Timestamptz()
+  puedeAutorizarReduccionComercial Boolean    @default(false)
+  createdAt                        DateTime   @default(now()) @db.Timestamptz()
+  updatedAt                        DateTime   @updatedAt @db.Timestamptz()
 
   trabajador Trabajador?
 
-  clientesCreados     Cliente[]             @relation("ClienteCreador")
-  pedidosCreados      Pedido[]              @relation("PedidoCreador")
-  facturasCreadas     Factura[]             @relation("FacturaCreador")
-  embarquesCreados    Embarque[]            @relation("EmbarqueCreador")
-  gastosCreados       Gasto[]               @relation("GastoCreador")
-  produccionesCreadas Produccion[]          @relation("ProduccionCreador")
-  nominasCreadas      Nomina[]              @relation("NominaCreador")
+  clientesCreados     Cliente[]                @relation("ClienteCreador")
+  pedidosCreados      Pedido[]                 @relation("PedidoCreador")
+  facturasCreadas     Factura[]                @relation("FacturaCreador")
+  embarquesCreados    Embarque[]               @relation("EmbarqueCreador")
+  gastosCreados       Gasto[]                  @relation("GastoCreador")
+  produccionesCreadas Produccion[]             @relation("ProduccionCreador")
+  nominasCreadas      Nomina[]                 @relation("NominaCreador")
   pagosComisionHechos PagoComisionRepartidor[] @relation("PagoComisionPagador")
-  comprasCreadas      CompraInsumo[]        @relation("CompraCreador")
-  insumosCreados      Insumo[]              @relation("InsumoCreador")
-  proveedoresCreados  Proveedor[]           @relation("ProveedorCreador")
-  trabajadoresCreados Trabajador[]          @relation("TrabajadorCreador")
-  rutasCreadas        Ruta[]                @relation("RutaCreador")
-  negociosCreados     Negocio[]             @relation("NegocioCreador")
-  plantillasCreadas   PlantillaRecurrente[] @relation("PlantillaCreador")
+  comprasCreadas      CompraInsumo[]           @relation("CompraCreador")
+  insumosCreados      Insumo[]                 @relation("InsumoCreador")
+  proveedoresCreados  Proveedor[]              @relation("ProveedorCreador")
+  trabajadoresCreados Trabajador[]             @relation("TrabajadorCreador")
+  rutasCreadas        Ruta[]                   @relation("RutaCreador")
+  negociosCreados     Negocio[]                @relation("NegocioCreador")
+  plantillasCreadas   PlantillaRecurrente[]    @relation("PlantillaCreador")
 
   casosCreados   Caso[]       @relation("CasoCreador")
   casosAsignados Caso[]       @relation("CasoAsignado")
@@ -294,7 +294,7 @@ model User {
   deudasCreadas DeudaTrabajador[] @relation("DeudaCreador")
 
   // ADR-PAGO-REPORTADO-CONFIRMADO-001: pagos que este usuario confirmó/marcó discrepantes.
-  pagosConfirmados Pago[] @relation("PagoConfirmador")
+  pagosConfirmados            Pago[]           @relation("PagoConfirmador")
   regularizacionesAutorizadas Regularizacion[] @relation("RegularizacionAutorizador")
   regularizacionesEjecutadas  Regularizacion[] @relation("RegularizacionEjecutor")
 
@@ -307,16 +307,16 @@ model User {
   sesionesActivas SesionActiva[]
 
   // F2 (Excepciones de Crédito)
-  excepcionesCreditoSolicitadas PedidoExcepcionCredito[] @relation("ExcepcionCreditoSolicitante")
+  excepcionesCreditoSolicitadas     PedidoExcepcionCredito[]     @relation("ExcepcionCreditoSolicitante")
   // ADR-CIERRE-004 / ADR-MONETARIO-002: correcciones de precio solicitadas / resueltas.
-  correccionesPrecioSolicitadas PedidoCorreccionPrecio[] @relation("CorreccionPrecioSolicitante")
-  correccionesPrecioResueltas   PedidoCorreccionPrecio[] @relation("CorreccionPrecioResolutor")
+  correccionesPrecioSolicitadas     PedidoCorreccionPrecio[]     @relation("CorreccionPrecioSolicitante")
+  correccionesPrecioResueltas       PedidoCorreccionPrecio[]     @relation("CorreccionPrecioResolutor")
   // #451 / ADR-REDUCCION-COMERCIAL-001: reducciones comerciales solicitadas / resueltas.
-  reduccionesComercialesSolicitadas PedidoReduccionComercial[] @relation("ReduccionComercialSolicitante")
-  reduccionesComercialesResueltas   PedidoReduccionComercial[] @relation("ReduccionComercialResolutor")
-  movimientosSaldoFavor PedidoSaldoFavorMovimiento[] @relation("MovimientoSaldoFavorAutor")
-  excepcionesCreditoAutorizadas PedidoExcepcionCredito[] @relation("ExcepcionCreditoAutorizador")
-  excepcionesCreditoRechazadas  PedidoExcepcionCredito[] @relation("ExcepcionCreditoRechazador")
+  reduccionesComercialesSolicitadas PedidoReduccionComercial[]   @relation("ReduccionComercialSolicitante")
+  reduccionesComercialesResueltas   PedidoReduccionComercial[]   @relation("ReduccionComercialResolutor")
+  movimientosSaldoFavor             PedidoSaldoFavorMovimiento[] @relation("MovimientoSaldoFavorAutor")
+  excepcionesCreditoAutorizadas     PedidoExcepcionCredito[]     @relation("ExcepcionCreditoAutorizador")
+  excepcionesCreditoRechazadas      PedidoExcepcionCredito[]     @relation("ExcepcionCreditoRechazador")
 
   // F3 (Impacto en Demanda por cambio de ubicación)
   impactosUbicacionRevisados PedidoImpactoUbicacion[] @relation("ImpactoUbicacionRevisor")
@@ -496,8 +496,10 @@ model Cliente {
   // F2 (Excepciones de Crédito)
   excepcionesCredito PedidoExcepcionCredito[]
 
-  createdAt DateTime @default(now()) @db.Timestamptz()
-  updatedAt DateTime @updatedAt @db.Timestamptz()
+  createdAt     DateTime      @default(now()) @db.Timestamptz()
+  updatedAt     DateTime      @updatedAt @db.Timestamptz()
+  // #446 — cambios (sustituciones) atribuidos a este cliente.
+  sustituciones Sustitucion[]
 
   @@index([rutaId])
   @@index([createdById])
@@ -516,9 +518,6 @@ model Cliente {
   // Bloque 3: índice para query "top N clientes con scoreLlamada más alto".
   @@index([scoreLlamada])
   @@index([diasAtraso])
-  // #446 — cambios (sustituciones) atribuidos a este cliente.
-  sustituciones Sustitucion[]
-
   @@index([nombre])
 }
 
@@ -705,9 +704,9 @@ model ZonaBarrio {
 // otro Alias (constraint de DB), o una Referencia de otro Barrio (chequeo de
 // servicio) — nunca confirmable, a diferencia del solapamiento de Zona.
 model BarrioAlias {
-  id               String  @id @default(cuid())
+  id               String @id @default(cuid())
   barrioId         String
-  barrio           Barrio  @relation(fields: [barrioId], references: [id], onDelete: Cascade)
+  barrio           Barrio @relation(fields: [barrioId], references: [id], onDelete: Cascade)
   texto            String
   textoNormalizado String
 
@@ -724,9 +723,9 @@ model BarrioAlias {
 // `resolverBarrioPorTexto()` devolviendo AMBIGUO, nunca eligiendo en
 // silencio. Solo se evita el duplicado exacto dentro del MISMO Barrio.
 model BarrioReferencia {
-  id               String  @id @default(cuid())
+  id               String @id @default(cuid())
   barrioId         String
-  barrio           Barrio  @relation(fields: [barrioId], references: [id], onDelete: Cascade)
+  barrio           Barrio @relation(fields: [barrioId], references: [id], onDelete: Cascade)
   texto            String
   textoNormalizado String
 
@@ -831,9 +830,9 @@ model Trabajador {
   rutasRespaldo  Ruta[] @relation("RutaRespaldo")
 
   // TEMPORAL-SIN-EMBARQUE(#472)
-  pedidosEntregados Pedido[] @relation("PedidoEntregadoPor")
+  pedidosEntregados Pedido[]                 @relation("PedidoEntregadoPor")
   pagosComision     PagoComisionRepartidor[] @relation("PagoComisionTrabajador")
-  pagosRecibidos    Pago[]   @relation("PagoRecibidoPor")
+  pagosRecibidos    Pago[]                   @relation("PagoRecibidoPor")
 
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
@@ -929,23 +928,25 @@ model Nomina {
 // ====================
 
 model Pedido {
-  id          String    @id @default(cuid())
+  id                      String            @id @default(cuid())
   // El DEFAULT real es nextval('pedido_numero_seq'), la misma secuencia que
   // usa getNextNumero (#401, migración 20261023). Unicidad: índice UNIQUE
   // parcial "WHERE NOT numeroColisionHistorica" (no expresable aquí).
-  numero      Int       @default(autoincrement())
+  numero                  Int               @default(autoincrement())
   // true solo en las filas que repitieron un número antes de #401; lo asigna
   // la migración 20261023 y un trigger impide asignarlo después.
-  numeroColisionHistorica Boolean @default(false)
-  createdById String?
-  createdBy   User?     @relation("PedidoCreador", fields: [createdById], references: [id])
-  clienteId   String
-  cliente     Cliente   @relation(fields: [clienteId], references: [id])
-  deudasTrabajador DeudaTrabajador[] @relation("DeudaTrabajadorPedido")
-  negocioId   String?
-  negocio     Negocio?  @relation(fields: [negocioId], references: [id])
-  embarqueId  String?
-  embarque    Embarque? @relation("PedidoEmbarqueActual", fields: [embarqueId], references: [id])
+  numeroColisionHistorica Boolean           @default(false)
+  createdById             String?
+  createdBy               User?             @relation("PedidoCreador", fields: [createdById], references: [id])
+  clienteId               String
+  cliente                 Cliente           @relation(fields: [clienteId], references: [id])
+  /// #656: entregas parciales exigibles (fiado por entrega). El saldo sigue en Pedido.saldo.
+  entregasExigibles       EntregaExigible[]
+  deudasTrabajador        DeudaTrabajador[] @relation("DeudaTrabajadorPedido")
+  negocioId               String?
+  negocio                 Negocio?          @relation(fields: [negocioId], references: [id])
+  embarqueId              String?
+  embarque                Embarque?         @relation("PedidoEmbarqueActual", fields: [embarqueId], references: [id])
 
   /// Embarque en el que se ORIGINÓ la operación (venta en ruta). Inmutable una
   /// vez seteado — NUNCA se limpia al reasignar el pedido (a diferencia de
@@ -984,46 +985,46 @@ model Pedido {
   fuente String?
 
   // NUEVOS — control y trazabilidad
-  promesaPagoFecha      DateTime? @db.Timestamptz()
+  promesaPagoFecha      DateTime?   @db.Timestamptz()
   fotoEntrega           String?
-  gpsLat                Decimal?  @db.Decimal(10, 6)
-  gpsLng                Decimal?  @db.Decimal(10, 6)
-  gpsAccuracy           Decimal?  @db.Decimal(10, 2)
-  gpsJustificacion      String?   @db.Text
-  entregadoConGps       Boolean   @default(true)
-  entregadoAt           DateTime? @db.Timestamptz()
-  adminOverrideNota     String?   @db.Text
+  gpsLat                Decimal?    @db.Decimal(10, 6)
+  gpsLng                Decimal?    @db.Decimal(10, 6)
+  gpsAccuracy           Decimal?    @db.Decimal(10, 2)
+  gpsJustificacion      String?     @db.Text
+  entregadoConGps       Boolean     @default(true)
+  entregadoAt           DateTime?   @db.Timestamptz()
+  adminOverrideNota     String?     @db.Text
   adminOverrideBy       String?
-  adminOverrideAt       DateTime? @db.Timestamptz()
+  adminOverrideAt       DateTime?   @db.Timestamptz()
   // TEMPORAL-SIN-EMBARQUE(#472): repartidor responsable de la entrega que la
   // oficina registró sin embarque. UN solo repartidor por pedido: las entregas
   // siguientes del mismo pedido quedan fijas en él. Se conserva al retirar la
   // función temporal (historial de comisión y de fiado).
   entregadoPorId        String?
   entregadoPor          Trabajador? @relation("PedidoEntregadoPor", fields: [entregadoPorId], references: [id], onDelete: SetNull)
-  offlineId             String?   @unique
+  offlineId             String?     @unique
   recurrenteBatchId     String? // batch id compartido por todos los pedidos de un batch de recurrentes
   // FIX Fase 1: dedup key dedicado para POST /api/pedidos/[id]/enviar.
   // Antes el dedup se hacia por estado (embarqueId+EN_RUTA), fragil si el
   // check externo y la tx se desincronizan. Ahora: el server persiste el
   // offlineId y el retry con el mismo offlineId retorna deduped: true.
-  envioOfflineId        String?   @unique
+  envioOfflineId        String?     @unique
   // FASE 1 (ADR-IDEMPOTENCIA-001, §14): claves idempotentes dedicadas por
   // comando reintentable offline. El retry con el mismo offlineId retorna
   // deduped:true sin re-ejecutar. Paridad con envioOfflineId (enviar).
-  entregaOfflineId      String?   @unique
-  anulacionOfflineId    String?   @unique
-  cancelacionOfflineId  String?   @unique
+  entregaOfflineId      String?     @unique
+  anulacionOfflineId    String?     @unique
+  cancelacionOfflineId  String?     @unique
   // FASE 7 (ADR-OFFLINE-001, contrato §11): timestamps de venta libre.
   // occurredAt = cuándo ocurrió la venta según el operador.
   // capturedAt = cuándo el dispositivo generó el registro local.
   // serverReceivedAt = cuándo llegó al servidor (server-side).
   // clasificacionTemporal = NORMAL | TARDIA | SOSPECHOSA (derivada del server).
-  occurredAt            DateTime? @db.Timestamptz()
-  capturedAt            DateTime? @db.Timestamptz()
-  serverReceivedAt      DateTime? @db.Timestamptz()
+  occurredAt            DateTime?   @db.Timestamptz()
+  capturedAt            DateTime?   @db.Timestamptz()
+  serverReceivedAt      DateTime?   @db.Timestamptz()
   clasificacionTemporal String?
-  disputaAbierta        Boolean   @default(false)
+  disputaAbierta        Boolean     @default(false)
   codigoVisita          String?
   // Dirección de entrega puntual para ESTE pedido — null si no aplica
   // (se usa la dirección resuelta en vivo de negocio/cliente vía
@@ -1038,8 +1039,8 @@ model Pedido {
   // conceptos distintos y nunca se copian de uno a otro. Existe porque
   // CONSUMIDOR_FINAL no puede guardar domicilios individuales (cliente
   // canónico compartido). Nullable; null = el destino sale de negocio/cliente.
-  entregaLat            Decimal?  @db.Decimal(10, 6)
-  entregaLng            Decimal?  @db.Decimal(10, 6)
+  entregaLat            Decimal?    @db.Decimal(10, 6)
+  entregaLng            Decimal?    @db.Decimal(10, 6)
 
   // LEGACY — se mantiene para compatibilidad
   estado EstadoPedido @default(PENDIENTE)
@@ -1100,11 +1101,11 @@ model Pedido {
   impactosUbicacion PedidoImpactoUbicacion[]
 
   // FASE 2 (ledger físico)
-  sustituciones Sustitucion[]
-  correccionesPrecio PedidoCorreccionPrecio[]
+  sustituciones          Sustitucion[]
+  correccionesPrecio     PedidoCorreccionPrecio[]
   reduccionesComerciales PedidoReduccionComercial[]
-  movimientosSaldoFavor PedidoSaldoFavorMovimiento[]
-  retornos      Retorno[]
+  movimientosSaldoFavor  PedidoSaldoFavorMovimiento[]
+  retornos               Retorno[]
 
   // FASE 3 (obligaciones)
   obligacion      ObligacionPendiente?
@@ -1188,13 +1189,13 @@ model PedidoItem {
 // ====================
 
 model Pago {
-  id        String     @id @default(cuid())
-  pedidoId  String
-  pedido    Pedido     @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
-  metodo    MetodoPago
-  monto     Decimal    @db.Decimal(10, 2)
+  id               String          @id @default(cuid())
+  pedidoId         String
+  pedido           Pedido          @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  metodo           MetodoPago
+  monto            Decimal         @db.Decimal(10, 2)
   // #513: identidad del Abono que refleja este mismo cobro; no se infiere por tiempo.
-  abonoEspejo Abono? @relation("AbonoPagoOrigen")
+  abonoEspejo      Abono?          @relation("AbonoPagoOrigen")
   // FIX LOW (C-VAL-8): offlineId actualmente es solo @index, no @unique.
   // Esto es por diseño: múltiples pagos del mismo batch offline comparten
   // offlineId para reconstruir el resumen "pagosAplicados" en el cliente.
@@ -1205,13 +1206,13 @@ model Pago {
   // Para hacerlo strict, se podría agregar @unique + un index en (pedidoId, offlineId),
   // pero eso requiere migración DB. Por ahora, se documenta el trade-off
   // y se confía en que el cliente no cambie el body entre reintentos.
-  offlineId String? // batch id para dedup offline-first (pagos del mismo batch comparten offlineId)
+  offlineId        String? // batch id para dedup offline-first (pagos del mismo batch comparten offlineId)
   // #402 — tres fechas. `createdAt` es la fecha de REGISTRO: la pone la base
   // (`now()`), ningún writer la fija a mano y es la que concilia la caja.
-  createdAt DateTime   @default(now()) @db.Timestamptz()
+  createdAt        DateTime        @default(now()) @db.Timestamptz()
   // Fecha del HECHO (cuándo se cobró). `null` = igual a `createdAt` (pago
   // normal). Solo difiere en una regularización histórica.
-  ocurridoAt DateTime? @db.Timestamptz()
+  ocurridoAt       DateTime?       @db.Timestamptz()
   // Lote de regularización que creó este pago (fecha de regularización =
   // `Regularizacion.ejecutadoAt`). Estos pagos NO entran en la caja del día
   // en que se registran (cierre de caja + regla V14).
@@ -1219,8 +1220,8 @@ model Pago {
   regularizacion   Regularizacion? @relation(fields: [regularizacionId], references: [id], onDelete: Restrict)
   // TEMPORAL-SIN-EMBARQUE(#472): trabajador que recibió físicamente el dinero.
   // `null` = la oficina (o dato histórico anterior a esta columna).
-  recibidoPorId String?
-  recibidoPor   Trabajador? @relation("PagoRecibidoPor", fields: [recibidoPorId], references: [id], onDelete: SetNull)
+  recibidoPorId    String?
+  recibidoPor      Trabajador?     @relation("PagoRecibidoPor", fields: [recibidoPorId], references: [id], onDelete: SetNull)
 
   // ADR-PAGO-REPORTADO-CONFIRMADO-001: ¿este dinero fue verificado?
   // El detalle de una discrepancia vive en el `ResponsibilityCase`, NO acá.
@@ -2101,23 +2102,23 @@ model Factura {
 // ====================
 
 model Abono {
-  id         String   @id @default(cuid())
-  numero     String   @unique
-  facturaId  String
-  factura    Factura  @relation(fields: [facturaId], references: [id])
-  clienteId  String
-  cliente    Cliente  @relation(fields: [clienteId], references: [id])
-  negocioId  String?
-  negocio    Negocio? @relation(fields: [negocioId], references: [id])
-  pedidoId   String?
-  pedido     Pedido?  @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
-  monto      Decimal  @db.Decimal(10, 2)
-  metodoPago String
-  fecha      DateTime @default(now()) @db.Timestamptz()
+  id           String   @id @default(cuid())
+  numero       String   @unique
+  facturaId    String
+  factura      Factura  @relation(fields: [facturaId], references: [id])
+  clienteId    String
+  cliente      Cliente  @relation(fields: [clienteId], references: [id])
+  negocioId    String?
+  negocio      Negocio? @relation(fields: [negocioId], references: [id])
+  pedidoId     String?
+  pedido       Pedido?  @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  monto        Decimal  @db.Decimal(10, 2)
+  metodoPago   String
+  fecha        DateTime @default(now()) @db.Timestamptz()
   // #513: NULL conserva legado sin clasificar. Nunca asumir que NULL significa independiente.
-  origenCobro String?
-  pagoOrigenId String? @unique
-  pagoOrigen Pago? @relation("AbonoPagoOrigen", fields: [pagoOrigenId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  origenCobro  String?
+  pagoOrigenId String?  @unique
+  pagoOrigen   Pago?    @relation("AbonoPagoOrigen", fields: [pagoOrigenId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   // G1 (docs/pedidos/INVENTARIO_PEDIDOS_OPERACION_COMERCIAL.md): clave
   // idempotente de POST /api/abonos. Retry/doble-submit con el mismo
@@ -2477,16 +2478,16 @@ model CierreDia {
 // ====================
 
 model NotaCredito {
-  id        String   @id @default(cuid())
-  numero    String   @unique
-  pedidoId  String
-  pedido    Pedido   @relation(fields: [pedidoId], references: [id])
-  facturaId String?
-  factura   Factura? @relation(fields: [facturaId], references: [id])
-  monto     Decimal  @db.Decimal(10, 2)
-  motivo    String
-  fecha     DateTime @default(now()) @db.Timestamptz()
-  creadoPor String?
+  id                 String                    @id @default(cuid())
+  numero             String                    @unique
+  pedidoId           String
+  pedido             Pedido                    @relation(fields: [pedidoId], references: [id])
+  facturaId          String?
+  factura            Factura?                  @relation(fields: [facturaId], references: [id])
+  monto              Decimal                   @db.Decimal(10, 2)
+  motivo             String
+  fecha              DateTime                  @default(now()) @db.Timestamptz()
+  creadoPor          String?
   /// Reducción comercial que la originó (#451). Nula para las notas de anulación/cancelación.
   reduccionComercial PedidoReduccionComercial?
 
@@ -3078,9 +3079,9 @@ model PedidoCorreccionPrecio {
   solicitadoPor   User     @relation("CorreccionPrecioSolicitante", fields: [solicitadoPorId], references: [id])
   solicitadoAt    DateTime @default(now()) @db.Timestamptz()
 
-  resueltoPorId String?
-  resueltoPor   User?     @relation("CorreccionPrecioResolutor", fields: [resueltoPorId], references: [id], onDelete: SetNull)
-  resueltoAt    DateTime? @db.Timestamptz()
+  resueltoPorId  String?
+  resueltoPor    User?     @relation("CorreccionPrecioResolutor", fields: [resueltoPorId], references: [id], onDelete: SetNull)
+  resueltoAt     DateTime? @db.Timestamptz()
   notaResolucion String?
 
   /// Solo si APLICADA: total del pedido justo antes y justo después.
@@ -3140,10 +3141,10 @@ model PedidoReduccionComercial {
   notaResolucion String?
 
   /// Solo si APLICADA.
-  totalAntes     Decimal? @db.Decimal(10, 2)
-  totalDespues   Decimal? @db.Decimal(10, 2)
-  notaCreditoId  String?       @unique
-  notaCredito    NotaCredito?  @relation(fields: [notaCreditoId], references: [id])
+  totalAntes    Decimal?     @db.Decimal(10, 2)
+  totalDespues  Decimal?     @db.Decimal(10, 2)
+  notaCreditoId String?      @unique
+  notaCredito   NotaCredito? @relation(fields: [notaCreditoId], references: [id])
 
   offlineId String? @unique
 
@@ -3177,18 +3178,34 @@ model PedidoSaldoFavorMovimiento {
 
   tipo  PedidoSaldoFavorMovimientoTipo
   /// Siempre > 0; el signo lo da `tipo`.
-  monto Decimal @db.Decimal(10, 2)
+  monto Decimal                        @db.Decimal(10, 2)
 
   /// 'CORRECCION_PRECIO' | 'REDUCCION_COMERCIAL'
   origenTipo String
   origenId   String
   motivo     String
 
-  autorId String
-  autor      User   @relation("MovimientoSaldoFavorAutor", fields: [autorId], references: [id])
-  createdAt  DateTime @default(now()) @db.Timestamptz()
+  autorId   String
+  autor     User     @relation("MovimientoSaldoFavorAutor", fields: [autorId], references: [id])
+  createdAt DateTime @default(now()) @db.Timestamptz()
 
   @@index([pedidoId])
   @@index([clienteId])
   @@index([origenTipo, origenId])
+}
+
+/// #656 (opción A): cada entrega parcial que queda sin pagar es una deuda exigible.
+/// `valorEntregado` es un hecho inmutable. `asignado` solo cambia dentro de la transacción del pago.
+/// Invariante: Σ asignado del pedido <= totalPagado, y asignado <= valorEntregado (CHECK en la migración).
+model EntregaExigible {
+  id             String   @id @default(cuid())
+  pedidoId       String
+  pedido         Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  entregadoAt    DateTime
+  valorEntregado Decimal  @db.Decimal(10, 2)
+  asignado       Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+
+  @@index([pedidoId])
+  @@index([entregadoAt])
 }
