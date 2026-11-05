@@ -18,6 +18,7 @@ import CierreKpiGrid from '@/components/cierre/cierre-kpi-grid'
 import CierreEfectivoEsperado, { efectivoEsperadoDelCierre } from '@/components/cierre/cierre-efectivo-esperado'
 import CierreSection from '@/components/cierre/cierre-section'
 import CierreStockBlock from '@/components/cierre/cierre-stock-block'
+import AvisoUnidadesAproximadas, { unidadesAproximadasDe } from '@/components/cierre/aviso-unidades-aproximadas'
 import CierreValidationList from '@/components/cierre/cierre-validation-list'
 import type { CierreData } from './types'
 import { ComisionesRepartidores } from './comisiones-repartidores'
@@ -661,6 +662,16 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             </div>
           )}
 
+          {/* #650 (2b): unidades sin detalle por día / error de reparto */}
+          <AvisoUnidadesAproximadas
+            aproximadas={data?.unidadesAproximadas}
+            error={data?.unidadesError}
+            onReintentar={() => {
+              const signal = abortControllerRef.current?.signal
+              if (signal) void fetchCierre(fecha, signal)
+            }}
+          />
+
           {/* Stock blocks */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <CierreStockBlock
@@ -669,6 +680,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
               ini={stockIniAgua}
               prod={prodAgua}
               vend={data?.aguaVendida || 0}
+              aproximadas={unidadesAproximadasDe(data?.unidadesAproximadas, 'agua')}
               perdidas={perdidasAgua}
               fin={stockFinAgua}
               onFinChange={hayProduccion ? undefined : setStockFinAgua}
@@ -681,6 +693,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
               ini={stockIniHielo}
               prod={prodHielo}
               vend={data?.hieloVendido || 0}
+              aproximadas={unidadesAproximadasDe(data?.unidadesAproximadas, 'hielo')}
               perdidas={perdidasHielo}
               fin={stockFinHielo}
               onFinChange={hayProduccion ? undefined : setStockFinHielo}

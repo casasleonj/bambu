@@ -5,6 +5,8 @@ import { whereEmbarquesPendientesCierreDia } from '@/lib/cierre-dia-embarques'
 import { comisionesDelCierre } from '@/lib/comision-pagada'
 import { resumirAbonosDelDia } from '@/lib/cobro-cartera'
 import { resumirVentasCierre } from '@/lib/cierre-totales'
+import { logger } from '@/lib/logger'
+import { unidadesEntregadasDelDia } from '@/lib/unidades-entregadas-dia'
 import { resolverStockInicial } from '@/lib/stock-inicial'
 import { PAGO_DE_PEDIDO_VIGENTE } from '@/lib/pago-confirmacion'
 
@@ -181,14 +183,27 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
     const daviplata = cajaPorMetodo[MetodoPago.DAVIPLATA]
     const bono = cajaPorMetodo[MetodoPago.BONO]
 
-    const aguaVendida = pedidos.reduce((acc, p) => acc + p.cPacaAguaEnt, 0)
-    const hieloVendido = pedidos.reduce((acc, p) => acc + p.cPacaHieloEnt, 0)
-    const botellonVendido = pedidos.reduce(
-      (acc, p) => acc + p.cBotellonFabEnt + p.cBotellonDomEnt,
-      0
-    )
-    const bolsaAguaVendida = pedidos.reduce((acc, p) => acc + p.cBolsaAguaEnt, 0)
-    const bolsaHieloVendida = pedidos.reduce((acc, p) => acc + p.cBolsaHieloEnt, 0)
+    // #650 (2b): unidades vendidas = entregadas ese día (no creadas ese día). Misma función que Producción y dashboard.
+    // Si el reparto por día falla, el cierre no se cae: usa lo acumulado por fecha de creación y lo avisa.
+    let unidadesError = false
+    const unidades = await unidadesEntregadasDelDia(prisma, { desde: startOfDay, hasta: endOfDay }).catch((err) => {
+      unidadesError = true
+      logger.error({ err, fechaStr }, 'cierre: no se pudo repartir las unidades por día de entrega')
+      return {
+        agua: pedidos.reduce((t, p) => t + p.cPacaAguaEnt, 0),
+        hielo: pedidos.reduce((t, p) => t + p.cPacaHieloEnt, 0),
+        botellon: pedidos.reduce((t, p) => t + p.cBotellonFabEnt + p.cBotellonDomEnt, 0),
+        bolsaAgua: pedidos.reduce((t, p) => t + p.cBolsaAguaEnt, 0),
+        bolsaHielo: pedidos.reduce((t, p) => t + p.cBolsaHieloEnt, 0),
+        aproximados: [],
+      }
+    })
+    const aguaVendida = unidades.agua
+    const hieloVendido = unidades.hielo
+    const botellonVendido = unidades.botellon
+    const bolsaAguaVendida = unidades.bolsaAgua
+    const bolsaHieloVendida = unidades.bolsaHielo
+    const unidadesAproximadas = unidades.aproximados
 
     // #513: el Abono espejo de pagar-fiado ya está en `cobroVentasHoy` (su Pago); no se cuenta dos veces.
     const abonos = await resumirAbonosDelDia(prisma, startOfDay, endOfDay)
@@ -372,6 +387,8 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         botellonVendido,
         bolsaAguaVendida,
         bolsaHieloVendida,
+        unidadesAproximadas,
+        unidadesError,
         produccion: produccionFlat,
         producciones: produccionesDelDia,
         // #545: stock inicial a mostrar cuando el día aún no tiene producción registrada

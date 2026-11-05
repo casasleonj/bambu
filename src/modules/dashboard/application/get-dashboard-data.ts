@@ -35,6 +35,8 @@ export interface GetDashboardDeps {
   gastos: GastosRepository
   embarques: EmbarquesRepository
   finanzas?: FinanzasRepository
+  /** #650 (2b): unidades entregadas en el día. Sin esto se usa el acumulado por fecha de creación. */
+  unidadesDelDia?: (rango: { start: Date; end: Date }) => Promise<{ agua: number; hielo: number; botellon: number }>
 }
 
 export async function getDashboardData(
@@ -116,7 +118,9 @@ export async function getDashboardData(
   const ventasAyer = calcularVentas(validosAyer)
   const fiadosHoy = calcularFiados(pedidosHoy)
 
-  const vendidos = calcularVendidos(pedidosHoy)
+  const vendidos = deps.unidadesDelDia
+    ? await deps.unidadesDelDia(todayRange)
+    : calcularVendidos(pedidosHoy)
 
   const { franjas, maxFranja } = calcularFranjasHorarias(validosHoy)
   const ventasPorPrecio = buildVentasPorPrecio(validosHoy)
