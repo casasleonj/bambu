@@ -22,6 +22,7 @@ import CierreValidationList from '@/components/cierre/cierre-validation-list'
 import type { CierreData } from './types'
 import { ComisionesRepartidores } from './comisiones-repartidores'
 import { SueldosQueTocan } from './sueldos-que-tocan'
+import { ProduccionDelCierre } from './produccion-del-cierre'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
 const formatMoney = (val: number) => formatCurrency(val)
@@ -48,6 +49,8 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const [prodHielo, setProdHielo] = useState(0)
   const [stockFinAgua, setStockFinAgua] = useState(0)
   const [stockFinHielo, setStockFinHielo] = useState(0)
+  // #645: «ese día no se produjo» (domingo, festivo): se puede cerrar sin producción.
+  const [sinProduccion, setSinProduccion] = useState(false)
   const [baseDia, setBaseDia] = useState(0)
   // #644: el campo manual «Salarios» se retiró; los sueldos se pagan con «Pagar» y salen como gasto de nómina.
   const salarios = 0
@@ -77,6 +80,12 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const canClose = userRole === 'ADMIN' || userRole === 'ASISTENTE'
   // #499: las comisiones las calcula el servidor; el cierre resta solo lo realmente pagado.
   const comisiones = data?.comisionesAuto?.total ?? 0
+  // #645: pérdidas del día (filtradas + merma + consumo interno) y producciones registradas ese día
+  const perdidasAgua = (data?.produccion?.filtradasAgua ?? 0) + (data?.produccion?.rotasAgua ?? 0) + (data?.produccion?.consumoInternoAgua ?? 0)
+  const perdidasHielo = (data?.produccion?.filtradasHielo ?? 0) + (data?.produccion?.rotasHielo ?? 0) + (data?.produccion?.consumoInternoHielo ?? 0)
+  const hayProduccion = (data?.producciones?.length ?? 0) > 0
+  const esperadoAgua = stockIniAgua + prodAgua - (data?.aguaVendida || 0) - perdidasAgua
+  const esperadoHielo = stockIniHielo + prodHielo - (data?.hieloVendido || 0) - perdidasHielo
   const puedePagarComision = userRole === 'ADMIN' || userRole === 'CONTADOR'
   const diaCerrado = yaCerrado || (statusCierre as string | null) === 'CERRADO'
 
@@ -172,6 +181,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     setStockIniAgua(0); setStockIniHielo(0)
     setProdAgua(0); setProdHielo(0)
     setStockFinAgua(0); setStockFinHielo(0)
+    setSinProduccion(false)
   }
 
   const calcularNetoCaja = useCallback(() => {
@@ -265,6 +275,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           pedidosAnuladosTotal: data?.pedidosAnuladosTotal,
           clientesNuevos: data?.clientesNuevos,
           descuentos: data?.descuentos,
+          sinProduccion,
           arqueo: currentArqueo.arqueo,
           totalContado: currentArqueo.totalContado,
           diferencia: currentArqueo.diferencia,
@@ -489,11 +500,11 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     },
     {
       label: 'Stock cuadrado',
-      ok: stockIniAgua + prodAgua - (data?.aguaVendida || 0) === stockFinAgua && stockIniHielo + prodHielo - (data?.hieloVendido || 0) === stockFinHielo,
+      ok: esperadoAgua === stockFinAgua && esperadoHielo === stockFinHielo,
       optional: true,
       detail: (() => {
-        const diffAgua = stockIniAgua + prodAgua - (data?.aguaVendida || 0) - stockFinAgua
-        const diffHielo = stockIniHielo + prodHielo - (data?.hieloVendido || 0) - stockFinHielo
+        const diffAgua = esperadoAgua - stockFinAgua
+        const diffHielo = esperadoHielo - stockFinHielo
         if (diffAgua === 0 && diffHielo === 0) return 'Stock de agua e hielo cuadrado'
         const parts: string[] = []
         if (diffAgua !== 0) parts.push(`Agua: ${diffAgua > 0 ? '+' : ''}${diffAgua}`)
@@ -658,10 +669,11 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
               ini={stockIniAgua}
               prod={prodAgua}
               vend={data?.aguaVendida || 0}
+              perdidas={perdidasAgua}
               fin={stockFinAgua}
-              onIniChange={setStockIniAgua}
-              onProdChange={setProdAgua}
-              onFinChange={setStockFinAgua}
+              onFinChange={hayProduccion ? undefined : setStockFinAgua}
+              hayProduccion={hayProduccion}
+              sinProduccion={sinProduccion}
             />
             <CierreStockBlock
               label="Stock Hielo"
@@ -669,10 +681,29 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
               ini={stockIniHielo}
               prod={prodHielo}
               vend={data?.hieloVendido || 0}
+              perdidas={perdidasHielo}
               fin={stockFinHielo}
-              onIniChange={setStockIniHielo}
-              onProdChange={setProdHielo}
-              onFinChange={setStockFinHielo}
+              onFinChange={hayProduccion ? undefined : setStockFinHielo}
+              hayProduccion={hayProduccion}
+              sinProduccion={sinProduccion}
+            />
+          </div>
+
+          {/* Producción del día (#645): el mismo registro que la sección Producción */}
+          <div>
+            <p className="mb-2 text-sm font-medium">Producción del día</p>
+            <ProduccionDelCierre
+              fecha={fecha}
+              diaCerrado={diaCerrado}
+              producciones={data?.producciones ?? []}
+              esperadoPrevio={{ agua: esperadoAgua, hielo: esperadoHielo }}
+              botellonesVendidos={data?.botellonVendido ?? 0}
+              sinProduccion={sinProduccion}
+              onSinProduccionChange={setSinProduccion}
+              onGuardada={() => {
+                const signal = abortControllerRef.current?.signal
+                if (signal) void fetchCierre(fecha, signal)
+              }}
             />
           </div>
         </div>

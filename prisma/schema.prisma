@@ -185,6 +185,8 @@ enum Turno {
   MANANA
   TARDE
   NOCHE
+  // #645: el sellador que cubre todo el día
+  JORNADA
 }
 
 enum CasoStatus {
@@ -856,6 +858,8 @@ model PagoComisionRepartidor {
   monto        Decimal    @db.Decimal(10, 2)
   // #305: con qué se pagó. Solo EFECTIVO sale de la caja del cierre; los demás medios no la tocan.
   metodo       MetodoPago @default(EFECTIVO)
+  // #645: REPARTO (repartidor, por entregas) o PRODUCCION (sellador, por lo producido). Un trabajador puede cobrar ambas.
+  concepto     String     @default("REPARTO")
   pagadoPorId  String?
   pagadoPor    User?      @relation("PagoComisionPagador", fields: [pagadoPorId], references: [id], onDelete: SetNull)
   offlineId    String?    @unique

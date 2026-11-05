@@ -58,7 +58,7 @@ export function ComisionesRepartidores({
       const res = await fetch('/api/nomina/dia/pagar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trabajadorId: r.trabajadorId, fecha, offlineId, montoEsperado: r.pendiente }),
+        body: JSON.stringify({ trabajadorId: r.trabajadorId, fecha, offlineId, montoEsperado: r.pendiente, concepto: tipo === 'sellador' ? 'PRODUCCION' : 'REPARTO' }),
       })
       if (res.ok) {
         claves.current.delete(llave)

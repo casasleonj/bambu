@@ -127,11 +127,22 @@ export interface CierreData {
     stockFinHielo: number
     comSelladorAgua: number
     comSelladorHielo: number
+    comSelladorBotellon?: number
     comSellTotal: number
+    /** #645: pérdidas del día (filtradas, merma = rotas, consumo interno) y botellones llenados */
+    filtradasAgua?: number
+    rotasAgua?: number
+    consumoInternoAgua?: number
+    filtradasHielo?: number
+    rotasHielo?: number
+    consumoInternoHielo?: number
+    botellonesLlenados?: number
     comRepartidorAgua: number
     comRepartidorHielo: number
     comRepartTotal: number
   } | null
+  /** #645: una fila por producción registrada ese día */
+  producciones?: { id: string; turno: string; trabajadorId: string; trabajador: string; prodAgua: number; prodHielo: number; botellonesLlenados: number }[]
   /** #545: stock inicial (último cierre o Config) para días sin producción registrada */
   stockInicialSugerido?: { stockIniAgua: number; stockIniHielo: number }
 

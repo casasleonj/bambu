@@ -666,8 +666,13 @@ export const ProduccionItemCreateSchema = z.object({
 export const ProduccionCreateSchema = z.object({
   // NOTA: la fecha la determina el servidor (medianoche Bogotá del día actual).
   // No se acepta fecha del cliente para evitar inconsistencias con la TZ.
-  turno: z.enum(["MANANA", "TARDE", "NOCHE"]),
+  turno: z.enum(["MANANA", "TARDE", "NOCHE", "JORNADA"]),
   trabajadorId: z.string().min(1),
+  // #645: el cierre puede atrasarse; la producción del día que se está cerrando se registra en SU fecha (hasta 7 días
+  // atrás, nunca futura, y solo si ese día no está cerrado). Sin `fecha`, es la de hoy. Se valida en el handler.
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)').optional(),
+  // #645: botellones llenados (se digitan; llenados ≠ vendidos). La comisión del sellador usa los llenados.
+  botellonesLlenados: z.coerce.number().int().min(0).default(0),
   // Items: exactamente 2 (PACA_AGUA, PACA_HIELO). El server completa el
   // resto (producido, stockIni, ventas, stockFinEsperado, diferencia).
   items: z.array(ProduccionItemCreateSchema).length(2),
@@ -701,12 +706,14 @@ export const ProduccionItemUpdateSchema = z.object({
 
 export const ProduccionUpdateSchema = z.object({
   items: z.array(ProduccionItemUpdateSchema).length(2).optional(),
+  // #645: corrige los botellones llenados.
+  botellonesLlenados: z.coerce.number().int().min(0).optional(),
   obs: z.string().max(500).optional(),
   // El cliente puede pasar obs='' explícitamente para "borrar" la observación.
   // Si no se envía obs, no se modifica.
 }).strict().refine(
-  (data) => data.items !== undefined || data.obs !== undefined,
-  { message: 'Debe enviar al menos un campo (items u obs)' },
+  (data) => data.items !== undefined || data.obs !== undefined || data.botellonesLlenados !== undefined,
+  { message: 'Debe enviar al menos un campo (items, obs o botellonesLlenados)' },
 ).refine(
   (data) => {
     if (!data.items) return true
