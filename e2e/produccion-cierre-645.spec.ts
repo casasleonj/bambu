@@ -28,15 +28,20 @@ test.describe('Producción dentro del cierre (#645)', () => {
     // Sin sellador no se puede guardar.
     await expect(page.getByTestId('guardar-produccion')).toBeDisabled()
     await page.getByLabel(/Sellador/).selectOption(sellador.id)
-    await page.getByLabel(/Turno/).selectOption('JORNADA')
+    await page.getByRole('radio', { name: /Jornada completa/ }).click()
     await page.locator('#pc-prod-agua').fill('20')
     await page.locator('#pc-prod-hielo').fill('10')
+    // #646: las pérdidas viven en un desplegable cerrado
+    await expect(page.getByTestId('produccion-perdidas')).not.toHaveAttribute('open', '')
+    await page.getByTestId('produccion-perdidas').locator('summary').click()
     await page.locator('#pc-merma-agua').fill('1')
     await page.locator('#pc-fin-agua').fill('19') // 0 + 20 − 1 = 19
     await page.locator('#pc-fin-hielo').fill('10')
     await page.locator('#pc-botellones').fill('4')
     await page.locator('#pc-fin-botellones').fill('4') // #618: inicial 0 + 4 llenados − 0 vendidos
     await expect(page.getByTestId('produccion-diferencia')).toHaveCount(0)
+    await expect(page.getByTestId('produccion-estado-agua')).toHaveText('Cuadra')
+    await expect(page.getByTestId('produccion-estado-botellon')).toHaveText('Cuadra')
 
     const respuesta = page.waitForResponse((r) => r.url().endsWith('/api/produccion') && r.request().method() === 'POST')
     await page.getByTestId('guardar-produccion').click()
@@ -66,7 +71,7 @@ test.describe('Producción dentro del cierre (#645)', () => {
     // Una segunda producción de otro turno del MISMO sellador choca con la jornada completa.
     await page.getByTestId('agregar-produccion').click()
     await page.getByLabel(/Sellador/).selectOption(sellador.id)
-    await page.getByLabel(/Turno/).selectOption('MANANA')
+    await page.getByRole('radio', { name: /Mañana/ }).click()
     await page.locator('#pc-fin-agua').fill('19')
     await page.locator('#pc-fin-hielo').fill('10')
     await page.locator('#pc-fin-botellones').fill('4')
