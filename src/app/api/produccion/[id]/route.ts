@@ -6,7 +6,7 @@
  * (eso requiere un workflow distinto, fuera de scope).
  *
  * Reglas:
- * - Solo Produccion del día actual (medianoche Bogotá).
+ * - Solo Produccion de hoy y de los 7 días anteriores (#645: cierre atrasado).
  * - Solo ADMIN/ASISTENTE.
  * - Si la Produccion pertenece a un CierreDia cerrado → 409.
  * - Re-validar FIX 1.5: obs requerida si hay diferencia != 0.
@@ -31,7 +31,8 @@ import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { getVentasDelDia } from '@/lib/ventas'
 import { calcComSellador, itemBotellon } from '@/lib/comisiones'
-import { startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
+import { startOfDayInBogota, todayInBogota, dayInBogota } from '@/lib/date-helpers'
+import { motivoFechaProduccionInvalida } from '@/lib/produccion-fecha'
 import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
 
@@ -83,22 +84,23 @@ export async function PUT(
           throw new Error('PRODUCCION_NO_ENCONTRADA')
         }
 
-        // 2. Solo Producciones del día actual (medianoche Bogotá)
-        const todayStart = startOfDayInBogota(todayInBogota())
-        if (existing.fecha.getTime() !== todayStart.getTime()) {
+        // 2. #645: se puede corregir la producción de hoy y de los 7 días anteriores (cierre atrasado), nunca más antigua.
+        const hoy = todayInBogota()
+        const diaProduccion = dayInBogota(existing.fecha)
+        if (motivoFechaProduccionInvalida(diaProduccion, hoy) !== null) {
           throw new Error('PRODUCCION_NO_EDITABLE_HISTORICA')
         }
 
         // 3. Si pertenece a un CierreDia cerrado → 409
         const cierre = await tx.cierreDia.findFirst({
-          where: { fecha: todayStart },
+          where: { fecha: startOfDayInBogota(diaProduccion) },
         })
         if (cierre) {
           throw new Error('PRODUCCION_EN_CIERRE_CERRADO')
         }
 
-        // 4. Re-leer ventas al momento del PUT (no usar cache)
-        const ventas = await getVentasDelDia()
+        // 4. Re-leer ventas al momento del PUT (no usar cache), del día de la producción
+        const ventas = await getVentasDelDia(diaProduccion === hoy ? undefined : new Date(existing.fecha.getTime() + 12 * 3_600_000))
         const stockIniAgua = existing.items.find(i => i.producto === 'PACA_AGUA')?.stockIni ?? 0
         const stockIniHielo = existing.items.find(i => i.producto === 'PACA_HIELO')?.stockIni ?? 0
 
@@ -155,16 +157,17 @@ export async function PUT(
         if (!trabajador) {
           throw new Error('TRABAJADOR_NO_ENCONTRADO')
         }
-        const comSell = calcComSellador(prodAgua, prodHielo, trabajador, ventas.botellonVendido)
+        // #645: botellones LLENADOS (se digitan; no son los vendidos). Sin dato nuevo se conserva lo registrado.
+        const itemBot = updatedItems.find(i => i.producto === 'BOTELLON')
+        const llenados = parsed.data.botellonesLlenados ?? itemBot?.producido ?? 0
+        const comSell = calcComSellador(prodAgua, prodHielo, trabajador, llenados)
         // Los updates a Prisma.Decimal se hacen via Prisma.Decimal wrapper
         itemAgua.comSellador = new Prisma.Decimal(comSell.comAgua)
         itemHielo.comSellador = new Prisma.Decimal(comSell.comHielo)
-        // #645: los botellones llenados (= vendidos) se recalculan; los registros anteriores no tenían este ítem.
-        const itemBot = updatedItems.find(i => i.producto === 'BOTELLON')
         if (itemBot) {
-          itemBot.conteoA = ventas.botellonVendido
-          itemBot.conteoB = ventas.botellonVendido
-          itemBot.producido = ventas.botellonVendido
+          itemBot.conteoA = llenados
+          itemBot.conteoB = llenados
+          itemBot.producido = llenados
           itemBot.ventas = ventas.botellonVendido
           itemBot.comSellador = new Prisma.Decimal(comSell.comBotellon)
         }
@@ -196,7 +199,7 @@ export async function PUT(
             // Updates anidados de items
             items: {
               update: itemUpdates,
-              ...(itemBot ? {} : { create: [itemBotellon(ventas.botellonVendido, comSell.comBotellon)] }),
+              ...(itemBot ? {} : { create: [itemBotellon(llenados, comSell.comBotellon, ventas.botellonVendido)] }),
             },
           },
           include: { items: true, trabajador: true },
@@ -262,7 +265,7 @@ export async function PUT(
       return apiError('Producción no encontrada', 404)
     }
     if (err.message === 'PRODUCCION_NO_EDITABLE_HISTORICA') {
-      return apiError('Solo se pueden editar producciones del día actual', 400)
+      return apiError('Solo se pueden corregir producciones de hoy y de los 7 días anteriores', 400)
     }
     if (err.message === 'PRODUCCION_EN_CIERRE_CERRADO') {
       return apiError('No se puede editar: el día ya fue cerrado', 409)

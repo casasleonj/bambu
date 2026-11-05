@@ -44,7 +44,8 @@ export async function comisionDiaConEstado(tx: TxPagoComision, fecha: string): P
   const [filas, pagos] = await Promise.all([
     comisionRepartidoresDelDia(tx, fecha),
     tx.pagoComisionRepartidor.findMany({
-      where: { fecha: startOfDayBogota(fecha) },
+      // #645: aquí solo los pagos por entregas; los del sellador (PRODUCCION) van en su propio bloque.
+      where: { fecha: startOfDayBogota(fecha), concepto: 'REPARTO' },
       orderBy: { createdAt: 'asc' },
       include: { pagadoPor: { select: { nombre: true, username: true } } },
     }),
@@ -158,7 +159,7 @@ export async function comisionSelladoresDia(
   }
   const pagos = await tx.pagoComisionRepartidor.groupBy({
     by: ['trabajadorId'],
-    where: { trabajadorId: { in: [...porTrabajador.keys()] }, fecha: startOfDayBogota(fecha) },
+    where: { trabajadorId: { in: [...porTrabajador.keys()] }, fecha: startOfDayBogota(fecha), concepto: 'PRODUCCION' },
     _sum: { monto: true },
   })
   const pagadoPor = new Map(pagos.map((g) => [g.trabajadorId, num(g._sum.monto)]))

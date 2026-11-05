@@ -70,9 +70,11 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         },
         // F-B: los métodos de pago ya no salen de aquí (ver `pagosCapturadosHoy`).
       }),
-      prisma.produccion.findFirst({
+      // #645: puede haber varias producciones el mismo día (otro sellador u otro turno); el cierre las suma.
+      prisma.produccion.findMany({
         where: { fecha: dateRange },
-        include: { items: true },
+        include: { items: true, trabajador: { select: { nombre: true } } },
+        orderBy: { createdAt: 'asc' },
       }),
       prisma.gasto.aggregate({
         where: { fecha: dateRange },
@@ -215,38 +217,54 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
 
     const status = embarquesAbiertos.length > 0 ? 'INCOMPLETO' : 'COMPLETO'
 
-    // Transformar ProduccionItem a campos planos para el response (backward compat)
-    const produccionFlat = produccion
+    // Transformar ProduccionItem a campos planos para el response (backward compat).
+    // #645: con varias producciones el día es uno solo: stock inicial = el de la primera, producido y pérdidas = suma,
+    // conteo final = el de la última registrada (es el conteo del día).
+    const sumaItems = (producto: string, campo: 'producido' | 'rotas' | 'filtradas' | 'consumoInterno' | 'comSellador') =>
+      produccion.reduce((t, p) => t + p.items.filter(i => i.producto === producto).reduce((s2, i) => s2 + Number(i[campo] ?? 0), 0), 0)
+    const primera = produccion[0]
+    const ultima = produccion[produccion.length - 1]
+    const itemDe = (p: typeof primera | undefined, producto: string) => p?.items.find(i => i.producto === producto)
+    const produccionFlat = primera
       ? {
-          ...produccion,
+          ...primera,
           items: undefined,
-          stockIniAgua:
-            produccion.items.find(i => i.producto === 'PACA_AGUA')?.stockIni ?? 0,
-          stockIniHielo:
-            produccion.items.find(i => i.producto === 'PACA_HIELO')?.stockIni ?? 0,
-          prodAgua: produccion.items.find(i => i.producto === 'PACA_AGUA')?.producido ?? 0,
-          prodHielo:
-            produccion.items.find(i => i.producto === 'PACA_HIELO')?.producido ?? 0,
-          stockFinAgua:
-            produccion.items.find(i => i.producto === 'PACA_AGUA')?.stockFinFisico ?? 0,
-          stockFinHielo:
-            produccion.items.find(i => i.producto === 'PACA_HIELO')?.stockFinFisico ?? 0,
-          comSelladorAgua: Number(
-            produccion.items.find(i => i.producto === 'PACA_AGUA')?.comSellador ?? 0
-          ),
-          comSelladorHielo: Number(
-            produccion.items.find(i => i.producto === 'PACA_HIELO')?.comSellador ?? 0
-          ),
-          comSellTotal: Number(
-            produccion.items.reduce((sum, i) => sum + Number(i.comSellador || 0), 0)
-          ),
+          trabajador: undefined,
+          stockIniAgua: itemDe(primera, 'PACA_AGUA')?.stockIni ?? 0,
+          stockIniHielo: itemDe(primera, 'PACA_HIELO')?.stockIni ?? 0,
+          prodAgua: sumaItems('PACA_AGUA', 'producido'),
+          prodHielo: sumaItems('PACA_HIELO', 'producido'),
+          stockFinAgua: itemDe(ultima, 'PACA_AGUA')?.stockFinFisico ?? 0,
+          stockFinHielo: itemDe(ultima, 'PACA_HIELO')?.stockFinFisico ?? 0,
+          // #645: pérdidas del día (filtradas, merma = rotas, consumo interno) por producto
+          filtradasAgua: sumaItems('PACA_AGUA', 'filtradas'),
+          rotasAgua: sumaItems('PACA_AGUA', 'rotas'),
+          consumoInternoAgua: sumaItems('PACA_AGUA', 'consumoInterno'),
+          filtradasHielo: sumaItems('PACA_HIELO', 'filtradas'),
+          rotasHielo: sumaItems('PACA_HIELO', 'rotas'),
+          consumoInternoHielo: sumaItems('PACA_HIELO', 'consumoInterno'),
+          botellonesLlenados: sumaItems('BOTELLON', 'producido'),
+          comSelladorAgua: sumaItems('PACA_AGUA', 'comSellador'),
+          comSelladorHielo: sumaItems('PACA_HIELO', 'comSellador'),
+          comSelladorBotellon: sumaItems('BOTELLON', 'comSellador'),
+          comSellTotal: produccion.reduce((t, p) => t + p.items.reduce((s2, i) => s2 + Number(i.comSellador || 0), 0), 0),
           // Comisiones de repartidor viven en Produccion.comRepartTotal
           // (son agregación de Pedidos entregados por ese trabajador, no por item)
           comRepartidorAgua: 0,
           comRepartidorHielo: 0,
-          comRepartTotal: Number(produccion.comRepartTotal),
+          comRepartTotal: produccion.reduce((t, p) => t + Number(p.comRepartTotal), 0),
         }
       : null
+    // #645: una fila por producción registrada, para listarlas y corregirlas desde el cierre
+    const produccionesDelDia = produccion.map(p => ({
+      id: p.id,
+      turno: p.turno,
+      trabajadorId: p.trabajadorId,
+      trabajador: p.trabajador.nombre,
+      prodAgua: itemDe(p, 'PACA_AGUA')?.producido ?? 0,
+      prodHielo: itemDe(p, 'PACA_HIELO')?.producido ?? 0,
+      botellonesLlenados: itemDe(p, 'BOTELLON')?.producido ?? 0,
+    }))
 
     return {
       status,
@@ -355,6 +373,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         bolsaAguaVendida,
         bolsaHieloVendida,
         produccion: produccionFlat,
+        producciones: produccionesDelDia,
         // #545: stock inicial a mostrar cuando el día aún no tiene producción registrada
         stockInicialSugerido: await resolverStockInicial(prisma),
         // #644: sueldos fijos con fecha de pago cumplida y sin pagar

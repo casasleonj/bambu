@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { Modal } from '@/components/modal'
 import { toast } from 'sonner'
 import type { ProduccionRegistro } from './types'
+import { TURNO_LABEL } from './types'
 
 interface ProduccionEditModalProps {
   open: boolean
@@ -25,6 +26,7 @@ interface EditFormData {
   rotasHielo: number
   consumoInternoAgua: number
   consumoInternoHielo: number
+  botellonesLlenados: number
   obs: string
 }
 
@@ -36,6 +38,7 @@ function buildInitialForm(registro: ProduccionRegistro | null): EditFormData {
       filtradasAgua: 0, filtradasHielo: 0,
       rotasAgua: 0, rotasHielo: 0,
       consumoInternoAgua: 0, consumoInternoHielo: 0,
+      botellonesLlenados: 0,
       obs: '',
     }
   }
@@ -54,6 +57,7 @@ function buildInitialForm(registro: ProduccionRegistro | null): EditFormData {
     rotasHielo: hielo?.rotas ?? 0,
     consumoInternoAgua: agua?.consumoInterno ?? 0,
     consumoInternoHielo: hielo?.consumoInterno ?? 0,
+    botellonesLlenados: registro.items.find(i => i.producto === 'BOTELLON')?.producido ?? 0,
     obs: registro.obs ?? '',
   }
 }
@@ -98,6 +102,7 @@ export function ProduccionEditModal({ open, onClose, registro, onSaved }: Produc
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           obs: formData.obs,
+          botellonesLlenados: formData.botellonesLlenados,
           items: [
             {
               producto: 'PACA_AGUA',
@@ -149,10 +154,10 @@ export function ProduccionEditModal({ open, onClose, registro, onSaved }: Produc
   )
 
   return (
-    <Modal open={open} onClose={onClose} title={`Editar producción — ${registro?.trabajador.nombre} (${registro?.turno})`}>
+    <Modal open={open} onClose={onClose} title={`Editar producción — ${registro?.trabajador.nombre} (${registro ? (TURNO_LABEL[registro.turno] ?? registro.turno) : ''})`}>
       <div className="space-y-6 max-h-[80vh] overflow-y-auto p-1">
         <p className="text-sm text-gray-500">
-          Solo se puede editar la producción del día actual. El sistema recalculará automáticamente las diferencias y comisiones.
+          Se puede corregir la producción de hoy y de los 7 días anteriores mientras el día no esté cerrado. El sistema recalculará automáticamente las diferencias y comisiones.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -185,6 +190,12 @@ export function ProduccionEditModal({ open, onClose, registro, onSaved }: Produc
               {numberField('Consumo', formData.consumoInternoHielo, (v) => setFormData({ ...formData, consumoInternoHielo: v }))}
             </div>
           </div>
+        </div>
+
+        <div className="bg-gray-50 border p-4 rounded-xl">
+          <h3 className="font-semibold text-gray-800 mb-3">🫙 Botellones de agua</h3>
+          {numberField('Botellones llenados', formData.botellonesLlenados, (v) => setFormData({ ...formData, botellonesLlenados: v }))}
+          <p className="text-xs text-gray-500 mt-2">Llenados, no vendidos: la comisión del sellador usa los llenados.</p>
         </div>
 
         {(diferenciaAgua !== 0 || diferenciaHielo !== 0) && (

@@ -61,7 +61,7 @@ describe('ComisionesRepartidores', () => {
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe('/api/nomina/dia/pagar')
     const cuerpo = JSON.parse(init.body)
-    expect(cuerpo).toMatchObject({ trabajadorId: 'g1', fecha: '2026-10-26', montoEsperado: 6400 })
+    expect(cuerpo).toMatchObject({ trabajadorId: 'g1', fecha: '2026-10-26', montoEsperado: 6400, concepto: 'REPARTO' })
     expect(cuerpo.offlineId).toMatch(/^cp-/)
     expect(toastOk).toHaveBeenCalled()
   })
@@ -112,7 +112,7 @@ describe('ComisionesRepartidores', () => {
     expect(await screen.findByText(/botellones llenados/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Sí, ya le pagué' }))
     await waitFor(() => expect(onPagado).toHaveBeenCalled())
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ trabajadorId: 's1', fecha: '2026-10-26', montoEsperado: 10890 })
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ trabajadorId: 's1', fecha: '2026-10-26', montoEsperado: 10890, concepto: 'PRODUCCION' })
   })
 })
 

@@ -254,7 +254,12 @@ export class Pedido {
       gpsAccuracy: metadata?.gpsAccuracy ?? this.props.gpsAccuracy,
       gpsJustificacion: metadata?.gpsJustificacion || this.props.gpsJustificacion,
       entregadoConGps: metadata?.entregadoConGps ?? this.props.entregadoConGps,
-      entregadoAt: metadata?.entregadoAt ?? this.props.entregadoAt ?? new Date(),
+      // `entregadoAt` es el día de la entrega que CIERRA el pedido. Una entrega
+      // parcial conserva la fecha previa; al completarse sin fecha explícita
+      // avanza a ahora (antes se quedaba en el día de la primera parcial y el
+      // pedido no contaba como entregado el día que realmente se completó).
+      // Una fecha explícita (oficina, replay offline) siempre manda.
+      entregadoAt: metadata?.entregadoAt ?? (completo ? new Date() : this.props.entregadoAt ?? new Date()),
       codigoVisita: metadata?.codigoVisita || this.props.codigoVisita,
       entregaOfflineId: metadata?.entregaOfflineId ?? this.props.entregaOfflineId,
     }

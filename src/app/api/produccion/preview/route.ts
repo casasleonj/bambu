@@ -6,6 +6,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { resolverStockInicial } from '@/lib/stock-inicial'
 import { startOfDayInBogota, endOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
+import { netoPrevioDelDia } from '@/lib/produccion-previas'
 
 export async function GET(request: NextRequest) {
   // FIX HIGH (C-SEC-11): Only users with view:produccion can see production preview
@@ -21,9 +22,15 @@ export async function GET(request: NextRequest) {
     const startOfDay = startOfDayInBogota(fechaStr)
     const endOfDay = endOfDayInBogota(fechaStr)
 
-    const [stockInicial, ventas, embarquesCerrados, embarquesDelDia] = await Promise.all([
-      resolverStockInicial(prisma),
+    const [stockInicial, ventas, previas, embarquesCerrados, embarquesDelDia] = await Promise.all([
+      // #645: para un día atrasado, el último cierre ANTERIOR a ese día
+      resolverStockInicial(prisma, fechaParam ? startOfDay : undefined),
       getVentasDelDia(new Date(`${fechaStr}T12:00:00-05:00`)),
+      // #645: lo ya producido ese día (otro sellador u otro turno) forma parte del stock inicial de la siguiente producción
+      prisma.produccion.findMany({
+        where: { fecha: startOfDay },
+        select: { items: { select: { producto: true, producido: true, rotas: true, filtradas: true, consumoInterno: true } } },
+      }),
       prisma.embarque.findMany({
         where: {
           fecha: { gte: startOfDay, lt: endOfDay },
@@ -79,8 +86,8 @@ export async function GET(request: NextRequest) {
     const repartidores = Array.from(repMap.values())
 
     return apiSuccess({
-      stockIniAgua: stockInicial.stockIniAgua,
-      stockIniHielo: stockInicial.stockIniHielo,
+      stockIniAgua: stockInicial.stockIniAgua + netoPrevioDelDia(previas, 'PACA_AGUA'),
+      stockIniHielo: stockInicial.stockIniHielo + netoPrevioDelDia(previas, 'PACA_HIELO'),
       ventasAgua: ventas.aguaVendida,
       ventasHielo: ventas.hieloVendido,
       repartidores,

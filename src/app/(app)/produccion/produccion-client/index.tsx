@@ -11,6 +11,7 @@ import { InfoBanner } from '@/components/tooltip'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { ProduccionPendingBadge } from '@/components/produccion/pending-sync-badge'
 import type { StockInicial, FormData, TrabajadorOption, PreviewData, RepartidorOption, ProduccionRegistro } from './types'
+import { TURNO_LABEL } from './types'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { ProduccionEditModal } from './edit-modal'
 
@@ -29,6 +30,7 @@ const EMPTY_FORM: FormData = {
   rotasHielo: 0,
   consumoInternoAgua: 0,
   consumoInternoHielo: 0,
+  botellonesLlenados: 0,
   obs: '',
 }
 
@@ -214,6 +216,7 @@ export default function ProduccionClient() {
       const body = {
         trabajadorId: formData.trabajadorId,
         turno: formData.turno,
+        botellonesLlenados: formData.botellonesLlenados,
         obs: formData.obs,
         offlineId: generateUUID(),
         items: [
@@ -440,7 +443,7 @@ export default function ProduccionClient() {
                   const hielo = p.items.find(i => i.producto === 'PACA_HIELO')
                   return (
                     <tr key={p.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium text-gray-800">{p.turno}</td>
+                      <td className="px-4 py-3 font-medium text-gray-800">{TURNO_LABEL[p.turno] ?? p.turno}</td>
                       <td className="px-4 py-3 text-gray-600">{p.trabajador.nombre}</td>
                       <td className="px-4 py-3 text-center text-blue-600 font-semibold">{agua?.producido ?? 0}</td>
                       <td className="px-4 py-3 text-center text-cyan-600 font-semibold">{hielo?.producido ?? 0}</td>
@@ -655,13 +658,26 @@ export default function ProduccionClient() {
                     <label className="block text-sm text-gray-600 mb-1">🕐 Turno</label>
                     <select
                       value={formData.turno}
-                      onChange={(e) => setFormData({ ...formData, turno: e.target.value as 'MANANA' | 'TARDE' | 'NOCHE' })}
+                      onChange={(e) => setFormData({ ...formData, turno: e.target.value as FormData['turno'] })}
                       className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="MANANA">Mañana</option>
                       <option value="TARDE">Tarde</option>
                       <option value="NOCHE">Noche</option>
+                      <option value="JORNADA">Jornada completa</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">🫙 Botellones llenados</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.botellonesLlenados || ''}
+                      onChange={(e) => setFormData({ ...formData, botellonesLlenados: Math.max(0, Number(e.target.value) || 0) })}
+                      className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      data-testid="botellones-llenados"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Llenados, no vendidos: la comisión del sellador usa los llenados.</p>
                   </div>
                 </div>
               </div>

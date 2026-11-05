@@ -2,6 +2,11 @@
 import {test, expect, loginAs, goto, apiPost, apiGet, apiPut, createSellador, getSellador,  resetDatabase} from './fixtures'
 import type { Page } from '@playwright/test'
 
+/** #645: el asistente pide confirmar cuando hay diferencia de stock; si el diálogo aparece, lo confirma (si no, sigue). */
+async function confirmarSiPregunta(page: import('@playwright/test').Page) {
+  await page.getByRole('button', { name: 'Confirmar', exact: true }).click({ timeout: 3000 }).catch(() => undefined)
+}
+
 test.describe('Producción — E2E Exhaustivo', () => {
   test.describe.configure({ mode: 'serial' })
 
@@ -272,7 +277,11 @@ test.describe('Producción — E2E Exhaustivo', () => {
     await page.getByTestId('stock-fisico-hielo').fill('45')
     await page.getByRole('button', { name: 'Ver resumen →' }).click()
     await page.waitForTimeout(300)
+    // #645: el stock del día es uno solo; con otra producción ya registrada hoy, el stock inicial incluye lo producido antes,
+    // así que este test (que escribe un stock físico propio) tiene diferencia: se explica y se confirma. El servidor decide el 409.
+    await page.locator('textarea').first().fill('Diferencia sintética del E2E: otra producción del mismo día', { timeout: 3000 }).catch(() => undefined)
     await page.getByRole('button', { name: '✓ Confirmar y Guardar' }).click()
+    await confirmarSiPregunta(page)
     await page.waitForTimeout(3000)
 
     // Segundo registro MISMO sellador + MISMO turno → 409
@@ -288,7 +297,11 @@ test.describe('Producción — E2E Exhaustivo', () => {
     await page.getByTestId('stock-fisico-hielo').fill('45')
     await page.getByRole('button', { name: 'Ver resumen →' }).click()
     await page.waitForTimeout(300)
+    // #645: el stock del día es uno solo; con otra producción ya registrada hoy, el stock inicial incluye lo producido antes,
+    // así que este test (que escribe un stock físico propio) tiene diferencia: se explica y se confirma. El servidor decide el 409.
+    await page.locator('textarea').first().fill('Diferencia sintética del E2E: otra producción del mismo día', { timeout: 3000 }).catch(() => undefined)
     await page.getByRole('button', { name: '✓ Confirmar y Guardar' }).click()
+    await confirmarSiPregunta(page)
     await page.waitForTimeout(3000)
 
     const bodyText = await page.locator('body').innerText()
