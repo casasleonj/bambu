@@ -20,9 +20,11 @@ interface CierreStockBlockProps {
   /** ¿Hay producción registrada ese día? Sin ella el bloque avisa que falta (o que se marcó «no se produjo»). */
   hayProduccion: boolean
   sinProduccion?: boolean
+  /** Unidades de pedidos sin detalle por día incluidas en «Vendido» (aviso del cierre). */
+  aproximadas?: number
 }
 
-export default function CierreStockBlock({ label, icon, ini, prod, vend, perdidas, fin, onFinChange, hayProduccion, sinProduccion }: CierreStockBlockProps) {
+export default function CierreStockBlock({ label, icon, ini, prod, vend, perdidas, fin, onFinChange, hayProduccion, sinProduccion, aproximadas = 0 }: CierreStockBlockProps) {
   const esperado = ini + prod - vend - perdidas
   const cuadra = esperado === fin
   const falta = !hayProduccion && !sinProduccion
@@ -67,6 +69,12 @@ export default function CierreStockBlock({ label, icon, ini, prod, vend, perdida
           <span className={cn('font-bold text-lg', falta ? '' : cuadra ? 'text-green-600' : 'text-red-600')}>{falta ? '—' : esperado}</span>
         </div>
       </div>
+
+      {aproximadas > 0 && (
+        <p className="mb-2 text-xs text-amber-700" data-testid="stock-incluye-aproximadas">
+          Incluye {aproximadas} de pedidos sin detalle por día (ver aviso)
+        </p>
+      )}
 
       {onFinChange ? (
         <div className="flex items-center gap-3">

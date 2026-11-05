@@ -118,6 +118,10 @@ export interface CierreData {
   botellonVendido: number
   bolsaAguaVendida: number
   bolsaHieloVendida: number
+  /** #650 (2b): pedidos cuyas unidades no se pudieron repartir por día (se cuentan en el día de creación). */
+  unidadesAproximadas?: { pedidoId: string; numero: number | null; fechaCreacion: string; unidades: { agua: number; hielo: number; botellon: number; bolsaAgua: number; bolsaHielo: number } }[]
+  /** true si falló el reparto por día y se muestran las cifras por fecha de creación. */
+  unidadesError?: boolean
   produccion: {
     stockIniAgua: number
     stockIniHielo: number
