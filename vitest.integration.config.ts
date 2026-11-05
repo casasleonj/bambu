@@ -27,6 +27,7 @@ export default defineConfig({
         singleFork: true,
       },
     },
+    hookTimeout: 60000, // resetAndSeed ejecuta scripts reales; no heredar el límite de 10 s de hooks.
     testTimeout: 60000, // las llamadas a execSync (clean/seed) pueden tardar
   },
   resolve: {
