@@ -9,6 +9,9 @@ import { formatCurrency } from '@/lib/utils'
 /** #601: lo que se confirma es el conteo del efectivo contra el efectivo que debe haber. */
 export interface ResumenConfirmacionCierre {
   fecha: string; debeHaber: number; contado: number; diferencia: number;
+  /** #631: lo cobrado (efectivo y digital) y lo fiado del día, para que quien cierra los vea antes de confirmar. */
+  cobrado?: { efectivo: number; digital: number }
+  fiado?: { total: number; pedidos: number }
 }
 
 export function CierreConfirmacion({ resumen, onResolver }: {
@@ -49,6 +52,14 @@ export function CierreConfirmacion({ resumen, onResolver }: {
             <dt className="text-slate-500">{label}</dt><dd className="font-semibold tabular-nums whitespace-nowrap">{value}</dd>
           </div>)}
         </dl>
+        {(resumen.cobrado || resumen.fiado) && (
+          <p data-testid="cierre-confirmacion-cobrado" className="mt-3 rounded-lg bg-blue-50 p-3 text-xs leading-relaxed text-blue-900">
+            {resumen.cobrado && <>Cobrado hoy: <b>{formatCurrency(resumen.cobrado.efectivo + resumen.cobrado.digital)}</b> (efectivo {formatCurrency(resumen.cobrado.efectivo)}{resumen.cobrado.digital !== 0 ? <> · digital {formatCurrency(resumen.cobrado.digital)}</> : null}). </>}
+            {resumen.fiado && (resumen.fiado.pedidos > 0
+              ? <>Fiado de hoy: <b>{formatCurrency(resumen.fiado.total)}</b> en {resumen.fiado.pedidos} pedido{resumen.fiado.pedidos === 1 ? '' : 's'}.</>
+              : <>Hoy no se fió ningún pedido.</>)}
+          </p>
+        )}
         <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">Después de cerrar no podrás cambiar pedidos, gastos ni el conteo de este día. El cierre se registra una sola vez.</p>
         <label className="mt-5 flex items-start gap-3 text-sm leading-relaxed text-slate-600">
           <input type="checkbox" checked={revisado} onChange={e => setRevisado(e.target.checked)} className="mt-1 accent-blue-600" />

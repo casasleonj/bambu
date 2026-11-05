@@ -1,3 +1,4 @@
+import type { DesgloseCobros, FiadoDelDia, PagoPorConfirmarDetalle } from '@/lib/cierre-desglose-cobros'
 export interface VentaPorOrigen {
   origen: string
   total: number
@@ -66,7 +67,15 @@ export interface CierreData {
     porMetodo: Partial<Record<'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA' | 'BONO', number>>
     diasPreviosCount: number
     diasPreviosTotal: number
+    /** #631: detalle de los pagos por confirmar (cierres anteriores a este cambio no lo traen). */
+    detalleHoy?: PagoPorConfirmarDetalle[]
+    detalleDiasPrevios?: PagoPorConfirmarDetalle[]
   }
+  /** #631: de dónde viene lo cobrado y a quién se fió (cierres anteriores no lo traen). */
+  desgloseCobros?: DesgloseCobros
+  fiadosDelDia?: FiadoDelDia[]
+  /** #631: ¿quien consulta puede confirmar pagos digitales? Si no, quién los confirma. */
+  confirmaPagos?: { puede: boolean; nombre: string | null }
 
   // Métodos
   efectivo: number

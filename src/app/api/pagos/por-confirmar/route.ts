@@ -34,7 +34,9 @@ export async function GET(request: NextRequest) {
 
     // #517: el pago de un pedido anulado o cancelado ya no se confirma (quedó compensado por la
     // nota crédito / reversión); no aparece en la cola ni cuenta en el total pendiente.
-    const where = { confirmacion: 'REPORTADO' as const, ...PAGO_DE_PEDIDO_VIGENTE }
+    // #631: `pedidoId` filtra la cola a un solo pedido (enlace «Confirmar →» del cierre de caja).
+    const pedidoId = sp.get('pedidoId')?.trim() || undefined
+    const where = { confirmacion: 'REPORTADO' as const, ...PAGO_DE_PEDIDO_VIGENTE, ...(pedidoId ? { pedidoId } : {}) }
     const [pagos, total, agg] = await Promise.all([
       prisma.pago.findMany({
         where,

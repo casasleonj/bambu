@@ -15,6 +15,7 @@ import ArqueoCaja, { type ArqueoData, DENOMINACIONES } from '@/components/arqueo
 import CierreHeader from '@/components/cierre/cierre-header'
 import { CierreEstadoConsulta, type ErrorConsultaCierre } from '@/components/cierre/cierre-estado-consulta'
 import CierreKpiGrid from '@/components/cierre/cierre-kpi-grid'
+import CierreDesgloseCobros from '@/components/cierre/cierre-desglose-cobros'
 import CierreEfectivoEsperado, { efectivoEsperadoDelCierre } from '@/components/cierre/cierre-efectivo-esperado'
 import CierreSection from '@/components/cierre/cierre-section'
 import CierreStockBlock from '@/components/cierre/cierre-stock-block'
@@ -262,6 +263,8 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     const ok = await confirm({
       fecha, debeHaber, contado: currentArqueo.totalContado,
       diferencia: Math.round((currentArqueo.totalContado - debeHaber) * 100) / 100,
+      ...(data?.desgloseCobros ? { cobrado: { efectivo: data.desgloseCobros.efectivo, digital: data.desgloseCobros.digital } } : {}),
+      ...(data?.fiadosDelDia ? { fiado: { total: data.fiadosDelDia.reduce((t, f) => t + f.saldo, 0), pedidos: data.fiadosDelDia.length } } : {}),
     })
     if (!ok) { cierreSolicitadoRef.current = false; setCerrando(false); return }
     setCerrando(true)
@@ -384,6 +387,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         </div>
 
         <CierreKpiGrid data={data} netoTeorico={Number(data.netoCaja)} />
+        <CierreDesgloseCobros data={data} />
 
         {/* Arqueo */}
         {data.totalContado != null && (
@@ -606,6 +610,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           />
         </div>
         <CierreKpiGrid data={data} netoTeorico={netoTeorico} baseDia={baseDia} comisiones={comisiones} salarios={salarios} />
+        <CierreDesgloseCobros data={data} />
       </CierreSection>
 
       {/* Section 2: Stock y Base de Caja */}
