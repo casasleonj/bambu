@@ -159,3 +159,34 @@ export function detallarPorConfirmar(rows: readonly PagoPorConfirmarRaw[]): Pago
     monto: Number(r.monto),
   }))
 }
+
+export interface GastoParaLista {
+  id: string
+  categoria: string
+  descripcion: string
+  monto: unknown
+  fecha: Date
+  responsable: string | null
+  createdBy: { nombre: string; username: string } | null
+}
+
+export interface GastoDelDia {
+  id: string
+  categoria: string
+  descripcion: string
+  monto: number
+  fecha: string
+  registro: string | null
+}
+
+/** #646: los gastos del día uno por uno; su suma es «Gastos» del cierre. */
+export function listarGastosDelDia(gastos: readonly GastoParaLista[]): GastoDelDia[] {
+  return gastos.map((g) => ({
+    id: g.id,
+    categoria: g.categoria,
+    descripcion: g.descripcion,
+    monto: Number(g.monto),
+    fecha: g.fecha.toISOString(),
+    registro: g.responsable?.trim() || (g.createdBy ? (g.createdBy.nombre.trim() || g.createdBy.username) : null),
+  }))
+}

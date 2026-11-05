@@ -14,7 +14,7 @@ import { CheckCircle2, AlertTriangle, Receipt, Droplets, Snowflake, ArrowRight, 
 import ArqueoCaja, { type ArqueoData, DENOMINACIONES } from '@/components/arqueo-caja'
 import CierreHeader from '@/components/cierre/cierre-header'
 import { CierreEstadoConsulta, type ErrorConsultaCierre } from '@/components/cierre/cierre-estado-consulta'
-import CierreKpiGrid from '@/components/cierre/cierre-kpi-grid'
+import { CierreKpiGrid, CierreDetalleVentas } from '@/components/cierre/cierre-kpi-grid'
 import CierreDesgloseCobros from '@/components/cierre/cierre-desglose-cobros'
 import CierreEfectivoEsperado, { efectivoEsperadoDelCierre } from '@/components/cierre/cierre-efectivo-esperado'
 import CierreSection from '@/components/cierre/cierre-section'
@@ -247,7 +247,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       return
     }
     if (baseDia === 0) {
-      toast.error('No se puede cerrar: la base de caja es 0. Verifica el monto.')
+      toast.error('No se puede cerrar: el efectivo con el que empezó el día es 0. Verifica el monto.')
       return
     }
     // Use ref to avoid race condition with React state batching
@@ -352,7 +352,6 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     />
   }
 
-  const netoTeorico = calcularNetoCaja()
   const efectivoEsperado = calcularEfectivoEsperado()
 
   if (yaCerrado && data) {
@@ -386,8 +385,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           <p className="text-green-700 text-sm">El cierre para este día ya fue registrado. No se puede volver a cerrar.</p>
         </div>
 
-        <CierreKpiGrid data={data} netoTeorico={Number(data.netoCaja)} />
+        <CierreKpiGrid data={data} />
         <CierreDesgloseCobros data={data} />
+        <CierreDetalleVentas data={data} />
 
         {/* Arqueo */}
         {data.totalContado != null && (
@@ -504,9 +504,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         : 'Todos los embarques del día están cerrados',
     },
     {
-      label: 'Base de caja registrada',
+      label: 'Efectivo inicial del día registrado',
       ok: baseDia > 0,
-      detail: baseDia > 0 ? `Base: ${formatCurrency(baseDia)}` : 'Ingresa la base de caja en la sección 2',
+      detail: baseDia > 0 ? `Empezó con: ${formatCurrency(baseDia)}` : 'Ingresa el efectivo con el que empezó el día en la sección 2',
     },
     {
       label: 'Efectivo físico contado',
@@ -535,7 +535,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
 
   // Next step hint
   const getNextStep = () => {
-    if (baseDia === 0) return { label: 'Ingresa la base de caja', section: 2 }
+    if (baseDia === 0) return { label: 'Ingresa el efectivo con el que empezó el día', section: 2 }
     if (arqueoData.totalContado === 0) return { label: 'Cuenta el efectivo físico', section: 3 }
     if (statusCierre === 'INCOMPLETO') return { label: 'Cierra los embarques pendientes', section: 1 }
     return { label: 'Listo para cerrar el día', section: 4 }
@@ -599,8 +599,8 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       {/* Section 1: Resumen Financiero */}
       <CierreSection
         number={1}
-        title="Resumen Financiero"
-        description="Revisa que los números del día cuadren. Los datos vienen del sistema."
+        title="Resumen del dinero del día"
+        description="Revisa que las cifras del día tengan sentido. Los datos vienen del sistema; toca el «?» para saber de dónde sale cada una."
         status={data && !fetchError ? 'completo' : 'pendiente'}
       >
         <div className="mb-4">
@@ -609,21 +609,22 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             totalGastos={data.totalGastos} comisiones={comisiones} salarios={salarios} pagosDigitales={data.cobroDigitalHoy ?? 0}
           />
         </div>
-        <CierreKpiGrid data={data} netoTeorico={netoTeorico} baseDia={baseDia} comisiones={comisiones} salarios={salarios} />
+        <CierreKpiGrid data={data} />
         <CierreDesgloseCobros data={data} />
+        <CierreDetalleVentas data={data} />
       </CierreSection>
 
       {/* Section 2: Stock y Base de Caja */}
       <CierreSection
         number={2}
-        title="Stock y Base de Caja"
-        description="Confirma los valores que faltan por registrar. La base es el efectivo con que iniciaste el día."
+        title="Inventario y efectivo inicial"
+        description="Confirma los valores que faltan por registrar. El efectivo inicial es el que había en la caja al empezar el día."
       >
         <div className="space-y-4">
           {/* Base y comisiones */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="cierre-baseDia" className="text-xs text-muted-foreground">Base de Caja</label>
+              <label htmlFor="cierre-baseDia" className="text-xs text-muted-foreground">Efectivo con el que empezó el día</label>
               <Input id="cierre-baseDia" type="number" min="0" value={baseDia} onChange={(e) => setBaseDia(Math.max(0, Number(e.target.value)))} className="mt-1" />
               {baseDia <= 0 && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Requerido para cerrar</p>}
             </div>
@@ -649,7 +650,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           </div>
 
           {/* Comisiones de repartidores (#499) */}
-          <div>
+          <div id="cierre-comisiones">
             <p className="mb-2 text-sm font-medium">Comisiones de repartidores</p>
             <ComisionesRepartidores
               fecha={fecha}
@@ -757,7 +758,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       {/* Section 3: Arqueo de Caja */}
       <CierreSection
         number={3}
-        title="Arqueo de Caja"
+        title="Conteo del efectivo"
         description="Cuenta los billetes y monedas y compáralos con el efectivo que debe haber."
       >
         <ArqueoCaja key={fecha} efectivoEsperado={efectivoEsperado} onChange={handleArqueoChange} onClose={() => {
@@ -777,7 +778,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             {/* Header: Expected / Counted / Difference */}
             <div className="flex items-center justify-center gap-2 mb-5">
               <Receipt className="w-6 h-6 text-muted-foreground" />
-              <h4 className="text-base font-bold">Conteo de Efectivo</h4>
+              <h4 className="text-base font-bold">Tu conteo del efectivo</h4>
             </div>
 
             <div className="grid grid-cols-3 gap-4 text-center mb-5">

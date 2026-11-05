@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Modal } from '@/components/modal'
 import { Button } from '@/components/ui/button'
+import { AyudaTermino } from '@/components/ui/ayuda-termino'
 import { formatCurrency } from '@/lib/utils'
 
 /** #601: lo que se confirma es el conteo del efectivo contra el efectivo que debe haber. */
@@ -49,14 +50,14 @@ export function CierreConfirmacion({ resumen, onResolver }: {
             ['Efectivo contado', formatCurrency(resumen.contado)],
             ['Diferencia', textoDiferencia],
           ].map(([label, value]) => <div key={label} className={`flex justify-between gap-4 py-3 ${label === 'Diferencia' ? 'font-bold text-blue-900' : ''}`}>
-            <dt className="text-slate-500">{label}</dt><dd className="font-semibold tabular-nums whitespace-nowrap">{value}</dd>
+            <dt className="text-slate-500">{label}{label === 'Efectivo que debe haber' && <AyudaTermino texto="Solo billetes y monedas: la base con que empezó el día + lo cobrado en efectivo − gastos y comisiones pagadas. No incluye Nequi, transferencias ni lo fiado." />}</dt><dd className="font-semibold tabular-nums whitespace-nowrap">{value}</dd>
           </div>)}
         </dl>
         {(resumen.cobrado || resumen.fiado) && (
           <p data-testid="cierre-confirmacion-cobrado" className="mt-3 rounded-lg bg-blue-50 p-3 text-xs leading-relaxed text-blue-900">
             {resumen.cobrado && <>Cobrado hoy: <b>{formatCurrency(resumen.cobrado.efectivo + resumen.cobrado.digital)}</b> (efectivo {formatCurrency(resumen.cobrado.efectivo)}{resumen.cobrado.digital !== 0 ? <> · digital {formatCurrency(resumen.cobrado.digital)}</> : null}). </>}
             {resumen.fiado && (resumen.fiado.pedidos > 0
-              ? <>Fiado de hoy: <b>{formatCurrency(resumen.fiado.total)}</b> en {resumen.fiado.pedidos} pedido{resumen.fiado.pedidos === 1 ? '' : 's'}.</>
+              ? <>Quedó fiado hoy: <b>{formatCurrency(resumen.fiado.total)}</b> en {resumen.fiado.pedidos} pedido{resumen.fiado.pedidos === 1 ? '' : 's'}.</>
               : <>Hoy no se fió ningún pedido.</>)}
           </p>
         )}

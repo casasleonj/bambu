@@ -9,7 +9,7 @@ import { logger } from '@/lib/logger'
 import { unidadesEntregadasDelDia } from '@/lib/unidades-entregadas-dia'
 import { resolverStockInicial } from '@/lib/stock-inicial'
 import { PAGO_DE_PEDIDO_VIGENTE } from '@/lib/pago-confirmacion'
-import { desglosarCobros, detallarPorConfirmar, listarFiadosDelDia } from '@/lib/cierre-desglose-cobros'
+import { desglosarCobros, detallarPorConfirmar, listarFiadosDelDia, listarGastosDelDia } from '@/lib/cierre-desglose-cobros'
 
 type PagoMetodoMonto = { metodo: MetodoPago; monto: unknown }
 
@@ -69,6 +69,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
       reportadosDiasPreviosAgg,
       pagosCapturadosHoy,
       reportadosDiasPreviosRaw,
+      gastosLista,
     ] = await Promise.all([
       prisma.embarque.findMany({
         where: whereEmbarquesPendientesCierreDia(dateRange),
@@ -175,6 +176,12 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         take: LIMITE_DETALLE_POR_CONFIRMAR,
       }),
+      // #646: cada gasto del día (descripción, categoría, hora, quién lo registró e importe) para el desplegable del cierre.
+      prisma.gasto.findMany({
+        where: { fecha: dateRange },
+        select: { id: true, categoria: true, descripcion: true, monto: true, fecha: true, responsable: true, createdBy: { select: { nombre: true, username: true } } },
+        orderBy: [{ fecha: 'asc' }, { id: 'asc' }],
+      }),
     ])
 
     // #499: comisiones del día calculadas por el servidor (repartidores con lo pagado/pendiente + sellador).
@@ -249,6 +256,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
       startOfDay, endOfDay, abonos, cobroVentasHoy + cobroCartera,
     )
     const fiadosDelDia = listarFiadosDelDia(pedidos)
+    const gastosDelDia = listarGastosDelDia(gastosLista)
 
     const facturasPagadas = facturas.filter(f => f.estado === EstadoFactura.PAGADA)
     const facturasParcial = facturas.filter(f => f.estado === EstadoFactura.PARCIAL)
@@ -344,6 +352,9 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         porConfirmar,
         desgloseCobros,
         fiadosDelDia,
+        gastosDelDia,
+        // #646: cuáles son los abonos y las correcciones de cobros del día.
+        abonosDelDia: abonos.detalle ?? { abonos: [], correcciones: [] },
 
         // Métodos de pago
         efectivo,

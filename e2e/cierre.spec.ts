@@ -21,7 +21,7 @@ test.describe('Cierre', () => {
     await loginAs(page, 'admin')
     await goto(page, '/cierre')
     await expect(page.getByRole('heading', { name: /^Cierre del día$/i, level: 1 })).toBeVisible({ timeout: 10000 })
-    await expect(page.locator('text=Resumen Financiero').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('text=Resumen del dinero del día').first()).toBeVisible({ timeout: 5000 })
   })
 
   test('admin sees cerrar dia button', async ({ page }) => {
@@ -61,7 +61,7 @@ test.describe('Cierre', () => {
       test.skip()
       return
     }
-    const stockSection = page.locator('text=Stock y Base de Caja')
+    const stockSection = page.locator('text=Inventario y efectivo inicial')
     if (await stockSection.count() === 0) {
       test.skip()
       return
@@ -147,7 +147,7 @@ test.describe('Cierre', () => {
       test.skip()
       return
     }
-    const arqueoSection = page.locator('text=Arqueo de Caja')
+    const arqueoSection = page.locator('text=Conteo del efectivo')
     if (await arqueoSection.isVisible({ timeout: 5000 }).catch(() => false)) {
       await expect(arqueoSection).toBeVisible()
     }
