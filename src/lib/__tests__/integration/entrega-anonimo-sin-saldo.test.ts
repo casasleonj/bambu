@@ -110,11 +110,25 @@ describe('#473 — entrega a un cliente sin nombre: nunca con saldo (Postgres re
     expect(Number(f.saldo)).toBe(0)
   })
 
-  it('una entrega parcial a un anónimo (sigue abierta) no se bloquea', async () => {
+  it('con fiados parciales activos, un anónimo tampoco recibe mercancía sin pagar', async () => {
     const p = await pedidoEnRuta(true)
     const r = await entregar(p.id, { itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 2 }] })
-    expect(r.status).toBe(200)
-    expect((await fila(p.id)).estadoEntrega).not.toBe('ENTREGADO')
+    expect(r.status).toBe(422)
+    expect(r.body.error.code).toBe('DEUDOR_REQUERIDO')
+    expect((await fila(p.id)).cPacaAguaEnt).toBe(0)
+    expect(await testPrisma.entregaExigible.count({ where: { pedidoId: p.id } })).toBe(0)
+  })
+
+  it('con el interruptor apagado conserva la transición parcial anterior', async () => {
+    vi.stubEnv('FIADO_ENTREGA_PARCIAL', 'false')
+    try {
+      const p = await pedidoEnRuta(true)
+      const r = await entregar(p.id, { itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 2 }] })
+      expect(r.status).toBe(200)
+      expect((await fila(p.id)).cPacaAguaEnt).toBe(2)
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('un cliente real puede quedar con saldo (la regla es solo del anónimo)', async () => {

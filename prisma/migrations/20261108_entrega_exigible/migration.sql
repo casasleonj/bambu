@@ -12,6 +12,19 @@ CREATE TABLE IF NOT EXISTS "EntregaExigible" (
         REFERENCES "Pedido"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+-- La aplicación usa Prisma desde el servidor, no la API pública de Supabase.
+ALTER TABLE "EntregaExigible" ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE "EntregaExigible" FROM PUBLIC;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        REVOKE ALL ON TABLE "EntregaExigible" FROM anon;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        REVOKE ALL ON TABLE "EntregaExigible" FROM authenticated;
+    END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS "EntregaExigible_pedidoId_idx" ON "EntregaExigible"("pedidoId");
 CREATE INDEX IF NOT EXISTS "EntregaExigible_entregadoAt_idx" ON "EntregaExigible"("entregadoAt");
 

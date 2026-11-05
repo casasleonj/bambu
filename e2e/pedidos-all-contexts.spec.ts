@@ -410,7 +410,7 @@ test.describe('Pedidos — Tab Fiados', () => {
     await p.waitForTimeout(500)
     await expect(p.locator('text=Control de Fiados')).toBeVisible()
     // Banner explicativo
-    await expect(p.getByText(/Consulta la deuda de pedidos entregados, agrupada por cliente/)).toBeVisible()
+    await expect(p.getByText(/Consulta lo entregado y pendiente de pago, agrupado por cliente/)).toBeVisible()
   })
 
   test('filtros de Fiados estan disponibles', async () => {

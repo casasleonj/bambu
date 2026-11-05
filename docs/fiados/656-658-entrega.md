@@ -14,13 +14,13 @@ Una entrega parcial genera importe exigible por lo entregado menos lo pagado, ac
 
 `FIADO_ENTREGA_PARCIAL=false` por defecto. Con OFF, ni el registro ni la lectura de exigibles acceden a la tabla nueva, y se preserva el criterio de deuda entregada.
 
-Antes de activar:
+Antes de fusionar:
 
 1. Revisar y aplicar SQL aditivo e idempotente de `20261108_entrega_exigible` y `20261109_exigible_hechos`. Ambas migraciones fueron ejecutadas dos veces sobre PostgreSQL desechable.
-2. Verificar columnas `eventoId`, `huella`, `lineas`, CHECK de importes e índice único `(pedidoId, eventoId)`.
-3. Autorizar expresamente y aplicar permisos al rol runtime: `GRANT SELECT, INSERT, UPDATE ON TABLE "EntregaExigible" TO app_write;` UPDATE conserva compatibilidad con la versión anterior. No necesita GRANT sobre otras tablas ni permisos administrativos.
-4. Comprobar con el rol runtime lectura e inserción dentro de una transacción que termine en ROLLBACK.
-5. Integrar el PR con CI resuelto. Activar el flag por decisión explícita posterior y probar el recorrido de Fiados. No cerrar #656 hasta verificar el comportamiento activado.
+2. Verificar columnas `eventoId`, `huella`, `lineas`, CHECK de importes, índice único `(pedidoId, eventoId)` y acceso bloqueado desde los roles públicos de Supabase.
+3. Integrar el PR con CI resuelto y el flag apagado.
+
+Antes de activar, confirmar el rol real de Prisma. Si el runtime usa `app_write`, autorizar expresamente sus permisos `SELECT, INSERT` sobre esta tabla y sus políticas RLS de lectura e inserción. El rol propietario no necesita permisos adicionales. Verificar con el rol runtime una lectura e inserción dentro de una transacción que termine en ROLLBACK. Activar el flag por decisión explícita posterior y probar el recorrido de Fiados.
 
 Rollback de comportamiento: volver el flag a false. Los hechos ya capturados quedan conservados. OFF oculta los fiados parciales, por lo que no es una solución permanente del incidente original.
 

@@ -64,7 +64,10 @@ export class EntregarPedidoUseCase {
 
       const huellaEntrega = createHash('sha256').update(JSON.stringify({
         items: [...input.itemsEntregados].sort((a, b) => a.producto.localeCompare(b.producto)),
-        pagos: input.pagos ?? [], oficina: input.oficina ?? null,
+        pagos: input.pagos ?? [], oficina: input.oficina ? {
+          ...input.oficina,
+          fechaEntrega: input.oficina.fechaEntregaGenerada ? null : input.oficina.fechaEntrega,
+        } : null,
         fecha: input.entregadoAt ?? null, embarqueId: input.embarqueId ?? null,
         embarqueEntregaId: input.embarqueEntregaId ?? null, clienteRetiro: input.clienteRetiro ?? false,
       })).digest('hex')
