@@ -6,6 +6,7 @@
 // también muestra un aviso si el flag está OFF.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { Modal } from '@/components/modal'
@@ -36,12 +37,15 @@ export default function PagosConfirmarClient() {
   const [page, setPage] = useState(1)
   const [confirmando, setConfirmando] = useState<PagoRow | null>(null)
 
+  // #631: con `?pedidoId=` la cola muestra solo los pagos de ese pedido (enlace desde el cierre de caja).
+  const pedidoIdFiltro = useSearchParams().get('pedidoId')?.trim() || null
+
   const seqRef = useRef(0)
 
   const load = useCallback(async () => {
     const seq = ++seqRef.current
     try {
-      const res = await fetch(`/api/pagos/por-confirmar?page=${page}&pageSize=50`, {
+      const res = await fetch(`/api/pagos/por-confirmar?page=${page}&pageSize=50${pedidoIdFiltro ? `&pedidoId=${encodeURIComponent(pedidoIdFiltro)}` : ''}`, {
         credentials: 'include',
         cache: 'no-store',
         signal: AbortSignal.timeout(8_000),
@@ -72,7 +76,7 @@ export default function PagosConfirmarClient() {
         setLoaded(true)
       }
     }
-  }, [page, loaded, rows.length])
+  }, [page, pedidoIdFiltro, loaded, rows.length])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -110,6 +114,18 @@ export default function PagosConfirmarClient() {
         verificó todavía que el dinero entró. Confirmá los que ya viste en la cuenta; marcá como
         discrepancia los que no aparecen (se abre un caso de responsabilidad, no se borra el pago).
       </p>
+
+      {pedidoIdFiltro && (
+        <div data-testid="pagos-confirmar-filtro-pedido" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+          <span>
+            Mostrando solo {rows[0] ? <>el pedido <b>#{rows[0].pedido.numero}</b>{rows[0].pedido.cliente ? <> · {rows[0].pedido.cliente.nombre}</> : null}</> : 'un pedido'}
+          </span>
+          <span className="flex gap-3 font-semibold">
+            <a href="/pagos-confirmar" className="hover:underline">Ver todos</a>
+            <a href="/cierre" className="hover:underline">Volver al cierre</a>
+          </span>
+        </div>
+      )}
 
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loaded && !error && <div className="text-sm text-gray-500">Cargando…</div>}
@@ -151,7 +167,7 @@ export default function PagosConfirmarClient() {
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-3 py-6 text-center text-gray-500">
-                    Nada pendiente. 🎉
+                    {pedidoIdFiltro ? <>Este pedido ya no tiene pagos por confirmar. <a href="/pagos-confirmar" className="text-blue-600 hover:underline">Ver todos</a></> : <>Nada pendiente. 🎉</>}
                   </td>
                 </tr>
               )}

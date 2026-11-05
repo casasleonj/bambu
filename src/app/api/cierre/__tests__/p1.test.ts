@@ -7,9 +7,10 @@ import { construirResumenCierre } from '@/lib/cierre-resumen'
 vi.mock('@/lib/comision-pagada', () => ({ comisionesDelCierre: vi.fn(async () => ({ sellador: 0, pagadoRepartidores: 0, total: 0, repartidores: [] })) }))
 vi.mock('@/lib/cobro-cartera', () => ({ resumirAbonosDelDia: vi.fn(async () => ({ total: 0, abonosIndependientes: 0, ajustesDeCobros: 0 })) }))
 vi.mock('@/lib/sueldos-pendientes', () => ({ sueldosPendientesAl: vi.fn(async () => []) }))
+const pedido = { fecha: new Date('2026-03-10T17:00:00Z') } // #631: la fecha del pedido separa ventas de hoy y fiados anteriores
 const pagos = [
-  { metodo: 'EFECTIVO', monto: '123.10' }, { metodo: 'TRANSFERENCIA', monto: '234.20' },
-  { metodo: 'NEQUI', monto: '345.30' }, { metodo: 'DAVIPLATA', monto: '456.40' }, { metodo: 'BONO', monto: '567.00' },
+  { metodo: 'EFECTIVO', monto: '123.10', pedido }, { metodo: 'TRANSFERENCIA', monto: '234.20', pedido },
+  { metodo: 'NEQUI', monto: '345.30', pedido }, { metodo: 'DAVIPLATA', monto: '456.40', pedido }, { metodo: 'BONO', monto: '567.00', pedido },
 ]
 const pagoFind = vi.fn()
 const ventas = [{ total: 500, totalPagado: 120, saldo: 380, cPacaAguaEnt: 0, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }]
@@ -35,6 +36,9 @@ describe('cierre: ventas y caja mantienen sus fuentes', () => {
     const { cierre } = await construirResumenCierre(tx, '2026-03-10')
     expect(cierre).toMatchObject({ efectivo: 123.1, transferencia: 234.2, nequi: 345.3, daviplata: 456.4, bono: 567, cobrado: 120, totalVentas: 500, fiado: 380 })
     expect(cierre.cobroVentasHoy).toBeCloseTo(1726, 2)
+    // #631: el desglose explica la misma cifra (todo es venta de hoy) y cuadra.
+    expect(cierre.desgloseCobros.total).toBeCloseTo(1726, 2)
+    expect(cierre.desgloseCobros.cuadra).toBe(true)
   })
   it('consulta los cobros por registro en Bogotá con límite exclusivo del día siguiente', async () => {
     await construirResumenCierre(tx, '2026-03-10')
@@ -42,7 +46,7 @@ describe('cierre: ventas y caja mantienen sus fuentes', () => {
       where: {
         createdAt: { gte: new Date('2026-03-10T05:00:00Z'), lt: new Date('2026-03-11T05:00:00Z') },
         regularizacionId: null, pedido: { estadoEntrega: { notIn: ['CANCELADO', 'ANULADO'] } },
-      }, select: { metodo: true, monto: true },
+      }, select: { metodo: true, monto: true, pedido: { select: { fecha: true } } },
     })
   })
   it('no inventa cobros cuando no hay movimientos de pago', async () => {

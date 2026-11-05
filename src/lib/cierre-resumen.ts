@@ -9,8 +9,16 @@ import { logger } from '@/lib/logger'
 import { unidadesEntregadasDelDia } from '@/lib/unidades-entregadas-dia'
 import { resolverStockInicial } from '@/lib/stock-inicial'
 import { PAGO_DE_PEDIDO_VIGENTE } from '@/lib/pago-confirmacion'
+import { desglosarCobros, detallarPorConfirmar, listarFiadosDelDia } from '@/lib/cierre-desglose-cobros'
 
 type PagoMetodoMonto = { metodo: MetodoPago; monto: unknown }
+
+/** #631: máximo de filas del detalle de pagos por confirmar de días anteriores (el total no se recorta). */
+const LIMITE_DETALLE_POR_CONFIRMAR = 50
+const SELECT_POR_CONFIRMAR = {
+  id: true, metodo: true, monto: true, createdAt: true,
+  pedido: { select: { id: true, numero: true, cliente: { select: { id: true, nombre: true, apellido: true } }, factura: { select: { numero: true } } } },
+} satisfies Prisma.PagoSelect
 type DiasPreviosAgg = { _count: number; _sum: { monto: unknown } }
 
 /**
@@ -60,6 +68,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
       pagosReportadosHoyRaw,
       reportadosDiasPreviosAgg,
       pagosCapturadosHoy,
+      reportadosDiasPreviosRaw,
     ] = await Promise.all([
       prisma.embarque.findMany({
         where: whereEmbarquesPendientesCierreDia(dateRange),
@@ -70,6 +79,8 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
           fecha: dateRange,
           estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] },
         },
+        // #631: el nombre del cliente es para la lista «A quién se fió hoy».
+        include: { cliente: { select: { nombre: true, apellido: true } } },
         // F-B: los métodos de pago ya no salen de aquí (ver `pagosCapturadosHoy`).
       }),
       // #645: puede haber varias producciones el mismo día (otro sellador u otro turno); el cierre las suma.
@@ -130,7 +141,8 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
       // un pedido viejo también cuenta).
       prisma.pago.findMany({
         where: { confirmacion: 'REPORTADO', createdAt: dateRange, regularizacionId: null, ...PAGO_DE_PEDIDO_VIGENTE },
-        select: { metodo: true, monto: true },
+        select: SELECT_POR_CONFIRMAR,
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       }),
       // ...y los REPORTADO de días anteriores (advertencia, no bloquea).
       prisma.pago.aggregate({
@@ -153,7 +165,15 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
           regularizacionId: null,
           pedido: { estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
         },
-        select: { metodo: true, monto: true },
+        // #631: la fecha del pedido separa «ventas de hoy» de «fiados de días anteriores cobrados hoy».
+        select: { metodo: true, monto: true, pedido: { select: { fecha: true } } },
+      }),
+      // #631: detalle de los REPORTADO de días anteriores (los más recientes; el total sigue siendo el agregado).
+      prisma.pago.findMany({
+        where: { confirmacion: 'REPORTADO', createdAt: { lt: startOfDay }, ...PAGO_DE_PEDIDO_VIGENTE },
+        select: SELECT_POR_CONFIRMAR,
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        take: LIMITE_DETALLE_POR_CONFIRMAR,
       }),
     ])
 
@@ -217,7 +237,18 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
     // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6: desglose INFORMATIVO de pagos aún
     // REPORTADO cobrados HOY. NO altera netoCaja — el cierre suma todos los
     // pagos por método como siempre.
-    const porConfirmar = buildPorConfirmar(pagosReportadosHoyRaw, reportadosDiasPreviosAgg)
+    const porConfirmar = {
+      ...buildPorConfirmar(pagosReportadosHoyRaw, reportadosDiasPreviosAgg),
+      // #631: detalle para listar pedido, cliente, factura y fecha de cada pago.
+      detalleHoy: detallarPorConfirmar(pagosReportadosHoyRaw),
+      detalleDiasPrevios: detallarPorConfirmar(reportadosDiasPreviosRaw),
+    }
+    // #631: de dónde viene lo cobrado (origen × medio) y a quién se fió; no cambia ninguna cifra, solo la explica.
+    const desgloseCobros = desglosarCobros(
+      pagosCapturadosHoy.map((pg) => ({ metodo: pg.metodo, monto: pg.monto, pedidoFecha: pg.pedido.fecha })),
+      startOfDay, endOfDay, abonos, cobroVentasHoy + cobroCartera,
+    )
+    const fiadosDelDia = listarFiadosDelDia(pedidos)
 
     const facturasPagadas = facturas.filter(f => f.estado === EstadoFactura.PAGADA)
     const facturasParcial = facturas.filter(f => f.estado === EstadoFactura.PARCIAL)
@@ -311,6 +342,8 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
 
         // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 — informativo, no altera netoCaja.
         porConfirmar,
+        desgloseCobros,
+        fiadosDelDia,
 
         // Métodos de pago
         efectivo,
