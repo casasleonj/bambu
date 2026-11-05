@@ -11,6 +11,7 @@ import {
   IconoEfectivo,
 } from './cobros-dashboard'
 import { ShoppingBag, ClipboardList, Receipt } from 'lucide-react'
+import { EntregasHoyCard } from './entregas-hoy-card'
 import { MoneyDisplay } from '@/components/money-display'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { PRODUCT_LABELS } from '@/shared/domain'
@@ -334,14 +335,18 @@ export function DashboardClient({
             />
           </p>
           <p className="text-3xl font-bold text-gray-800">{pedidosHoy}</p>
+          <p className="text-xs text-gray-400">Creados hoy</p>
           <p className="text-xs text-gray-400 mt-1">
-            {pedidosPendientes} pendientes · {pedidosEntregados} entregados
+            {pedidosEntregados} entregados · {pedidosPendientes} por entregar
+            (de hoy)
           </p>
           <p className={`text-xs mt-1 font-medium ${trendClass(pedidosTrend)}`}>
             {trendArrow(pedidosTrend)} {Math.abs(pedidosTrend).toFixed(0)}% vs
             ayer
           </p>
         </div>
+
+        <EntregasHoyCard />
 
         <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-green-500">
           <p className="flex items-center justify-between gap-2 text-sm text-gray-500">
