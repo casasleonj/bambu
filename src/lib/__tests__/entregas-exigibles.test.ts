@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { asignarPagoFIFO, exigibleEsperado, validarInvariantesExigibles, type EntregaExigibleCalc } from '../entregas-exigibles'
+import { asignarPagoFIFO, exigibleEsperado, exigibleDelPedido, validarInvariantesExigibles, type EntregaExigibleCalc } from '../entregas-exigibles'
 
 const e = (id: string, dia: number, valor: number, asignado = 0): EntregaExigibleCalc => ({
   id, entregadoAt: new Date(2031, 3, dia), valorEntregado: valor, asignado,
@@ -49,5 +49,18 @@ describe('validarInvariantesExigibles', () => {
   it('falla si asignado supera el valor de la entrega', () => {
     const entregas = [e('a', 3, 1000, 1500)]
     expect(() => validarInvariantesExigibles(entregas, { total: 1000, totalPagado: 1500, saldo: 0 })).toThrow(/fuera de rango/)
+  })
+})
+
+describe('exigibleDelPedido: transición sin filas (opción 2)', () => {
+  it('pedido anterior ENTREGADO con saldo: el saldo es exigible', () => {
+    expect(exigibleDelPedido([], { total: 8000, totalPagado: 0, saldo: 8000, estadoEntrega: 'ENTREGADO' })).toBe(8000)
+  })
+  it('pedido anterior parcial sin filas: no suma saldo no entregado', () => {
+    expect(exigibleDelPedido([], { total: 30000, totalPagado: 0, saldo: 30000, estadoEntrega: 'PENDIENTE' })).toBe(0)
+  })
+  it('con filas, aplica la regla 3 y no el saldo completo', () => {
+    const entregas = [{ id: 'a', entregadoAt: new Date(2031, 4, 3), valorEntregado: 7500, asignado: 7500 }]
+    expect(exigibleDelPedido(entregas, { total: 30000, totalPagado: 7500, saldo: 22500, estadoEntrega: 'PENDIENTE' })).toBe(0)
   })
 })
