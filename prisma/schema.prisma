@@ -929,6 +929,7 @@ model Nomina {
 // ====================
 
 model Pedido {
+  entregasExigibles EntregaExigible[]
   id          String    @id @default(cuid())
   // El DEFAULT real es nextval('pedido_numero_seq'), la misma secuencia que
   // usa getNextNumero (#401, migración 20261023). Unicidad: índice UNIQUE
@@ -3196,4 +3197,24 @@ model PedidoSaldoFavorMovimiento {
   @@index([pedidoId])
   @@index([clienteId])
   @@index([origenTipo, origenId])
+}
+
+
+/// Hechos de entrega #656. Asignado se conserva solo por compatibilidad; se proyecta al leer.
+model EntregaExigible {
+  eventoId String?
+  huella String?
+  lineas Json @default("[]")
+
+  id             String   @id @default(cuid())
+  pedidoId       String
+  pedido         Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  entregadoAt    DateTime
+  valorEntregado Decimal  @db.Decimal(10, 2)
+  asignado       Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+
+  @@index([pedidoId])
+  @@index([entregadoAt])
+  @@unique([pedidoId, eventoId])
 }

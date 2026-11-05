@@ -1,3 +1,5 @@
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
+import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -85,6 +87,7 @@ export async function POST(request: NextRequest) {
       // pedido PENDIENTE/EN_RUTA/NO_ENTREGADO ya tiene factura EMITIDA.
       // Sin este guard se podía registrar abono (dinero cobrado) sobre
       // mercancía que nunca salió de bodega.
+      await acquireAdvisoryLockTx(tx, 'PEDIDO', factura.pedidoId)
       const pedido = await tx.pedido.findUnique({
         where: { id: factura.pedidoId },
         select: { estadoEntrega: true, total: true, totalPagado: true },
@@ -92,7 +95,8 @@ export async function POST(request: NextRequest) {
       if (!pedido) {
         throw new Error('PEDIDO_NOT_FOUND')
       }
-      if (pedido.estadoEntrega !== 'ENTREGADO') {
+      const exigibles = await leerExigibles(tx, { id: factura.pedidoId })
+      if ((exigibles.get(factura.pedidoId) ?? 0) < monto) {
         throw new Error('PEDIDO_NO_ENTREGADO')
       }
 

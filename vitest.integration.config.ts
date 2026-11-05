@@ -14,6 +14,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    env: { FIADO_ENTREGA_PARCIAL: 'true' },
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/lib/__tests__/integration/**/*.test.ts'],
     exclude: ['node_modules/**', '.opencode/**', 'e2e/**', '.next/**'],
@@ -26,6 +27,7 @@ export default defineConfig({
         singleFork: true,
       },
     },
+    hookTimeout: 60000, // resetAndSeed ejecuta scripts reales; no heredar el límite de 10 s de hooks.
     testTimeout: 60000, // las llamadas a execSync (clean/seed) pueden tardar
   },
   resolve: {

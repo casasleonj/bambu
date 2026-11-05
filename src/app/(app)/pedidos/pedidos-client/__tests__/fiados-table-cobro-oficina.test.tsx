@@ -62,4 +62,20 @@ describe('CobroFiadoDialog — quién recibió (#472)', () => {
     expect(opciones.body).not.toHaveProperty('repartidorId')
     expect(opciones.body).not.toHaveProperty('fechaRecepcion')
   })
+  it('revisa una parcial con exigible menor al saldo y muestra el excedente antes de cobrar', async () => {
+    mockGestion.mockReturnValue({ activa: false, repartidores: [] })
+    const parcial = { ...preparacion, deudaTotal: 12500, pedidos: [{ ...preparacion.pedidos[0],
+      total: 30000, totalPagado: 10000, saldo: 20000, exigible: 12500, estadoEntrega: 'PENDIENTE' }] }
+    global.fetch = vi.fn().mockImplementation(async (url: string) => ({ ok: true,
+      json: async () => url.includes('recientes') ? { resultados: [] } : { preparacion: parcial } })) as unknown as typeof fetch
+    montar('ADMIN')
+    await screen.findByLabelText('Medio 1')
+    fireEvent.change(screen.getByLabelText('Medio 1'), { target: { value: 'EFECTIVO' } })
+    fireEvent.change(screen.getByLabelText('Monto 1'), { target: { value: '15000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar reparto' }))
+    expect(await screen.findByText(/Se aplica.*12[.,]500.*Queda.*7[.,]500/)).toBeTruthy()
+    expect(screen.getByText(/El excedente quedará como saldo a favor/)).toBeTruthy()
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
 })

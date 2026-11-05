@@ -1,3 +1,4 @@
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { z } from 'zod'
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
 
     const { minSaldo, limit, sortBy } = validation.data
 
-    const facturas = await prisma.factura.findMany({
+    const originales = await prisma.factura.findMany({
       where: {
         saldo: { gt: minSaldo ?? 0 },
       },
@@ -39,7 +40,9 @@ export async function GET(request: Request) {
       take: limit,
     })
 
-    const totalCartera = facturas.reduce((sum, f) => sum + Number(f.saldo), 0)
+    const exigibles = await leerExigibles(prisma, { id: { in: originales.map(f => f.pedidoId) } })
+    const facturas = originales.map(f => ({ ...f, exigible: exigibles.get(f.pedidoId) ?? 0 }))
+    const totalCartera = facturas.reduce((sum, f) => sum + Math.round(f.exigible * 100), 0) / 100
 
     return apiSuccess({ facturas, totalCartera })
   } catch (error) {

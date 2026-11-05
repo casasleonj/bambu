@@ -1,3 +1,5 @@
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
+import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
@@ -39,7 +41,15 @@ export async function POST(request: NextRequest) {
 
     for (const pedido of pedidosVencidos) {
       try {
-        await prisma.$transaction(async (tx) => {
+        const vencido = await prisma.$transaction(async (tx) => {
+          await acquireAdvisoryLockTx(tx, 'PEDIDO', pedido.id)
+          const vigente = await tx.pedido.findUnique({ where: { id: pedido.id },
+            select: { promesaPagoFecha: true, estadoPago: true } })
+          if (!vigente?.promesaPagoFecha || vigente.promesaPagoFecha >= ahora ||
+              ['PAGADO', 'ANTICIPADO', 'VENCIDO', 'ANULADO'].includes(vigente.estadoPago)) return false
+          const exigibles = await leerExigibles(tx, { id: pedido.id })
+          const exigible = exigibles.get(pedido.id) ?? 0
+          if (exigible <= 0) return false
           // 1. Marcar pedido como vencido
           await tx.pedido.update({
             where: { id: pedido.id },
@@ -64,13 +74,14 @@ export async function POST(request: NextRequest) {
               datos: JSON.stringify({
                 numero: pedido.numero,
                 promesaPagoFecha: pedido.promesaPagoFecha,
-                saldo: Number(pedido.saldo),
+                saldo: Number(pedido.saldo), exigible,
                 clienteBloqueado: !pedido.cliente.bloqueado,
               }),
             },
           })
+          return true
         })
-        actualizados++
+        if (vencido) actualizados++
       } catch (e) {
         logger.error({ err: e instanceof Error ? e.message : 'Unknown', pedidoId: pedido.id }, 'Error procesando vencimiento')
         fallos.push(`Pedido #${pedido.numero}`)

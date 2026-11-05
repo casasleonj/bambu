@@ -1,3 +1,5 @@
+import { exigiblesActivos } from '@/lib/exigibles-flag'
+import { createHash } from 'node:crypto'
 /**
  * EntregarPedidoUseCase.
  */
@@ -9,6 +11,7 @@ import type { IFacturaRepository } from '../../domain/repositories/IFacturaRepos
 import type { IPagoRepository } from '../../domain/repositories/IPagoRepository'
 import type { ITransactionManager, TransactionClient } from '../../infrastructure/transactions/PrismaTransactionManager'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
+import { registrarEntregaExigible } from '@/lib/entregas-exigibles-db'
 import { leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import { aplicarEntregaConObligacion } from '@/lib/obligacion-guard'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
@@ -58,6 +61,26 @@ export class EntregarPedidoUseCase {
     return this.txManager.executeWithLock('PEDIDO', input.pedidoId, async (tx) => {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
+
+      const huellaEntrega = createHash('sha256').update(JSON.stringify({
+        items: [...input.itemsEntregados].sort((a, b) => a.producto.localeCompare(b.producto)),
+        pagos: input.pagos ?? [], oficina: input.oficina ? {
+          ...input.oficina,
+          fechaEntrega: input.oficina.fechaEntregaGenerada ? null : input.oficina.fechaEntrega,
+        } : null,
+        fecha: input.entregadoAt ?? null, embarqueId: input.embarqueId ?? null,
+        embarqueEntregaId: input.embarqueEntregaId ?? null, clienteRetiro: input.clienteRetiro ?? false,
+      })).digest('hex')
+      if (input.offlineId && exigiblesActivos()) {
+        const anterior = await tx.entregaExigible.findUnique({
+          where: { pedidoId_eventoId: { pedidoId: input.pedidoId, eventoId: input.offlineId } },
+          select: { huella: true },
+        })
+        if (anterior) {
+          if (anterior.huella !== huellaEntrega) throw new Error('ENTREGA_IDEMPOTENCIA_CONFLICTO')
+          return { pedido: PedidoDTOMapper.toResumen(pedido), deduped: true }
+        }
+      }
 
       // FASE 1 (ADR-IDEMPOTENCIA-001): dedup por clave idempotente persistida.
       // Un replay con el mismo offlineId retorna deduped:true aunque el estado
@@ -202,12 +225,12 @@ export class EntregarPedidoUseCase {
 
       // Antifraude (#318): quien reparte no crea crédito por su cuenta. Se evalúa con
       // el saldo ya resultante y ANTES de persistir: si falla, el rollback deja el
-      // pedido sin entregar y sin cobro. Solo aplica a la entrega completa y a
+      // pedido sin entregar y sin cobro. Aplica a toda porción entregada sin pagar y a
       // deudores reales (la venta anónima no puede dejar saldo en absoluto).
       if (
         input.exigirDeudaAceptada &&
         !input.clienteRetiro &&
-        pedido.estadoEntrega.get() === 'ENTREGADO' &&
+        (exigiblesActivos() ? pedido.items.reduce((t, i) => t + i.subtotalEntregado.cents, 0) > pedido.totalPagado.cents : pedido.estadoEntrega.get() === 'ENTREGADO') &&
         pedido.saldo.cents > 0
       ) {
         const fila = await tx.pedido.findUnique({
@@ -226,7 +249,7 @@ export class EntregarPedidoUseCase {
       // mensajes y ANTES de persistir: si falla, el rollback deja todo igual.
       if (
         pedido.clienteId === CANONICAL_CONSUMIDOR_FINAL_ID &&
-        pedido.estadoEntrega.get() === 'ENTREGADO' &&
+        (exigiblesActivos() ? pedido.items.reduce((t, i) => t + i.subtotalEntregado.cents, 0) > pedido.totalPagado.cents : pedido.estadoEntrega.get() === 'ENTREGADO') &&
         pedido.saldo.cents > 0
       ) {
         throw new Error('DEUDOR_REQUERIDO')
@@ -235,9 +258,26 @@ export class EntregarPedidoUseCase {
       // Persist pedido
       const updated = await this.pedidoRepo.update(pedido, tx)
 
+      // #656: cada entrega registra su valor exigible en la MISMA transacción. Precio tomado del item del pedido.
+      await registrarEntregaExigible(tx, {
+        pedidoId: input.pedidoId,
+        eventoId: input.offlineId, huella: huellaEntrega,
+        entregadoAt: oficina ? oficina.fechaEntrega : (input.entregadoAt ? new Date(input.entregadoAt) : new Date()),
+        lineas: entregasClampeadas.map(e => ({
+          producto: e.producto,
+          cantidad: e.cantidadAEntregar,
+          precioCents: pedido.items.find(i => i.producto === e.producto)?.precio.cents ?? 0,
+        })),
+        pedido: {
+          total: updated.total.cents / 100,
+          totalPagado: updated.totalPagado.cents / 100,
+          saldo: updated.saldo.cents / 100,
+        },
+      })
+
       // Fiado de la oficina: la promesa de pago queda en el pedido (misma
       // columna que usa el antifraude #318 y el cron de vencimientos).
-      if (oficina?.promesaPagoFecha && updated.estadoEntrega.get() === 'ENTREGADO' && updated.saldo.cents > 0) {
+      if (oficina?.promesaPagoFecha && updated.items.reduce((t, i) => t + i.subtotalEntregado.cents, 0) > updated.totalPagado.cents && updated.saldo.cents > 0) {
         await tx.pedido.update({ where: { id: input.pedidoId }, data: { promesaPagoFecha: oficina.promesaPagoFecha } })
       }
 
@@ -260,15 +300,14 @@ export class EntregarPedidoUseCase {
         })
       }
 
-      // PR-1 (integridad de entrega parcial): la factura solo se sincroniza
-      // cuando el cumplimiento es total. Una entrega parcial deja el pedido
-      // PENDIENTE y no debe tocar la factura (montos/estado) ni fijar su fecha.
+      // #660: toda captura de dinero actualiza la proyección de factura,
+      // incluida una entrega parcial. La entrega física sin cobro conserva
+      // la obligación y una parcial nunca fija otra fecha de factura.
       const entregaCompleta = updated.estadoEntrega.get() === 'ENTREGADO'
       const factura = await this.facturaRepo.findByPedidoId(pedido.id.get(), tx)
       // Un cobro SIEMPRE mueve el saldo del pedido, así que la factura debe
       // seguirlo aunque la entrega sea parcial (V3: mismo saldo que el pedido).
-      const cobroOficina = Boolean(oficina) && tieneCobro(input)
-      if (factura && (entregaCompleta || cobroOficina)) {
+      if (factura && (entregaCompleta || tieneCobro(input))) {
         await this.facturaRepo.update({
           ...factura,
           total: updated.total.toDecimal(),
@@ -406,7 +445,7 @@ export class EntregarPedidoUseCase {
         'No se puede dejar fiado a un cliente sin nombre. Registra el pago completo o elige un cliente real.',
       )
     }
-    if (pedido.estadoEntrega.get() !== 'ENTREGADO') return
+    if (exigiblesActivos() ? pedido.items.reduce((t, i) => t + i.subtotalEntregado.cents, 0) <= pedido.totalPagado.cents : pedido.estadoEntrega.get() !== 'ENTREGADO') return
     if (!oficina.promesaPagoFecha) {
       throw new EntregaOficinaError('PROMESA_REQUERIDA', 'Si queda debiendo, necesitamos hasta cuándo promete pagar.')
     }

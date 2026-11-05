@@ -66,6 +66,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         repartidorId: d.repartidorId,
         recibioDinero: d.recibioDinero,
         fechaEntrega,
+        fechaEntregaGenerada: !d.fechaEntrega,
         // Clientes anteriores elegían solo fecha y enviaban mediodía convencional.
         precisionFecha: d.precisionFecha ?? (d.fechaEntrega ? 'DIA' : 'INSTANTE'),
         nota: d.nota,
@@ -114,6 +115,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return apiSuccess(result)
   } catch (error) {
+    if (error instanceof Error && error.message === 'ENTREGA_IDEMPOTENCIA_CONFLICTO') {
+      return apiError('Este reintento contiene datos distintos. Actualiza la pantalla y revisa la entrega.', 409, { code: 'ENTREGA_IDEMPOTENCIA_CONFLICTO' })
+    }
     if (error instanceof EntregaOficinaError) {
       return apiError(error.message, ESTADO_HTTP_OFICINA[error.codigo], { code: error.codigo })
     }

@@ -77,6 +77,8 @@ describe('EntregarPedidoUseCase — PR-1: entrega parcial no crea hijo', () => {
     const fakeTx = {
       pedido: { aggregate: vi.fn().mockResolvedValue({ _max: { numero: 100 } }) },
       historial: { create: vi.fn().mockResolvedValue({}) },
+      // #656: entregas exigibles (sin filas previas en este escenario).
+      entregaExigible: { findUnique: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]), create: vi.fn().mockResolvedValue({}), update: vi.fn().mockResolvedValue({}) },
       // FASE 8: getNextNumero ahora usa secuencia atómica (nextval).
       $queryRawUnsafe: vi.fn().mockResolvedValue([{ nextval: BigInt(101) }]),
       // N2, guard I-11: sin ObligacionPendiente activa en este escenario.

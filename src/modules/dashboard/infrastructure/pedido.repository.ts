@@ -1,3 +1,4 @@
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
 /**
  * Pedido Repository.
  *
@@ -26,12 +27,14 @@ export class PrismaPedidoRepository implements PedidoRepository {
       include: { items: true },
     })
 
+    const exigibles = await leerExigibles(this.db, { id: { in: pedidos.map(p => p.id) } })
     return pedidos.map((p) => ({
       id: p.id,
       numero: p.numero,
       fecha: p.fecha,
       total: p.total,
       saldo: p.saldo,
+      exigible: exigibles.get(p.id) ?? 0,
       estadoEntrega: p.estadoEntrega,
       estadoPago: p.estadoPago,
       canal: p.canal,
@@ -64,10 +67,7 @@ export class PrismaPedidoRepository implements PedidoRepository {
   }
 
   async sumFiadosEntregados(): Promise<number> {
-    const result = await this.db.pedido.aggregate({
-      where: { saldo: { gt: 0 }, estadoEntrega: 'ENTREGADO' },
-      _sum: { saldo: true },
-    })
-    return Number(result._sum.saldo) || 0
+    const exigibles = await leerExigibles(this.db, { saldo: { gt: 0 }, clienteId: { not: 'CONSUMIDOR_FINAL' } })
+    return [...exigibles.values()].reduce((sum, n) => sum + Math.round(n * 100), 0) / 100
   }
 }
