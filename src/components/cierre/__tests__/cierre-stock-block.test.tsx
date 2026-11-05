@@ -35,4 +35,12 @@ describe('CierreStockBlock (#645)', () => {
     expect(screen.queryByTestId('stock-falta-produccion')).toBeNull()
     expect(screen.getByText('Cuadrado')).toBeInTheDocument()
   })
+
+  it('#618: el bloque de botellones dice «Llenados» y no muestra pérdidas', () => {
+    render(<CierreStockBlock label="Stock Botellones" icon={<span />} ini={20} prod={8} vend={5} perdidas={0} fin={23} hayProduccion esBotellon />)
+    expect(screen.getByText('Llenados')).toBeInTheDocument()
+    expect(screen.queryByText('Pérdidas')).toBeNull()
+    expect(screen.queryByText('Producido')).toBeNull()
+    expect(screen.getByText('Cuadrado')).toBeInTheDocument()
+  })
 })

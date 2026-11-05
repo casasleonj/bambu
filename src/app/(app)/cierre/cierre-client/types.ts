@@ -141,6 +141,9 @@ export interface CierreData {
     rotasHielo?: number
     consumoInternoHielo?: number
     botellonesLlenados?: number
+    /** #618: inventario de botellones llenos */
+    stockIniBotellon?: number
+    stockFinBotellon?: number
     comRepartidorAgua: number
     comRepartidorHielo: number
     comRepartTotal: number
@@ -148,7 +151,7 @@ export interface CierreData {
   /** #645: una fila por producción registrada ese día */
   producciones?: { id: string; turno: string; trabajadorId: string; trabajador: string; prodAgua: number; prodHielo: number; botellonesLlenados: number }[]
   /** #545: stock inicial (último cierre o Config) para días sin producción registrada */
-  stockInicialSugerido?: { stockIniAgua: number; stockIniHielo: number }
+  stockInicialSugerido?: { stockIniAgua: number; stockIniHielo: number; stockIniBotellon?: number }
 
   // #499: comisiones del día calculadas por el servidor (repartidores con lo pagado y lo pendiente + sellador)
   comisionesAuto?: {

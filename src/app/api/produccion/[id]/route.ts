@@ -140,8 +140,17 @@ export async function PUT(
         itemAgua.diferencia = itemAgua.stockFinEsperado - itemAgua.stockFinFisico - perdidasAgua
         itemHielo.diferencia = itemHielo.stockFinEsperado - itemHielo.stockFinFisico - perdidasHielo
 
+        // #618: inventario de botellones llenos (sin pérdidas): Inicial + Llenados − Vendidos = Esperado vs conteo final.
+        // #645: los llenados se digitan; sin dato nuevo se conserva lo registrado.
+        const itemBot = updatedItems.find(i => i.producto === 'BOTELLON')
+        const llenados = parsed.data.botellonesLlenados ?? itemBot?.producido ?? 0
+        const stockIniBot = itemBot?.stockIni ?? 0
+        const esperadoBot = stockIniBot + llenados - ventas.botellonVendido
+        const finBot = parsed.data.stockFinBotellones ?? itemBot?.stockFinFisico ?? esperadoBot
+        const diferenciaBot = esperadoBot - finBot
+
         // 7. FIX 1.5: obs requerida si hay diferencia
-        const hayDiferencia = itemAgua.diferencia !== 0 || itemHielo.diferencia !== 0
+        const hayDiferencia = itemAgua.diferencia !== 0 || itemHielo.diferencia !== 0 || diferenciaBot !== 0
         const obsFinal = parsed.data.obs !== undefined
           ? parsed.data.obs.trim() || null
           : existing.obs
@@ -157,9 +166,6 @@ export async function PUT(
         if (!trabajador) {
           throw new Error('TRABAJADOR_NO_ENCONTRADO')
         }
-        // #645: botellones LLENADOS (se digitan; no son los vendidos). Sin dato nuevo se conserva lo registrado.
-        const itemBot = updatedItems.find(i => i.producto === 'BOTELLON')
-        const llenados = parsed.data.botellonesLlenados ?? itemBot?.producido ?? 0
         const comSell = calcComSellador(prodAgua, prodHielo, trabajador, llenados)
         // Los updates a Prisma.Decimal se hacen via Prisma.Decimal wrapper
         itemAgua.comSellador = new Prisma.Decimal(comSell.comAgua)
@@ -169,6 +175,9 @@ export async function PUT(
           itemBot.conteoB = llenados
           itemBot.producido = llenados
           itemBot.ventas = ventas.botellonVendido
+          itemBot.stockFinEsperado = esperadoBot
+          itemBot.stockFinFisico = finBot
+          itemBot.diferencia = diferenciaBot
           itemBot.comSellador = new Prisma.Decimal(comSell.comBotellon)
         }
 
@@ -199,7 +208,7 @@ export async function PUT(
             // Updates anidados de items
             items: {
               update: itemUpdates,
-              ...(itemBot ? {} : { create: [itemBotellon(llenados, comSell.comBotellon, ventas.botellonVendido)] }),
+              ...(itemBot ? {} : { create: [itemBotellon(llenados, comSell.comBotellon, ventas.botellonVendido, { stockIni: stockIniBot, stockFinFisico: finBot })] }),
             },
           },
           include: { items: true, trabajador: true },

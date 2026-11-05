@@ -259,6 +259,9 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
           rotasHielo: sumaItems('PACA_HIELO', 'rotas'),
           consumoInternoHielo: sumaItems('PACA_HIELO', 'consumoInterno'),
           botellonesLlenados: sumaItems('BOTELLON', 'producido'),
+          // #618: inventario de botellones llenos: inicial de la primera producción, conteo final de la última
+          stockIniBotellon: itemDe(primera, 'BOTELLON')?.stockIni ?? 0,
+          stockFinBotellon: itemDe(ultima, 'BOTELLON')?.stockFinFisico ?? 0,
           comSelladorAgua: sumaItems('PACA_AGUA', 'comSellador'),
           comSelladorHielo: sumaItems('PACA_HIELO', 'comSellador'),
           comSelladorBotellon: sumaItems('BOTELLON', 'comSellador'),

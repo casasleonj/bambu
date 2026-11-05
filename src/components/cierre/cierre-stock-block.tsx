@@ -22,9 +22,11 @@ interface CierreStockBlockProps {
   sinProduccion?: boolean
   /** Unidades de pedidos sin detalle por día incluidas en «Vendido» (aviso del cierre). */
   aproximadas?: number
+  /** #618: botellones llenos: «Llenados» en vez de «Producido» y sin pérdidas. */
+  esBotellon?: boolean
 }
 
-export default function CierreStockBlock({ label, icon, ini, prod, vend, perdidas, fin, onFinChange, hayProduccion, sinProduccion, aproximadas = 0 }: CierreStockBlockProps) {
+export default function CierreStockBlock({ label, icon, ini, prod, vend, perdidas, fin, onFinChange, hayProduccion, sinProduccion, aproximadas = 0, esBotellon }: CierreStockBlockProps) {
   const esperado = ini + prod - vend - perdidas
   const cuadra = esperado === fin
   const falta = !hayProduccion && !sinProduccion
@@ -42,7 +44,7 @@ export default function CierreStockBlock({ label, icon, ini, prod, vend, perdida
         )}
       </div>
 
-      {/* Fórmula visual: Inicial + Producido − Vendido − Pérdidas = Esperado */}
+      {/* Fórmula visual: Inicial + Producido − Vendido − Pérdidas = Esperado (botellones: sin pérdidas) */}
       <div className="flex items-center gap-2 text-sm flex-wrap mb-3">
         <div className="flex flex-col items-center">
           <span className="text-xs text-muted-foreground">Inicial</span>
@@ -50,7 +52,7 @@ export default function CierreStockBlock({ label, icon, ini, prod, vend, perdida
         </div>
         <span className="text-muted-foreground text-lg font-medium">+</span>
         <div className="flex flex-col items-center">
-          <span className="text-xs text-muted-foreground">Producido</span>
+          <span className="text-xs text-muted-foreground">{esBotellon ? 'Llenados' : 'Producido'}</span>
           <span className="font-bold text-lg">{hayProduccion || sinProduccion ? prod : '—'}</span>
         </div>
         <span className="text-muted-foreground text-lg font-medium">−</span>
@@ -58,11 +60,15 @@ export default function CierreStockBlock({ label, icon, ini, prod, vend, perdida
           <span className="text-xs text-muted-foreground">Vendido</span>
           <span className="font-bold text-lg">{vend}</span>
         </div>
-        <span className="text-muted-foreground text-lg font-medium">−</span>
-        <div className="flex flex-col items-center">
-          <span className="text-xs text-muted-foreground">Pérdidas</span>
-          <span className="font-bold text-lg">{perdidas}</span>
-        </div>
+        {!esBotellon && (
+          <>
+            <span className="text-muted-foreground text-lg font-medium">−</span>
+            <div className="flex flex-col items-center">
+              <span className="text-xs text-muted-foreground">Pérdidas</span>
+              <span className="font-bold text-lg">{perdidas}</span>
+            </div>
+          </>
+        )}
         <span className="text-muted-foreground text-lg font-medium">=</span>
         <div className="flex flex-col items-center">
           <span className="text-xs text-muted-foreground">Esperado</span>

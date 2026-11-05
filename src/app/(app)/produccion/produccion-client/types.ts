@@ -3,6 +3,9 @@ export interface StockInicial {
   stockIniHielo: number
   ventasAgua: number
   ventasHielo: number
+  /** #618: botellones llenos al empezar y vendidos del día */
+  stockIniBotellon: number
+  ventasBotellon: number
 }
 
 export interface FormData {
@@ -22,6 +25,8 @@ export interface FormData {
   consumoInternoHielo: number
   /** #645: botellones llenados (se digitan; llenados ≠ vendidos) */
   botellonesLlenados: number
+  /** #618: conteo final de botellones llenos */
+  stockFinBotellones: number
   obs: string
 }
 
@@ -48,6 +53,8 @@ export interface PreviewData {
   stockIniHielo: number
   ventasAgua: number
   ventasHielo: number
+  stockIniBotellon: number
+  ventasBotellon: number
   repartidores: RepartidorOption[]
   embarquesAbiertos: boolean
 }

@@ -21,6 +21,8 @@ test.describe('Producción dentro del cierre (#645)', () => {
     // Sin producción: el bloque avisa que falta y muestra el formulario; ya no hay campos manuales de inicial/producción.
     await expect(page.getByTestId('form-produccion-cierre')).toBeVisible({ timeout: 30000 })
     await expect(page.getByTestId('stock-falta-produccion').first()).toBeVisible()
+    // #618: el bloque de botellones llenos está junto a Agua y Hielo
+    await expect(page.getByText('Stock Botellones')).toBeVisible()
     await expect(page.getByText('Producción hoy', { exact: true })).toHaveCount(0)
 
     // Sin sellador no se puede guardar.
@@ -33,6 +35,7 @@ test.describe('Producción dentro del cierre (#645)', () => {
     await page.locator('#pc-fin-agua').fill('19') // 0 + 20 − 1 = 19
     await page.locator('#pc-fin-hielo').fill('10')
     await page.locator('#pc-botellones').fill('4')
+    await page.locator('#pc-fin-botellones').fill('4') // #618: inicial 0 + 4 llenados − 0 vendidos
     await expect(page.getByTestId('produccion-diferencia')).toHaveCount(0)
 
     const respuesta = page.waitForResponse((r) => r.url().endsWith('/api/produccion') && r.request().method() === 'POST')
@@ -51,7 +54,7 @@ test.describe('Producción dentro del cierre (#645)', () => {
     const p = await prisma.produccion.findFirstOrThrow({ where: { trabajadorId: sellador.id }, include: { items: true } })
     expect(p.turno).toBe('JORNADA')
     expect(Number(p.comSellTotal)).toBe(11220)
-    expect(p.items.find((i) => i.producto === 'BOTELLON')?.producido).toBe(4)
+    expect(p.items.find((i) => i.producto === 'BOTELLON')).toMatchObject({ producido: 4, stockFinFisico: 4, diferencia: 0 })
     expect(p.items.find((i) => i.producto === 'PACA_AGUA')?.rotas).toBe(1)
 
     // Se paga con el mismo botón y queda en la base.
@@ -66,6 +69,7 @@ test.describe('Producción dentro del cierre (#645)', () => {
     await page.getByLabel(/Turno/).selectOption('MANANA')
     await page.locator('#pc-fin-agua').fill('19')
     await page.locator('#pc-fin-hielo').fill('10')
+    await page.locator('#pc-fin-botellones').fill('4')
     await page.getByTestId('guardar-produccion').click()
     await expect(page.getByTestId('produccion-error')).toContainText('jornada completa')
     expect(await prisma.produccion.count({ where: { trabajadorId: sellador.id } })).toBe(1)

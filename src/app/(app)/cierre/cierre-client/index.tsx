@@ -50,6 +50,10 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const [prodHielo, setProdHielo] = useState(0)
   const [stockFinAgua, setStockFinAgua] = useState(0)
   const [stockFinHielo, setStockFinHielo] = useState(0)
+  // #618: botellones llenos (inicial: último cierre o Config; llenados: de la producción; final: el conteo)
+  const [stockIniBotellon, setStockIniBotellon] = useState(0)
+  const [prodBotellon, setProdBotellon] = useState(0)
+  const [stockFinBotellon, setStockFinBotellon] = useState(0)
   // #645: «ese día no se produjo» (domingo, festivo): se puede cerrar sin producción.
   const [sinProduccion, setSinProduccion] = useState(false)
   const [baseDia, setBaseDia] = useState(0)
@@ -87,6 +91,8 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const hayProduccion = (data?.producciones?.length ?? 0) > 0
   const esperadoAgua = stockIniAgua + prodAgua - (data?.aguaVendida || 0) - perdidasAgua
   const esperadoHielo = stockIniHielo + prodHielo - (data?.hieloVendido || 0) - perdidasHielo
+  // #618: botellones llenos (sin pérdidas): Inicial + Llenados − Vendidos (fábrica + domicilio)
+  const esperadoBotellon = stockIniBotellon + prodBotellon - (data?.botellonVendido || 0)
   const puedePagarComision = userRole === 'ADMIN' || userRole === 'CONTADOR'
   const diaCerrado = yaCerrado || (statusCierre as string | null) === 'CERRADO'
 
@@ -153,9 +159,13 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           setStockIniHielo(json.cierre.produccion.stockIniHielo || 0)
           setStockFinAgua(json.cierre.produccion.stockFinAgua || 0)
           setStockFinHielo(json.cierre.produccion.stockFinHielo || 0)
+          setStockIniBotellon(json.cierre.produccion.stockIniBotellon || 0)
+          setProdBotellon(json.cierre.produccion.botellonesLlenados || 0)
+          setStockFinBotellon(json.cierre.produccion.stockFinBotellon || 0)
         } else if (json.cierre.stockInicialSugerido) {
           setStockIniAgua(json.cierre.stockInicialSugerido.stockIniAgua || 0)
           setStockIniHielo(json.cierre.stockInicialSugerido.stockIniHielo || 0)
+          setStockIniBotellon(json.cierre.stockInicialSugerido.stockIniBotellon || 0)
         }
       }
     } catch (error) {
@@ -182,6 +192,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     setStockIniAgua(0); setStockIniHielo(0)
     setProdAgua(0); setProdHielo(0)
     setStockFinAgua(0); setStockFinHielo(0)
+    setStockIniBotellon(0); setProdBotellon(0); setStockFinBotellon(0)
     setSinProduccion(false)
   }
 
@@ -261,6 +272,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         salarios,
         stockIniAgua, prodAgua, stockFinAgua,
         stockIniHielo, prodHielo, stockFinHielo,
+        stockIniBotellon, prodBotellon, stockFinBotellon,
         reporte: JSON.stringify({
           cobroVentasHoy: data?.cobroVentasHoy,
           cobroCartera: data?.cobroCartera,
@@ -501,15 +513,17 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     },
     {
       label: 'Stock cuadrado',
-      ok: esperadoAgua === stockFinAgua && esperadoHielo === stockFinHielo,
+      ok: esperadoAgua === stockFinAgua && esperadoHielo === stockFinHielo && esperadoBotellon === stockFinBotellon,
       optional: true,
       detail: (() => {
         const diffAgua = esperadoAgua - stockFinAgua
         const diffHielo = esperadoHielo - stockFinHielo
-        if (diffAgua === 0 && diffHielo === 0) return 'Stock de agua e hielo cuadrado'
+        const diffBotellon = esperadoBotellon - stockFinBotellon
+        if (diffAgua === 0 && diffHielo === 0 && diffBotellon === 0) return 'Stock de agua, hielo y botellones cuadrado'
         const parts: string[] = []
         if (diffAgua !== 0) parts.push(`Agua: ${diffAgua > 0 ? '+' : ''}${diffAgua}`)
         if (diffHielo !== 0) parts.push(`Hielo: ${diffHielo > 0 ? '+' : ''}${diffHielo}`)
+        if (diffBotellon !== 0) parts.push(`Botellones: ${diffBotellon > 0 ? '+' : ''}${diffBotellon}`)
         return parts.join(' | ')
       })(),
     },
@@ -700,6 +714,19 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
               hayProduccion={hayProduccion}
               sinProduccion={sinProduccion}
             />
+            <CierreStockBlock
+              label="Stock Botellones"
+              icon={<span aria-hidden>🫙</span>}
+              ini={stockIniBotellon}
+              prod={prodBotellon}
+              vend={data?.botellonVendido || 0}
+              perdidas={0}
+              fin={stockFinBotellon}
+              onFinChange={hayProduccion ? undefined : setStockFinBotellon}
+              hayProduccion={hayProduccion}
+              sinProduccion={sinProduccion}
+              esBotellon
+            />
           </div>
 
           {/* Producción del día (#645): el mismo registro que la sección Producción */}
@@ -709,7 +736,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
               fecha={fecha}
               diaCerrado={diaCerrado}
               producciones={data?.producciones ?? []}
-              esperadoPrevio={{ agua: esperadoAgua, hielo: esperadoHielo }}
+              esperadoPrevio={{ agua: esperadoAgua, hielo: esperadoHielo, botellon: esperadoBotellon }}
               botellonesVendidos={data?.botellonVendido ?? 0}
               sinProduccion={sinProduccion}
               onSinProduccionChange={setSinProduccion}

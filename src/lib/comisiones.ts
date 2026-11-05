@@ -43,20 +43,30 @@ export function calcComRepartidor(
 }
 
 /**
- * Ítem de Producción para los botellones LLENADOS del día (#645). Llenados ≠ vendidos: se pueden llenar y quedar en
- * bodega, así que la comisión usa los llenados; `ventas` guarda los vendidos solo como referencia. Sin ciclo de stock.
+ * Ítem de Producción para los botellones LLENADOS del día (#645) y su inventario de llenos (#618). Llenados ≠ vendidos:
+ * se pueden llenar y quedar en bodega. La comisión usa los llenados. Inventario (solo llenos, sin pérdidas):
+ * Inicial + Llenados − Vendidos = Esperado, contra el conteo final.
  */
-export function itemBotellon(llenados: number, comSellador: number, vendidos = 0) {
+export function itemBotellon(
+  llenados: number,
+  comSellador: number,
+  vendidos = 0,
+  stock?: { stockIni: number; stockFinFisico: number },
+) {
+  const stockIni = stock?.stockIni ?? 0
+  const stockFinEsperado = stockIni + llenados - vendidos
+  // Sin conteo (clientes anteriores a #618) no se inventa una diferencia: se asume que cuadra.
+  const stockFinFisico = stock ? stock.stockFinFisico : stockFinEsperado
   return {
     producto: 'BOTELLON' as const,
     conteoA: llenados,
     conteoB: llenados,
     producido: llenados,
-    stockIni: 0,
+    stockIni,
     ventas: vendidos,
-    stockFinEsperado: 0,
-    stockFinFisico: 0,
-    diferencia: 0,
+    stockFinEsperado,
+    stockFinFisico,
+    diferencia: stockFinEsperado - stockFinFisico,
     filtradas: 0,
     rotas: 0,
     consumoInterno: 0,
