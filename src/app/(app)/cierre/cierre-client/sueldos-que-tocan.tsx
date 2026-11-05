@@ -82,13 +82,19 @@ export function SueldosQueTocan({
   return (
     <div className="space-y-2" data-testid="sueldos-que-tocan">
       {sueldos.map((s) => (
-        <div key={llave(s)} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3" data-testid={`sueldo-${s.trabajadorId}-${s.fecha}`}>
-          <div>
-            <p className="font-medium">{s.nombre}</p>
-            <p className="text-xs text-muted-foreground">Sueldo del {fechaLegible(s.fecha)} · {formatCurrency(s.monto)}</p>
+        <div key={llave(s)} className="rounded-xl border border-slate-200 bg-white p-3" data-testid={`sueldo-${s.trabajadorId}-${s.fecha}`}>
+          <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+            <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-base">💼</span>
+            <div className="min-w-[10rem] flex-1">
+              <p className="font-bold text-slate-800">{s.nombre}</p>
+              <p className="text-xs text-slate-500">Sueldo del {fechaLegible(s.fecha)} (toca hoy) · {formatCurrency(s.monto)}</p>
+            </div>
+            <span className="ml-12 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900 sm:ml-0">
+              Pendiente{s.fueraDeCaja ? ' · por fuera de la caja' : ''}
+            </span>
           </div>
-          {puedePagar && !diaCerrado ? (
-            <div className="flex flex-wrap items-center gap-2">
+          {puedePagar && !diaCerrado && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <select
                 aria-label={`Con qué se paga a ${s.nombre}`}
                 className="h-9 rounded-md border border-input bg-background px-2 text-sm"
@@ -98,12 +104,13 @@ export function SueldosQueTocan({
               >
                 {(Object.keys(ETIQUETAS) as Medio[]).map((m) => <option key={m} value={m}>{ETIQUETAS[m]}</option>)}
               </select>
-              <Button size="sm" disabled={pagando === llave(s)} onClick={() => pagar(s)} data-testid={`pagar-sueldo-${s.trabajadorId}`}>
+              <Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={pagando === llave(s)} onClick={() => pagar(s)} data-testid={`pagar-sueldo-${s.trabajadorId}`}>
                 {pagando === llave(s) ? 'Pagando…' : `Pagar ${formatCurrency(s.monto)}`}
               </Button>
+              <span className="text-[11px] text-slate-500">
+                {medioDe(s) === 'EFECTIVO' ? 'Sale de la caja de hoy (efectivo)' : 'No resta de la caja'}
+              </span>
             </div>
-          ) : (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Pendiente</span>
           )}
         </div>
       ))}
