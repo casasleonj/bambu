@@ -25,6 +25,9 @@ const PagarComisionSchema = z.object({
   montoEsperado: z.coerce.number().min(0).optional(),
   // #305: con qué se pagó. Sin indicarlo se asume EFECTIVO (clientes anteriores). Solo EFECTIVO sale de la caja del cierre.
   metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA']).default('EFECTIVO'),
+  // #645: REPARTO = comisión del repartidor por entregas; PRODUCCION = comisión del sellador por lo producido. Sin indicarlo se
+  // busca primero como repartidor y luego como sellador (clientes anteriores).
+  concepto: z.enum(['REPARTO', 'PRODUCCION']).optional(),
 })
 
 class PagoComisionError extends Error {
@@ -53,7 +56,7 @@ export async function POST(request: NextRequest) {
   }
   const parsed = PagarComisionSchema.safeParse(body)
   if (!parsed.success) return apiError(formatZodError(parsed.error), 400)
-  const { trabajadorId, fecha, offlineId, montoEsperado, metodo } = parsed.data
+  const { trabajadorId, fecha, offlineId, montoEsperado, metodo, concepto: conceptoPedido } = parsed.data
 
   const dia = startOfDayBogota(fecha)
   if (Number.isNaN(dia.getTime())) return apiError('Fecha inválida', 400)
@@ -63,6 +66,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const resultado = await executeSerializableWithRetry(async (tx) => {
+      let concepto: 'REPARTO' | 'PRODUCCION' = 'REPARTO'
       const previo = await tx.pagoComisionRepartidor.findUnique({ where: { offlineId } })
       if (previo) {
         if (previo.trabajadorId !== trabajadorId || previo.fecha.getTime() !== dia.getTime()) {
@@ -76,11 +80,12 @@ export async function POST(request: NextRequest) {
         throw new PagoComisionError(409, 'Ese día ya está dentro de una nómina de este trabajador: la comisión se paga por la nómina', 'NOMINA_EXISTENTE')
       }
 
-      const filas = await comisionDiaConEstado(tx, fecha)
+      const filas = conceptoPedido === 'PRODUCCION' ? [] : await comisionDiaConEstado(tx, fecha)
       const repartidor = filas.find((f) => f.trabajadorId === trabajadorId)
       // #645: el sellador cobra su comisión de la Producción del día; se paga con el mismo botón y la misma regla.
-      const sellador = repartidor ? undefined : (await comisionSelladoresDia(tx, fecha, dia, new Date(dia.getTime() + 86_400_000)))
+      const sellador = repartidor || conceptoPedido === 'REPARTO' ? undefined : (await comisionSelladoresDia(tx, fecha, dia, new Date(dia.getTime() + 86_400_000)))
         .find((f) => f.trabajadorId === trabajadorId)
+      concepto = sellador ? 'PRODUCCION' : 'REPARTO'
       const fila = repartidor ?? (sellador ? { total: sellador.total, pagado: sellador.pagado, pendiente: sellador.pendiente, revisiones: [] as unknown[] } : undefined)
       if (!fila) throw new PagoComisionError(404, 'Ese trabajador no cobra comisión ese día', 'TRABAJADOR_SIN_COMISION')
       if (fila.revisiones.length > 0) throw new PagoComisionError(409, 'Hay entregas por conciliar de este repartidor. Revisa su detalle antes de pagar.', 'COMISION_POR_CONCILIAR')
@@ -90,7 +95,7 @@ export async function POST(request: NextRequest) {
       }
 
       const pago = await tx.pagoComisionRepartidor.create({
-        data: { trabajadorId, fecha: dia, monto: fila.pendiente, metodo, pagadoPorId: userId ?? null, offlineId },
+        data: { trabajadorId, fecha: dia, monto: fila.pendiente, metodo, concepto, pagadoPorId: userId ?? null, offlineId },
       })
       return { pago, deduped: false as const }
     }, 'nomina/dia/pagar')

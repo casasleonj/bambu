@@ -7,7 +7,7 @@ export interface ComisionResult {
 }
 
 export interface ComisionSelladorResult extends ComisionResult {
-  /** #645: comisión por botellones llenados (= los vendidos del día: se vende lo que se llenó). */
+  /** #645: comisión por botellones LLENADOS (se digitan; no son los vendidos). */
   comBotellon: number
 }
 
@@ -42,15 +42,18 @@ export function calcComRepartidor(
   return { comAgua, comHielo, total: comAgua + comHielo }
 }
 
-/** Ítem de Producción para los botellones llenados del día (#645). No tiene conteo ni ciclo de stock. */
-export function itemBotellon(llenados: number, comSellador: number) {
+/**
+ * Ítem de Producción para los botellones LLENADOS del día (#645). Llenados ≠ vendidos: se pueden llenar y quedar en
+ * bodega, así que la comisión usa los llenados; `ventas` guarda los vendidos solo como referencia. Sin ciclo de stock.
+ */
+export function itemBotellon(llenados: number, comSellador: number, vendidos = 0) {
   return {
     producto: 'BOTELLON' as const,
     conteoA: llenados,
     conteoB: llenados,
     producido: llenados,
     stockIni: 0,
-    ventas: llenados,
+    ventas: vendidos,
     stockFinEsperado: 0,
     stockFinFisico: 0,
     diferencia: 0,

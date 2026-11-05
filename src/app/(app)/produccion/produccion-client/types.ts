@@ -7,7 +7,7 @@ export interface StockInicial {
 
 export interface FormData {
   trabajadorId: string
-  turno: 'MANANA' | 'TARDE' | 'NOCHE'
+  turno: 'MANANA' | 'TARDE' | 'NOCHE' | 'JORNADA'
   conteoAAgua: number
   conteoBAgua: number
   conteoAHielo: number
@@ -20,6 +20,8 @@ export interface FormData {
   rotasHielo: number
   consumoInternoAgua: number
   consumoInternoHielo: number
+  /** #645: botellones llenados (se digitan; llenados ≠ vendidos) */
+  botellonesLlenados: number
   obs: string
 }
 
@@ -52,7 +54,7 @@ export interface PreviewData {
 
 export interface ProduccionItem {
   id: string
-  producto: 'PACA_AGUA' | 'PACA_HIELO'
+  producto: 'PACA_AGUA' | 'PACA_HIELO' | 'BOTELLON'
   conteoA: number
   conteoB: number
   producido: number
@@ -69,9 +71,11 @@ export interface ProduccionItem {
 export interface ProduccionRegistro {
   id: string
   fecha: string
-  turno: 'MANANA' | 'TARDE' | 'NOCHE'
+  turno: 'MANANA' | 'TARDE' | 'NOCHE' | 'JORNADA'
   trabajadorId: string
   trabajador: { id: string; nombre: string }
   obs: string | null
   items: ProduccionItem[]
 }
+
+export const TURNO_LABEL: Record<string, string> = { MANANA: 'Mañana', TARDE: 'Tarde', NOCHE: 'Noche', JORNADA: 'Jornada completa' }
