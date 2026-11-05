@@ -70,7 +70,7 @@ test.describe('Comisión del repartidor en el cierre (#499)', () => {
     expect(Number(pagos[0].monto)).toBe(2 * TARIFA)
 
     // La caja del cierre resta lo pagado, sin que nadie teclee nada.
-    await expect(page.getByTestId('cierre-comisiones-auto')).toContainText('800')
+    await expect(page.getByTestId('cierre-efectivo-esperado')).toContainText('800')
     await page.reload()
     await expect(page.getByTestId(`comision-${r.id}`).getByTestId('comision-pagado')).toContainText('800', { timeout: 30000 })
   })
