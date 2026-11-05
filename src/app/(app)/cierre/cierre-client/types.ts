@@ -118,6 +118,10 @@ export interface CierreData {
   botellonVendido: number
   bolsaAguaVendida: number
   bolsaHieloVendida: number
+  /** #650 (2b): pedidos cuyas unidades no se pudieron repartir por día (se cuentan en el día de creación). */
+  unidadesAproximadas?: { pedidoId: string; numero: number | null; fechaCreacion: string; unidades: { agua: number; hielo: number; botellon: number; bolsaAgua: number; bolsaHielo: number } }[]
+  /** true si falló el reparto por día y se muestran las cifras por fecha de creación. */
+  unidadesError?: boolean
   produccion: {
     stockIniAgua: number
     stockIniHielo: number
@@ -137,6 +141,9 @@ export interface CierreData {
     rotasHielo?: number
     consumoInternoHielo?: number
     botellonesLlenados?: number
+    /** #618: inventario de botellones llenos */
+    stockIniBotellon?: number
+    stockFinBotellon?: number
     comRepartidorAgua: number
     comRepartidorHielo: number
     comRepartTotal: number
@@ -144,7 +151,7 @@ export interface CierreData {
   /** #645: una fila por producción registrada ese día */
   producciones?: { id: string; turno: string; trabajadorId: string; trabajador: string; prodAgua: number; prodHielo: number; botellonesLlenados: number }[]
   /** #545: stock inicial (último cierre o Config) para días sin producción registrada */
-  stockInicialSugerido?: { stockIniAgua: number; stockIniHielo: number }
+  stockInicialSugerido?: { stockIniAgua: number; stockIniHielo: number; stockIniBotellon?: number }
 
   // #499: comisiones del día calculadas por el servidor (repartidores con lo pagado y lo pendiente + sellador)
   comisionesAuto?: {

@@ -86,6 +86,11 @@ const VALIDATORS: Record<string, Validator> = {
     return null
   },
 
+  // #618: stock inicial (solo se usa mientras no haya un cierre que lo traiga): pacas y botellones, enteros ≥ 0.
+  STOCK_INI_AGUA: (v) => (/^\d+$/.test(v.trim()) ? null : 'Debe ser un número entero mayor o igual a 0'),
+  STOCK_INI_HIELO: (v) => (/^\d+$/.test(v.trim()) ? null : 'Debe ser un número entero mayor o igual a 0'),
+  STOCK_INI_BOTELLON: (v) => (/^\d+$/.test(v.trim()) ? null : 'Debe ser un número entero mayor o igual a 0'),
+
   // Horario de trabajo (turnos) — usado por findPedidosHoyEnRiesgoIds
   // (src/lib/pedidos-sin-asignar.ts) para calcular horas hábiles transcurridas.
   HORARIO_MANANA_INICIO: (v) => (/^\d{2}:\d{2}$/.test(v) ? null : 'Formato HH:MM'),

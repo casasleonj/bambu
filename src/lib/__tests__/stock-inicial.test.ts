@@ -4,7 +4,7 @@ import { resolverStockInicial } from '../stock-inicial'
 type Db = Parameters<typeof resolverStockInicial>[0]
 
 function fakeDb(
-  cierre: { stockFinAgua: number; stockFinHielo: number } | null,
+  cierre: { stockFinAgua: number; stockFinHielo: number; stockFinBotellon?: number | null } | null,
   configs: Array<{ clave: string; valor: string }>,
 ): Db {
   return {
@@ -19,15 +19,22 @@ describe('resolverStockInicial (#545)', () => {
       { clave: 'STOCK_INI_AGUA', valor: '281' },
       { clave: 'STOCK_INI_HIELO', valor: '12' },
     ])
-    expect(await resolverStockInicial(db)).toEqual({ stockIniAgua: 281, stockIniHielo: 12 })
+    expect(await resolverStockInicial(db)).toEqual({ stockIniAgua: 281, stockIniHielo: 12, stockIniBotellon: 0 })
   })
 
   it('sin cierre previo ni Config devuelve 0', async () => {
-    expect(await resolverStockInicial(fakeDb(null, []))).toEqual({ stockIniAgua: 0, stockIniHielo: 0 })
+    expect(await resolverStockInicial(fakeDb(null, []))).toEqual({ stockIniAgua: 0, stockIniHielo: 0, stockIniBotellon: 0 })
   })
 
   it('con cierre previo manda su stock final y la Config se ignora', async () => {
     const db = fakeDb({ stockFinAgua: 254, stockFinHielo: 5 }, [{ clave: 'STOCK_INI_AGUA', valor: '281' }])
-    expect(await resolverStockInicial(db)).toEqual({ stockIniAgua: 254, stockIniHielo: 5 })
+    expect(await resolverStockInicial(db)).toEqual({ stockIniAgua: 254, stockIniHielo: 5, stockIniBotellon: 0 })
+  })
+
+  it('botellones (#618): el cierre previo manda; sin su conteo se usa Config STOCK_INI_BOTELLON', async () => {
+    const conConteo = fakeDb({ stockFinAgua: 1, stockFinHielo: 1, stockFinBotellon: 40 }, [{ clave: 'STOCK_INI_BOTELLON', valor: '9' }])
+    expect((await resolverStockInicial(conConteo)).stockIniBotellon).toBe(40)
+    const sinConteo = fakeDb({ stockFinAgua: 1, stockFinHielo: 1, stockFinBotellon: null }, [{ clave: 'STOCK_INI_BOTELLON', valor: '9' }])
+    expect((await resolverStockInicial(sinConteo)).stockIniBotellon).toBe(9)
   })
 })

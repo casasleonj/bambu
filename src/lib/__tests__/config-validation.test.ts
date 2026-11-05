@@ -180,3 +180,11 @@ describe('validateConfigValue — GESTION_ADMIN_SIN_EMBARQUE', () => {
     }
   })
 })
+
+// #618: stock inicial de agua, hielo y botellones (enteros >= 0)
+describe('validateConfigValue — STOCK_INI_*', () => {
+  it.each(['STOCK_INI_AGUA', 'STOCK_INI_HIELO', 'STOCK_INI_BOTELLON'])('%s acepta enteros >= 0 y rechaza el resto', (clave) => {
+    for (const ok of ['0', '20', ' 15 ']) expect(validateConfigValue(clave, ok), `valor «${ok}»`).toBeNull()
+    for (const malo of ['', '-1', '1.5', 'diez', '2e3']) expect(validateConfigValue(clave, malo), `valor «${malo}»`).not.toBeNull()
+  })
+})

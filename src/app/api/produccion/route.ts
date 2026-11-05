@@ -131,6 +131,8 @@ export async function POST(request: NextRequest) {
   // pasa a ser parte del stock inicial de esta, para que el cuadre del día no cuente dos veces ni olvide nada.
   const stockIniAgua = stockInicial.stockIniAgua + netoPrevioDelDia(previas, 'PACA_AGUA')
   const stockIniHielo = stockInicial.stockIniHielo + netoPrevioDelDia(previas, 'PACA_HIELO')
+  // #618: botellones llenos (sin pérdidas): lo llenado por las producciones anteriores del día suma al inicial.
+  const stockIniBotellon = stockInicial.stockIniBotellon + netoPrevioDelDia(previas, 'BOTELLON')
 
   // FIX 1.5: validar server-side que obs esté presente si hay diferencia
   const perdidasAgua = itemAgua.rotas + itemAgua.filtradas + itemAgua.consumoInterno
@@ -139,7 +141,12 @@ export async function POST(request: NextRequest) {
   const stockFinEsperadoHielo = stockIniHielo + prodHielo - ventas.hieloVendido
   const diferenciaAgua = stockFinEsperadoAgua - itemAgua.stockFinFisico - perdidasAgua
   const diferenciaHielo = stockFinEsperadoHielo - itemHielo.stockFinFisico - perdidasHielo
-  const hayDiferencia = diferenciaAgua !== 0 || diferenciaHielo !== 0
+  // #618: inventario de botellones llenos. Sin conteo se asume que cuadra (clientes anteriores).
+  const stockFinEsperadoBotellon = stockIniBotellon + parsed.data.botellonesLlenados - ventas.botellonVendido
+  const stockFinFisicoBotellon = parsed.data.stockFinBotellones ?? stockFinEsperadoBotellon
+  const itemBot = itemBotellon(parsed.data.botellonesLlenados, 0, ventas.botellonVendido, { stockIni: stockIniBotellon, stockFinFisico: stockFinFisicoBotellon })
+  const diferenciaBotellon = stockFinEsperadoBotellon - stockFinFisicoBotellon
+  const hayDiferencia = diferenciaAgua !== 0 || diferenciaHielo !== 0 || diferenciaBotellon !== 0
   const obsTrim = (parsed.data.obs || '').trim()
 
   if (hayDiferencia && obsTrim === '') {
@@ -290,7 +297,7 @@ export async function POST(request: NextRequest) {
                     comSellador: comSell.comHielo,
                   },
                   // #645: botellones llenados (los vendidos del día quedan como referencia; sin ciclo de stock).
-                  itemBotellon(parsed.data.botellonesLlenados, comSell.comBotellon, ventas.botellonVendido),
+                  { ...itemBot, comSellador: comSell.comBotellon },
                 ],
               },
             },

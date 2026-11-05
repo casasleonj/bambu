@@ -4,7 +4,7 @@
 // se acumula mes a mes. Es el cálculo más caro de equivocarse en una
 // empresa de distribución.
 import { describe, it, expect } from 'vitest'
-import { calcComSellador, calcComRepartidor } from '@/lib/comisiones'
+import { calcComSellador, calcComRepartidor, itemBotellon } from '@/lib/comisiones'
 import { Prisma, type Trabajador } from '@prisma/client'
 
 // Helpers para fabricar un Trabajador mínimo (solo los campos que la
@@ -200,5 +200,16 @@ describe('calcComRepartidor', () => {
     })
     const r = calcComRepartidor(0, 0, [t])
     expect(r).toEqual({ comAgua: 0, comHielo: 0, total: 0 })
+  })
+})
+
+describe('itemBotellon — inventario de botellones llenos (#618)', () => {
+  it('Inicial + Llenados − Vendidos = Esperado; la diferencia es esperado − conteo', () => {
+    expect(itemBotellon(8, 2640, 5, { stockIni: 20, stockFinFisico: 21 })).toMatchObject({
+      producido: 8, ventas: 5, stockIni: 20, stockFinEsperado: 23, stockFinFisico: 21, diferencia: 2, comSellador: 2640, rotas: 0, filtradas: 0, consumoInterno: 0,
+    })
+  })
+  it('sin conteo (compatibilidad) se asume que cuadra', () => {
+    expect(itemBotellon(4, 1320, 1)).toMatchObject({ stockIni: 0, stockFinEsperado: 3, stockFinFisico: 3, diferencia: 0 })
   })
 })

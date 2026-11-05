@@ -2459,6 +2459,11 @@ model CierreDia {
   prodHielo     Int @default(0)
   stockFinHielo Int @default(0)
 
+  // #618: botellones llenos (NULL = cierre anterior a registrar botellones: el inicial sale de Config STOCK_INI_BOTELLON)
+  stockIniBotellon Int?
+  prodBotellon     Int?
+  stockFinBotellon Int?
+
   netoCaja Decimal @default(0) @db.Decimal(10, 2)
 
   // Importación histórica: true si el cierre vino del papel/Excel viejo y

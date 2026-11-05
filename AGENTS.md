@@ -550,6 +550,11 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
       - **Anti-patrón a evitar**: asumir que lo llenado es lo vendido; y listar en el bloque de repartidores los pagos que no son de reparto.
       - Pruebas: `integration/produccion-cierre-atrasado-645.test.ts`, `sellador-comision-645.test.ts`, `produccion-fecha.test.ts`, `produccion-previas.test.ts`, `produccion-del-cierre.test.tsx`, `cierre-stock-block.test.tsx`, E2E `produccion-cierre-645.spec.ts`.
 
+   37. **Inventario de botellones llenos (#618)**: el cierre y Producción llevan el stock de botellones LLENOS como el de agua y hielo, pero sin pérdidas.
+      - **Contrato**: Inicial + Llenados − Vendidos (fábrica + domicilio) = Esperado; se compara con el conteo final. Inicial = `CierreDia.stockFinBotellon` del último cierre; si ese cierre no lo tiene (NULL, anteriores a #618) o no hay cierre, se usa Config `STOCK_INI_BOTELLON` (editable en Configuración junto a `STOCK_INI_AGUA/HIELO`). `POST/PUT /api/produccion` aceptan `stockFinBotellones`; sin conteo se asume que cuadra. Con varias producciones el mismo día, lo ya llenado se suma al inicial de la siguiente.
+      - **Migración** `20261108_cierre_stock_botellon` (aditiva, idempotente: `stockIniBotellon`, `prodBotellon`, `stockFinBotellon` en `CierreDia`; aplicar en producción antes del merge).
+      - Pruebas: `integration/botellones-inventario-618.test.ts`, `stock-inicial.test.ts`, `cierre-stock-block.test.tsx`, `produccion-del-cierre.test.tsx`, E2E `produccion-cierre-645.spec.ts`.
+
 ## Registro de tareas
 
 El backlog vive en **GitHub Issues** (índice en `docs/BACKLOG.md`). Toda tarea nueva —incluida la que surge en el chat— se registra como issue **antes** de empezar, y el PR que la resuelve la cierra con `Closes #N` (el PR debe apuntar a `main`). Los hallazgos y funcionalidades nuevos se registran con el skill `/hallazgo` o con los formularios de `.github/ISSUE_TEMPLATE/`; los pendientes en el código llevan su issue (`TODO(#123)`). No guardes pendientes en este archivo ni en notas de sesión. No es solo una convención: el workflow `Backlog` (`.github/workflows/backlog.yml`) falla el PR que no cita un issue y mantiene las etiquetas `estado:*` (ver `docs/BACKLOG.md`).

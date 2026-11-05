@@ -34,6 +34,10 @@ interface ConfigData {
   HORARIO_TARDE_INICIO: string
   HORARIO_TARDE_FIN: string
   UMBRAL_HORAS_HABILES_RIESGO: string
+  // #618: stock inicial; solo se usa mientras no haya un cierre que lo traiga
+  STOCK_INI_AGUA: string
+  STOCK_INI_HIELO: string
+  STOCK_INI_BOTELLON: string
 }
 
 interface ConfiguracionClientProps {
@@ -99,6 +103,9 @@ const SECTIONS: SectionConfig[] = [
       { key: 'HORARIO_MANANA_FIN', label: 'Horario mañana — fin', type: 'time', placeholder: '12:00' },
       { key: 'HORARIO_TARDE_INICIO', label: 'Horario tarde — inicio', type: 'time', placeholder: '14:00' },
       { key: 'HORARIO_TARDE_FIN', label: 'Horario tarde — fin', type: 'time', placeholder: '17:00' },
+      { key: 'STOCK_INI_AGUA', label: 'Stock inicial de agua (solo mientras no haya un cierre)', type: 'number', placeholder: '0', suffix: 'pacas', min: 0 },
+      { key: 'STOCK_INI_HIELO', label: 'Stock inicial de hielo (solo mientras no haya un cierre)', type: 'number', placeholder: '0', suffix: 'pacas', min: 0 },
+      { key: 'STOCK_INI_BOTELLON', label: 'Stock inicial de botellones llenos (solo mientras no haya un cierre con botellones)', type: 'number', placeholder: '0', suffix: 'botellones', min: 0 },
       { key: 'UMBRAL_HORAS_HABILES_RIESGO', label: 'Horas hábiles sin gestionar para marcar pedido en riesgo', type: 'number', placeholder: '2', suffix: 'horas', min: 1 },
     ],
   },
@@ -117,6 +124,9 @@ function validateConfig(data: ConfigData): FieldErrors {
   }
   if (data.BASE_DIA && (isNaN(Number(data.BASE_DIA)) || Number(data.BASE_DIA) < 0)) {
     errs.BASE_DIA = 'Debe ser un número mayor o igual a 0'
+  }
+  for (const key of ['STOCK_INI_AGUA', 'STOCK_INI_HIELO', 'STOCK_INI_BOTELLON'] as const) {
+    if (data[key] && !/^\d+$/.test(data[key].trim())) errs[key] = 'Debe ser un número entero mayor o igual a 0'
   }
   const numericFields: Array<keyof ConfigData> = [
     'DIAS_ALERTA_NO_VERIFICADO',
