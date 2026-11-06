@@ -88,7 +88,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
       prisma.produccion.findMany({
         where: { fecha: dateRange },
         include: { items: true, trabajador: { select: { nombre: true } } },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       }),
       prisma.gasto.aggregate({
         where: { fecha: dateRange },
@@ -276,6 +276,8 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
     // conteo final = el de la última registrada (es el conteo del día).
     const sumaItems = (producto: string, campo: 'producido' | 'rotas' | 'filtradas' | 'consumoInterno' | 'comSellador') =>
       produccion.reduce((t, p) => t + p.items.filter(i => i.producto === producto).reduce((s2, i) => s2 + Number(i[campo] ?? 0), 0), 0)
+    // #668: el cierre previo pudo capturarse después de la producción.
+    const stockInicialDelDia = await resolverStockInicial(prisma, startOfDay)
     const primera = produccion[0]
     const ultima = produccion[produccion.length - 1]
     const itemDe = (p: typeof primera | undefined, producto: string) => p?.items.find(i => i.producto === producto)
@@ -284,8 +286,8 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
           ...primera,
           items: undefined,
           trabajador: undefined,
-          stockIniAgua: itemDe(primera, 'PACA_AGUA')?.stockIni ?? 0,
-          stockIniHielo: itemDe(primera, 'PACA_HIELO')?.stockIni ?? 0,
+          stockIniAgua: stockInicialDelDia.stockIniAgua,
+          stockIniHielo: stockInicialDelDia.stockIniHielo,
           prodAgua: sumaItems('PACA_AGUA', 'producido'),
           prodHielo: sumaItems('PACA_HIELO', 'producido'),
           stockFinAgua: itemDe(ultima, 'PACA_AGUA')?.stockFinFisico ?? 0,
@@ -299,7 +301,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
           consumoInternoHielo: sumaItems('PACA_HIELO', 'consumoInterno'),
           botellonesLlenados: sumaItems('BOTELLON', 'producido'),
           // #618: inventario de botellones llenos: inicial de la primera producción, conteo final de la última
-          stockIniBotellon: itemDe(primera, 'BOTELLON')?.stockIni ?? 0,
+          stockIniBotellon: stockInicialDelDia.stockIniBotellon,
           stockFinBotellon: itemDe(ultima, 'BOTELLON')?.stockFinFisico ?? 0,
           comSelladorAgua: sumaItems('PACA_AGUA', 'comSellador'),
           comSelladorHielo: sumaItems('PACA_HIELO', 'comSellador'),
@@ -439,7 +441,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         produccion: produccionFlat,
         producciones: produccionesDelDia,
         // #545: stock inicial a mostrar cuando el día aún no tiene producción registrada
-        stockInicialSugerido: await resolverStockInicial(prisma),
+        stockInicialSugerido: stockInicialDelDia,
         // #644: sueldos fijos con fecha de pago cumplida y sin pagar
         sueldosQueTocan: await sueldosPendientesAl(prisma, fechaStr),
         comisionesAuto: {

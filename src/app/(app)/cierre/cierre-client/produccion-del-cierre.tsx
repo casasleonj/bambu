@@ -192,7 +192,7 @@ export function ProduccionDelCierre({ fecha, diaCerrado, producciones, esperadoP
             {producciones.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center justify-between gap-x-3 border-b border-green-100 py-1.5 last:border-0">
                 <span>{p.trabajador} · {etiquetaTurno(p.turno)} · {p.prodAgua} agua, {p.prodHielo} hielo{p.botellonesLlenados > 0 ? `, ${p.botellonesLlenados} botellones` : ''}</span>
-                <Link href="/produccion" className="font-semibold underline">Ver y corregir</Link>
+                <Link href={`/produccion?fecha=${encodeURIComponent(fecha)}`} className="font-semibold underline">Ver y corregir</Link>
               </li>
             ))}
           </ul>

@@ -1,10 +1,11 @@
 'use client'
 
 import { generateUUID } from '@/lib/uuid'
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
+import { todayInBogota } from '@/lib/date-helpers'
 import { useConfirm } from '@/components/confirm-modal'
 import { SkeletonPage } from '@/components/skeleton'
 import { InfoBanner } from '@/components/tooltip'
@@ -44,7 +45,13 @@ interface ConciliationResult {
   diferenciaHielo: number
 }
 
-export default function ProduccionClient() {
+export default function ProduccionClient({ initialFecha }: { initialFecha?: string } = {}) {
+  const [fecha, setFecha] = useState(initialFecha ?? todayInBogota())
+  const fechaRef = useRef(fecha)
+  const [editable, setEditable] = useState(false)
+  const [diaCerrado, setDiaCerrado] = useState(false)
+  const [errorConsulta, setErrorConsulta] = useState<string | null>(null)
+  const [stockInicialDia, setStockInicialDia] = useState({ stockIniAgua: 0, stockIniHielo: 0, stockIniBotellon: 0 })
   const router = useRouter()
   const { confirm, modal } = useConfirm()
   const [step, setStep] = useState(1)
@@ -101,30 +108,41 @@ export default function ProduccionClient() {
 
   const fetchProducciones = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/produccion', { signal })
+      const res = await fetch(`/api/produccion?fecha=${encodeURIComponent(fecha)}`, { signal })
       if (res.status === 401 || res.status === 403) {
         router.push(`/login?callbackUrl=${encodeURIComponent('/produccion')}`)
         return
       }
       const data = await res.json()
+      if (signal?.aborted || fechaRef.current !== fecha) return
+      if (!res.ok) throw new Error('No se pudo cargar la producción')
       setProduccionesHoy(data.produccion || [])
+      setEditable(data.editable !== false)
+      setDiaCerrado(data.diaCerrado === true)
     } catch {
       if (signal?.aborted) return
-      toast.error('Error cargando producciones del día')
+      if (fechaRef.current !== fecha) return
+      setEditable(false)
+      setErrorConsulta('No pudimos cargar la producción de esta fecha. Reintenta antes de guardar.')
     } finally {
-      setLoadingProducciones(false)
+      if (!signal?.aborted && fechaRef.current === fecha) setLoadingProducciones(false)
     }
-  }, [router])
+  }, [router, fecha])
 
   const fetchPreview = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/produccion/preview', { signal })
+      const res = await fetch(`/api/produccion/preview?fecha=${encodeURIComponent(fecha)}`, { signal })
       if (res.status === 401 || res.status === 403) {
         router.push(`/login?callbackUrl=${encodeURIComponent('/produccion')}`)
         return
       }
       const data = await res.json()
+      if (signal?.aborted || fechaRef.current !== fecha) return
+      if (!res.ok) throw new Error('No se pudo cargar el balance')
       const preview: PreviewData = data
+      setStockInicialDia(preview.stockInicialDia ?? {
+        stockIniAgua: preview.stockIniAgua, stockIniHielo: preview.stockIniHielo, stockIniBotellon: preview.stockIniBotellon ?? 0,
+      })
       setStockInicial({
         stockIniAgua: preview.stockIniAgua,
         stockIniHielo: preview.stockIniHielo,
@@ -137,17 +155,19 @@ export default function ProduccionClient() {
       setEmbarquesAbiertos(preview.embarquesAbiertos)
     } catch {
       if (signal?.aborted) return
-      toast.error('Error cargando datos del día')
+      if (fechaRef.current !== fecha) return
+      setErrorConsulta('No pudimos cargar el balance de esta fecha. Reintenta antes de guardar.')
     } finally {
-      setLoading(false)
+      if (!signal?.aborted && fechaRef.current === fecha) setLoading(false)
     }
-  }, [router])
+  }, [router, fecha])
 
   useEffect(() => {
     // Fetch de datos al montar — side effects de red reales, no
     // derivables durante el render.
     /* eslint-disable react-hooks/set-state-in-effect */
     const controller = new AbortController()
+    setErrorConsulta(null)
     fetchPreview(controller.signal)
     fetchTrabajadores(controller.signal)
     fetchProfile(controller.signal)
@@ -199,6 +219,7 @@ export default function ProduccionClient() {
   }, [diferenciaAgua, diferenciaHielo, diferenciaBotellon])
 
   const handleSubmit = async () => {
+    if (!editable || errorConsulta || loadingProducciones) return
     if (!formData.trabajadorId) {
       toast.error('Selecciona un trabajador')
       return
@@ -224,6 +245,7 @@ export default function ProduccionClient() {
       // El stockIni viene de `stockInicial` (preview), no del formData
       // Bloque 5: fetchResilient + offlineId para offline-first.
       const body = {
+        fecha,
         trabajadorId: formData.trabajadorId,
         turno: formData.turno,
         botellonesLlenados: formData.botellonesLlenados,
@@ -271,6 +293,8 @@ export default function ProduccionClient() {
           toast.success('Producción registrada correctamente')
         }
         router.refresh()
+        void fetchProducciones()
+        void fetchPreview()
         setStep(1)
         setFormData({ ...EMPTY_FORM })
         return
@@ -353,7 +377,7 @@ export default function ProduccionClient() {
           <span className="w-10 text-right text-cyan-600">🧊</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-gray-600">Había</span>
+          <span className="text-gray-600">Antes de este registro</span>
           <span className="w-10 text-right font-bold text-blue-600">{stockInicial.stockIniAgua}</span>
           <span className="w-10 text-right font-bold text-cyan-600">{stockInicial.stockIniHielo}</span>
         </div>
@@ -429,14 +453,31 @@ export default function ProduccionClient() {
         <div>
           <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Registro de Producción</h1>
           <p className="text-gray-500 mt-1">Control de producción diaria</p>
+          <label htmlFor="produccion-fecha" className="mt-3 block text-sm font-medium">Fecha a consultar</label>
+          <input id="produccion-fecha" type="date" value={fecha} onChange={(e) => {
+            if (!e.target.value || submitting || editRegistro) return
+            fechaRef.current = e.target.value
+            setFecha(e.target.value); setLoading(true); setLoadingProducciones(true)
+            setEditable(false); setEditRegistro(null); setProduccionesHoy([])
+            setStep(1); setFormData({ ...EMPTY_FORM })
+          }} disabled={submitting || !!editRegistro} className="mt-1 rounded-lg border p-2" />
         </div>
         <ProduccionPendingBadge />
       </div>
 
-      {/* Lista de producciones del día */}
+      {errorConsulta && <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3">
+        {errorConsulta} <button type="button" className="underline" onClick={() => {
+          setErrorConsulta(null); void fetchPreview(); void fetchProducciones()
+        }}>Reintentar</button>
+      </div>}
+      {!loadingProducciones && !errorConsulta && produccionesHoy.length === 0 && <p className="mb-4 text-sm">No hay producción registrada para esta fecha.</p>}
+      {!loadingProducciones && !editable && !errorConsulta && <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm">
+        {diaCerrado ? 'Este día está cerrado: se puede consultar, pero no editar.' : 'Solo se puede corregir producción de hoy y de los 7 días anteriores.'}
+      </p>}
+      {/* Lista de producciones de la fecha consultada */}
       {!loadingProducciones && produccionesHoy.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border p-5">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Producciones de hoy</h2>
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Producciones del {fecha}</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-600">
@@ -459,7 +500,7 @@ export default function ProduccionClient() {
                       <td className="px-4 py-3 text-center text-blue-600 font-semibold">{agua?.producido ?? 0}</td>
                       <td className="px-4 py-3 text-center text-cyan-600 font-semibold">{hielo?.producido ?? 0}</td>
                       <td className="px-4 py-3 text-right">
-                        {userRole === 'ADMIN' && (
+                        {userRole === 'ADMIN' && editable && !errorConsulta && (
                           <button
                             onClick={() => setEditRegistro(p)}
                             className="text-xs text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded bg-blue-50 hover:bg-blue-100 transition"
@@ -477,6 +518,7 @@ export default function ProduccionClient() {
         </div>
       )}
 
+      {editable && !errorConsulta && <>
       {renderStepper()}
 
       {/* Desktop: 2-column layout with sticky sidebar */}
@@ -487,7 +529,7 @@ export default function ProduccionClient() {
           {step === 1 && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">¿Con cuánto amanecimos hoy?</h2>
+                <h2 className="text-xl font-semibold text-gray-900">¿Con cuánto empezó este día?</h2>
                 <p className="text-gray-500 text-sm mt-1">Esto es lo que quedó en la bodega al cerrar el día anterior.</p>
               </div>
               <InfoBanner type="tip">
@@ -496,15 +538,19 @@ export default function ProduccionClient() {
               <div className="grid grid-cols-2 gap-6">
                 <div className="bg-blue-50 border border-blue-100 p-8 rounded-2xl text-center">
                   <p className="text-sm text-blue-600 font-medium mb-3">💧 AGUA</p>
-                  <p className="text-5xl lg:text-6xl font-bold text-blue-700">{stockInicial.stockIniAgua}</p>
+                  <p className="text-5xl lg:text-6xl font-bold text-blue-700">{stockInicialDia.stockIniAgua}</p>
                   <p className="text-sm text-gray-500 mt-2">pacas</p>
                 </div>
                 <div className="bg-cyan-50 border border-cyan-100 p-8 rounded-2xl text-center">
                   <p className="text-sm text-cyan-600 font-medium mb-3">🧊 HIELO</p>
-                  <p className="text-5xl lg:text-6xl font-bold text-cyan-700">{stockInicial.stockIniHielo}</p>
+                  <p className="text-5xl lg:text-6xl font-bold text-cyan-700">{stockInicialDia.stockIniHielo}</p>
                   <p className="text-sm text-gray-500 mt-2">pacas</p>
                 </div>
               </div>
+              <p className="text-sm text-gray-600">Botellones al empezar: <b>{stockInicialDia.stockIniBotellon}</b>.</p>
+              {(stockInicial.stockIniAgua !== stockInicialDia.stockIniAgua || stockInicial.stockIniHielo !== stockInicialDia.stockIniHielo || stockInicial.stockIniBotellon !== stockInicialDia.stockIniBotellon) && (
+                <InfoBanner type="tip">Lo ya producido y sus pérdidas están incluidos en el balance para registrar otra producción. No cambian el inicial del día.</InfoBanner>
+              )}
               <button
                 onClick={() => setStep(2)}
                 className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-semibold hover:bg-blue-700 transition-colors text-lg"
@@ -932,7 +978,7 @@ export default function ProduccionClient() {
                     </thead>
                     <tbody>
                       <tr className="border-b">
-                        <td className="px-5 py-3 text-gray-600">Stock inicial</td>
+                        <td className="px-5 py-3 text-gray-600">Antes de este registro (incluye producción previa neta)</td>
                         <td className="px-5 py-3 text-right font-semibold">{stockInicial.stockIniAgua}</td>
                         <td className="px-5 py-3 text-right font-semibold">{stockInicial.stockIniHielo}</td>
                       </tr>
@@ -1113,6 +1159,7 @@ export default function ProduccionClient() {
         {/* Mobile/Tablet: Balance card at bottom of each step */}
         <div className="lg:hidden mt-6">{renderBalanceCard()}</div>
       </div>
+      </>}
       {modal}
       <ProduccionEditModal
         key={editRegistro?.id}

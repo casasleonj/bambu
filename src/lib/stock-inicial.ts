@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client'
+import { startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 import { determinarStockInicial } from '@/modules/dashboard/domain/stock.service'
 
 export interface StockInicial {
@@ -16,11 +17,11 @@ export interface StockInicial {
 export async function resolverStockInicial(
   db: Pick<Prisma.TransactionClient, 'config' | 'cierreDia'>,
   /** #645: para un día atrasado, el último cierre ANTERIOR a ese día (inicio del día comercial). */
-  antesDe?: Date,
+  antesDe: Date = startOfDayInBogota(todayInBogota()),
 ): Promise<StockInicial> {
   const [ultimoCierre, configRows] = await Promise.all([
     db.cierreDia.findFirst({
-      ...(antesDe ? { where: { fecha: { lt: antesDe } } } : {}),
+      where: { fecha: { lt: antesDe } },
       orderBy: { fecha: 'desc' },
       select: { stockFinAgua: true, stockFinHielo: true, stockFinBotellon: true },
     }),

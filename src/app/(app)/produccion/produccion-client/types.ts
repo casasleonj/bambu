@@ -49,6 +49,8 @@ export interface RepartidorOption {
 }
 
 export interface PreviewData {
+  /** #668: inicial real, separado del acumulado para otro registro. */
+  stockInicialDia?: Pick<StockInicial, 'stockIniAgua' | 'stockIniHielo' | 'stockIniBotellon'>
   stockIniAgua: number
   stockIniHielo: number
   ventasAgua: number

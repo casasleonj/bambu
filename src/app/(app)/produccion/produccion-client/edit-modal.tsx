@@ -162,10 +162,10 @@ export function ProduccionEditModal({ open, onClose, registro, onSaved }: Produc
   )
 
   return (
-    <Modal open={open} onClose={onClose} title={`Editar producción — ${registro?.trabajador.nombre} (${registro ? (TURNO_LABEL[registro.turno] ?? registro.turno) : ''})`}>
+    <Modal open={open} onClose={onClose} title={`Editar producción — ${registro?.trabajador.nombre} (${registro ? (TURNO_LABEL[registro.turno] ?? registro.turno) : ''}) · ${registro ? new Date(registro.fecha).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : ''}`}>
       <div className="space-y-6 max-h-[80vh] overflow-y-auto p-1">
         <p className="text-sm text-gray-500">
-          Se puede corregir la producción de hoy y de los 7 días anteriores mientras el día no esté cerrado. El sistema recalculará automáticamente las diferencias y comisiones.
+          Se puede corregir la producción de hoy y de los 7 días anteriores mientras el día no esté cerrado. Cambiar la cantidad recalcula su comisión con la tarifa original; los pagos ya realizados no se borran ni se descuentan automáticamente.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

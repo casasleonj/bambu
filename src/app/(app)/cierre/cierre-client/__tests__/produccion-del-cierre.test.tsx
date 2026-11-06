@@ -139,7 +139,7 @@ describe('ProduccionDelCierre (#645)', () => {
   it('con producciones registradas las lista, enlaza a Producción y ofrece «Agregar otra producción»', async () => {
     montar({ producciones: [{ id: 'p1', turno: 'JORNADA', trabajadorId: 's1', trabajador: 'Carlos Pérez', prodAgua: 35, prodHielo: 18, botellonesLlenados: 8 }] })
     expect(screen.getByTestId('producciones-del-dia')).toHaveTextContent('Carlos Pérez · Jornada completa · 35 agua, 18 hielo, 8 botellones')
-    expect(screen.getByRole('link', { name: 'Ver y corregir' })).toHaveAttribute('href', '/produccion')
+    expect(screen.getByRole('link', { name: 'Ver y corregir' })).toHaveAttribute('href', `/produccion?fecha=${HOY}`)
     expect(screen.queryByTestId('form-produccion-cierre')).toBeNull()
     expect(screen.queryByTestId('sin-produccion')).toBeNull()
     fireEvent.click(screen.getByTestId('agregar-produccion'))

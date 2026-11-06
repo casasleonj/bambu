@@ -10,7 +10,7 @@ import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { getVentasDelDia } from '@/lib/ventas'
 import { calcComSellador, itemBotellon } from '@/lib/comisiones'
-import { getTodayRange, getDateRange } from '@/lib/dates'
+import { getDateRange, parseDateParam } from '@/lib/dates'
 import { motivoFechaProduccionInvalida } from '@/lib/produccion-fecha'
 import { netoPrevioDelDia } from '@/lib/produccion-previas'
 import { startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
@@ -30,22 +30,36 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const fecha = searchParams.get('fecha')
 
-    const where = fecha
-      ? (() => {
-          const { startDate, endDate } = getDateRange(fecha, fecha)
-          return { fecha: { gte: startDate, lt: endDate } }
-        })()
-      : (() => {
-          const { startOfDay, endOfDay } = getTodayRange()
-          return { fecha: { gte: startOfDay, lt: endOfDay } }
-        })()
+    const hoy = todayInBogota()
+    const fechaStr = parseDateParam(fecha, hoy)
+    if (fecha && fechaStr !== fecha) return apiError('Fecha inválida (YYYY-MM-DD)', 400)
+    const { startDate, endDate } = getDateRange(fechaStr, fechaStr)
+    const where = { fecha: { gte: startDate, lt: endDate } }
 
     const registros = await prisma.produccion.findMany({
       where,
-      orderBy: { turno: 'asc' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       include: { trabajador: true, items: true },
     })
-    return apiSuccess({ produccion: registros })
+    const cerrado = await prisma.cierreDia.findUnique({ where: { fecha: startDate }, select: { id: true } })
+    // #668: normalizar solo la respuesta de días abiertos; GET nunca escribe.
+    const inicial = cerrado ? null : await resolverStockInicial(prisma, startDate)
+    const neto: Record<string, number> = { PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0 }
+    const base: Record<string, number> = {
+      PACA_AGUA: inicial?.stockIniAgua ?? 0, PACA_HIELO: inicial?.stockIniHielo ?? 0, BOTELLON: inicial?.stockIniBotellon ?? 0,
+    }
+    const produccion = registros.map(p => ({ ...p, items: p.items.map(i => {
+      if (!inicial || !(i.producto in base)) return i
+      const stockIni = base[i.producto] + neto[i.producto]
+      const stockFinEsperado = stockIni + i.producido - i.ventas
+      const perdidas = i.rotas + i.filtradas + i.consumoInterno
+      neto[i.producto] += i.producido - perdidas
+      return { ...i, stockIni, stockFinEsperado, diferencia: stockFinEsperado - i.stockFinFisico - perdidas }
+    }) }))
+    return apiSuccess({
+      produccion, fecha: fechaStr, diaCerrado: !!cerrado,
+      editable: !cerrado && motivoFechaProduccionInvalida(fechaStr, hoy) === null,
+    })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching produccion:')
     return apiError('Error', 500)
@@ -112,7 +126,7 @@ export async function POST(request: NextRequest) {
   // Re-leemos ventas adentro del handler para mayor fidelidad (pueden cambiar
   // entre el preview y el POST)
   const [stockInicial, ventas, previas] = await Promise.all([
-    resolverStockInicial(prisma, parsed.data.fecha ? fechaProduccion : undefined),
+    resolverStockInicial(prisma, fechaProduccion),
     getVentasDelDia(parsed.data.fecha ? new Date(fechaProduccion.getTime() + 12 * 3_600_000) : undefined),
     // #645: varias producciones el mismo día (otro sellador u otro turno)
     prisma.produccion.findMany({

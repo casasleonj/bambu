@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     const [stockInicial, ventas, previas, embarquesCerrados, embarquesDelDia] = await Promise.all([
       // #645: para un día atrasado, el último cierre ANTERIOR a ese día
-      resolverStockInicial(prisma, fechaParam ? startOfDay : undefined),
+      resolverStockInicial(prisma, startOfDay),
       getVentasDelDia(new Date(`${fechaStr}T12:00:00-05:00`)),
       // #645: lo ya producido ese día (otro sellador u otro turno) forma parte del stock inicial de la siguiente producción
       prisma.produccion.findMany({
@@ -86,6 +86,8 @@ export async function GET(request: NextRequest) {
     const repartidores = Array.from(repMap.values())
 
     return apiSuccess({
+      // #668: inicial real; los campos planos conservan el acumulado para otro registro.
+      stockInicialDia: stockInicial,
       stockIniAgua: stockInicial.stockIniAgua + netoPrevioDelDia(previas, 'PACA_AGUA'),
       stockIniHielo: stockInicial.stockIniHielo + netoPrevioDelDia(previas, 'PACA_HIELO'),
       // #618: botellones llenos al empezar (lo llenado por producciones anteriores del día se suma)

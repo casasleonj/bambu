@@ -30,7 +30,10 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { getVentasDelDia } from '@/lib/ventas'
-import { calcComSellador, itemBotellon } from '@/lib/comisiones'
+import { itemBotellon } from '@/lib/comisiones'
+import { comisionProduccionCorregida } from '@/lib/comision-produccion-correccion'
+import { resolverStockInicial } from '@/lib/stock-inicial'
+import { netoPrevioDelDia } from '@/lib/produccion-previas'
 import { startOfDayInBogota, todayInBogota, dayInBogota } from '@/lib/date-helpers'
 import { motivoFechaProduccionInvalida } from '@/lib/produccion-fecha'
 import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
@@ -101,8 +104,19 @@ export async function PUT(
 
         // 4. Re-leer ventas al momento del PUT (no usar cache), del día de la producción
         const ventas = await getVentasDelDia(diaProduccion === hoy ? undefined : new Date(existing.fecha.getTime() + 12 * 3_600_000))
-        const stockIniAgua = existing.items.find(i => i.producto === 'PACA_AGUA')?.stockIni ?? 0
-        const stockIniHielo = existing.items.find(i => i.producto === 'PACA_HIELO')?.stockIni ?? 0
+        // #668: recalcular el inicial desde el cierre previo y registros anteriores.
+        const [inicialDia, previas] = await Promise.all([
+          resolverStockInicial(tx, startOfDayInBogota(diaProduccion)),
+          tx.produccion.findMany({
+            where: { fecha: existing.fecha, OR: [
+              { createdAt: { lt: existing.createdAt } },
+              { createdAt: existing.createdAt, id: { lt: existing.id } },
+            ] },
+            select: { items: { select: { producto: true, producido: true, rotas: true, filtradas: true, consumoInterno: true } } },
+          }),
+        ])
+        const stockIniAgua = inicialDia.stockIniAgua + netoPrevioDelDia(previas, 'PACA_AGUA')
+        const stockIniHielo = inicialDia.stockIniHielo + netoPrevioDelDia(previas, 'PACA_HIELO')
 
         // 5. Construir items actualizados (merge con existentes)
         const before = JSON.parse(JSON.stringify(existing)) // snapshot para audit diff
@@ -129,6 +143,8 @@ export async function PUT(
         const itemHielo = updatedItems.find(i => i.producto === 'PACA_HIELO')!
         const prodAgua = Math.round((itemAgua.conteoA + itemAgua.conteoB) / 2)
         const prodHielo = Math.round((itemHielo.conteoA + itemHielo.conteoB) / 2)
+        itemAgua.stockIni = stockIniAgua
+        itemHielo.stockIni = stockIniHielo
         itemAgua.producido = prodAgua
         itemHielo.producido = prodHielo
         itemAgua.ventas = ventas.aguaVendida
@@ -144,7 +160,7 @@ export async function PUT(
         // #645: los llenados se digitan; sin dato nuevo se conserva lo registrado.
         const itemBot = updatedItems.find(i => i.producto === 'BOTELLON')
         const llenados = parsed.data.botellonesLlenados ?? itemBot?.producido ?? 0
-        const stockIniBot = itemBot?.stockIni ?? 0
+        const stockIniBot = inicialDia.stockIniBotellon + netoPrevioDelDia(previas, 'BOTELLON')
         const esperadoBot = stockIniBot + llenados - ventas.botellonVendido
         const finBot = parsed.data.stockFinBotellones ?? itemBot?.stockFinFisico ?? esperadoBot
         const diferenciaBot = esperadoBot - finBot
@@ -166,11 +182,18 @@ export async function PUT(
         if (!trabajador) {
           throw new Error('TRABAJADOR_NO_ENCONTRADO')
         }
-        const comSell = calcComSellador(prodAgua, prodHielo, trabajador, llenados)
+        const anteriorAgua = existing.items.find(i => i.producto === 'PACA_AGUA')!
+        const anteriorHielo = existing.items.find(i => i.producto === 'PACA_HIELO')!
+        const anteriorBot = existing.items.find(i => i.producto === 'BOTELLON')
+        const comAgua = comisionProduccionCorregida(anteriorAgua.producido, Number(anteriorAgua.comSellador), prodAgua, Number(trabajador.comPacaAgua))
+        const comHielo = comisionProduccionCorregida(anteriorHielo.producido, Number(anteriorHielo.comSellador), prodHielo, Number(trabajador.comPacaHielo))
+        const comBotellon = comisionProduccionCorregida(anteriorBot?.producido ?? 0, Number(anteriorBot?.comSellador ?? 0), llenados, Number(trabajador.comBotellon))
+        const comSell = { comAgua, comHielo, comBotellon, total: Math.round((comAgua + comHielo + comBotellon) * 100) / 100 }
         // Los updates a Prisma.Decimal se hacen via Prisma.Decimal wrapper
         itemAgua.comSellador = new Prisma.Decimal(comSell.comAgua)
         itemHielo.comSellador = new Prisma.Decimal(comSell.comHielo)
         if (itemBot) {
+          itemBot.stockIni = stockIniBot
           itemBot.conteoA = llenados
           itemBot.conteoB = llenados
           itemBot.producido = llenados
@@ -186,6 +209,7 @@ export async function PUT(
         const itemUpdates = updatedItems.map(it => ({
           where: { id: it.id },
           data: {
+            stockIni: it.stockIni,
             conteoA: it.conteoA,
             conteoB: it.conteoB,
             producido: it.producido,
@@ -236,7 +260,7 @@ export async function PUT(
           }
         }
 
-        logAudit({
+        await logAudit({
           entidad: 'Produccion',
           registroId: id,
           accion: 'UPDATE',
@@ -249,7 +273,7 @@ export async function PUT(
           usuarioId: userId,
           ip,
           userAgent,
-        }).catch(() => {})
+        }, tx)
 
         return result
       },

@@ -41,7 +41,8 @@ describe('FASE F: PUT /api/produccion/[id] solo ADMIN + auditoría', () => {
     expect(putSource).toMatch(/after/)
     expect(putSource).toMatch(/changedFields/)
     expect(putSource).toMatch(/diffSummary/)
-    expect(putSource).toMatch(/\.catch\(\(\)\s*=>\s*\{\}\)/)
+    expect(putSource).toMatch(/await logAudit\(/)
+    expect(putSource).toMatch(/\}, tx\)/)
   })
 
   it('usa advisory lock para serializar vs POST concurrentes', () => {
