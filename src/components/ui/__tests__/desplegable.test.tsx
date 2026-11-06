@@ -4,15 +4,16 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { Desplegable, ListaLimitada } from '../desplegable'
 
 describe('Desplegable', () => {
-  it('viene cerrado con título, insignia y resumen visibles; «abierto» lo abre', () => {
-    const { rerender } = render(<Desplegable testid="d" icono="⏳" titulo="Pagos por confirmar" insignia={3} resumen="$230.000">contenido</Desplegable>)
+  it('viene cerrado con título y resumen visibles; «abierto» lo abre', () => {
+    const { rerender } = render(<Desplegable testid="d" icono="⏳" titulo="Pagos por confirmar" resumen="3 pagos · $230.000">contenido</Desplegable>)
     const d = screen.getByTestId('d')
     expect(d.tagName).toBe('DETAILS')
     expect(d.hasAttribute('open')).toBe(false)
     const resumen = d.querySelector('summary')!
     expect(resumen).toHaveTextContent('Pagos por confirmar')
-    expect(resumen).toHaveTextContent('3')
-    expect(resumen).toHaveTextContent('$230.000')
+    expect(resumen).toHaveTextContent('3 pagos · $230.000')
+    // #665: el resumen va en su propia celda (segunda línea en móvil), nunca encima del título
+    expect(within(resumen).getByTestId('desplegable-resumen').className).toMatch(/row-start-2/)
     rerender(<Desplegable testid="d" icono="⏳" titulo="Pagos por confirmar" abierto>contenido</Desplegable>)
     expect(screen.getByTestId('d').hasAttribute('open')).toBe(true)
   })

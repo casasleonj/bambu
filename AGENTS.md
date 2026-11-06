@@ -580,6 +580,12 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
       - Pruebas: `produccion-del-cierre.test.tsx` (tarjetas, pérdidas, motivo, foco, reintento de selladores), E2E `produccion-cierre-645.spec.ts` (turno por botones y pérdidas desplegables).
       - Con este PR termina #646 (PR A resumen, PR B pagos al personal, PR C producción).
 
+   42. **Cierre de caja: encabezados sin solapamientos y efectivo inicial en un solo lugar (#665 y #666)**: solo presentación; ninguna cifra ni regla de dinero cambia.
+      - **Encabezado del desplegable** (`desplegable.tsx`): en móvil el título ocupa todo el ancho y el resumen (cantidad e importe) va en una segunda línea; desde 640 px va a la derecha. Se quitó la `insignia` (un número suelto junto al importe confundía): la cantidad va dentro del `resumen`. «Pagos por confirmar» dice «Total: N pagos · $X» y debajo separa «Hoy» de «Días anteriores» (`pc.count/total` y `diasPreviosCount/Total`, que ya traía el cierre).
+      - **Efectivo inicial** (`cierre-efectivo-esperado.tsx`): el campo de la sección 2 desapareció (la sección ahora se llama «Inventario»). El valor se ve en la ficha «Empezó con» de la sección 1; solo si falta (0) la ficha se vuelve un aviso con el campo, que no desaparece al teclear. El cierre sigue exigiendo base > 0. El valor sale de Config `BASE_DIA_<fecha>` (o `BASE_DIA`), que fija el modal de base de caja.
+      - **Anti-patrón a evitar**: un número suelto (insignia) junto a un importe que suma cosas distintas; un `whitespace-nowrap shrink-0` en una fila flex con un título que debe poder envolver.
+      - Pruebas: `desplegable.test.tsx`, `cierre-desglose-cobros.test.tsx`, `cierre-efectivo-esperado.test.tsx`, `cierre-adversarial.test.tsx`, E2E `cierre-desglose-631.spec.ts` (mide el diseño en 360 px y escritorio), `cierre-511-513.spec.ts`.
+
 ## Registro de tareas
 
 El backlog vive en **GitHub Issues** (índice en `docs/BACKLOG.md`). Toda tarea nueva —incluida la que surge en el chat— se registra como issue **antes** de empezar, y el PR que la resuelve la cierra con `Closes #N` (el PR debe apuntar a `main`). Los hallazgos y funcionalidades nuevos se registran con el skill `/hallazgo` o con los formularios de `.github/ISSUE_TEMPLATE/`; los pendientes en el código llevan su issue (`TODO(#123)`). No guardes pendientes en este archivo ni en notas de sesión. No es solo una convención: el workflow `Backlog` (`.github/workflows/backlog.yml`) falla el PR que no cita un issue y mantiene las etiquetas `estado:*` (ver `docs/BACKLOG.md`).

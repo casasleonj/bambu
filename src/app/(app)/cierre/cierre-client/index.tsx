@@ -6,7 +6,6 @@ import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
 import { useConfirmacionCierre } from '@/components/cierre/cierre-confirmacion'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { cn, formatCurrency } from '@/lib/utils'
 import { getTodayString } from '@/lib/dates'
 import { calcularNetoCierre } from '@/lib/cierre-totales'
@@ -505,7 +504,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     {
       label: 'Efectivo inicial del día registrado',
       ok: baseDia > 0,
-      detail: baseDia > 0 ? `Empezó con: ${formatCurrency(baseDia)}` : 'Ingresa el efectivo con el que empezó el día en la sección 2',
+      detail: baseDia > 0 ? `Empezó con: ${formatCurrency(baseDia)}` : 'Ingresa el efectivo con el que empezó el día en la sección 1',
     },
     {
       label: 'Efectivo físico contado',
@@ -534,7 +533,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
 
   // Next step hint
   const getNextStep = () => {
-    if (baseDia === 0) return { label: 'Ingresa el efectivo con el que empezó el día', section: 2 }
+    if (baseDia === 0) return { label: 'Ingresa el efectivo con el que empezó el día', section: 1 }
     if (arqueoData.totalContado === 0) return { label: 'Cuenta el efectivo físico', section: 4 }
     if (statusCierre === 'INCOMPLETO') return { label: 'Cierra los embarques pendientes', section: 1 }
     return { label: 'Listo para cerrar el día', section: 5 }
@@ -604,7 +603,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       >
         <div className="mb-4">
           <CierreEfectivoEsperado
-            baseDia={baseDia} efectivoPagos={data.efectivo ?? 0} cobroCarteraEfectivo={data.cobroCarteraEfectivo ?? 0}
+            baseDia={baseDia} onBaseChange={setBaseDia} efectivoPagos={data.efectivo ?? 0} cobroCarteraEfectivo={data.cobroCarteraEfectivo ?? 0}
             totalGastos={data.totalGastos} comisiones={comisiones} salarios={salarios} pagosDigitales={data.cobroDigitalHoy ?? 0}
           />
         </div>
@@ -613,20 +612,13 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         <CierreDetalleVentas data={data} />
       </CierreSection>
 
-      {/* Section 2: Inventario y efectivo inicial */}
+      {/* Section 2: Inventario */}
       <CierreSection
         number={2}
-        title="Inventario y efectivo inicial"
-        description="Confirma los valores que faltan por registrar. El efectivo inicial es el que había en la caja al empezar el día."
+        title="Inventario"
+        description="Confirma el stock de agua, hielo y botellones. El efectivo con el que empezó el día está en la sección 1."
       >
         <div className="space-y-4">
-          {/* Efectivo con el que empezó el día */}
-          <div className="max-w-sm">
-            <label htmlFor="cierre-baseDia" className="text-xs text-muted-foreground">Efectivo con el que empezó el día</label>
-            <Input id="cierre-baseDia" type="number" min="0" value={baseDia} onChange={(e) => setBaseDia(Math.max(0, Number(e.target.value)))} className="mt-1" />
-            {baseDia <= 0 && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Requerido para cerrar</p>}
-          </div>
-
           {/* #650 (2b): unidades sin detalle por día / error de reparto */}
           <AvisoUnidadesAproximadas
             aproximadas={data?.unidadesAproximadas}
