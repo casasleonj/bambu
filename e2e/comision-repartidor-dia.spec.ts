@@ -129,7 +129,10 @@ test.describe('Comisión del repartidor en el cierre (#499)', () => {
     await expect(enlace).toHaveAttribute('href', `/pedidos/${p.id}`)
     await expect(enlace).toContainText('Agua 3')
     await enlace.click()
-    await expect(page).toHaveURL(new RegExp(`/pedidos/${p.id}$`))
+    // La ruta canónica redirige al detalle sobre la lista (#377). Comprobar
+    // el pedido abierto, no aceptar como éxito su URL transitoria de redirección.
+    await expect(page.getByRole('dialog', { name: `Pedido #${p.numero}`, exact: true })).toBeVisible({ timeout: 15000 })
+    await expect(page).toHaveURL(url => url.pathname === '/pedidos')
     await page.goBack()
     await expect(fila.getByTestId('comision-pendiente')).toContainText('1.200')
 
