@@ -114,7 +114,8 @@ describe('#597 — cobro de un solo pedido entregado hoy', () => {
 
   it('una deuda posterior no estorba: pagar el pedido de hoy equivale a lo que haría el reparto por antigüedad', async () => {
     const { c, pedido } = await cliente()
-    const primero = await pedido({ creadoHaceHoras: 2, entregadoHaceHoras: 1 })
+    // La antigüedad la determina la creación. Una entrega de hace 1 h sería AYER entre 00:00 y 00:59 (#349).
+    const primero = await pedido({ creadoHaceHoras: 2, entregadoHaceHoras: 0 })
     const segundo = await pedido({ creadoHaceHoras: 0, entregadoHaceHoras: 0 })
     expect((await paga(c.id, primero.id, 10000)).status).toBe(200)
     expect(await saldoDe(primero.id)).toBe(0)
