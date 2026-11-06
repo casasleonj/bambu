@@ -168,7 +168,9 @@ export async function POST(request: NextRequest) {
 
         // #644: con frecuencia de pago, `salarioFijo` es el monto de CADA pago y se suma una vez por cada fecha de
         // pago que cae dentro del período. Sin frecuencia (trabajadores anteriores) se suma una sola vez, como siempre.
-        const montoPorPago = Number(trabajador.salarioFijo || 0)
+        // #671: un importe fijo conservado al cambiar de modalidad no es sueldo
+        // en una liquidación exclusivamente por comisión. Las guardadas no cambian.
+        const montoPorPago = trabajador.tipoPago === 'COMISION' ? 0 : Number(trabajador.salarioFijo || 0)
         const salarioFijo = trabajador.frecuenciaPago === null
           ? montoPorPago
           : montoPorPago * fechasDePago(

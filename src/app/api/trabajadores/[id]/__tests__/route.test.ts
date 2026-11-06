@@ -85,12 +85,5 @@ describe('F-N18: el flujo normal sigue funcionando (no rompe)', () => {
   })
 })
 
-describe('F-N18: el PUT sigue intacto (no se refactorizó)', () => {
-  it('FIX: el PUT no se tocó', () => {
-    const putStart = source.indexOf('export async function PUT')
-    const deleteStart = source.indexOf('export async function DELETE')
-    const putSource = source.substring(putStart, deleteStart)
-
-    expect(putSource).toMatch(/prisma\.trabajador\.update/)
-  })
-})
+// #671 cubre el PUT con handlers y PostgreSQL reales; la antigua aserción de
+// que su código nunca cambiara no era una prueba de comportamiento.
