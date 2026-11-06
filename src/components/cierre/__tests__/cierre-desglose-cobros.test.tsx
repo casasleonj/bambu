@@ -93,9 +93,10 @@ describe('#631 CierreDesgloseCobros', () => {
       total: 90000, count: 1, porMetodo: { NEQUI: 90000 }, diasPreviosCount: 1, diasPreviosTotal: 80000,
       detalleHoy: [fila()], detalleDiasPrevios: [fila({ pagoId: 'g9', pedidoId: 'p9', numero: 1019, cliente: 'Don Pedro Ruiz', clienteId: 'c9', factura: null, monto: 80000, metodo: 'TRANSFERENCIA' })],
     } })} />)
-    const caja = screen.getByTestId('cierre-por-confirmar')
-    expect(caja.textContent).toContain('2')
-    expect(caja.textContent).toContain('170.000')
+    // #665: el encabezado separa lo de hoy de lo de días anteriores; no hay un número suelto junto al total
+    expect(screen.getByTestId('por-confirmar-total')).toHaveTextContent(/Total: 2 pagos · \$\s*170\.000/)
+    expect(screen.getByTestId('por-confirmar-resumen-hoy')).toHaveTextContent(/Hoy · 1 · \$\s*90\.000/)
+    expect(screen.getByTestId('por-confirmar-resumen-previos')).toHaveTextContent(/Días anteriores · 1 · \$\s*80\.000/)
     expect(screen.getByTestId('cierre-por-confirmar-hoy')).toHaveTextContent('F-0318')
     expect(screen.getByTestId('cierre-por-confirmar-previos').textContent).toContain('no bloquea el cierre')
     expect(screen.getByTestId('cierre-por-confirmar-previos').textContent).toContain('Sin factura')

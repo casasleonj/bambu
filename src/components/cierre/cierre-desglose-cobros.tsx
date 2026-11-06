@@ -26,6 +26,7 @@ const TIPO_CORRECCION: Record<string, string> = {
 
 const urlFiadosDe = (clienteId: string | null): string | null =>
   clienteId && clienteId !== 'CONSUMIDOR_FINAL' ? `/pedidos?tab=fiados&clienteId=${encodeURIComponent(clienteId)}` : null
+const pagos = (n: number): string => `${n} pago${n === 1 ? '' : 's'}`
 const urlPedido = (pedidoId: string): string => `/pedidos?openPedido=${encodeURIComponent(pedidoId)}`
 
 const fechaHora = (iso: string): string =>
@@ -224,9 +225,17 @@ export default function CierreDesgloseCobros({ data }: { data: CierreData | null
       )}
 
       {cantPorConfirmar > 0 && (detalleHoy.length > 0 || detallePrevios.length > 0) && (
-        <Desplegable testid="cierre-por-confirmar" tono="ambar" icono="⏳" titulo="Pagos por confirmar" insignia={cantPorConfirmar}
-          ayuda="Pagos (normalmente por Nequi, transferencia o Daviplata) que alguien reportó pero aún nadie verificó que llegaron. No bloquean el cierre."
-          resumen={formatCurrency(totalPorConfirmar)}>
+        <Desplegable testid="cierre-por-confirmar" tono="ambar" icono="⏳" titulo="Pagos por confirmar"
+          ayuda="Pagos (normalmente por Nequi, transferencia o Daviplata) que alguien reportó pero aún nadie verificó que llegaron. Los de días anteriores son solo un aviso. No bloquean el cierre."
+          resumen={(
+            <>
+              <b data-testid="por-confirmar-total" className="block text-amber-900">Total: {pagos(cantPorConfirmar)} · {formatCurrency(totalPorConfirmar)}</b>
+              <span className="mt-0.5 flex flex-wrap gap-1 sm:justify-end">
+                <span data-testid="por-confirmar-resumen-hoy" className="whitespace-nowrap rounded-full bg-green-100 px-2 py-0.5 text-[11px] text-green-800">Hoy · {pc?.count ?? 0} · {formatCurrency(pc?.total ?? 0)}</span>
+                <span data-testid="por-confirmar-resumen-previos" className="whitespace-nowrap rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] text-indigo-800">Días anteriores · {pc?.diasPreviosCount ?? 0} · {formatCurrency(pc?.diasPreviosTotal ?? 0)}</span>
+              </span>
+            </>
+          )}>
           <GrupoPorConfirmar titulo={`Cobrados hoy · ${detalleHoy.length}`} filas={detalleHoy} confirmaPagos={data.confirmaPagos} testid="cierre-por-confirmar-hoy" />
           <GrupoPorConfirmar titulo={`De días anteriores · ${pc?.diasPreviosCount ?? detallePrevios.length} (aviso, no bloquea el cierre)`} filas={detallePrevios} confirmaPagos={data.confirmaPagos} testid="cierre-por-confirmar-previos" />
           {(pc?.diasPreviosCount ?? 0) > detallePrevios.length && (

@@ -50,9 +50,9 @@ export default function AvisoUnidadesAproximadas({
   if (!aproximadas?.length) return null
   const total = (clave: 'agua' | 'hielo') => unidadesAproximadasDe(aproximadas, clave)
   return (
-    <Desplegable testid="aviso-unidades-aproximadas" tono="ambar" icono="⚠️" titulo="Unidades sin repartir por día" insignia={`${aproximadas.length} pedido${aproximadas.length === 1 ? '' : 's'}`}
+    <Desplegable testid="aviso-unidades-aproximadas" tono="ambar" icono="⚠️" titulo="Unidades sin repartir por día"
       ayuda="Son pedidos antiguos que no guardaron en qué día se entregó cada parte. Sus unidades se cuentan en el día en que se creó el pedido."
-      resumen={[total('agua') > 0 ? `${total('agua')} agua` : '', total('hielo') > 0 ? `${total('hielo')} hielo` : ''].filter(Boolean).join(' · ') || undefined}>
+      resumen={[`${aproximadas.length} pedido${aproximadas.length === 1 ? '' : 's'}`, total('agua') > 0 ? `${total('agua')} agua` : '', total('hielo') > 0 ? `${total('hielo')} hielo` : ''].filter(Boolean).join(' · ')}>
       <p className="mb-2 rounded-lg bg-white p-2 text-[11px] text-amber-900">
         Son pedidos antiguos que no guardaron en qué día se entregó cada parte. Sus unidades se cuentan en el <b>día en que se creó el pedido</b>.
         Si tu conteo físico no coincide por esto, cierra con tu conteo real. No bloquea el cierre.

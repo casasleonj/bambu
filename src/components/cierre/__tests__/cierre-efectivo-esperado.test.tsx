@@ -1,6 +1,7 @@
 // @tests #601 — «¿Cuánto efectivo debe haber en la caja?»
 import { describe, expect, it } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { useState } from 'react'
 import CierreEfectivoEsperado, { efectivoEsperadoDelCierre } from '../cierre-efectivo-esperado'
 
 describe('CierreEfectivoEsperado', () => {
@@ -30,5 +31,30 @@ describe('#646 fichas del cálculo del efectivo', () => {
     expect(screen.getByRole('link', { name: /− Gastos/ }).getAttribute('href')).toBe('#cierre-gastos')
     expect(screen.queryByText(/Comisiones pagadas/)).toBeNull()
     expect(screen.getByTestId('efectivo-debe-haber')).toHaveTextContent(/\$\s*525\.000/)
+  })
+})
+
+describe('#666 efectivo inicial en un solo lugar', () => {
+  const props = { efectivoPagos: 0, cobroCarteraEfectivo: 0, totalGastos: 0, comisiones: 0, salarios: 0, pagosDigitales: 0 }
+
+  it('con valor muestra la ficha «Empezó con» y ningún campo', () => {
+    render(<CierreEfectivoEsperado baseDia={50000} onBaseChange={() => {}} {...props} />)
+    expect(screen.getByTestId('cierre-efectivo-esperado')).toHaveTextContent(/Empezó con\s*\$\s*50\.000/)
+    expect(screen.queryByLabelText('Efectivo con el que empezó el día')).not.toBeInTheDocument()
+  })
+
+  it('sin valor avisa que falta y ofrece el campo ahí mismo; el campo no desaparece al teclear', () => {
+    function Con() {
+      const [b, setB] = useState(0)
+      return <CierreEfectivoEsperado baseDia={b} onBaseChange={setB} {...props} />
+    }
+    render(<Con />)
+    expect(screen.getByTestId('base-dia-campo')).toHaveTextContent('Falta este dato para poder cerrar el día')
+    const campo = screen.getByLabelText('Efectivo con el que empezó el día')
+    fireEvent.change(campo, { target: { value: '5' } })
+    expect(screen.getByLabelText('Efectivo con el que empezó el día')).toHaveValue(5) // sigue ahí para seguir escribiendo
+    fireEvent.change(screen.getByLabelText('Efectivo con el que empezó el día'), { target: { value: '50000' } })
+    expect(screen.getByTestId('efectivo-debe-haber')).toHaveTextContent(/\$\s*50\.000/)
+    expect(screen.getByTestId('cierre-efectivo-esperado')).toHaveTextContent(/Empezó con\s*\$\s*50\.000/)
   })
 })
