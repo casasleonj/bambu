@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { AyudaTermino } from '@/components/ui/ayuda-termino'
 import { calcularEfectivoEsperado } from '@/lib/cierre-totales'
 import { formatCurrency } from '@/lib/utils'
@@ -7,6 +8,7 @@ import { formatCurrency } from '@/lib/utils'
 /**
  * #601: «¿Cuánto efectivo debe haber en la caja?». Solo billetes y monedas: lo que llegó por Nequi,
  * transferencia, Daviplata o bono no está en la caja y se informa aparte.
+ * #666: el efectivo inicial vive solo aquí: si falta (0) la ficha pasa a ser un aviso con el campo; ya no hay otro campo en la sección 2.
  * #646: la respuesta va grande y la cuenta como fichas; «Gastos» abre su lista y «Comisiones» lleva a su bloque.
  */
 export function efectivoEsperadoDelCierre(d: {
@@ -45,10 +47,13 @@ function Ficha({ texto, valor, tono, destino, ayuda }: {
   )
 }
 
-export default function CierreEfectivoEsperado({ baseDia, efectivoPagos, cobroCarteraEfectivo, totalGastos, comisiones, salarios, pagosDigitales }: {
-  baseDia: number; efectivoPagos: number; cobroCarteraEfectivo: number;
+export default function CierreEfectivoEsperado({ baseDia, onBaseChange, efectivoPagos, cobroCarteraEfectivo, totalGastos, comisiones, salarios, pagosDigitales }: {
+  baseDia: number; onBaseChange?: (valor: number) => void; efectivoPagos: number; cobroCarteraEfectivo: number;
   totalGastos: number; comisiones: number; salarios: number; pagosDigitales: number;
 }) {
+  // Una vez que se empieza a escribir el campo se queda (si no, desaparecería al teclear el primer dígito).
+  const [editando, setEditando] = useState(false)
+  const mostrarCampo = !!onBaseChange && (baseDia <= 0 || editando)
   const debeHaber = efectivoEsperadoDelCierre({ baseDia, efectivoPagos, cobroCarteraEfectivo, totalGastos, comisiones, salarios })
   return (
     <section aria-labelledby="cierre-debe-haber" data-testid="cierre-efectivo-esperado"
@@ -59,7 +64,7 @@ export default function CierreEfectivoEsperado({ baseDia, efectivoPagos, cobroCa
       </h3>
       <div data-testid="efectivo-debe-haber" className="my-1 text-4xl font-extrabold tabular-nums text-blue-900">{formatCurrency(debeHaber)}</div>
       <div className="flex flex-wrap items-center gap-2">
-        <Ficha texto="Empezó con" valor={baseDia} ayuda="Antes se llamaba «base de caja»: el efectivo que había en la caja al abrir." />
+        {baseDia > 0 && <Ficha texto="Empezó con" valor={baseDia} ayuda="Antes se llamaba «base de caja»: el efectivo que había en la caja al abrir." />}
         <Ficha texto="+ Cobrado en efectivo" valor={efectivoPagos} tono="mas" ayuda="Ventas de hoy y pagos de deudas anteriores (fiados) que se recibieron en efectivo." />
         {cobroCarteraEfectivo !== 0 && <Ficha texto="+ Abonos en efectivo" valor={cobroCarteraEfectivo} tono="mas" ayuda="Dinero que un cliente pagó a una factura por aparte, en efectivo." />}
         {totalGastos !== 0 && <Ficha texto="− Gastos" valor={totalGastos} tono="menos" destino="cierre-gastos" />}
@@ -67,6 +72,16 @@ export default function CierreEfectivoEsperado({ baseDia, efectivoPagos, cobroCa
           ayuda="Solo lo que ya se le pagó en efectivo a repartidores y selladores. Lo pendiente no resta hasta que se pague." />}
         {salarios > 0 && <Ficha texto="− Salarios" valor={salarios} tono="menos" />}
       </div>
+      {mostrarCampo && (
+        <div data-testid="base-dia-campo" className="mt-3 flex flex-col gap-1.5 rounded-xl border-[1.5px] border-amber-400 bg-amber-50 p-3">
+          {baseDia <= 0 && <p className="text-xs font-bold text-amber-800">⚠ Falta este dato para poder cerrar el día</p>}
+          <label htmlFor="cierre-baseDia" className="text-xs font-semibold text-amber-900">Efectivo con el que empezó el día</label>
+          <input id="cierre-baseDia" type="number" inputMode="numeric" min="0" value={baseDia || ''} placeholder="$ 0"
+            onChange={(e) => { setEditando(true); onBaseChange?.(Math.max(0, Number(e.target.value))) }}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base" />
+          {baseDia <= 0 && <p className="text-[11px] text-amber-700">Obligatorio para cerrar. Se usa en la cuenta de arriba.</p>}
+        </div>
+      )}
       {pagosDigitales > 0 && (
         <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600" data-testid="cierre-pagos-digitales">
           Además entraron {formatCurrency(pagosDigitales)} por Nequi, transferencia u otros medios. Ese dinero llegó a la cuenta, no a la caja: no cuenta para el conteo del efectivo.

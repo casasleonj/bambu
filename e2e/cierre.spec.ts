@@ -61,7 +61,7 @@ test.describe('Cierre', () => {
       test.skip()
       return
     }
-    const stockSection = page.locator('text=Inventario y efectivo inicial')
+    const stockSection = page.locator('text="Inventario"')
     if (await stockSection.count() === 0) {
       test.skip()
       return

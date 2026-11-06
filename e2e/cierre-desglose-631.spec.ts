@@ -23,6 +23,50 @@ test.describe('Cierre #631: desglose de cobros y fiados', () => {
     return { cliente, p }
   }
 
+  test('#665: los encabezados de los desplegables no se solapan en 360 px y «Pagos por confirmar» separa hoy de días anteriores', async ({ page }) => {
+    const a = await pedido(fecha, 'Cliente Encabezado A', 120000, 120000)
+    await prisma.pago.create({ data: { pedidoId: a.p.id, metodo: 'NEQUI', monto: 120000, createdAt: instante(fecha) } })
+    const previo = await pedido(ayer, 'Cliente Encabezado P', 90000, 90000)
+    await prisma.pago.create({ data: { pedidoId: previo.p.id, metodo: 'NEQUI', monto: 90000, createdAt: instante(ayer) } })
+    await pedido(fecha, 'Cliente Encabezado C', 60000, 0)
+
+    await loginAs(page, 'admin')
+    await page.setViewportSize({ width: 360, height: 800 })
+    await goto(page, `/cierre?fecha=${fecha}`)
+
+    const porConfirmar = page.getByTestId('cierre-por-confirmar')
+    await expect(porConfirmar).toBeVisible({ timeout: 30000 })
+    await expect(porConfirmar.getByTestId('por-confirmar-total')).toContainText('Total: 2 pagos')
+    await expect(porConfirmar.getByTestId('por-confirmar-resumen-hoy')).toContainText('Hoy · 1')
+    await expect(porConfirmar.getByTestId('por-confirmar-resumen-hoy')).toContainText('120.000')
+    await expect(porConfirmar.getByTestId('por-confirmar-resumen-previos')).toContainText('Días anteriores · 1')
+    await expect(porConfirmar.getByTestId('por-confirmar-resumen-previos')).toContainText('90.000')
+
+    for (const id of ['cierre-por-confirmar', 'cierre-fiados-del-dia']) {
+      const d = page.getByTestId(id)
+      const titulo = await d.locator('summary > span').nth(1).boundingBox()
+      const resumen = await d.getByTestId('desplegable-resumen').boundingBox()
+      expect(titulo, id).not.toBeNull()
+      expect(resumen, id).not.toBeNull()
+      // el resumen va debajo del título (segunda línea) y el título no se parte letra por letra
+      expect(resumen!.y, id).toBeGreaterThanOrEqual(titulo!.y + titulo!.height - 1)
+      expect(titulo!.height, id).toBeLessThan(48) // como mucho dos líneas (por palabras, no letra por letra)
+      expect(titulo!.width, id).toBeGreaterThan(120)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    if (process.env.SHOT_DIR) {
+      await porConfirmar.scrollIntoViewIfNeeded()
+      await page.screenshot({ path: `${process.env.SHOT_DIR}/movil-360.png` })
+    }
+
+    // Escritorio: el resumen va a la derecha del título, en la misma línea
+    await page.setViewportSize({ width: 1280, height: 900 })
+    const tD = await page.getByTestId('cierre-fiados-del-dia').locator('summary > span').nth(1).boundingBox()
+    const rD = await page.getByTestId('cierre-fiados-del-dia').getByTestId('desplegable-resumen').boundingBox()
+    expect(rD!.x).toBeGreaterThan(tD!.x + tD!.width - 1)
+    if (process.env.SHOT_DIR) await page.getByTestId('cierre-por-confirmar').screenshot({ path: `${process.env.SHOT_DIR}/escritorio.png` })
+  })
+
   test('muestra efectivo vs digital, fiados con enlaces y pagos por confirmar sin ruido', async ({ page }) => {
     const a = await pedido(fecha, 'Cliente Desglose A', 200000, 200000)
     await prisma.pago.createMany({ data: [

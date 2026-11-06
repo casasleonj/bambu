@@ -21,6 +21,8 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
   })
 
   async function preparar(legado = false) {
+    // #666: el efectivo inicial ya no se escribe en la sección 2; viene de la base de caja del día (Config BASE_DIA_<fecha>)
+    await prisma.config.upsert({ where: { clave: `BASE_DIA_${fecha}` }, update: { valor: '10000' }, create: { clave: `BASE_DIA_${fecha}`, valor: '10000' } })
     const cliente = await prisma.cliente.create({ data: { nombre: 'Cliente sintético cierre', telefono: randomUUID(), direccion: 'Prueba' } })
     const pedido = await prisma.pedido.create({ data: {
       clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO', fecha: instante,
@@ -48,7 +50,8 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     await goto(page, `/cierre?fecha=${fecha}`)
     await expect(page.getByTestId('cierre-kpi-ventas')).toContainText('20.000')
     await expect(page.getByTestId('cierre-kpi-cobros')).toContainText('10.000')
-    await page.getByLabel('Efectivo con el que empezó el día', { exact: true }).fill('10000')
+    await expect(page.getByTestId('cierre-efectivo-esperado')).toContainText('Empezó con $ 10.000')
+    await expect(page.getByLabel('Efectivo con el que empezó el día', { exact: true })).toHaveCount(0) // #666: un solo lugar
     // #644: el campo manual «Salarios» ya no existe
     await expect(page.getByLabel('Salarios', { exact: true })).toHaveCount(0)
     // #646: la respuesta es el efectivo que debe haber (10.000 + 5.000 de pago + 5.000 de abono); el «neto» ya no se muestra

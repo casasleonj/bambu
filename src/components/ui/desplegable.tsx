@@ -2,6 +2,8 @@
 
 // #646 — Desplegable para listas largas del cierre: cerrado muestra título, cantidad e importe; abierto, el detalle.
 // Usa <details>/<summary> (teclado y lector de pantalla nativos) y deja el «?» sin abrir/cerrar la lista.
+// #665: en pantallas angostas el título ocupa todo el ancho y el resumen (cantidad e importe) va en una segunda línea;
+// desde 640 px el resumen va a la derecha en la misma línea. Sin insignias sueltas: la cantidad va dentro del resumen.
 
 import { useState, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
@@ -19,14 +21,12 @@ const TONOS: Record<TonoDesplegable, { caja: string; icono: string }> = {
   violeta: { caja: 'border-violet-200 bg-white', icono: 'bg-violet-100' },
 }
 
-export function Desplegable({ id, icono, titulo, resumen, insignia, ayuda, tono = 'gris', abierto = false, testid, children }: {
+export function Desplegable({ id, icono, titulo, resumen, ayuda, tono = 'gris', abierto = false, testid, children }: {
   id?: string
   icono: string
   titulo: string
-  /** Cantidad e importe, siempre visibles aunque esté cerrado. */
+  /** Cantidad e importe, siempre visibles aunque esté cerrado (puede traer varias líneas o etiquetas). */
   resumen?: ReactNode
-  /** Contador que pide atención (p. ej. pagos por confirmar). */
-  insignia?: string | number
   ayuda?: string
   tono?: TonoDesplegable
   abierto?: boolean
@@ -36,19 +36,20 @@ export function Desplegable({ id, icono, titulo, resumen, insignia, ayuda, tono 
   const t = TONOS[tono]
   return (
     <details id={id} data-testid={testid} open={abierto} className={cn('group rounded-xl border', t.caja)}>
-      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-800 [&::-webkit-details-marker]:hidden">
-        <span aria-hidden className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-sm', t.icono)}>{icono}</span>
-        <span className="min-w-0 flex-1">
+      <summary className="grid cursor-pointer list-none grid-cols-[1.75rem_minmax(0,1fr)_1rem] items-center gap-x-2 gap-y-0.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-800 sm:grid-cols-[1.75rem_minmax(0,1fr)_auto_1rem] [&::-webkit-details-marker]:hidden">
+        <span aria-hidden className={cn('row-span-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-sm sm:row-span-1', t.icono)}>{icono}</span>
+        <span className="col-start-2 min-w-0">
           {titulo}
-          {insignia !== undefined && <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">{insignia}</span>}
           {ayuda && (
-            <span onClick={(e) => { e.preventDefault(); e.stopPropagation() }} className="ml-1 inline-flex">
+            <span onClick={(e) => { e.preventDefault(); e.stopPropagation() }} className="ml-1 inline-flex align-middle">
               <AyudaTermino texto={ayuda} />
             </span>
           )}
         </span>
-        {resumen !== undefined && <span className="shrink-0 whitespace-nowrap text-xs font-semibold text-slate-600">{resumen}</span>}
-        <ChevronDown aria-hidden className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+        {resumen !== undefined && (
+          <span data-testid="desplegable-resumen" className="col-start-2 row-start-2 min-w-0 text-xs font-semibold text-slate-600 sm:col-start-3 sm:row-start-1 sm:whitespace-nowrap sm:text-right">{resumen}</span>
+        )}
+        <ChevronDown aria-hidden className="col-start-3 row-span-2 row-start-1 h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180 sm:col-start-4 sm:row-span-1" />
       </summary>
       <div className="border-t border-slate-100 px-3 pb-3 pt-2 text-xs">{children}</div>
     </details>
