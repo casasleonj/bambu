@@ -9,6 +9,7 @@ import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { conDeudaPendiente } from '@/lib/trabajadores-deuda'
+import { datosPagoTrabajador } from '@/lib/trabajadores-auditoria'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -63,7 +64,8 @@ export async function POST(request: NextRequest) {
     const raw = parsed.data
     const data = normalizeTrabajador(raw)
 
-    const trabajador = await prisma.trabajador.create({
+    const trabajador = await prisma.$transaction(async tx => {
+      const creado = await tx.trabajador.create({
       data: {
         nombre: data.nombre,
         rol: data.rol,
@@ -83,14 +85,15 @@ export async function POST(request: NextRequest) {
         pagoFueraDeCaja: data.pagoFueraDeCaja ?? false,
         telefono: data.telefono,
       },
+      })
+      await logAudit({
+        entidad: 'Trabajador', registroId: creado.id, accion: 'CREATE',
+        datos: { nombre: creado.nombre, rol: creado.rol, despues: datosPagoTrabajador(creado),
+          vigenteDesde: creado.createdAt.toISOString() },
+        usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+      }, tx)
+      return creado
     })
-    logAudit({
-      entidad: 'Trabajador',
-      registroId: trabajador.id,
-      accion: 'CREATE',
-      datos: { nombre: parsed.data.nombre, rol: parsed.data.rol },
-      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
-    }).catch(() => {})
 
     publishRealtimeEvent('trabajador.created', trabajador.id).catch(() => {})
 

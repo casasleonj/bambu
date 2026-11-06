@@ -1019,7 +1019,8 @@ const planPagoError = { message: 'El plan de pago no es válido: elige la frecue
  *
  * Reglas:
  * - REPARTIDOR nunca produce: comPaca* en 0.
- * - ADMIN/CONTADOR o sin moto: fijo, sin comisiones de reparto (comRepart* en 0).
+ * - ADMIN/CONTADOR: fijo, sin comisiones de reparto (comRepart* en 0).
+ * - Sin moto: no comisiona reparto, pero conserva su tipo salarial (PO, #671).
  * - SELLADOR sin moto: no reparte (comRepart* en 0).
  * - SELLADOR con moto: puede tener tanto comPaca* como comRepart*.
  */
@@ -1044,13 +1045,14 @@ export function normalizeTrabajador<T extends { usaMoto?: boolean | null; tipoPa
   }
 
   if (noMoto) {
-    base.tipoPago = 'FIJO'
     base.capacidadKg = 0
     base.usaMoto = false
     base.comRepartAgua = 0
     base.comRepartHielo = 0
     base.comRepartBotellon = 0
   }
+
+  if (isAdminOrContador) base.tipoPago = 'FIJO'
 
   return base
 }
@@ -1060,7 +1062,12 @@ export const TrabajadorCreateSchema = TrabajadorBaseObject.refine(
   { message: 'Capacidad es requerida cuando usa moto', path: ['capacidadKg'] }
 ).refine(planPagoValido, planPagoError)
 
-export const TrabajadorUpdateSchema = TrabajadorBaseObject.partial().refine(planPagoValido, planPagoError)
+// Un fragmento no permite validar un plan completo: PUT lo combina con la fila
+// persistida y valida con TrabajadorCreateSchema dentro de su transacción (#671).
+export const TrabajadorUpdateSchema = TrabajadorBaseObject.partial().refine(
+  d => d.frecuenciaPago === undefined || d.diasPago === undefined || planPagoValido(d),
+  planPagoError,
+)
 
 // ====================
 // PAGAR FIADO
