@@ -319,7 +319,8 @@ Generado automáticamente el 2026-08-24 contra el commit `4c6cba35` de `main` (F
 | `src/components/__tests__/money-display.test.tsx` | Sí |
 | `src/components/__tests__/negocio-detail-modal.test.tsx` | Sí |
 | `src/components/__tests__/negocio-selector.test.tsx` | Sí |
-| `src/components/__tests__/push-opt-in-toast.test.tsx` | Sí |
+| `src/components/__tests__/push-opt-in-strip.test.tsx` | Sí |
+| `src/components/__tests__/push-opt-in-bell.test.tsx` | Sí |
 | `src/components/__tests__/push-settings.test.tsx` | Sí |
 | `src/components/__tests__/realtime-provider-cooldown-reconnect.test.tsx` | Sí |
 | `src/components/__tests__/realtime-provider.test.tsx` | Sí |

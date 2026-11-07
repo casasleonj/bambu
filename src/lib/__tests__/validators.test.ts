@@ -709,7 +709,7 @@ describe('normalizeTrabajador', () => {
     expect(result.comRepartAgua).toBe(0)
     expect(result.comRepartHielo).toBe(0)
     expect(result.comRepartBotellon).toBe(0)
-    expect(result.tipoPago).toBe('FIJO')
+    expect(result.tipoPago).toBe('COMISION')
     expect(result.usaMoto).toBe(false)
     expect(result.capacidadKg).toBe(0)
   })
@@ -754,7 +754,7 @@ describe('normalizeTrabajador', () => {
     expect(result.comRepartAgua).toBe(0)
     expect(result.comRepartHielo).toBe(0)
     expect(result.comRepartBotellon).toBe(0)
-    expect(result.tipoPago).toBe('FIJO')
+    expect(result.tipoPago).toBe('COMISION')
     expect(result.usaMoto).toBe(false)
     expect(result.capacidadKg).toBe(0)
   })
@@ -772,5 +772,11 @@ describe('normalizeTrabajador', () => {
     expect(result.tipoPago).toBe('FIJO')
     expect(result.usaMoto).toBe(false)
     expect(result.capacidadKg).toBe(0)
+  })
+
+  it.each(['SELLADOR', 'REPARTIDOR'] as const)('conserva todos los tipos de pago de %s sin moto (#671)', rol => {
+    for (const tipoPago of ['FIJO', 'COMISION', 'MIXTO']) {
+      expect(normalizeTrabajador({ rol, tipoPago, usaMoto: false }).tipoPago).toBe(tipoPago)
+    }
   })
 })

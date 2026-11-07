@@ -29,7 +29,7 @@ test.describe('Detalle del pedido por enlace (P1-1 PR A)', () => {
     const ped = await crearPedido(page, `Enlace ruta ${Date.now()}`)
     const respuesta = await page.goto(`${BASE}/pedidos/${ped.id}`)
     expect(respuesta?.status()).toBeLessThan(400)
-    await expect(appMain(page).getByText('Total Pedido', { exact: true })).toBeVisible({ timeout: 20000 })
+    await expect(appMain(page).getByText('Valor comercial del pedido', { exact: true })).toBeVisible({ timeout: 20000 })
     await expect(page).toHaveURL(/\/pedidos(\?|$)/)
     await expect(page).not.toHaveURL(/openPedido/)
   })
@@ -41,7 +41,7 @@ test.describe('Detalle del pedido por enlace (P1-1 PR A)', () => {
     // el pedido nace DESPUÉS de cargar la lista: no está en ella
     const ped = await crearPedido(page, `Enlace fuera de lista ${Date.now()}`)
     await irSinRecargar(page, `/pedidos?openPedido=${ped.id}`)
-    await expect(appMain(page).getByText('Total Pedido', { exact: true })).toBeVisible({ timeout: 15000 })
+    await expect(appMain(page).getByText('Valor comercial del pedido', { exact: true })).toBeVisible({ timeout: 15000 })
     await expect(appMain(page).getByTestId('pedido-detalle').getByText(ped.nombre)).toBeVisible()
     await expect(page).not.toHaveURL(/openPedido/)
     const enBD = await prisma.pedido.findUniqueOrThrow({ where: { id: ped.id } })
@@ -53,7 +53,7 @@ test.describe('Detalle del pedido por enlace (P1-1 PR A)', () => {
     await page.goto(`${BASE}/pedidos?openPedido=pedido-que-no-existe`)
     await expect(page.getByText('Ese pedido no existe o ya no está disponible.').first()).toBeVisible({ timeout: 20000 })
     await expect(page).not.toHaveURL(/openPedido/)
-    await expect(appMain(page).getByText('Total Pedido', { exact: true })).toHaveCount(0)
+    await expect(appMain(page).getByText('Valor comercial del pedido', { exact: true })).toHaveCount(0)
   })
 
   test('sin conexión avisa que no se pudo abrir el pedido', async ({ browser }) => {

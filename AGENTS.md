@@ -109,6 +109,10 @@ vercel --prod
 
 ## Critical Architecture Decisions
 
+### Consulta de entregas parciales y deuda (#656 / #631 / #673)
+
+La presentación mínima aprobada conserva el importe comercial del pedido y distingue entregado, pendiente de entrega y exigible. Para consultar deuda usar `leerExigibles`, también en filtros y totales antes de paginar; no usar el saldo comercial como deuda de una parcial. Cierre y Dashboard comparten `valorEntregadoPedidoCentavos`. El cumplimiento/deuda es el actual de los pedidos seleccionados por su fecha; no una reconstrucción al cierre de una fecha pasada. Los cierres consolidados conservan su snapshot original. Sin evidencia exigible en una parcial se advierte «Por conciliar», sin inventar hechos ni afirmar deuda cero. Detalles y transición: `docs/fiados/656-658-entrega.md`. Conservar entrega directa, planificación secundaria y cobro FIFO.
+
 ### PostgreSQL Only
 - Single `prisma/schema.prisma` with `provider = "postgresql"`
 - Dev: Docker Compose PostgreSQL 17.10 Alpine (`docker compose up -d`)
@@ -585,6 +589,14 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
       - **Efectivo inicial** (`cierre-efectivo-esperado.tsx`): el campo de la sección 2 desapareció (la sección ahora se llama «Inventario»). El valor se ve en la ficha «Empezó con» de la sección 1; solo si falta (0) la ficha se vuelve un aviso con el campo, que no desaparece al teclear. El cierre sigue exigiendo base > 0. El valor sale de Config `BASE_DIA_<fecha>` (o `BASE_DIA`), que fija el modal de base de caja.
       - **Anti-patrón a evitar**: un número suelto (insignia) junto a un importe que suma cosas distintas; un `whitespace-nowrap shrink-0` en una fila flex con un título que debe poder envolver.
       - Pruebas: `desplegable.test.tsx`, `cierre-desglose-cobros.test.tsx`, `cierre-efectivo-esperado.test.tsx`, `cierre-adversarial.test.tsx`, E2E `cierre-desglose-631.spec.ts` (mide el diseño en 360 px y escritorio), `cierre-511-513.spec.ts`.
+
+   43. **Comisión sin embarque cuenta entregas parciales por fecha y responsable del hecho (#669)**: `calcularComisionRepartidor` ya no exige que el pedido esté totalmente entregado para acreditar las unidades que sí se entregaron. Reutiliza `leerEntregasConsulta` (auditoría versionada y movimientos deduplicados): 3 hoy y 2 mañana son 3/2, no 0/5 ni 3/5. La excepción anterior por `entregadoAt`/acumulado solo se conserva para pedidos completos sin capturas detalladas y sin contradicción; parciales sin evidencia o capturas modernas inválidas quedan por conciliar, sin inventar cantidades. La atribución a embarques sigue protegida contra duplicados; descubrir el pedido en el rango de otro repartidor no bloquea su misión verificada. El mismo cálculo alimenta cierre, día, pago y nómina; lo ya pagado se descuenta y nada sale de la caja por solo recalcular. No cambia la regla de un responsable por pedido de oficina, la interfaz, ni pagos/nóminas/cierres históricos. Sin migración. Pruebas: `integration/comision-parciales-669.test.ts`, `nomina-comision-sin-embarque.test.ts` y E2E `comision-repartidor-dia.spec.ts`. Detalle: `docs/nomina/COMISION_REPARTIDOR_DIA.md`.
+
+   44. **Tipo salarial independiente de «Usa moto» (#671, decisión PO 2026-11-06)**: SELLADOR y REPARTIDOR conservan FIJO/COMISION/MIXTO aunque la moto esté desactivada; ADMIN/CONTADOR siguen fijos. La habilitación física y tarifas de reparto conservan sus reglas. PUT combina el fragmento con el registro bloqueado antes de validar/normalizar; editar contacto no borra configuración salarial. Alta y edición auditan antes/después dentro de su transacción. COMISION no suma un sueldo fijo residual en nuevas liquidaciones AUTO. No se modifican liquidaciones/pagos/producciones/cierres guardados ni trabajadores de producción automáticamente. Detalle, vigencia y pruebas: `docs/trabajadores/TIPO_PAGO_671.md`.
+
+   43. **Conteo del efectivo con la moneda de $1.000 (#624)**: `DENOMINACIONES` (`src/components/arqueo-caja.tsx`) incluye la moneda de $1.000 (la mayor de las monedas; vigentes: billetes 2.000–100.000 y monedas 50, 100, 200, 500 y 1.000) con cantidad y subtotal automático; el conteo del cierre y el reporte impreso la toman de esa misma lista. El servidor (`leerArqueoDeclarado`, `src/lib/cierre-arqueo.ts`) la acepta con las mismas reglas (entero, ≥ 0, total acotado). Los cierres anteriores no cambian. Sin migración.
+      - **Anti-patrón a evitar**: una lista de denominaciones en la pantalla y otra distinta en la validación del servidor: se agrega en los dos lugares.
+      - Pruebas: `arqueo-caja.test.tsx`, `cierre-totales.test.ts`, E2E `cierre-511-513.spec.ts` (cuenta 3 monedas de $1.000 y lo verifica en la base).
 
 ## Registro de tareas
 

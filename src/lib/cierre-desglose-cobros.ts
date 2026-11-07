@@ -85,6 +85,8 @@ export interface PedidoParaFiado {
   total: unknown
   totalPagado: unknown
   saldo: unknown
+  /** Saldo de mercancía entregada calculado por el lector común. */
+  exigible?: number
   promesaPagoFecha: Date | null
   cliente: { nombre: string; apellido: string | null } | null
 }
@@ -97,6 +99,7 @@ export interface FiadoDelDia {
   total: number
   pagado: number
   saldo: number
+  saldoComercial?: number
   /** YYYY-MM-DD en hora de Bogotá, o null si no se prometió fecha. */
   promesaPago: string | null
 }
@@ -107,7 +110,7 @@ const fechaBogota = (d: Date): string =>
 /** Pedidos del día que quedaron con saldo (aunque hayan pagado una parte). Su suma es el «Fiado» del cierre. */
 export function listarFiadosDelDia(pedidos: readonly PedidoParaFiado[]): FiadoDelDia[] {
   return pedidos
-    .filter((p) => aCentavos(p.saldo) > 0)
+    .filter((p) => aCentavos(p.exigible ?? p.saldo) > 0)
     .map((p) => ({
       pedidoId: p.id,
       numero: p.numero,
@@ -115,7 +118,8 @@ export function listarFiadosDelDia(pedidos: readonly PedidoParaFiado[]): FiadoDe
       cliente: p.cliente ? `${p.cliente.nombre} ${p.cliente.apellido ?? ''}`.trim() : 'Sin cliente',
       total: Number(p.total),
       pagado: Number(p.totalPagado),
-      saldo: Number(p.saldo),
+      saldo: p.exigible ?? Number(p.saldo),
+      ...(p.exigible === undefined ? {} : { saldoComercial: Number(p.saldo) }),
       promesaPago: p.promesaPagoFecha ? fechaBogota(p.promesaPagoFecha) : null,
     }))
     .sort((a, b) => a.numero - b.numero)

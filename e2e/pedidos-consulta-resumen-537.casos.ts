@@ -102,7 +102,7 @@ test.describe("Resumen colapsable de la consulta (#537)", () => {
         /Importe.*\$\s*20\.000/,
       );
       await expect(app.getByTestId("consulta-resumen-linea")).toContainText(
-        "Saldo",
+        /Por cobrar de lo entregado.*\$\s*0/,
       );
 
       await boton.click();

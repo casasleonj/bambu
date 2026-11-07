@@ -192,4 +192,166 @@ describe('usePushOptIn', () => {
     })
     await waitFor(() => expect(result.current.error).toBe('VAPID missing'))
   })
+
+  // ─── #595: franja + campana ───────────────────────────────────────────────
+
+  describe('campana y estados del intento (#595)', () => {
+    it('con la franja a la vista no hay campana', async () => {
+      const { result } = renderHook(() => usePushOptIn())
+      await waitFor(() => expect(result.current.stripVisible).toBe(true))
+      expect(result.current.showBell).toBe(false)
+    })
+
+    it('«Más tarde»: la franja se cierra y aparece la campana CON punto', async () => {
+      const { result } = renderHook(() => usePushOptIn())
+      await waitFor(() => expect(result.current.stripVisible).toBe(true))
+      act(() => result.current.remindLater())
+      expect(result.current.stripVisible).toBe(false)
+      expect(result.current.showBell).toBe(true)
+      expect(result.current.bellHasDot).toBe(true)
+    })
+
+    it('«✕»: la franja no vuelve y la campana queda SIN punto', async () => {
+      const { result } = renderHook(() => usePushOptIn())
+      await waitFor(() => expect(result.current.stripVisible).toBe(true))
+      act(() => result.current.dismiss())
+      expect(result.current.stripVisible).toBe(false)
+      expect(result.current.showBell).toBe(true)
+      expect(result.current.bellHasDot).toBe(false)
+    })
+
+    it('descartada para siempre en una sesión nueva: sin franja pero con la campana sin punto', async () => {
+      localStorage.setItem('push-opt-in-dismissed', '1')
+      const { result } = renderHook(() => usePushOptIn())
+      await waitFor(() => expect(result.current.showBell).toBe(true))
+      expect(result.current.shouldShow).toBe(false)
+      expect(result.current.bellHasDot).toBe(false)
+    })
+
+    it.each(['denied', 'granted'] as const)('permiso %s: ni franja ni campana', async (permission) => {
+      mockPushSubscription({ permission })
+      const { result } = renderHook(() => usePushOptIn())
+      await waitFor(() => expect(result.current.stripVisible).toBe(false))
+      expect(result.current.showBell).toBe(false)
+    })
+
+    it.each(['REPARTIDOR', 'SELLADOR'])('%s no ve ni la franja ni la campana', async (role) => {
+      mockSession(role)
+      const { result } = renderHook(() => usePushOptIn())
+      await waitFor(() => expect(result.current.stripVisible).toBe(false))
+      expect(result.current.showBell).toBe(false)
+    })
+
+    it('iOS sin standalone: ni franja ni campana', async () => {
+      mockedIsIosDevice.mockReturnValue(true)
+      mockedIsStandaloneMode.mockReturnValue(false)
+      const { result } = renderHook(() => usePushOptIn())
+      await waitFor(() => expect(result.current.stripVisible).toBe(false))
+      expect(result.current.showBell).toBe(false)
+    })
+
+    it('mientras se activa desde la franja el estado es activating y la franja sigue visible', async () => {
+      const subscribe = vi.fn().mockResolvedValue(undefined)
+      mockPushSubscription({ subscribe })
+      const { result, rerender } = renderHook(() => usePushOptIn())
+      await waitFor(() => expect(result.current.stripVisible).toBe(true))
+      await act(async () => {
+        await result.current.accept()
+      })
+      mockPushSubscription({ subscribe, loading: true, permission: 'granted' })
+      rerender()
+      expect(result.current.status).toBe('activating')
+      expect(result.current.stripVisible).toBe(true)
+      expect(result.current.panelActive).toBe(false)
+    })
+
+    it('éxito: pasa a success, mantiene la franja y se cierra sola a los 2,5 s', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        const subscribe = vi.fn().mockResolvedValue(undefined)
+        mockPushSubscription({ subscribe })
+        const { result, rerender } = renderHook(() => usePushOptIn())
+        await waitFor(() => expect(result.current.stripVisible).toBe(true))
+        await act(async () => {
+          await result.current.accept()
+        })
+        mockPushSubscription({ subscribe, permission: 'granted', subscribed: true })
+        rerender()
+        expect(result.current.status).toBe('success')
+        expect(result.current.stripVisible).toBe(true)
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2600)
+        })
+        expect(result.current.status).toBe('idle')
+        expect(result.current.stripVisible).toBe(false)
+        expect(result.current.showBell).toBe(false)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('error de la suscripción (p. ej. clave VAPID ausente) ahora se muestra: status error', async () => {
+      const subscribe = vi.fn().mockResolvedValue(undefined)
+      mockPushSubscription({ subscribe })
+      const { result, rerender } = renderHook(() => usePushOptIn())
+      await waitFor(() => expect(result.current.stripVisible).toBe(true))
+      await act(async () => {
+        await result.current.accept()
+      })
+      mockPushSubscription({ subscribe, permission: 'granted', error: 'Clave VAPID no configurada' })
+      rerender()
+      expect(result.current.status).toBe('error')
+      expect(result.current.stripVisible).toBe(true)
+    })
+
+    it('permiso denegado tras «Activar»: error con blocked, la franja sigue y «Cerrar» (clearAttempt) la quita', async () => {
+      const subscribe = vi.fn().mockResolvedValue(undefined)
+      mockPushSubscription({ subscribe })
+      const { result, rerender } = renderHook(() => usePushOptIn())
+      await waitFor(() => expect(result.current.stripVisible).toBe(true))
+      await act(async () => {
+        await result.current.accept()
+      })
+      mockPushSubscription({ subscribe, permission: 'denied', error: 'Permiso de notificaciones denegado' })
+      rerender()
+      expect(result.current.status).toBe('error')
+      expect(result.current.blocked).toBe(true)
+      expect(result.current.stripVisible).toBe(true)
+      act(() => result.current.clearAttempt())
+      expect(result.current.status).toBe('idle')
+      expect(result.current.stripVisible).toBe(false)
+      expect(result.current.showBell).toBe(false)
+    })
+
+    it('«Activar» desde el panel: los estados van al panel (panelActive), no a la franja, y la campana se mantiene aunque el permiso cambie', async () => {
+      const subscribe = vi.fn().mockResolvedValue(undefined)
+      mockPushSubscription({ subscribe })
+      const { result, rerender } = renderHook(() => usePushOptIn())
+      await waitFor(() => expect(result.current.stripVisible).toBe(true))
+      act(() => result.current.remindLater())
+      await act(async () => {
+        await result.current.acceptFromPanel()
+      })
+      mockPushSubscription({ subscribe, permission: 'denied', error: 'Permiso de notificaciones denegado' })
+      rerender()
+      expect(result.current.panelActive).toBe(true)
+      expect(result.current.stripVisible).toBe(false)
+      expect(result.current.showBell).toBe(true)
+      expect(result.current.status).toBe('error')
+    })
+
+    it('«Más tarde» tras un error limpia el intento', async () => {
+      const subscribe = vi.fn().mockRejectedValue(new Error('x'))
+      mockPushSubscription({ subscribe })
+      const { result } = renderHook(() => usePushOptIn())
+      await waitFor(() => expect(result.current.stripVisible).toBe(true))
+      await act(async () => {
+        await result.current.accept()
+      })
+      await waitFor(() => expect(result.current.status).toBe('error'))
+      act(() => result.current.remindLater())
+      expect(result.current.status).toBe('idle')
+      expect(result.current.showBell).toBe(true)
+    })
+  })
 })

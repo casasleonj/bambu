@@ -61,16 +61,19 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
 
     await page.getByRole('button', { name: 'Contar Efectivo Físico' }).click()
     await page.getByRole('button', { name: 'Sumar 1 a $10.000', exact: true }).click()
+    // #624: la moneda de $1.000 se cuenta y suma al total físico (10.000 + 3 × 1.000 = 13.000)
+    for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Sumar 1 a $1.000', exact: true }).click()
+    await expect(page.getByText(/^\$3[.,]000$/)).toBeVisible() // el separador depende del idioma del navegador
     await page.getByRole('button', { name: /Terminar conteo/ }).click()
     await page.getByRole('button', { name: 'Cerrar Día', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: 'Confirmar cierre del día' })
     await expect(dialog.getByRole('button', { name: 'Confirmar cierre', exact: true })).toBeDisabled()
     // #601: se confirma el conteo del efectivo contra el efectivo que debe haber (base 10.000 + Pago 5.000
-    // + abono 5.000 = 20.000); se contaron 10.000, así que faltan 10.000.
+    // + abono 5.000 = 20.000); se contaron 13.000 (un billete de 10.000 y 3 monedas de 1.000), así que faltan 7.000.
     await expect(dialog.getByText(/Después de cerrar no podrás cambiar/)).toBeVisible()
     await expect(dialog.locator('dl > div').filter({ hasText: 'Efectivo que debe haber' })).toContainText('20.000')
-    await expect(dialog.locator('dl > div').filter({ hasText: 'Efectivo contado' })).toContainText('10.000')
-    await expect(dialog.locator('dl > div').filter({ hasText: 'Diferencia' })).toContainText(/Falta\s*\$\s*10\.000/)
+    await expect(dialog.locator('dl > div').filter({ hasText: 'Efectivo contado' })).toContainText('13.000')
+    await expect(dialog.locator('dl > div').filter({ hasText: 'Diferencia' })).toContainText(/Falta\s*\$\s*7\.000/)
     // El backdrop debe interceptar también la barra fija inferior, sin dejar
     // controles de la página por encima de una confirmación financiera.
     const cobertura = await page.evaluate(() => {
@@ -94,7 +97,7 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     const guardado = await prisma.cierreDia.findUniqueOrThrow({ where: { fecha: new Date(`${fecha}T00:00:00-05:00`) } })
     expect(Number(guardado.totalVentas)).toBe(20000)
     expect(Number(guardado.netoCaja)).toBe(20000)
-    expect(guardado.reporte).toMatchObject({ _version: '2.1', cobroVentasHoy: 5000, cobroCartera: 5000, salarios: 0, totalContado: 10000, netoCaja: 20000, efectivoEsperado: 20000, diferenciaArqueo: -10000 })
+    expect(guardado.reporte).toMatchObject({ _version: '2.2', cobroVentasHoy: 5000, cobroCartera: 5000, salarios: 0, totalContado: 13000, netoCaja: 20000, efectivoEsperado: 20000, diferenciaArqueo: -7000, arqueo: { 10000: 1, 1000: 3 } })
     await page.reload()
     await expect(page.getByTestId('cierre-kpi-cobros')).toContainText('10.000')
     await capturar(page, testInfo, 'registrado')

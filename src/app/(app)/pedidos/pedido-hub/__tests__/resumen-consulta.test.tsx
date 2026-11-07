@@ -43,7 +43,7 @@ describe("ResumenConsulta colapsable", () => {
     render(<ResumenConsulta resumen={resumen} filtros={filtros} />);
     const boton = screen.getByTestId("consulta-resumen-alternar");
     expect(boton).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByTestId("consulta-resumen-linea")).toHaveTextContent("Saldo");
+    expect(screen.getByTestId("consulta-resumen-linea")).toHaveTextContent("Por cobrar de lo entregado");
     expect(document.getElementById("consulta-resumen-detalle")).toHaveAttribute("hidden");
   });
 

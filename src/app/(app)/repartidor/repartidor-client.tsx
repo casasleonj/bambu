@@ -21,12 +21,14 @@ import { compressImage } from '@/lib/image-compress'
 import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 import { DireccionIndicator } from '@/components/direccion-indicator'
 import { EntregaCobroSheet, type PedidoParaEntregar } from './entrega-cobro-sheet'
+import { numeroVisibleEmbarque } from '@/lib/embarque-numero'
 
 interface RepartidorClientProps {
   trabajador: { id: string; nombre: string }
   embarque: {
     id: string
     numero: number
+    numeroDia?: number
     estado?: string
     ruta?: { nombre: string } | null
     pacasAgua: number
@@ -461,7 +463,7 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
         <div className="bg-white rounded-xl shadow p-4">
           <div className="flex justify-between items-start mb-3">
             <div>
-              <div className="text-sm text-gray-500">Embarque #{embarque.numero}</div>
+              <div className="text-sm text-gray-500">Embarque #{numeroVisibleEmbarque(embarque)}</div>
               <div className="text-lg font-bold text-gray-800">{embarque.ruta?.nombre || 'Sin ruta'}</div>
             </div>
             <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">ABIERTO</span>

@@ -10,6 +10,8 @@ import { unidadesEntregadasDelDia } from '@/lib/unidades-entregadas-dia'
 import { resolverStockInicial } from '@/lib/stock-inicial'
 import { PAGO_DE_PEDIDO_VIGENTE } from '@/lib/pago-confirmacion'
 import { desglosarCobros, detallarPorConfirmar, listarFiadosDelDia, listarGastosDelDia } from '@/lib/cierre-desglose-cobros'
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
+import { valorEntregadoPedidoCentavos, importesEntregaPedido } from '@/lib/valor-entregado-pedido'
 
 type PagoMetodoMonto = { metodo: MetodoPago; monto: unknown }
 
@@ -63,7 +65,6 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
       pedidosNoEntregados,
       pedidosAnulados,
       clientesNuevos,
-      ventasPorOrigenRaw,
       descuentos,
       pagosReportadosHoyRaw,
       reportadosDiasPreviosAgg,
@@ -81,7 +82,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
           estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] },
         },
         // #631: el nombre del cliente es para la lista «A quién se fió hoy».
-        include: { cliente: { select: { nombre: true, apellido: true } } },
+        include: { cliente: { select: { nombre: true, apellido: true } }, items: true },
         // F-B: los métodos de pago ya no salen de aquí (ver `pagosCapturadosHoy`).
       }),
       // #645: puede haber varias producciones el mismo día (otro sellador u otro turno); el cierre las suma.
@@ -123,16 +124,6 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         where: { fecha: dateRange, estadoEntrega: EstadoEntrega.ANULADO },
       }),
       prisma.cliente.count({ where: { createdAt: dateRange } }),
-      prisma.pedido.groupBy({
-        by: ['origen'],
-        where: {
-          fecha: dateRange,
-          estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] },
-        },
-        orderBy: { origen: 'asc' },
-        _sum: { total: true },
-        _count: true,
-      }),
       prisma.descuentoRepartidor.findMany({
         where: { fecha: dateRange },
         include: { trabajador: { select: { nombre: true } } },
@@ -190,7 +181,8 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
     const ventas = resumirVentasCierre(pedidos, notasCredito, startOfDay)
     const { totalVentas, totalNotasCredito: totalNC } = ventas
     const cobrado = pedidos.reduce((acc, p) => acc + Number(p.totalPagado), 0)
-    const fiado = pedidos.reduce((acc, p) => acc + Number(p.saldo), 0)
+    const exigibles = await leerExigibles(prisma, { id: { in: pedidos.map(p => p.id) } })
+    const fiado = pedidos.reduce((acc, p) => acc + Math.round((exigibles.get(p.id) ?? 0) * 100), 0) / 100
 
     // F-B: métodos de pago = CAJA, por fecha de captura (`pagosCapturadosHoy`),
     // no por `pedido.pagos` (que sería por `pedido.fecha`).
@@ -255,7 +247,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
       pagosCapturadosHoy.map((pg) => ({ metodo: pg.metodo, monto: pg.monto, pedidoFecha: pg.pedido.fecha })),
       startOfDay, endOfDay, abonos, cobroVentasHoy + cobroCartera,
     )
-    const fiadosDelDia = listarFiadosDelDia(pedidos)
+    const fiadosDelDia = listarFiadosDelDia(pedidos.map(p => ({ ...p, exigible: exigibles.get(p.id) ?? 0 })))
     const gastosDelDia = listarGastosDelDia(gastosLista)
 
     const facturasPagadas = facturas.filter(f => f.estado === EstadoFactura.PAGADA)
@@ -263,11 +255,15 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
     const facturasPorCobrar = facturas.filter(f => f.estado === EstadoFactura.EMITIDA)
     const facturasAnuladas = facturas.filter(f => f.estado === EstadoFactura.ANULADA)
 
-    const ventasPorOrigen = ventasPorOrigenRaw.map(v => ({
-      origen: v.origen,
-      total: Number(v._sum?.total) || 0,
-      count: v._count,
-    }))
+    const porOrigen = new Map<string, { origen: string; centavos: number; count: number }>()
+    for (const p of pedidos) {
+      const fila = porOrigen.get(p.origen) ?? { origen: p.origen, centavos: 0, count: 0 }
+      fila.centavos += valorEntregadoPedidoCentavos(p)
+      fila.count++
+      porOrigen.set(p.origen, fila)
+    }
+    const ventasPorOrigen = [...porOrigen.values()].sort((a, b) => a.origen.localeCompare(b.origen))
+      .map(v => ({ origen: v.origen, total: v.centavos / 100, count: v.count }))
 
     const status = embarquesAbiertos.length > 0 ? 'INCOMPLETO' : 'COMPLETO'
 
@@ -343,8 +339,11 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         abonosIndependientes: abonos.abonosIndependientes,
         ajustesDeCobros: abonos.ajustesDeCobros,
         fiado,
+        parcialesPorConciliar: pedidos.filter(p => importesEntregaPedido({ ...p, exigible: exigibles.get(p.id) ?? 0 }).porConciliar)
+          .map(p => ({ pedidoId: p.id, numero: p.numero })),
         totalNotasCredito: totalNC,
         ventasDePedidosDelDia: ventas.ventasDePedidosDelDia,
+        valorComercialPedidosDelDia: ventas.valorComercialPedidosDelDia,
         notasCreditoVentasAnteriores: ventas.notasCreditoVentasAnteriores,
         notasCreditoSinAjusteVentas: ventas.notasCreditoSinAjusteVentas,
 

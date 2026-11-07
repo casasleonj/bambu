@@ -34,7 +34,15 @@ vi.mock('@/components/connectivity-indicator', () => ({
   ConnectivityIndicator: () => <div data-testid="connectivity-indicator" />,
 }))
 
+vi.mock('@/components/push-opt-in-provider', () => ({
+  usePushOptInContext: vi.fn(() => null),
+}))
+vi.mock('@/components/push-opt-in-bell', () => ({
+  PushOptInBell: () => <div data-testid="push-opt-in-bell-stub" />,
+}))
+
 import { Header } from '@/app/(app)/header'
+import { usePushOptInContext } from '@/components/push-opt-in-provider'
 
 describe('Header — toggle del drawer movil', () => {
   beforeEach(() => {
@@ -190,5 +198,21 @@ describe('Header — regresion mobile 2026-06-10: header SIN overflow-x-hidden',
     // Lo que importa: el header NO tiene clases de overflow.
     const headerClasses = header?.className || ''
     expect(headerClasses).not.toMatch(/overflow-(x|y)-hidden/)
+  })
+})
+
+describe('Header — fecha móvil con la campana de notificaciones (#595)', () => {
+  it('sin campana visible conserva la fecha corta tal cual', () => {
+    vi.mocked(usePushOptInContext).mockReturnValue(null)
+    render(<Header fechaLarga="lun, 2 nov 2026" fechaCorta="2 de nov" />)
+    expect(screen.getByText('2 de nov')).toBeInTheDocument()
+  })
+
+  it('con la campana visible acorta la fecha móvil a «2 nov» y renderiza la campana', () => {
+    vi.mocked(usePushOptInContext).mockReturnValue({ showBell: true } as ReturnType<typeof usePushOptInContext>)
+    render(<Header fechaLarga="lun, 2 nov 2026" fechaCorta="2 de nov" />)
+    expect(screen.getByText('2 nov')).toBeInTheDocument()
+    expect(screen.queryByText('2 de nov')).toBeNull()
+    expect(screen.getByTestId('push-opt-in-bell-stub')).toBeInTheDocument()
   })
 })

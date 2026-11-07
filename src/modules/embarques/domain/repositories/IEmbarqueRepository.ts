@@ -70,4 +70,6 @@ export interface IEmbarqueRepository {
   }>, tx?: unknown): Promise<Embarque>
   delete(id: string, tx?: unknown): Promise<void>
   getNextNumeroDia(fecha: Date, tx?: unknown): Promise<number>
+  /** #427: número global del embarque, de la única secuencia `embarque_numero_seq`. */
+  getNextNumero(tx?: unknown): Promise<number>
 }

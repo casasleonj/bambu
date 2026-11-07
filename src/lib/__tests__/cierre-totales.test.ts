@@ -28,7 +28,7 @@ describe('cierre: conceptos financieros y conteo declarado', () => {
       { monto: 30000, pedido: { fecha: inicio } },
       { monto: 5000, pedido: { fecha: new Date('2026-03-11T12:00:00-05:00') } },
     ], inicio)
-    expect(r).toEqual({ ventasDePedidosDelDia: 280000, totalNotasCredito: 55000, notasCreditoVentasAnteriores: 20000, notasCreditoSinAjusteVentas: 35000, totalVentas: 260000 })
+    expect(r).toEqual({ valorComercialPedidosDelDia: 280000, ventasDePedidosDelDia: 280000, totalNotasCredito: 55000, notasCreditoVentasAnteriores: 20000, notasCreditoSinAjusteVentas: 35000, totalVentas: 260000 })
   })
   it('reducción comercial (#451): la nota sobre un pedido de hoy no resta otra vez; sobre uno de un día anterior sí', () => {
     const inicio = new Date('2026-03-10T00:00:00-05:00')
@@ -42,6 +42,13 @@ describe('cierre: conceptos financieros y conteo declarado', () => {
   it('calcula el conteo desde las denominaciones e ignora totales enviados', () => {
     expect(leerArqueoDeclarado(JSON.stringify({ arqueo: { 50000: 2, 2000: 3 }, totalContado: 999999, diferencia: 0 }), 100000))
       .toEqual({ arqueo: { 50000: 2, 2000: 3 }, totalContado: 106000, diferenciaArqueo: 6000 })
+  })
+  it('#624: acepta la moneda de $1.000 y suma su subtotal al total contado y a la diferencia', () => {
+    expect(leerArqueoDeclarado(JSON.stringify({ arqueo: { 1000: 7, 500: 2 } }), 7000))
+      .toEqual({ arqueo: { 1000: 7, 500: 2 }, totalContado: 8000, diferenciaArqueo: 1000 })
+  })
+  it.each([{ 1000: -1 }, { 1000: 1.5 }, { 1000: '3' }])('#624: rechaza conteos no válidos de la moneda de $1.000 %j', arqueo => {
+    expect(() => leerArqueoDeclarado(JSON.stringify({ arqueo }), 0)).toThrow('Arqueo inválido')
   })
   it.each([{ 50000: -1 }, { 50000: 0.5 }, { 1234: 2 }, { 100000: 1000000 }, { 50000: '2' }])('rechaza conteos no válidos %j', arqueo => {
     expect(() => leerArqueoDeclarado(JSON.stringify({ arqueo }), 0)).toThrow('Arqueo inválido')

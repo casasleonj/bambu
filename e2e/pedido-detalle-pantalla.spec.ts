@@ -27,7 +27,7 @@ test.describe('Pantalla de detalle del pedido (P1-1 PR B)', () => {
     const detalle = appMain(page).getByTestId('pedido-detalle')
     await expect(detalle).toBeVisible({ timeout: 20000 })
 
-    await expect(detalle.getByTestId('detalle-dinero').getByText('Total Pedido', { exact: true })).toBeVisible()
+    await expect(detalle.getByTestId('detalle-dinero').getByText('Valor comercial del pedido', { exact: true })).toBeVisible()
     await expect(detalle.getByTestId('detalle-productos')).toContainText('2 und')
     await expect(detalle.getByTestId('detalle-obs')).toContainText('Dejar con el portero')
     await expect(detalle.getByTestId('detalle-contacto').getByRole('link', { name: /WhatsApp/ })).toHaveAttribute('href', `https://wa.me/57${ped.telefono}`)

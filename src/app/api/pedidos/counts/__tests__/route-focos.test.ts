@@ -1,6 +1,7 @@
 // @tests Fase 4a del Pedido Hub — GET /api/pedidos/counts extendido con los
 // conteos que faltan para los focos de la cabecera (blueprint §2.2).
-// Aditivo: no toca los 4 conteos previos. Guardrail estático sobre el fuente.
+// Contrato de campos. Los cálculos de clientes/pedidos/importe se verifican
+// con handlers reales en integration/parciales-proyecciones-656.test.ts.
 
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
@@ -23,17 +24,6 @@ describe('GET /api/pedidos/counts — focos del Hub', () => {
 
   it('enRuta se cuenta por estadoEntrega EN_RUTA', () => {
     expect(src).toMatch(/estadoEntrega:\s*['"]EN_RUTA['"]/)
-  })
-
-  it('esperandoPagoTotal suma saldo de ENTREGADO con saldo > 0 excluyendo CONSUMIDOR_FINAL', () => {
-    expect(src).toMatch(/CANONICAL_CONSUMIDOR_FINAL_ID/)
-    expect(src).toMatch(/_sum:\s*\{\s*saldo:\s*true\s*\}/)
-  })
-
-  it('O-4 (F10a): esperandoPagoCount sale del MISMO aggregate que el total (mismo alcance global)', () => {
-    expect(src).toMatch(/_count:\s*\{\s*_all:\s*true\s*\}/)
-    expect(src).toMatch(/esperandoPagoCount:\s*esperandoPagoAgg\._count\._all/)
-    expect(src).toMatch(/esperandoPagoTotal:\s*Number\(esperandoPagoAgg\._sum\.saldo/)
   })
 
   it('pendientesN2 se cuenta sobre ObligacionPendiente ABIERTA', () => {

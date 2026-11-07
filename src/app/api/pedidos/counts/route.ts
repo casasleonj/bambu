@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
@@ -7,6 +8,7 @@ import { calcularAlertas } from '@/lib/alertas-detector'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 import { subDaysBogota } from '@/lib/dates'
 import { countPedidosAtrasadosSinAsignar, countPedidosHoyEnRiesgo } from '@/lib/pedidos-sin-asignar'
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
 
 export async function GET(_request: NextRequest) {
   const authResult = await requireAuth()
@@ -15,16 +17,22 @@ export async function GET(_request: NextRequest) {
   if (roleCheck instanceof Response) return roleCheck
 
   try {
-    // Fiados: pedidos entregados con saldo pendiente, agrupados por cliente.
-    const fiados = await prisma.pedido.findMany({
-      where: {
-        estadoEntrega: 'ENTREGADO',
-        saldo: { gt: 0 },
-        clienteId: { not: CANONICAL_CONSUMIDOR_FINAL_ID },
-      },
-      select: { clienteId: true },
-      distinct: ['clienteId'],
-    })
+    // #656: clientes, pedidos e importe salen de la misma deuda entregada global.
+    const cartera = await prisma.$transaction(async tx => {
+      const where: Prisma.PedidoWhereInput = { saldo: { gt: 0 },
+        estadoEntrega: { notIn: ['CANCELADO', 'ANULADO'] },
+        clienteId: { not: CANONICAL_CONSUMIDOR_FINAL_ID } }
+      const [exigibles, titulares] = await Promise.all([
+        leerExigibles(tx, where),
+        tx.pedido.findMany({ where, select: { id: true, clienteId: true } }),
+      ])
+      const conDeuda = titulares.filter(p => (exigibles.get(p.id) ?? 0) > 0)
+      return {
+        clientes: new Set(conDeuda.map(p => p.clienteId)).size,
+        pedidos: conDeuda.length,
+        total: conDeuda.reduce((s, p) => s + Math.round((exigibles.get(p.id) ?? 0) * 100), 0) / 100,
+      }
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 15000 })
 
     // Alertas: detector necesita un subconjunto de campos. Limitamos a 365 días
     // para evitar full table scan en producción mientras mantenemos casi total
@@ -74,24 +82,13 @@ export async function GET(_request: NextRequest) {
       orderBy: { fecha: 'desc' },
     })
 
-    const [atrasadosCount, enRiesgoCount, porPlanificarCount, enRutaCount, esperandoPagoAgg, pendientesN2Count] = await Promise.all([
+    const [atrasadosCount, enRiesgoCount, porPlanificarCount, enRutaCount, pendientesN2Count] = await Promise.all([
       countPedidosAtrasadosSinAsignar(),
       countPedidosHoyEnRiesgo(),
       // Foco "Por planificar" — PENDIENTE sin embarque (hoy o atrasados) (blueprint §2.2)
       prisma.pedido.count({ where: { estadoEntrega: 'PENDIENTE', embarqueId: null } }),
       // Foco "En ruta" (blueprint §2.2)
       prisma.pedido.count({ where: { estadoEntrega: 'EN_RUTA' } }),
-      // Foco "Esperando pago" — cantidad y $ total de saldo pendiente de
-      // pedidos entregados (mismo alcance global para ambos: O-4, F10a)
-      prisma.pedido.aggregate({
-        _sum: { saldo: true },
-        _count: { _all: true },
-        where: {
-          estadoEntrega: 'ENTREGADO',
-          saldo: { gt: 0 },
-          clienteId: { not: CANONICAL_CONSUMIDOR_FINAL_ID },
-        },
-      }),
       // Foco "Pendientes (N2)" — obligaciones de cumplimiento parcial activas
       prisma.obligacionPendiente.count({ where: { estado: 'ABIERTA' } }),
     ])
@@ -131,14 +128,14 @@ export async function GET(_request: NextRequest) {
     )
 
     return apiSuccess({
-      fiadosCount: fiados.length,
+      fiadosCount: cartera.clientes,
       alertasCount: alertas.length,
       atrasadosCount,
       enRiesgoCount,
       porPlanificarCount,
       enRutaCount,
-      esperandoPagoCount: esperandoPagoAgg._count._all,
-      esperandoPagoTotal: Number(esperandoPagoAgg._sum.saldo ?? 0),
+      esperandoPagoCount: cartera.pedidos,
+      esperandoPagoTotal: cartera.total,
       pendientesN2Count,
     })
   } catch (error) {

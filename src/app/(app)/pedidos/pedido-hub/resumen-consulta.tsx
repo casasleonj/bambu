@@ -177,7 +177,7 @@ export function ResumenConsulta({
                 Pagado <b>{money(r.pagado)}</b>
               </span>
               <span>
-                Saldo <b>{money(r.saldo)}</b>
+                Por cobrar de lo entregado <b>{(r.exigiblesPorConciliar ?? 0) > 0 ? "Por conciliar" : money(r.fiado)}</b>
               </span>
             </>
           )}
@@ -318,9 +318,11 @@ export function ResumenConsulta({
                   "Acumulado de estos pedidos hasta la consulta.",
                 ],
                 [
-                  "⏳ Saldo por cobrar",
-                  r.saldo,
-                  `${r.fiado ? `Entregados / fiados: ${money(r.fiado)}. ` : ""}${r.pendienteEntrega ? `Por entregar: ${money(r.pendienteEntrega)}.` : ""}${r.saldo === 0 ? "Sin saldo pendiente." : ""}`,
+                  "⏳ Por cobrar de lo entregado",
+                  r.fiado,
+                  (r.exigiblesPorConciliar ?? 0) > 0
+                    ? `Subtotal identificado; ${r.exigiblesPorConciliar} entregas necesitan conciliación. No es un total definitivo.`
+                    : `${r.pendienteEntrega ? `Saldo de mercancía pendiente de entrega: ${money(r.pendienteEntrega)}.` : ""}${r.saldo === 0 ? "Sin saldo pendiente." : ""}`,
                 ],
               ].map(([label, valor, nota]) => (
                 <div

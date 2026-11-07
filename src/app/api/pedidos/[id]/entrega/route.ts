@@ -15,6 +15,7 @@ import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
 import { uploadBase64Foto, isBase64Image } from '@/lib/storage'
 import { sendPushToUser } from '@/lib/push'
+import { numeroVisibleEmbarque } from '@/lib/embarque-numero'
 
 export async function POST(
   request: NextRequest,
@@ -275,14 +276,14 @@ export async function POST(
         const emb = await prisma.embarque
           .findUnique({
             where: { id: result.embarqueLiberadoId },
-            select: { estado: true, numero: true, trabajador: { select: { userId: true } } },
+            select: { estado: true, numero: true, numeroDia: true, trabajador: { select: { userId: true } } },
           })
           .catch(() => null)
         const repartidorUserId = emb?.trabajador?.userId
         if (emb?.estado === 'EN_RUTA' && repartidorUserId) {
           void sendPushToUser(repartidorUserId, {
             title: 'Pedido retirado por el cliente',
-            body: `El pedido #${result.pedido.numero} fue retirado por el cliente; sale del embarque #${emb.numero}.`,
+            body: `El pedido #${result.pedido.numero} fue retirado por el cliente; sale del embarque #${numeroVisibleEmbarque(emb)}.`,
             url: '/repartidor',
             tag: `embarque-ruta-modificado-${result.embarqueLiberadoId}`,
           })

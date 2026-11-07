@@ -1,27 +1,9 @@
 import { test, expect, type Page } from '@playwright/test'
-
-/**
- * Estampa Notification.permission ANTES de que cargue cualquier JS de la
- * página (addInitScript corre en cada navegación subsiguiente del mismo
- * page/context), simulando los 3 estados que expone el navegador real.
- * usePushSubscription() lee Notification.permission de forma síncrona en
- * su lazy initializer al montar, así que no requiere disparar
- * `visibilitychange` para reflejar el estado stubbeado.
- */
-async function stubNotificationPermission(page: Page, permission: NotificationPermission) {
-  await page.addInitScript((perm) => {
-    if (typeof window.Notification === 'undefined') {
-      // @ts-expect-error - stub mínimo para navegadores/entornos sin Notification
-      window.Notification = function Notification() {}
-    }
-    Object.defineProperty(window.Notification, 'permission', {
-      value: perm,
-      configurable: true,
-    })
-  }, permission)
-}
+import { skipBaseCaja } from '../fixtures'
+import { stubNotificationPermission } from './browser-permissions'
 
 async function login(page: Page) {
+  await skipBaseCaja(page)
   await page.goto('/login')
   await page.fill('input[type="text"]', 'admin')
   await page.fill('input[type="password"]', 'admin123')
@@ -30,7 +12,7 @@ async function login(page: Page) {
 }
 
 test.describe('push permission flow en /configuracion', () => {
-  test('permission=default muestra estado Inactivas con boton para activar', async ({ page }) => {
+  test('permission=default muestra estado Inactivas con boton para activar', async ({ page }, testInfo) => {
     await stubNotificationPermission(page, 'default')
     await login(page)
     await page.goto('/configuracion')
@@ -39,6 +21,11 @@ test.describe('push permission flow en /configuracion', () => {
     await expect(settings).toBeVisible()
     await expect(settings).toContainText('Inactivas')
     await expect(settings.getByRole('button', { name: 'Activar notificaciones' })).toBeEnabled()
+    if (testInfo.project.name === 'chromium-mobile') {
+      // El proyecto simula iOS sin standalone: tampoco se ofrece el aviso
+      // con permiso pendiente. La configuración visible confirma el mount.
+      await expect(page.getByTestId('push-opt-in-strip')).not.toBeVisible()
+    }
   })
 
   test('permission=granted no muestra estado bloqueado', async ({ page }) => {
@@ -89,12 +76,16 @@ test.describe('push permission flow en /configuracion', () => {
   test('el opt-in toast no aparece cuando el permiso ya fue resuelto (granted)', async ({ page }) => {
     await stubNotificationPermission(page, 'granted')
     await login(page)
-    await expect(page.locator('[data-testid="push-opt-in-toast"]')).not.toBeVisible()
+    await page.goto('/configuracion')
+    await expect(page.getByTestId('push-settings')).toContainText('Permitido')
+    await expect(page.locator('[data-testid="push-opt-in-strip"]')).not.toBeVisible()
   })
 
   test('el opt-in toast no aparece cuando el permiso esta denegado', async ({ page }) => {
     await stubNotificationPermission(page, 'denied')
     await login(page)
-    await expect(page.locator('[data-testid="push-opt-in-toast"]')).not.toBeVisible()
+    await page.goto('/configuracion')
+    await expect(page.getByTestId('push-settings')).toContainText('Bloqueadas')
+    await expect(page.locator('[data-testid="push-opt-in-strip"]')).not.toBeVisible()
   })
 })

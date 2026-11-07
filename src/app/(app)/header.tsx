@@ -1,5 +1,7 @@
 'use client'
 
+import { PushOptInBell } from '@/components/push-opt-in-bell'
+import { usePushOptInContext } from '@/components/push-opt-in-provider'
 import { useState, useRef } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
@@ -26,6 +28,11 @@ interface HeaderProps {
 }
 
 export function Header({ fechaLarga, fechaCorta }: HeaderProps) {
+  // #595: con la campana visible el encabezado móvil acorta la fecha («2 nov» en vez de
+  // «2 de nov») y oculta el icono de calendario para que quepan menú, título completo,
+  // estado, fecha, campana y perfil.
+  const campanaVisible = usePushOptInContext()?.showBell ?? false
+  const fechaMovil = campanaVisible ? fechaCorta.replace(' de ', ' ') : fechaCorta
   // FIX Fase 4 §6.4: el botón hamburguesa del header decide según el
   // breakpoint qué estado toggle:
   // - Móvil: abre/cierra el drawer temporal (mobileDrawerOpen)
@@ -116,12 +123,13 @@ export function Header({ fechaLarga, fechaCorta }: HeaderProps) {
       </div>
       <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-shrink-0">
         <ConnectivityIndicator />
+        <PushOptInBell />
         <div className="flex items-center gap-1.5 bg-blue-700/40 px-2 sm:px-3 py-1.5 rounded-lg whitespace-nowrap">
-          <svg className="w-3.5 h-3.5 text-blue-200 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className={`w-3.5 h-3.5 text-blue-200 flex-shrink-0 ${campanaVisible ? 'hidden sm:block' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
           <span className="text-xs sm:text-sm font-medium text-white/90 sm:hidden">
-            {fechaCorta}
+            {fechaMovil}
           </span>
           <span className="text-xs sm:text-sm font-medium text-white/90 hidden sm:inline">
             {fechaLarga}

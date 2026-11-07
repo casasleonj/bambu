@@ -100,7 +100,9 @@ describe('#660 reducción y conservación física/financiera', () => {
     expect(despues.cierre.aguaVendida).toBe(cierre.cierre.aguaVendida)
     expect(despues.cierre.cobrado).toBe(cierre.cierre.cobrado)
     expect(despues.cierre.cobroVentasHoy).toBe(cierre.cierre.cobroVentasHoy)
-    expect(despues.cierre.totalVentas).toBe(cierre.cierre.totalVentas - p.precio * 15)
+    // #656: lo no entregado ya estaba fuera de las ventas. Solo baja el compromiso comercial.
+    expect(despues.cierre.totalVentas).toBe(cierre.cierre.totalVentas)
+    expect(despues.cierre.valorComercialPedidosDelDia).toBe(cierre.cierre.valorComercialPedidosDelDia - p.precio * 15)
     expect(await db.pago.findMany({ where: { pedidoId: p.id } })).toEqual(pagos)
     const nota = await db.notaCredito.findUniqueOrThrow({ where: { id: ap.notaCreditoId } })
     expect(Number(nota.monto)).toBe(p.precio * 15)
