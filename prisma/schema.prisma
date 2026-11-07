@@ -1273,7 +1273,14 @@ model Embarque {
   id           String         @id @default(cuid())
   createdById  String?
   createdBy    User?          @relation("EmbarqueCreador", fields: [createdById], references: [id])
+  // El DEFAULT real es nextval('embarque_numero_seq'), la misma secuencia que usa
+  // getNextNumero (#427, migración 20261103). Unicidad: índice UNIQUE parcial
+  // "WHERE NOT numeroColisionHistorica" (no expresable aquí). Lo que ve la gente
+  // es `numeroDia` (ver src/lib/embarque-numero.ts).
   numero       Int            @default(autoincrement())
+  // true solo en las filas que repitieron un número antes de #427; lo asigna la
+  // migración 20261103 y un trigger impide asignarlo después.
+  numeroColisionHistorica Boolean @default(false)
   numeroDia    Int            @default(0)
   fecha        DateTime       @default(now()) @db.Timestamptz()
   trabajadorId String
