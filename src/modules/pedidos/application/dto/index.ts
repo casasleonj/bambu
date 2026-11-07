@@ -109,6 +109,8 @@ export interface EntregaOficinaInput {
   recibioDinero?: 'REPARTIDOR' | 'OFICINA'
   /** Cuándo se entregó (no futura, hasta 7 días atrás, no un día ya cerrado). */
   fechaEntrega: Date
+  /** Si se omitió en el envío, el reloj del servidor no forma parte de la clave de reintento. */
+  fechaEntregaGenerada?: boolean
   /** Nota del administrador (queda en `adminOverrideNota`). */
   nota?: string
   /** Hasta cuándo promete pagar el saldo. Obligatoria si queda debiendo. */

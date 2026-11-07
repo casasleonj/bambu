@@ -21,6 +21,8 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
   })
 
   async function preparar(legado = false) {
+    // #666: el efectivo inicial ya no se escribe en la sección 2; viene de la base de caja del día (Config BASE_DIA_<fecha>)
+    await prisma.config.upsert({ where: { clave: `BASE_DIA_${fecha}` }, update: { valor: '10000' }, create: { clave: `BASE_DIA_${fecha}`, valor: '10000' } })
     const cliente = await prisma.cliente.create({ data: { nombre: 'Cliente sintético cierre', telefono: randomUUID(), direccion: 'Prueba' } })
     const pedido = await prisma.pedido.create({ data: {
       clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO', fecha: instante,
@@ -48,9 +50,12 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     await goto(page, `/cierre?fecha=${fecha}`)
     await expect(page.getByTestId('cierre-kpi-ventas')).toContainText('20.000')
     await expect(page.getByTestId('cierre-kpi-cobros')).toContainText('10.000')
-    await page.getByLabel('Base de Caja', { exact: true }).fill('10000')
-    await page.getByLabel('Salarios', { exact: true }).fill('5000')
-    await expect(page.getByTestId('cierre-kpi-neto')).toContainText('15.000')
+    await expect(page.getByTestId('cierre-efectivo-esperado')).toContainText('Empezó con $ 10.000')
+    await expect(page.getByLabel('Efectivo con el que empezó el día', { exact: true })).toHaveCount(0) // #666: un solo lugar
+    // #644: el campo manual «Salarios» ya no existe
+    await expect(page.getByLabel('Salarios', { exact: true })).toHaveCount(0)
+    // #646: la respuesta es el efectivo que debe haber (10.000 + 5.000 de pago + 5.000 de abono); el «neto» ya no se muestra
+    await expect(page.getByTestId('efectivo-debe-haber')).toContainText('20.000')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await capturar(page, testInfo, 'revision')
 
@@ -60,8 +65,12 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     await page.getByRole('button', { name: 'Cerrar Día', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: 'Confirmar cierre del día' })
     await expect(dialog.getByRole('button', { name: 'Confirmar cierre', exact: true })).toBeDisabled()
-    await expect(dialog.getByText(/incluye pagos digitales/)).toBeVisible()
-    await expect(dialog.locator('dl > div').filter({ hasText: 'Salarios' })).toContainText('5.000')
+    // #601: se confirma el conteo del efectivo contra el efectivo que debe haber (base 10.000 + Pago 5.000
+    // + abono 5.000 = 20.000); se contaron 10.000, así que faltan 10.000.
+    await expect(dialog.getByText(/Después de cerrar no podrás cambiar/)).toBeVisible()
+    await expect(dialog.locator('dl > div').filter({ hasText: 'Efectivo que debe haber' })).toContainText('20.000')
+    await expect(dialog.locator('dl > div').filter({ hasText: 'Efectivo contado' })).toContainText('10.000')
+    await expect(dialog.locator('dl > div').filter({ hasText: 'Diferencia' })).toContainText(/Falta\s*\$\s*10\.000/)
     // El backdrop debe interceptar también la barra fija inferior, sin dejar
     // controles de la página por encima de una confirmación financiera.
     const cobertura = await page.evaluate(() => {
@@ -84,15 +93,15 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
 
     const guardado = await prisma.cierreDia.findUniqueOrThrow({ where: { fecha: new Date(`${fecha}T00:00:00-05:00`) } })
     expect(Number(guardado.totalVentas)).toBe(20000)
-    expect(Number(guardado.netoCaja)).toBe(15000)
-    expect(guardado.reporte).toMatchObject({ _version: '2.1', cobroVentasHoy: 5000, cobroCartera: 5000, salarios: 5000, totalContado: 10000, netoCaja: 15000 })
+    expect(Number(guardado.netoCaja)).toBe(20000)
+    expect(guardado.reporte).toMatchObject({ _version: '2.2', cobroVentasHoy: 5000, cobroCartera: 5000, salarios: 0, totalContado: 10000, netoCaja: 20000, efectivoEsperado: 20000, diferenciaArqueo: -10000 })
     await page.reload()
-    await expect(page.getByTestId('cierre-kpi-neto')).toContainText('15.000')
+    await expect(page.getByTestId('cierre-kpi-cobros')).toContainText('10.000')
     await capturar(page, testInfo, 'registrado')
     expect(await prisma.cierreDia.count()).toBe(1)
     await goto(page, `/cierre/reporte?fecha=${fecha}`)
     await expect(page.getByRole('button', { name: 'Imprimir / Guardar como PDF' })).toBeVisible()
-    await expect(page.getByRole('row').filter({ hasText: 'Total cobros de la fecha' })).toContainText('10.000')
+    await expect(page.getByRole('row').filter({ hasText: 'Dinero cobrado hoy' })).toContainText('10.000')
   })
 
   test('legado sin evidencia muestra referencias y bloquea solo la fecha afectada', async ({ page }, testInfo) => {

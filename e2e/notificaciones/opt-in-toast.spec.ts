@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test'
+import { skipBaseCaja } from '../fixtures'
+import { stubNotificationPermission } from './browser-permissions'
 
 test.describe('push opt-in toast', () => {
   test.beforeEach(async ({ page }, testInfo) => {
@@ -12,15 +14,19 @@ test.describe('push opt-in toast', () => {
       testInfo.project.name === 'chromium-mobile',
       'El opt-in toast no se muestra en iOS sin standalone (comportamiento esperado, no un bug)'
     )
+    await stubNotificationPermission(page, 'default')
+    // Preparar caja antes de probar el aviso: su modal intercepta los clics
+    // hasta que el aviso expira. Usar el fixture existente, nunca force (#567).
+    await skipBaseCaja(page)
     await page.goto('/login')
     await page.fill('input[type="text"]', 'admin')
     await page.fill('input[type="password"]', 'admin123')
     await page.click('button:has-text("Ingresar")')
     await expect(page).toHaveURL('/dashboard', { timeout: 5000 })
+    await expect(page.getByTestId('push-opt-in-strip')).toBeVisible()
   })
 
   test('muestra el toast de opt-in al iniciar sesion', async ({ page }) => {
-    await expect(page.locator('[data-testid="push-opt-in-strip"]')).toBeVisible({ timeout: 2000 })
     await expect(page.locator('[data-testid="push-opt-in-strip"]')).toContainText('Recibí alertas al instante')
   })
 
@@ -32,6 +38,8 @@ test.describe('push opt-in toast', () => {
   test('el toast no vuelve a aparecer en la misma sesion tras "Más tarde"', async ({ page }) => {
     await page.click('[data-testid="push-opt-in-later"]')
     await page.reload()
+    await page.goto('/configuracion')
+    await expect(page.getByTestId('push-settings')).toContainText('Pendiente de permiso')
     await expect(page.locator('[data-testid="push-opt-in-strip"]')).not.toBeVisible()
   })
 
@@ -48,5 +56,9 @@ test.describe('push opt-in toast', () => {
     await expect(page.locator('[data-testid="push-opt-in-strip"]')).not.toBeVisible()
     const dismissedFlag = await page.evaluate(() => localStorage.getItem('push-opt-in-dismissed'))
     expect(dismissedFlag).toBe('1')
+    await page.goto('/configuracion')
+    await page.reload()
+    await expect(page.getByTestId('push-settings')).toContainText('Pendiente de permiso')
+    await expect(page.getByTestId('push-opt-in-strip')).not.toBeVisible()
   })
 })

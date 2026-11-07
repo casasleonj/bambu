@@ -16,7 +16,7 @@ El ADMIN registra desde el pedido que se entregó, sin pasar por un embarque:
 - **Cuánto dinero y quién lo recibió** (`Pago.recibidoPorId`, `null` = oficina). Sin valor por
   defecto. La fecha del hecho va en `Pago.ocurridoAt` solo si no es hoy (#402); `createdAt` es
   siempre el registro.
-- **Fiado**: solo a un cliente real y con `promesaPagoFecha` futura. Nunca a `CONSUMIDOR_FINAL`.
+- **Fiado**: solo a un cliente real y con `promesaPagoFecha` de hoy en adelante. Nunca a `CONSUMIDOR_FINAL`. Con fiado parcial activo, la promesa también se exige al entregar parcialmente mercancía que queda sin pagar; no se exige por la mercancía aún pendiente ni cuando el anticipo ya cubre lo entregado. El diálogo usa su tarjeta de promesa existente y consulta esta capacidad al servidor (`gestion-admin/estado`), sin un flag público independiente. Si el servidor exige la promesa tras una pantalla desactualizada, vuelve al campo conservando las cantidades capturadas (#656; ajuste mínimo aprobado por el PO, preservando el diseño actual).
 - **Entrega parcial**: modelo de PR-1 de entrega parcial (el pedido sigue `PENDIENTE`, total y
   pagado intactos). La factura sigue al saldo del pedido en cuanto hay un cobro.
 - **Pedido dentro de un embarque**: sale del embarque en el mismo acto (auditado) y la comisión es
@@ -81,8 +81,7 @@ con antes/después y el motivo; un reintento con la misma clave no se aplica dos
 3. La nómina ya suma esta comisión (PR-2 de #472): un pedido a **domicilio**, **entregado por completo**, con
    `entregadoPorId` = el trabajador, **sin embarque** (`embarqueId` nulo) y `entregadoAt` dentro del período, cuenta con
    las mismas tarifas y la misma regla de tipo de pago (COMISIÓN/MIXTO con moto) que las entregas de embarque. Un pedido
-   que está en un embarque no se cuenta dos veces. Una entrega **parcial** no paga comisión hasta completarse, y la
-   comisión completa es de quien registró la entrega que la completó (un solo repartidor por pedido).
+   que está en un embarque no se cuenta dos veces. **Actualización #669:** las entregas parciales sin embarque sí cuentan por sus unidades efectivamente entregadas y documentadas, sin volver a comisionar el acumulado al completarse. Las fuentes ambiguas quedan por conciliar; no se atribuyen a un trabajador por suposición. La descripción inicial de PR-2 que esperaba a completar quedó sustituida por esa corrección.
 4. Encender la función desde **Configuración → «Gestión temporal sin embarques»** (solo el ADMIN la ve). Apagar pide confirmación;
    encender no. La tarjeta muestra el último cambio (quién y cuándo). Por debajo es `Config.GESTION_ADMIN_SIN_EMBARQUE`
    = `true`/`false`, que solo cambia un **ADMIN** por **cualquier** ruta (`POST /api/config` y `POST /api/config/section`;

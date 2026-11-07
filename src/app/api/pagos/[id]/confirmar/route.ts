@@ -56,13 +56,17 @@ export async function POST(
     const result = await withAdvisoryLock('PEDIDO', pagoPre.pedido.id, async (tx) => {
       const pago = await tx.pago.findUnique({
         where: { id: pagoId },
-        include: { pedido: { select: { id: true, numero: true, clienteId: true } } },
+        include: { pedido: { select: { id: true, numero: true, clienteId: true, estadoEntrega: true } } },
       })
       if (!pago) throw new Error('PAGO_NOT_FOUND')
 
       // Idempotente por estado.
       if (pago.confirmacion !== 'REPORTADO') {
         return { pago, deduped: true as const, responsibilityCaseId: null as string | null }
+      }
+      // #517: el pedido se anuló o canceló; su pago quedó compensado y ya no se confirma.
+      if (pago.pedido.estadoEntrega === 'ANULADO' || pago.pedido.estadoEntrega === 'CANCELADO') {
+        throw new Error('PEDIDO_CERRADO')
       }
 
       let responsibilityCaseId: string | null = null
@@ -120,6 +124,7 @@ export async function POST(
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown'
     if (msg === 'PAGO_NOT_FOUND') return apiError('Pago no encontrado', 404)
+    if (msg === 'PEDIDO_CERRADO') return apiError('El pedido está anulado o cancelado: su pago ya no se confirma', 409)
     logger.error({ err: msg, pagoId }, 'Error confirmando pago')
     return apiError('Error confirmando el pago', 500)
   }

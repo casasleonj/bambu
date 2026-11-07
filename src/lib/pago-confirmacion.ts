@@ -14,6 +14,15 @@
 
 export type ConfirmacionInicial = 'REPORTADO' | 'CONFIRMADO'
 
+/**
+ * #517: filtro de `Pago` para todo lo que muestra "por confirmar". El pago de un pedido
+ * anulado o cancelado ya quedó compensado (nota crédito / reversión) y no se confirma:
+ * no va en la cola, no cuenta en el cierre ni lo marca la regla V9.
+ */
+export const PAGO_DE_PEDIDO_VIGENTE = {
+  pedido: { estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] as ('ANULADO' | 'CANCELADO')[] } },
+}
+
 /** Métodos que nacen `REPORTADO` salvo override de Config (ADR §2). */
 export const METODOS_REQUIEREN_CONFIRMACION_DEFAULT = [
   'NEQUI',

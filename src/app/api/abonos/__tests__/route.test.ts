@@ -18,13 +18,13 @@ describe('FIX abono-sin-entrega: guard de estadoEntrega dentro del lock', () => 
     expect(source).toMatch(/tx\.pedido\.findUnique\(\{\s*where:\s*\{\s*id:\s*factura\.pedidoId\s*\}/)
   })
 
-  it('el guard rechaza si estadoEntrega !== ENTREGADO', () => {
-    expect(source).toMatch(/pedido\.estadoEntrega\s*!==\s*['"]ENTREGADO['"]/)
+  it('el guard limita el abono al valor exigible', () => {
+    expect(source).toContain("if ((exigibles.get(factura.pedidoId) ?? 0) < monto)")
   })
 
   it('el guard corre DENTRO de withAdvisoryLock y ANTES de crear el abono', () => {
     const lockOpen = source.indexOf("withAdvisoryLock('CARTERA'")
-    const guardCheck = source.indexOf("pedido.estadoEntrega !== 'ENTREGADO'")
+    const guardCheck = source.indexOf("if ((exigibles.get(factura.pedidoId) ?? 0) < monto)")
     const abonoCreate = source.indexOf('tx.abono.create')
 
     expect(lockOpen).toBeGreaterThan(-1)

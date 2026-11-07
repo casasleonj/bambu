@@ -41,7 +41,9 @@ const json = (url: string, body: unknown) => new NextRequest(`http://localhost${
 
 async function repartidor(nombre: string, salarioFijo = 0) {
   return (await testPrisma.trabajador.create({
-    data: { nombre, rol: 'REPARTIDOR', usaMoto: true, tipoPago: 'COMISION', comRepartAgua: TARIFA, comRepartHielo: TARIFA, salarioFijo },
+    // #671: los casos que comprueban sueldo + comisión son MIXTO, como en
+    // Trabajadores y Sueldos que tocan. No cambiar sus importes esperados.
+    data: { nombre, rol: 'REPARTIDOR', usaMoto: true, tipoPago: salarioFijo > 0 ? 'MIXTO' : 'COMISION', comRepartAgua: TARIFA, comRepartHielo: TARIFA, salarioFijo },
   })).id
 }
 

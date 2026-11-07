@@ -1,5 +1,7 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
+import { Prisma } from '@prisma/client'
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { PedidoUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
@@ -40,13 +42,21 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // Detail read includes factura lazily. This projection is specific to
     // Prisma and is therefore implemented in PrismaPedidoRepository.
     const { PrismaPedidoRepository } = await import('@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository')
+    const { prisma } = await import('@/lib/prisma')
     const repo = new PrismaPedidoRepository()
-    const found = await repo.findByIdWithFactura(PedidoId.from(id))
+    const { found, exigible, pagosDetalleRows } = await prisma.$transaction(async tx => {
+      const [found, exigibles, pagosDetalleRows] = await Promise.all([
+        repo.findByIdWithFactura(PedidoId.from(id), tx),
+        leerExigibles(tx, { id }),
+        tx.pago.findMany({ where: { pedidoId: id }, orderBy: { createdAt: 'asc' },
+          select: { id: true, metodo: true, monto: true, createdAt: true, confirmacion: true } }),
+      ])
+      return { found, exigible: exigibles.get(id) ?? 0, pagosDetalleRows }
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 15000 })
     if (!found) return apiError('Not found', 404)
 
     // Enrich detail response with cliente/negocio legacy fields so the modal
     // shows the owner name consistently with the list endpoint.
-    const { prisma } = await import('@/lib/prisma')
     const [cliente, negocio] = await Promise.all([
       prisma.cliente.findUnique({
         where: { id: found.pedido.clienteId },
@@ -74,11 +84,6 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     })
     // P1-1 PR B (#379): detalle de pagos (hora y estado de confirmación) para la
     // pantalla de detalle. Solo lectura; el resumen `pagos` del DTO no cambia.
-    const pagosDetalleRows = await prisma.pago.findMany({
-      where: { pedidoId: id },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true, metodo: true, monto: true, createdAt: true, confirmacion: true },
-    })
     const pagosDetalle = pagosDetalleRows.map((p) => ({
       id: p.id,
       metodo: p.metodo,
@@ -225,6 +230,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     return apiSuccess({
       pedido: {
         ...dto,
+        exigible,
         items: itemsConAutorizacion,
         nombreCli: dto.clienteId === 'CONSUMIDOR_FINAL' ? 'Consumidor Final' : (cliente?.nombre || 'Desconocido'),
         apellidoCli: cliente?.apellido || null,

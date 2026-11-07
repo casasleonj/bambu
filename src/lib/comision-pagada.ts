@@ -44,7 +44,8 @@ export async function comisionDiaConEstado(tx: TxPagoComision, fecha: string): P
   const [filas, pagos] = await Promise.all([
     comisionRepartidoresDelDia(tx, fecha),
     tx.pagoComisionRepartidor.findMany({
-      where: { fecha: startOfDayBogota(fecha) },
+      // #645: aquí solo los pagos por entregas; los del sellador (PRODUCCION) van en su propio bloque.
+      where: { fecha: startOfDayBogota(fecha), concepto: 'REPARTO' },
       orderBy: { createdAt: 'asc' },
       include: { pagadoPor: { select: { nombre: true, username: true } } },
     }),
@@ -113,7 +114,7 @@ export async function comisionPagadaEnPeriodo(tx: Pick<Prisma.TransactionClient,
   return num(agg._sum.monto)
 }
 
-/** Comisión de sellador del día (Producción): sigue saliendo de la caja como antes, pero ya sin tecleo. */
+/** Comisión de sellador del día (Producción), solo informativa: ya NO sale sola de la caja (#645), se paga con «Pagar». */
 export async function comisionSelladorDia(tx: Pick<Prisma.TransactionClient, 'produccion'>, desde: Date, hasta: Date): Promise<number> {
   const producciones = await tx.produccion.findMany({
     where: { fecha: { gte: desde, lt: hasta } },
@@ -122,15 +123,63 @@ export async function comisionSelladorDia(tx: Pick<Prisma.TransactionClient, 'pr
   return producciones.reduce((s, p) => s + num(p.comSellTotal), 0)
 }
 
+export interface ComisionSelladorDia {
+  trabajadorId: string
+  nombre: string
+  total: number
+  pagado: number
+  /** Lo que falta por pagar hoy; nunca negativo. */
+  pendiente: number
+  /** Desglose por producto: unidades producidas y comisión. */
+  detalle: { producto: string; unidades: number; comision: number }[]
+}
+
+/**
+ * #645: comisión de cada sellador con Producción en el día, con lo pagado y lo pendiente. Se paga como la del
+ * repartidor (`PagoComisionRepartidor`): solo lo pagado en EFECTIVO baja la caja del cierre y la nómina lo descuenta.
+ */
+export async function comisionSelladoresDia(
+  tx: Pick<Prisma.TransactionClient, 'produccion' | 'pagoComisionRepartidor'>,
+  fecha: string, desde: Date, hasta: Date,
+): Promise<ComisionSelladorDia[]> {
+  const producciones = await tx.produccion.findMany({
+    where: { fecha: { gte: desde, lt: hasta } },
+    select: { trabajadorId: true, comSellTotal: true, trabajador: { select: { nombre: true } }, items: { select: { producto: true, producido: true, comSellador: true } } },
+  })
+  if (producciones.length === 0) return []
+  const porTrabajador = new Map<string, ComisionSelladorDia>()
+  for (const pr of producciones) {
+    const fila = porTrabajador.get(pr.trabajadorId) ?? { trabajadorId: pr.trabajadorId, nombre: pr.trabajador.nombre, total: 0, pagado: 0, pendiente: 0, detalle: [] }
+    fila.total += num(pr.comSellTotal)
+    for (const it of pr.items) {
+      const d = fila.detalle.find((x) => x.producto === it.producto)
+      if (d) { d.unidades += it.producido; d.comision += num(it.comSellador) } else fila.detalle.push({ producto: it.producto, unidades: it.producido, comision: num(it.comSellador) })
+    }
+    porTrabajador.set(pr.trabajadorId, fila)
+  }
+  const pagos = await tx.pagoComisionRepartidor.groupBy({
+    by: ['trabajadorId'],
+    where: { trabajadorId: { in: [...porTrabajador.keys()] }, fecha: startOfDayBogota(fecha), concepto: 'PRODUCCION' },
+    _sum: { monto: true },
+  })
+  const pagadoPor = new Map(pagos.map((g) => [g.trabajadorId, num(g._sum.monto)]))
+  return [...porTrabajador.values()].map((f) => {
+    const pagado = pagadoPor.get(f.trabajadorId) ?? 0
+    return { ...f, pagado, pendiente: Math.max(0, Math.round((f.total - pagado) * 100) / 100) }
+  })
+}
+
 export interface ComisionesDelCierre {
   repartidores: ComisionDiaConEstado[]
-  /** Comisión de sellador del día (Producción). */
+  /** Comisión de sellador del día (Producción), informativa: no resta de la caja hasta que se paga (#645). */
   sellador: number
+  /** #645: comisión de cada sellador del día con lo pagado y lo pendiente. */
+  selladores: ComisionSelladorDia[]
   /** Lo que salió de la caja este día por comisión de repartidores (solo efectivo). */
   pagadoRepartidores: number
   /** #305: pagado ese día por otros medios (transferencia, Nequi, Daviplata); no resta de la caja. */
   pagadoRepartidoresOtrosMedios: number
-  /** Lo que el cierre resta de la caja: sellador + repartidores pagados en efectivo. */
+  /** Lo que el cierre resta de la caja: lo pagado en EFECTIVO por comisiones (repartidores y selladores). */
   total: number
 }
 
@@ -139,11 +188,14 @@ export interface ComisionesDelCierre {
  * (el cliente ya no teclea la cifra): `desde`/`hasta` son los límites del día de caja.
  */
 export async function comisionesDelCierre(tx: TxPagoComision, fecha: string, desde: Date, hasta: Date): Promise<ComisionesDelCierre> {
-  const [repartidores, sellador, pagadoRepartidores, pagadoRepartidoresOtrosMedios] = await Promise.all([
+  const [repartidores, sellador, selladores, pagadoRepartidores, pagadoRepartidoresOtrosMedios] = await Promise.all([
     comisionDiaConEstado(tx, fecha),
     comisionSelladorDia(tx, desde, hasta),
+    comisionSelladoresDia(tx, fecha, desde, hasta),
     comisionPagadaEnCaja(tx, desde, hasta),
     comisionPagadaOtrosMedios(tx, desde, hasta),
   ])
-  return { repartidores, sellador, pagadoRepartidores, pagadoRepartidoresOtrosMedios, total: sellador + pagadoRepartidores }
+  // #645: lo único que resta de la caja es lo PAGADO en efectivo (repartidores y selladores); la comisión generada
+  // pero no pagada se paga con «Pagar» o por la nómina, nunca se resta sola (antes se contaba dos veces).
+  return { repartidores, sellador, selladores, pagadoRepartidores, pagadoRepartidoresOtrosMedios, total: pagadoRepartidores }
 }

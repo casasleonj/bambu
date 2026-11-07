@@ -4,11 +4,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Modal } from '@/components/modal'
 import { Button } from '@/components/ui/button'
+import { AyudaTermino } from '@/components/ui/ayuda-termino'
 import { formatCurrency } from '@/lib/utils'
 
+/** #601: lo que se confirma es el conteo del efectivo contra el efectivo que debe haber. */
 export interface ResumenConfirmacionCierre {
-  fecha: string; ventas: number; cobros: number; base: number; gastos: number;
-  comisiones: number; salarios: number; neto: number;
+  fecha: string; debeHaber: number; contado: number; diferencia: number;
+  /** #631: lo cobrado (efectivo y digital) y lo fiado del día, para que quien cierra los vea antes de confirmar. */
+  cobrado?: { efectivo: number; digital: number }
+  fiado?: { total: number; pedidos: number }
 }
 
 export function CierreConfirmacion({ resumen, onResolver }: {
@@ -24,6 +28,8 @@ export function CierreConfirmacion({ resumen, onResolver }: {
   const portalRoot = typeof document === 'undefined' ? null : document.body
   if (!portalRoot) return null
   const fecha = new Date(`${resumen.fecha}T12:00:00-05:00`).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Bogota' })
+  const { diferencia } = resumen
+  const textoDiferencia = diferencia === 0 ? 'Cuadra' : diferencia > 0 ? `Sobra ${formatCurrency(diferencia)}` : `Falta ${formatCurrency(Math.abs(diferencia))}`
   return createPortal(
     <Modal open onClose={() => onResolver(false)} title="Confirmar cierre del día"
       overlayClassName="fixed inset-0 z-[80] flex items-start md:items-center justify-center overflow-y-auto bg-black/50 p-4"
@@ -40,18 +46,25 @@ export function CierreConfirmacion({ resumen, onResolver }: {
         <p className="mt-1 text-sm text-slate-500">{fecha}</p>
         <dl className="mt-5 divide-y divide-slate-100 text-sm">
           {[
-            ['Ventas netas', resumen.ventas], ['Cobros de la fecha', resumen.cobros], ['Base del día', resumen.base],
-            ['Gastos y comisiones pagadas', -resumen.gastos - resumen.comisiones],
-            ...(resumen.salarios > 0 ? [['Salarios', -resumen.salarios]] : []),
-            ['Neto de movimientos', resumen.neto],
-          ].map(([label, value]) => <div key={label} className={`flex justify-between gap-4 py-3 ${label === 'Neto de movimientos' ? 'font-bold text-blue-900' : ''}`}>
-            <dt className="text-slate-500">{label}</dt><dd className="font-semibold tabular-nums whitespace-nowrap">{formatCurrency(Number(value))}</dd>
+            ['Efectivo que debe haber', formatCurrency(resumen.debeHaber)],
+            ['Efectivo contado', formatCurrency(resumen.contado)],
+            ['Diferencia', textoDiferencia],
+          ].map(([label, value]) => <div key={label} className={`flex justify-between gap-4 py-3 ${label === 'Diferencia' ? 'font-bold text-blue-900' : ''}`}>
+            <dt className="text-slate-500">{label}{label === 'Efectivo que debe haber' && <AyudaTermino texto="Solo billetes y monedas: la base con que empezó el día + lo cobrado en efectivo − gastos y comisiones pagadas. No incluye Nequi, transferencias ni lo fiado." />}</dt><dd className="font-semibold tabular-nums whitespace-nowrap">{value}</dd>
           </div>)}
         </dl>
-        <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">El neto incluye pagos digitales y es distinto del conteo de billetes y monedas. El cierre se registra una sola vez.</p>
+        {(resumen.cobrado || resumen.fiado) && (
+          <p data-testid="cierre-confirmacion-cobrado" className="mt-3 rounded-lg bg-blue-50 p-3 text-xs leading-relaxed text-blue-900">
+            {resumen.cobrado && <>Cobrado hoy: <b>{formatCurrency(resumen.cobrado.efectivo + resumen.cobrado.digital)}</b> (efectivo {formatCurrency(resumen.cobrado.efectivo)}{resumen.cobrado.digital !== 0 ? <> · digital {formatCurrency(resumen.cobrado.digital)}</> : null}). </>}
+            {resumen.fiado && (resumen.fiado.pedidos > 0
+              ? <>Quedó fiado hoy: <b>{formatCurrency(resumen.fiado.total)}</b> en {resumen.fiado.pedidos} pedido{resumen.fiado.pedidos === 1 ? '' : 's'}.</>
+              : <>Hoy no se fió ningún pedido.</>)}
+          </p>
+        )}
+        <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">Después de cerrar no podrás cambiar pedidos, gastos ni el conteo de este día. El cierre se registra una sola vez.</p>
         <label className="mt-5 flex items-start gap-3 text-sm leading-relaxed text-slate-600">
           <input type="checkbox" checked={revisado} onChange={e => setRevisado(e.target.checked)} className="mt-1 accent-blue-600" />
-          Revisé la fecha, los importes y el conteo físico registrado.
+          Revisé la fecha, los importes y el conteo del efectivo.
         </label>
         <div className="mt-5 grid grid-cols-2 gap-3 border-t pt-4">
           <Button variant="outline" onClick={() => onResolver(false)}>Volver a revisar</Button>

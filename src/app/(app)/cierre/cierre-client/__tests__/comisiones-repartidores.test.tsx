@@ -61,7 +61,7 @@ describe('ComisionesRepartidores', () => {
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe('/api/nomina/dia/pagar')
     const cuerpo = JSON.parse(init.body)
-    expect(cuerpo).toMatchObject({ trabajadorId: 'g1', fecha: '2026-10-26', montoEsperado: 6400 })
+    expect(cuerpo).toMatchObject({ trabajadorId: 'g1', fecha: '2026-10-26', montoEsperado: 6400, concepto: 'REPARTO' })
     expect(cuerpo.offlineId).toMatch(/^cp-/)
     expect(toastOk).toHaveBeenCalled()
   })
@@ -102,6 +102,17 @@ describe('ComisionesRepartidores', () => {
     }
     const ids = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).offlineId)
     expect(ids[0]).toBe(ids[1])
+  })
+
+  it('#645: el sellador se paga con el mismo botón y la confirmación habla de lo producido', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 201, json: async () => ({ success: true }) })
+    const { onPagado } = montar({ tipo: 'sellador', repartidores: [{ trabajadorId: 's1', nombre: 'Carlos Sellador', total: 10890, pagado: 0, pendiente: 10890 }] })
+    expect(screen.getByTestId('comisiones-selladores')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('pagar-comision-s1'))
+    expect(await screen.findByText(/botellones llenados/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Sí, ya le pagué' }))
+    await waitFor(() => expect(onPagado).toHaveBeenCalled())
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ trabajadorId: 's1', fecha: '2026-10-26', montoEsperado: 10890, concepto: 'PRODUCCION' })
   })
 })
 

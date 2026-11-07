@@ -20,6 +20,53 @@ const revisar = () => fireEvent.click(screen.getByTestId('re-revisar'))
 beforeEach(() => { vi.restoreAllMocks() })
 
 describe('RegistrarEntregaDialog', () => {
+  const parcial = { ...PEDIDO, total: 12000, items: [{ producto: 'PACA_AGUA', cantPedido: 6, cantEntrega: 0, precio: 2000 }] }
+  const elegirParcial = () => {
+    fireEvent.click(screen.getByTestId('alcance-menos'))
+    fireEvent.change(screen.getByLabelText('Cantidad entregada de Paca Agua'), { target: { value: '4' } })
+    fireEvent.change(screen.getByLabelText(/¿Quién lo entregó/), { target: { value: 'r1' } })
+  }
+
+  it('#656 muestra la tarjeta existente de promesa en una parcial y confirma solo 8.000 entregados', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const onRegistrado = vi.fn()
+    render(<RegistrarEntregaDialog pedido={parcial} repartidores={REPARTIDORES} fiadoParcialActivo onClose={vi.fn()} onRegistrado={onRegistrado} />)
+    elegirParcial()
+    expect(screen.getByText(/Quedan debiendo \$8\.000/)).toBeInTheDocument()
+    revisar()
+    expect(screen.queryByTestId('re-resumen')).toBeNull()
+    expect(screen.getByText('Si queda debiendo, necesitamos hasta cuándo promete pagar.')).toBeInTheDocument()
+    const promesa = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+    fireEvent.change(screen.getByLabelText(/Hasta cuándo promete pagar/), { target: { value: promesa } })
+    revisar()
+    expect(screen.getByTestId('re-resumen')).toHaveTextContent('Quedan debiendo $8.000 de lo entregado')
+    fireEvent.click(screen.getByTestId('re-guardar'))
+    await waitFor(() => expect(onRegistrado).toHaveBeenCalled())
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ promesaPagoFecha: promesa, itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 4 }] })
+  })
+
+  it('#656 no pide promesa cuando el anticipo cubre toda la entrega parcial', () => {
+    render(<RegistrarEntregaDialog pedido={{ ...parcial, totalPagado: 8000 }} repartidores={REPARTIDORES} fiadoParcialActivo onClose={vi.fn()} onRegistrado={vi.fn()} />)
+    elegirParcial()
+    expect(screen.queryByLabelText(/Hasta cuándo promete pagar/)).toBeNull()
+    revisar()
+    expect(screen.getByTestId('re-resumen')).toHaveTextContent('Lo entregado está cubierto por los pagos.')
+  })
+
+  it('#656 una capacidad desactualizada vuelve al campo exigido por el servidor, conservando los datos', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: async () => ({ error: { code: 'PROMESA_REQUERIDA', message: 'Si queda debiendo, necesitamos hasta cuándo promete pagar.' } }) }))
+    render(<RegistrarEntregaDialog pedido={parcial} repartidores={REPARTIDORES} onClose={vi.fn()} onRegistrado={vi.fn()} />)
+    elegirParcial()
+    expect(screen.queryByLabelText(/Hasta cuándo promete pagar/)).toBeNull()
+    revisar()
+    fireEvent.click(screen.getByTestId('re-guardar'))
+    await waitFor(() => expect(screen.getByLabelText(/Hasta cuándo promete pagar/)).toBeInTheDocument())
+    expect(screen.getByLabelText('Cantidad entregada de Paca Agua')).toHaveValue(4)
+    expect(screen.getByText(/Quedan debiendo \$8\.000/)).toBeInTheDocument()
+    expect(screen.getByText('Si queda debiendo, necesitamos hasta cuándo promete pagar.')).toBeInTheDocument()
+  })
+
   it('no deja pasar a «revisar» sin elegir alcance y repartidor, y lo dice en palabras sencillas', () => {
     abrir()
     revisar()

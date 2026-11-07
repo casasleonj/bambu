@@ -1,3 +1,4 @@
+import { exigiblesActivos } from '@/lib/exigibles-flag'
 import { Prisma } from '@prisma/client'
 
 /**
@@ -220,6 +221,7 @@ export const REGLAS: readonly Regla[] = [
         json_build_object('metodo', g.metodo, 'monto', g.monto::float8, 'createdAt', g."createdAt") AS detalle
       FROM "Pago" g JOIN "Pedido" p ON p.id = g."pedidoId"
       WHERE g.confirmacion = 'REPORTADO' AND g.metodo <> 'EFECTIVO'
+        AND p."estadoEntrega" NOT IN ('ANULADO', 'CANCELADO') -- #517: ya no se confirma
         AND g."createdAt" < now() - make_interval(days => ${diasReportado}::int)
       ORDER BY g."createdAt"`,
   },
@@ -377,7 +379,7 @@ export const REGLAS: readonly Regla[] = [
   },
   {
     id: 'V18',
-    titulo: 'Snapshot de cierre 2.1 distinto de sus columnas financieras canónicas',
+    titulo: 'Snapshot de cierre 2.1/2.2 distinto de sus columnas financieras canónicas',
     severidad: 'CRITICA',
     consulta: () => Prisma.sql`
       SELECT c.id AS ref, NULL::int AS numero,
@@ -388,10 +390,21 @@ export const REGLAS: readonly Regla[] = [
         ('efectivo', c.efectivo), ('transferencia', c.transferencia), ('nequi', c.nequi),
         ('daviplata', c.daviplata), ('bono', c.bono), ('totalGastos', c.gastos), ('netoCaja', c."netoCaja")
       ) v(campo, canonico)
-      WHERE c.reporte->>'_version' = '2.1'
+      WHERE c.reporte->>'_version' IN ('2.1', '2.2')
         AND (CASE WHEN jsonb_typeof(c.reporte->v.campo) = 'number'
           THEN (c.reporte->>v.campo)::numeric END) IS DISTINCT FROM v.canonico
       ORDER BY c.id, v.campo`,
+  },
+
+  {
+    id: 'V19', titulo: 'Hecho de entrega exigible con detalle o valor histórico inválido', severidad: 'ALTA',
+    consulta: () => !exigiblesActivos() ? Prisma.sql`SELECT NULL::text AS ref, NULL::int AS numero, '{}'::json AS detalle WHERE false` : Prisma.sql`
+      SELECT e.id AS ref, p.numero,
+        json_build_object('pedidoId', e."pedidoId", 'valorEntregado', e."valorEntregado", 'lineas', e.lineas) AS detalle
+      FROM "EntregaExigible" e JOIN "Pedido" p ON p.id = e."pedidoId"
+      WHERE jsonb_typeof(e.lineas) <> 'array' OR e."valorEntregado" < 0
+        OR (e."eventoId" IS NOT NULL AND e."huella" IS NULL AND e."eventoId" NOT LIKE 'cierre:%')
+      ORDER BY e.id`,
   },
 
 ]

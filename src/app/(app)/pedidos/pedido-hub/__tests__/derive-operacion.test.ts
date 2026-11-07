@@ -29,15 +29,49 @@ describe('deriveOperacion', () => {
     expect(d.focos).toContain('enRuta')
   })
 
-  it('ENTREGADO con saldo → microcopy con deuda + días, acción "Registrar pago", foco esperandoPago', () => {
+  it('ENTREGADO de hoy con saldo → acción "Registrar pago", foco esperandoPago (#597)', () => {
+    const d = deriveOperacion(
+      base({ estadoEntrega: 'ENTREGADO', estadoPago: 'PARCIAL', totalPagado: 4000, saldo: 6000, fecha: '2026-09-07T15:00:00.000Z' }),
+      ctx,
+    )
+    expect(d.accionDestacada).toEqual({ key: 'registrar-pago', label: 'Registrar pago' })
+    expect(d.focos).toContain('esperandoPago')
+    expect(d.estadoLegible).toMatch(/6\.000/)
+  })
+
+  it('ENTREGADO de un día anterior con saldo es un fiado → "Cobrar en Fiados", sin Registrar pago (#597)', () => {
     const d = deriveOperacion(
       base({ estadoEntrega: 'ENTREGADO', estadoPago: 'PARCIAL', totalPagado: 4000, saldo: 6000, fecha: '2026-09-04T08:00:00.000Z' }),
       ctx,
     )
-    expect(d.accionDestacada?.key).toBe('registrar-pago')
+    expect(d.accionDestacada).toEqual({ key: 'cobrar-en-fiados', label: 'Cobrar en Fiados' })
     expect(d.focos).toContain('esperandoPago')
     expect(d.estadoLegible).toMatch(/6\.000/)
     expect(d.estadoLegible).toMatch(/3 d[ií]as/)
+  })
+
+  it('«del día» es la fecha de entrega: hecho ayer y entregado hoy → Registrar pago; hecho hoy y entregado ayer → Fiados (#597)', () => {
+    const hoy = deriveOperacion(base({ estadoEntrega: 'ENTREGADO', saldo: 6000, fecha: '2026-09-06T15:00:00.000Z', entregadoAt: '2026-09-07T15:00:00.000Z' }), ctx)
+    expect(hoy.accionDestacada?.key).toBe('registrar-pago')
+    const ayer = deriveOperacion(base({ estadoEntrega: 'ENTREGADO', saldo: 6000, fecha: '2026-09-07T15:00:00.000Z', entregadoAt: '2026-09-06T15:00:00.000Z' }), ctx)
+    expect(ayer.accionDestacada?.key).toBe('cobrar-en-fiados')
+  })
+
+  it('un pedido de hoy vendido fiado a propósito (promesa de pago) se cobra en Fiados (#597)', () => {
+    const d = deriveOperacion(base({ estadoEntrega: 'ENTREGADO', saldo: 6000, fecha: '2026-09-07T15:00:00.000Z', promesaPagoFecha: '2026-09-10T05:00:00.000Z' }), ctx)
+    expect(d.accionDestacada?.key).toBe('cobrar-en-fiados')
+  })
+
+  it('el día se toma en hora de Bogotá: 23:30 de ayer en Bogotá (04:30Z de hoy) sigue siendo de ayer (#597)', () => {
+    const d = deriveOperacion(
+      base({ estadoEntrega: 'ENTREGADO', saldo: 6000, fecha: '2026-09-07T04:30:00.000Z' }), { hoyBogota: '2026-09-07' })
+    expect(d.accionDestacada?.key).toBe('cobrar-en-fiados')
+  })
+
+  it('CONSUMIDOR_FINAL nunca ofrece cobrar desde la lista (#597)', () => {
+    const d = deriveOperacion(
+      base({ estadoEntrega: 'ENTREGADO', clienteId: 'CONSUMIDOR_FINAL', saldo: 6000, fecha: '2026-09-07T15:00:00.000Z' }), ctx)
+    expect(d.accionDestacada?.key).not.toBe('registrar-pago')
   })
 
   it('pago reportado sin confirmar → acción "Confirmar pago"', () => {

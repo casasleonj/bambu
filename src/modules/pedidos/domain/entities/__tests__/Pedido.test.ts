@@ -125,6 +125,49 @@ describe('Pedido.entregar()', () => {
     expect(pedido.entregadoAt!.getTime()).toBeLessThanOrEqual(after.getTime())
   })
 
+  describe('entregadoAt en entregas parciales (día de la entrega que cierra el pedido)', () => {
+    const dia1 = new Date('2026-11-03T15:00:00Z')
+
+    it('parcial el día 1 y completa el día 2 sin fecha explícita: entregadoAt avanza a ahora', () => {
+      const pedido = makePedido() // 5 pacas
+      pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 3 }], { entregadoAt: dia1 })
+      expect(pedido.estadoEntrega.get()).toBe('PENDIENTE')
+      expect(pedido.entregadoAt?.toISOString()).toBe(dia1.toISOString())
+
+      const antes = new Date()
+      pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 2 }], { desdeOficina: true })
+      const despues = new Date()
+
+      expect(pedido.estadoEntrega.get()).toBe('ENTREGADO')
+      expect(pedido.entregadoAt!.getTime()).toBeGreaterThanOrEqual(antes.getTime())
+      expect(pedido.entregadoAt!.getTime()).toBeLessThanOrEqual(despues.getTime())
+    })
+
+    it('una segunda parcial (sigue incompleto) conserva la fecha previa', () => {
+      const pedido = makePedido()
+      pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 2 }], { entregadoAt: dia1 })
+      pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 1 }], { desdeOficina: true })
+
+      expect(pedido.estadoEntrega.get()).toBe('PENDIENTE')
+      expect(pedido.entregadoAt?.toISOString()).toBe(dia1.toISOString())
+    })
+
+    it('al completar con fecha explícita (oficina / replay offline) esa fecha manda', () => {
+      const pedido = makePedido()
+      pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 3 }], { entregadoAt: dia1 })
+      const dia2 = new Date('2026-11-04T14:00:00Z')
+      pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 2 }], { desdeOficina: true, entregadoAt: dia2 })
+
+      expect(pedido.entregadoAt?.toISOString()).toBe(dia2.toISOString())
+    })
+
+    it('entrega completa en un solo paso no cambia: usa la fecha explícita o ahora', () => {
+      const explicito = makePedido()
+      explicito.entregar([{ producto: 'PACA_AGUA', cantidad: 5 }], { entregadoAt: dia1 })
+      expect(explicito.entregadoAt?.toISOString()).toBe(dia1.toISOString())
+    })
+  })
+
   it('marcarAdminOverride stores admin override metadata', () => {
     const pedido = makePedido()
     const before = new Date()

@@ -46,6 +46,14 @@ enum OrigenPedido {
   RECURRENTE
 }
 
+/// #644: frecuencia de pago del sueldo fijo del trabajador.
+enum FrecuenciaPago {
+  SEMANAL
+  QUINCENAL
+  MENSUAL
+  FECHAS
+}
+
 enum MetodoPago {
   EFECTIVO
   TRANSFERENCIA
@@ -177,6 +185,8 @@ enum Turno {
   MANANA
   TARDE
   NOCHE
+  // #645: el sellador que cubre todo el día
+  JORNADA
 }
 
 enum CasoStatus {
@@ -790,6 +800,15 @@ model Trabajador {
 
   salarioFijo Decimal @default(0) @db.Decimal(10, 2)
 
+  // #644: cada cuánto se paga el sueldo fijo y cuánto es «por cada pago». NULL = una vez por nómina (anterior).
+  // SEMANAL: diasPago = días de la semana (0 = domingo); QUINCENAL: 15 y último día; MENSUAL/FECHAS: días del mes.
+  frecuenciaPago  FrecuenciaPago?
+  diasPago        Int[]           @default([])
+  // Desde cuándo rige el plan: no se listan como pendientes los pagos de antes de configurarlo.
+  frecuenciaDesde DateTime?       @db.Timestamptz()
+  // Su pago queda en la nómina pero no baja el efectivo de la caja (p. ej. el administrador).
+  pagoFueraDeCaja Boolean         @default(false)
+
   deudaReposAgua  Decimal @default(0) @db.Decimal(10, 2)
   deudaReposHielo Decimal @default(0) @db.Decimal(10, 2)
   telefono        String?
@@ -839,6 +858,8 @@ model PagoComisionRepartidor {
   monto        Decimal    @db.Decimal(10, 2)
   // #305: con qué se pagó. Solo EFECTIVO sale de la caja del cierre; los demás medios no la tocan.
   metodo       MetodoPago @default(EFECTIVO)
+  // #645: REPARTO (repartidor, por entregas) o PRODUCCION (sellador, por lo producido). Un trabajador puede cobrar ambas.
+  concepto     String     @default("REPARTO")
   pagadoPorId  String?
   pagadoPor    User?      @relation("PagoComisionPagador", fields: [pagadoPorId], references: [id], onDelete: SetNull)
   offlineId    String?    @unique
@@ -887,6 +908,11 @@ model Nomina {
   estado    EstadoNomina @default(PENDIENTE)
   fechaPago DateTime?    @db.Timestamptz()
 
+  // #641: con qué se pagó. NULL = pagada antes de registrar el medio (su egreso ya quedó como Gasto).
+  // Solo EFECTIVO dentro de la caja genera el egreso que resta del cierre.
+  metodoPago      MetodoPago?
+  pagoFueraDeCaja Boolean     @default(false)
+
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
 
@@ -903,6 +929,7 @@ model Nomina {
 // ====================
 
 model Pedido {
+  entregasExigibles EntregaExigible[]
   id          String    @id @default(cuid())
   // El DEFAULT real es nextval('pedido_numero_seq'), la misma secuencia que
   // usa getNextNumero (#401, migración 20261023). Unicidad: índice UNIQUE
@@ -915,6 +942,7 @@ model Pedido {
   createdBy   User?     @relation("PedidoCreador", fields: [createdById], references: [id])
   clienteId   String
   cliente     Cliente   @relation(fields: [clienteId], references: [id])
+  deudasTrabajador DeudaTrabajador[] @relation("DeudaTrabajadorPedido")
   negocioId   String?
   negocio     Negocio?  @relation(fields: [negocioId], references: [id])
   embarqueId  String?
@@ -2432,6 +2460,11 @@ model CierreDia {
   prodHielo     Int @default(0)
   stockFinHielo Int @default(0)
 
+  // #618: botellones llenos (NULL = cierre anterior a registrar botellones: el inicial sale de Config STOCK_INI_BOTELLON)
+  stockIniBotellon Int?
+  prodBotellon     Int?
+  stockFinBotellon Int?
+
   netoCaja Decimal @default(0) @db.Decimal(10, 2)
 
   // Importación histórica: true si el cierre vino del papel/Excel viejo y
@@ -2679,6 +2712,10 @@ model DeudaTrabajador {
   porcentajePorNomina Int? // tope % de la nomina a descontar por periodo (null = sin tope)
 
   embarqueId  String?
+  // Pedido de origen (#566). Solo lo llevan las deudas por «Fiado no cobrado»; préstamos,
+  // adelantos y descuadres de caja no vienen de un pedido y quedan en null.
+  pedidoId    String?
+  pedido      Pedido?  @relation("DeudaTrabajadorPedido", fields: [pedidoId], references: [id], onDelete: SetNull)
   descripcion String   @db.Text
   fecha       DateTime @default(now()) @db.Timestamptz()
 
@@ -2689,6 +2726,7 @@ model DeudaTrabajador {
 
   @@index([trabajadorId])
   @@index([trabajadorId, montoPendiente])
+  @@index([pedidoId])
 }
 
 // ====================
@@ -3159,4 +3197,24 @@ model PedidoSaldoFavorMovimiento {
   @@index([pedidoId])
   @@index([clienteId])
   @@index([origenTipo, origenId])
+}
+
+
+/// Hechos de entrega #656. Asignado se conserva solo por compatibilidad; se proyecta al leer.
+model EntregaExigible {
+  eventoId String?
+  huella String?
+  lineas Json @default("[]")
+
+  id             String   @id @default(cuid())
+  pedidoId       String
+  pedido         Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  entregadoAt    DateTime
+  valorEntregado Decimal  @db.Decimal(10, 2)
+  asignado       Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+
+  @@index([pedidoId])
+  @@index([entregadoAt])
+  @@unique([pedidoId, eventoId])
 }

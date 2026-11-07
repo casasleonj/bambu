@@ -2,6 +2,7 @@
 // Sin React ni red, para probarla aislada. El SERVIDOR es la autoridad de las
 // reglas (ver `EntregarPedidoUseCase`); aquí solo se anticipan para guiar a
 // quien usa la pantalla con mensajes sencillos antes de enviar.
+import { valorEntregadoPedidoCentavos } from '@/lib/valor-entregado-pedido'
 
 export type MetodoCobro = 'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA'
 
@@ -32,7 +33,7 @@ export interface PedidoParaEntrega {
   totalPagado: number
   /** Repartidor ya fijado por una entrega anterior de este pedido. */
   entregadoPorId?: string | null
-  items: Array<{ producto: string; cantPedido: number; cantEntrega: number }>
+  items: Array<{ producto: string; cantPedido: number; cantEntrega: number; precio?: number }>
 }
 
 export interface Repartidor { id: string; nombre: string }
@@ -148,9 +149,22 @@ export function completa(p: PedidoParaEntrega, d: DatosEntrega): boolean {
   return pendientes(p).every((pe) => (aEntregar.find((a) => a.producto === pe.producto)?.cantidad ?? 0) >= pe.pendiente)
 }
 
+/** Previsión de la validación de promesa del servidor; no cambia la deuda ni sustituye su lectura. */
+export function saldoEntregadoTrasEntrega(p: PedidoParaEntrega, d: DatosEntrega, fiadoParcialActivo = false): number | null {
+  if (!d.alcance) return 0
+  const saldoCents = Math.max(0, Math.round((p.total - p.totalPagado - montoNumero(d)) * 100))
+  if (completa(p, d)) return saldoCents / 100
+  if (!fiadoParcialActivo || saldoCents === 0) return 0
+  if (p.items.some(i => i.precio === undefined || !Number.isFinite(i.precio) || i.precio < 0)) return null
+  const nuevas = new Map(itemsAEntregar(p, d).map(i => [i.producto, i.cantidad]))
+  const entregadoCents = valorEntregadoPedidoCentavos({ total: p.total, estadoEntrega: 'PENDIENTE',
+    items: p.items.map(i => ({ cantEntrega: i.cantEntrega + (nuevas.get(i.producto) ?? 0), precio: i.precio })) })
+  return Math.max(0, Math.min(saldoCents, entregadoCents - Math.round((p.totalPagado + montoNumero(d)) * 100))) / 100
+}
+
 export type Errores = Partial<Record<'alcance' | 'cantidades' | 'repartidor' | 'fecha' | 'monto' | 'lineas' | 'quienRecibio' | 'promesa', string>>
 
-export function validar(p: PedidoParaEntrega, d: DatosEntrega, ahora: Date = new Date()): Errores {
+export function validar(p: PedidoParaEntrega, d: DatosEntrega, ahora: Date = new Date(), fiadoParcialActivo = false): Errores {
   const e: Errores = {}
   const hoy = hoyBogota(ahora)
   const esDomicilio = p.canal === 'DOMICILIO'
@@ -179,9 +193,12 @@ export function validar(p: PedidoParaEntrega, d: DatosEntrega, ahora: Date = new
   }
 
   const saldoDespues = Math.max(0, saldo - monto)
+  const deudaEntregada = saldoEntregadoTrasEntrega(p, d, fiadoParcialActivo)
   if (saldoDespues > 0 && p.clienteId === CLIENTE_ANONIMO) {
     e.monto = 'No se puede dejar fiado a un cliente sin nombre. Registra el pago completo.'
-  } else if (saldoDespues > 0 && d.alcance && completa(p, d)) {
+  } else if (deudaEntregada === null) {
+    e.monto = 'No se pudo comprobar el valor entregado. Actualiza el pedido antes de registrar.'
+  } else if (deudaEntregada > 0) {
     if (!d.promesa) e.promesa = 'Si queda debiendo, necesitamos hasta cuándo promete pagar.'
     else if (d.promesa < hoy) e.promesa = 'La fecha de promesa no puede estar en el pasado.'
   }
@@ -193,7 +210,7 @@ export function hayErrores(e: Errores): boolean {
 }
 
 /** Frases de la pantalla «Revisa antes de guardar», en palabras sencillas. */
-export function resumen(p: PedidoParaEntrega, d: DatosEntrega, repartidores: Repartidor[], nombreProducto: (c: string) => string): string[] {
+export function resumen(p: PedidoParaEntrega, d: DatosEntrega, repartidores: Repartidor[], nombreProducto: (c: string) => string, fiadoParcialActivo = false): string[] {
   const frases: string[] = []
   const aEntregar = itemsAEntregar(p, d)
   const total = completa(p, d)
@@ -217,8 +234,13 @@ export function resumen(p: PedidoParaEntrega, d: DatosEntrega, repartidores: Rep
     frases.push(`Se recibieron ${pesos(monto)} ${detalle}. ${quien}.`.replace(' :', ':').replace(' ,', ','))
   }
   const saldoDespues = Math.max(0, saldoActual(p) - monto)
-  if (saldoDespues > 0 && total) {
-    frases.push(`Quedan debiendo ${pesos(saldoDespues)} hasta el ${fechaLarga(d.promesa)}.`)
+  const deudaEntregada = saldoEntregadoTrasEntrega(p, d, fiadoParcialActivo)
+  if (deudaEntregada === null) {
+    frases.push('No se pudo comprobar el valor entregado. Actualiza el pedido antes de registrar.')
+  } else if (deudaEntregada > 0) {
+    frases.push(`Quedan debiendo ${pesos(deudaEntregada)}${total ? '' : ' de lo entregado'} hasta el ${fechaLarga(d.promesa)}.`)
+  } else if (saldoDespues > 0 && fiadoParcialActivo) {
+    frases.push(`Lo entregado está cubierto por los pagos. Queda ${pesos(saldoDespues)} de saldo comercial por mercancía pendiente.`)
   } else if (saldoDespues > 0) {
     frases.push(`Falta cobrar ${pesos(saldoDespues)} del pedido.`)
   } else {

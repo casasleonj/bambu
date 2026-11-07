@@ -12,11 +12,8 @@ test.describe('Recurrentes', () => {
     await loginAs(page, 'admin')
     await goto(page, '/recurrentes')
 
-    const bodyText = await page.locator('body').innerText()
-    expect(bodyText).toMatch(/Pedidos Recurrentes|No hay recurrentes/)
-    const buttons = page.locator('button:has-text("+ Nueva Plantilla")')
-    const count = await buttons.count()
-    expect(count).toBeGreaterThanOrEqual(0)
+    await expect(page.getByRole('heading', { name: 'Pedidos habituales', exact: true })).toBeVisible()
+    await expect(page.getByTestId('habituales-catalogo')).toBeVisible()
   })
 
   test('crear recurrente', async ({ page }) => {

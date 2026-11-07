@@ -1,3 +1,5 @@
+export type FrecuenciaPago = 'SEMANAL' | 'QUINCENAL' | 'MENSUAL' | 'FECHAS'
+
 export interface Trabajador {
   id: string
   nombre: string
@@ -12,6 +14,10 @@ export interface Trabajador {
   comRepartHielo: number
   comRepartBotellon: number
   salarioFijo: number
+  /** #644: cada cuánto se paga el sueldo fijo (null = una vez por nómina) */
+  frecuenciaPago?: FrecuenciaPago | null
+  diasPago?: number[]
+  pagoFueraDeCaja?: boolean
   deudaReposAgua: number
   deudaReposHielo: number
   telefono?: string
@@ -34,6 +40,9 @@ export interface TrabajadorFormData {
   comRepartHielo: number
   comRepartBotellon: number
   salarioFijo: number
+  frecuenciaPago: FrecuenciaPago | null
+  diasPago: number[]
+  pagoFueraDeCaja: boolean
   telefono: string
 }
 
@@ -55,4 +64,15 @@ export const tipoPagoLabels: Record<string, string> = {
 
 export interface TrabajadoresClientProps {
   initialTrabajadores: Trabajador[]
+  /** Sin crear, editar ni desactivar (todo rol que no sea ADMIN). */
+  soloLectura?: boolean
 }
+
+export const frecuenciaLabels: Record<FrecuenciaPago, string> = {
+  SEMANAL: 'Cada semana',
+  QUINCENAL: 'Cada quincena (días 15 y último)',
+  MENSUAL: 'Una vez al mes',
+  FECHAS: 'En fechas que yo elija',
+}
+
+export const diasSemanaLabels = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']

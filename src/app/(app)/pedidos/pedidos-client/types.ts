@@ -69,6 +69,7 @@ export interface Pedido {
   precioBolsaHielo: number
   totalPagado: number
   total: number
+  exigible?: number
   saldo: number
   fecha: string
   horaPreferida?: string | null

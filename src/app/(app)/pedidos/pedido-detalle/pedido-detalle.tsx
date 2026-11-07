@@ -8,6 +8,7 @@ import { canReadFacturas } from '@/lib/permissions'
 import Link from 'next/link'
 import { useState } from 'react'
 import { formatCurrency } from '@/lib/utils'
+import { importesEntregaPedido } from '@/lib/valor-entregado-pedido'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 import type { Pedido } from '../pedidos-client/types'
@@ -94,6 +95,7 @@ export function PedidoDetalle({
   const total = Number(pedido.total)
   const pagado = Number(pedido.totalPagado)
   const saldo = Number(pedido.saldo)
+  const importes = importesEntregaPedido(pedido)
   const entregado = pedido.estadoEntrega === 'ENTREGADO'
   const pct = porcentajePagado(total, pagado)
   const links = linksContacto(pedido)
@@ -108,6 +110,7 @@ export function PedidoDetalle({
   const casos = pedido.casosAbiertos ?? []
   const totalRelacionado = (pedido.recurrencia ? 1 : 0) + (n2 ? 1 : 0) + vinculados.length + casos.length
   const hayPorConfirmar = pedido.pagoReportadoPendiente || pedido.pagoDiscrepante
+  const pedidoCerrado = pedido.estadoEntrega === 'ANULADO' || pedido.estadoEntrega === 'CANCELADO'
 
   const boton = (a: AccionDetalle, full = false) => (
     <button
@@ -161,9 +164,18 @@ export function PedidoDetalle({
           <div className="space-y-4">
             <Seccion titulo="Dinero" testId="detalle-dinero">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-sm text-gray-500">Total Pedido</span>
+                <span className="text-sm text-gray-500">Valor comercial del pedido</span>
                 <span className="text-2xl font-bold text-gray-800">{formatCurrency(total)}</span>
               </div>
+              {importes.parcial && (
+                <div data-testid="detalle-importes-parcial" className="mb-3 grid grid-cols-1 gap-2 rounded-lg bg-amber-50 p-3 text-sm sm:grid-cols-2">
+                  <p>Ya entregado <b className="block">{formatCurrency(importes.entregado)}</b></p>
+                  <p>Pendiente de entrega <b className="block">{formatCurrency(importes.pendienteEntrega)}</b></p>
+                  <p className="sm:col-span-2">Por cobrar de lo entregado <b className="block text-red-700">{importes.porConciliar ? 'Por conciliar' : importes.porCobrar === null ? 'Por consultar' : formatCurrency(importes.porCobrar)}</b></p>
+                  {importes.porConciliar && <p className="text-xs sm:col-span-2">Falta conciliar el registro de esta entrega; no se supone que la deuda sea cero.</p>}
+                  {(importes.porCobrar ?? 0) > 0 && <Link className="inline-flex min-h-11 items-center font-semibold text-blue-700 underline sm:col-span-2" href={`/pedidos?tab=fiados&clienteId=${encodeURIComponent(pedido.clienteId)}`}>Consultar y cobrar en Fiados</Link>}
+                </div>
+              )}
               <div className="h-2 rounded-full bg-gray-200 overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Porcentaje pagado">
                 <div className="h-full bg-green-500" style={{ width: `${pct}%` }} />
               </div>
@@ -305,7 +317,8 @@ export function PedidoDetalle({
                       <div>
                         <span className="font-medium text-gray-700">{METODO_LABEL[pg.metodo] ?? pg.metodo}</span>
                         <span className="text-gray-400 text-xs ml-2">{fmtFecha(pg.fecha)} {fmtHora(pg.fecha)}</span>
-                        {pg.confirmacion && pg.confirmacion !== 'CONFIRMADO' && (
+                        {/* #517: en un pedido anulado o cancelado el pago ya no se confirma. */}
+                        {pg.confirmacion && pg.confirmacion !== 'CONFIRMADO' && !pedidoCerrado && (
                           <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${pg.confirmacion === 'DISCREPANTE' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                             {pg.confirmacion === 'DISCREPANTE' ? 'discrepante' : 'por confirmar'}
                           </span>

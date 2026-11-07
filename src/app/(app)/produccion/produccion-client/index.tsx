@@ -11,6 +11,7 @@ import { InfoBanner } from '@/components/tooltip'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { ProduccionPendingBadge } from '@/components/produccion/pending-sync-badge'
 import type { StockInicial, FormData, TrabajadorOption, PreviewData, RepartidorOption, ProduccionRegistro } from './types'
+import { TURNO_LABEL } from './types'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { ProduccionEditModal } from './edit-modal'
 
@@ -29,6 +30,8 @@ const EMPTY_FORM: FormData = {
   rotasHielo: 0,
   consumoInternoAgua: 0,
   consumoInternoHielo: 0,
+  botellonesLlenados: 0,
+  stockFinBotellones: 0,
   obs: '',
 }
 
@@ -50,6 +53,8 @@ export default function ProduccionClient() {
     stockIniHielo: 0,
     ventasAgua: 0,
     ventasHielo: 0,
+    stockIniBotellon: 0,
+    ventasBotellon: 0,
   })
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -125,6 +130,8 @@ export default function ProduccionClient() {
         stockIniHielo: preview.stockIniHielo,
         ventasAgua: preview.ventasAgua,
         ventasHielo: preview.ventasHielo,
+        stockIniBotellon: preview.stockIniBotellon ?? 0,
+        ventasBotellon: preview.ventasBotellon ?? 0,
       })
       setRepartidores(preview.repartidores || [])
       setEmbarquesAbiertos(preview.embarquesAbiertos)
@@ -163,6 +170,9 @@ export default function ProduccionClient() {
   const perdidasHielo = useMemo(() => formData.rotasHielo + formData.filtradasHielo + formData.consumoInternoHielo, [formData.rotasHielo, formData.filtradasHielo, formData.consumoInternoHielo])
   const diferenciaAgua = useMemo(() => stockFinEsperadoAgua - formData.stockFinFisicoAgua - perdidasAgua, [stockFinEsperadoAgua, formData.stockFinFisicoAgua, perdidasAgua])
   const diferenciaHielo = useMemo(() => stockFinEsperadoHielo - formData.stockFinFisicoHielo - perdidasHielo, [stockFinEsperadoHielo, formData.stockFinFisicoHielo, perdidasHielo])
+  // #618: botellones llenos (sin pérdidas): Inicial + Llenados − Vendidos contra el conteo final
+  const stockFinEsperadoBotellon = useMemo(() => stockInicial.stockIniBotellon + formData.botellonesLlenados - stockInicial.ventasBotellon, [stockInicial.stockIniBotellon, formData.botellonesLlenados, stockInicial.ventasBotellon])
+  const diferenciaBotellon = useMemo(() => stockFinEsperadoBotellon - formData.stockFinBotellones, [stockFinEsperadoBotellon, formData.stockFinBotellones])
 
   const comAgua = useMemo(() => prodAgua * (selectedTrabajador?.comPacaAgua || 200), [prodAgua, selectedTrabajador?.comPacaAgua])
   const comHielo = useMemo(() => prodHielo * (selectedTrabajador?.comPacaHielo || 200), [prodHielo, selectedTrabajador?.comPacaHielo])
@@ -173,7 +183,7 @@ export default function ProduccionClient() {
   const comRepartTotal = useMemo(() => comRepartAgua + comRepartHielo, [comRepartAgua, comRepartHielo])
 
   const conciliation: ConciliationResult = useMemo(() => {
-    const totalDiff = Math.abs(diferenciaAgua) + Math.abs(diferenciaHielo)
+    const totalDiff = Math.abs(diferenciaAgua) + Math.abs(diferenciaHielo) + Math.abs(diferenciaBotellon)
     if (totalDiff === 0) {
       return { status: 'ok', message: 'Todo cuadra', diferenciaAgua, diferenciaHielo }
     }
@@ -182,9 +192,11 @@ export default function ProduccionClient() {
     if (diferenciaAgua < 0) issues.push(`Sobran ${Math.abs(diferenciaAgua)} paca(s) de agua`)
     if (diferenciaHielo > 0) issues.push(`Faltan ${diferenciaHielo} paca(s) de hielo sin explicación`)
     if (diferenciaHielo < 0) issues.push(`Sobran ${Math.abs(diferenciaHielo)} paca(s) de hielo`)
-    const hasSobrantes = diferenciaAgua < 0 || diferenciaHielo < 0
+    if (diferenciaBotellon > 0) issues.push(`Faltan ${diferenciaBotellon} botellón(es) sin explicación`)
+    if (diferenciaBotellon < 0) issues.push(`Sobran ${Math.abs(diferenciaBotellon)} botellón(es)`)
+    const hasSobrantes = diferenciaAgua < 0 || diferenciaHielo < 0 || diferenciaBotellon < 0
     return { status: hasSobrantes ? 'danger' : 'warning', message: issues.join('. '), diferenciaAgua, diferenciaHielo }
-  }, [diferenciaAgua, diferenciaHielo])
+  }, [diferenciaAgua, diferenciaHielo, diferenciaBotellon])
 
   const handleSubmit = async () => {
     if (!formData.trabajadorId) {
@@ -214,6 +226,8 @@ export default function ProduccionClient() {
       const body = {
         trabajadorId: formData.trabajadorId,
         turno: formData.turno,
+        botellonesLlenados: formData.botellonesLlenados,
+        stockFinBotellones: formData.stockFinBotellones,
         obs: formData.obs,
         offlineId: generateUUID(),
         items: [
@@ -440,7 +454,7 @@ export default function ProduccionClient() {
                   const hielo = p.items.find(i => i.producto === 'PACA_HIELO')
                   return (
                     <tr key={p.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium text-gray-800">{p.turno}</td>
+                      <td className="px-4 py-3 font-medium text-gray-800">{TURNO_LABEL[p.turno] ?? p.turno}</td>
                       <td className="px-4 py-3 text-gray-600">{p.trabajador.nombre}</td>
                       <td className="px-4 py-3 text-center text-blue-600 font-semibold">{agua?.producido ?? 0}</td>
                       <td className="px-4 py-3 text-center text-cyan-600 font-semibold">{hielo?.producido ?? 0}</td>
@@ -655,13 +669,38 @@ export default function ProduccionClient() {
                     <label className="block text-sm text-gray-600 mb-1">🕐 Turno</label>
                     <select
                       value={formData.turno}
-                      onChange={(e) => setFormData({ ...formData, turno: e.target.value as 'MANANA' | 'TARDE' | 'NOCHE' })}
+                      onChange={(e) => setFormData({ ...formData, turno: e.target.value as FormData['turno'] })}
                       className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="MANANA">Mañana</option>
                       <option value="TARDE">Tarde</option>
                       <option value="NOCHE">Noche</option>
+                      <option value="JORNADA">Jornada completa</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">🫙 Botellones llenados</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.botellonesLlenados || ''}
+                      onChange={(e) => setFormData({ ...formData, botellonesLlenados: Math.max(0, Number(e.target.value) || 0) })}
+                      className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      data-testid="botellones-llenados"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Llenados, no vendidos: la comisión del sellador usa los llenados.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">🫙 Conteo final botellones</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.stockFinBotellones || ''}
+                      onChange={(e) => setFormData({ ...formData, stockFinBotellones: Math.max(0, Number(e.target.value) || 0) })}
+                      className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      data-testid="stock-fisico-botellones"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Llenos que quedaron: esperado {stockFinEsperadoBotellon} ({stockInicial.stockIniBotellon} + {formData.botellonesLlenados} − {stockInicial.ventasBotellon}).</p>
                   </div>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { asegurarIntentoRecurrentes, leerReciboRecurrente, type ObjetivoRecurrente } from "./recurrentes-intento";
 import { getNextNumero } from "@/lib/sequence";
 import { resolverPreciosPedido, type Canal, type ProductCode } from "@/lib/pricing";
 import { getDateRange } from "@/lib/dates";
@@ -72,6 +73,9 @@ function estaEnSaltos(saltos: string[], fecha: Date): boolean {
 
 export interface PreviewRecurrente {
   recurrenteId: string
+  version: string
+  negocioId: string | null
+  negocioNombre: string | null
   clienteId: string
   clienteNombre: string
   cadaNDias: number
@@ -201,7 +205,7 @@ export async function previewGeneracionRecurrentes(
   })
 
   // Batch fetch all pending orders for all clients in a single query
-  const clienteIds = plantillas.map(pt => pt.clienteId).filter((id): id is string => id !== null)
+  const clienteIds = plantillas.map(pt => pt.clienteId ?? pt.negocio?.clienteId ?? null).filter((id): id is string => id !== null)
   const pedidosPendientesTodos = await prisma.pedido.findMany({
     where: {
       clienteId: { in: clienteIds },
@@ -380,6 +384,9 @@ export async function previewGeneracionRecurrentes(
 
     previews.push({
       recurrenteId: pt.id,
+      version: pt.updatedAt.toISOString(),
+      negocioId: pt.negocioId,
+      negocioNombre: pt.negocio?.nombre ?? null,
       clienteId: effectiveClienteId,
       clienteNombre: clienteForCheck?.nombre ?? 'Sin nombre',
       cadaNDias: pt.cadaNDias,
@@ -409,6 +416,8 @@ export async function previewGeneracionRecurrentes(
 export interface DecisionGeneracion {
   recurrenteId: string
   decision: 'NORMAL' | 'CON_PENDIENTES' | 'SOLO_PENDIENTES' | 'APLICAR_CREDITO' | 'SALTAR'
+  proximaFecha?: string
+  version?: string
 }
 
 /**
@@ -452,44 +461,24 @@ async function auditarGeneracion(
 export async function generarPedidosRecurrentes(
   decisiones: DecisionGeneracion[],
   _fechaReferencia: Date = new Date(),
-  options: { recurrenteBatchId?: string; actor: ActorGeneracion },
+  options: { recurrenteBatchId?: string; actor: ActorGeneracion; onCreado?: (pedido: { id: string; numero: number }) => void | Promise<void> },
 ) {
   const { actor } = options
   const recurrenteBatchId = options.recurrenteBatchId ?? null
-  // FIX F-N14 (hallazgo 6): dedup por recurrenteBatchId AL INICIO
-  // de la función, NO en la route.
-  //
-  // Antes: la route hacía findUnique({recurrenteBatchId}) FUERA de
-  // esta función (líneas 60-74 de pedidos/recurrentes/route.ts antes
-  // del fix). Dos requests con mismo offlineId llegaban casi
-  // simultáneos, ambos pasaban el findMany ([]), ambos entraban a
-  // esta función, y ambos creaban pedidos con el mismo
-  // recurrenteBatchId → doble pedido, doble factura, doble cobro.
-  //
-  // Ahora: el check corre aquí, ANTES del loop. Si hay pedidos con
-  // este batchId, retornamos el set existente sin iterar. El
-  // segundo request recibe el mismo resultado que el primero
-  // (idempotente).
-  //
-  // Patrón alineado con F-N7 (entrega), F-N10 (pedidos POST),
-  // F-N11 (pagar-fiado): el dedup debe estar donde el side effect
-  // ocurriría, no en la route.
-  if (options?.recurrenteBatchId) {
-    const pedidosExistentes = await prisma.pedido.findMany({
-      where: { recurrenteBatchId: options.recurrenteBatchId },
-      select: { id: true, numero: true, tipo: true },
-    })
-    if (pedidosExistentes.length > 0) {
-      return {
-        generados: pedidosExistentes,
-        saltados: [] as string[],
-        omitidos: [] as Array<{ recurrenteId: string; motivo: typeof MOTIVO_ENTREGA_INSUFICIENTE }>,
-        // #407: el lote ya existía; la ruta no debe inferirlo de recurrenteBatchId
-        // (los pedidos recién creados también lo llevan).
-        deduped: true,
-      }
-    }
-  }
+  // FIX F-N14 / #515: un pedido existente no demuestra que TODO el lote
+  // terminó. El intento conserva selección y objetivos originales; cada
+  // recibo se comprueba dentro de la transacción de su recurrencia.
+  const intento = options.recurrenteBatchId
+    ? await asegurarIntentoRecurrentes(options.recurrenteBatchId, actor, decisiones)
+    : null
+  const objetivos: Record<string, ObjetivoRecurrente> = intento?.objetivos ?? Object.fromEntries(
+    (await prisma.plantillaRecurrente.findMany({
+      where: { id: { in: decisiones.map(d => d.recurrenteId) } },
+      select: { id: true, proxGeneracion: true, updatedAt: true },
+    })).map(p => [p.id, { prox: p.proxGeneracion?.toISOString() ?? null, version: p.updatedAt?.toISOString() ?? '' }]),
+  )
+  const nuevos: Array<{ id: string; numero: number; tipo: string }> = []
+  let recuperados = 0
 
   // FIX H-12 (F-15): ordenar por recurrenteId antes de iterar.
   // Garantiza que admin y cron procesen las plantillas en el mismo orden,
@@ -518,8 +507,8 @@ export async function generarPedidosRecurrentes(
     // El inner $transaction legacy fue removido; ahora la outer tx es la única
     // necesaria.
     type ResultadoTx =
-      | { skipped: true; motivo?: typeof MOTIVO_ENTREGA_INSUFICIENTE }
-      | { skipped: false; creado: { id: string; numero: number } }
+      | { skipped: true; motivo?: typeof MOTIVO_ENTREGA_INSUFICIENTE; replayed?: boolean }
+      | { skipped: false; creado: { id: string; numero: number }; replayed?: boolean }
     let result: ResultadoTx
     try {
     result = await executeSerializableWithRetry<ResultadoTx>(async (tx) => {
@@ -534,12 +523,28 @@ export async function generarPedidosRecurrentes(
         })
         return { skipped: true as const }
       }
+      if (recurrenteBatchId) {
+        const recibo = await leerReciboRecurrente(tx, recurrenteBatchId, decision.recurrenteId)
+        if (recibo) {
+          if (recibo.resultado === 'GENERADO') return { skipped: false, creado: { id: recibo.pedidoId!, numero: recibo.numero! }, replayed: true }
+          return { skipped: true, replayed: true, ...(recibo.resultado === `SALTADO:${MOTIVO_ENTREGA_INSUFICIENTE}` && { motivo: MOTIVO_ENTREGA_INSUFICIENTE }) }
+        }
+      }
       // 1. findUnique plantilla
       const pt = await tx.plantillaRecurrente.findUnique({
         where: { id: decision.recurrenteId },
         include: { cliente: true, negocio: { include: { cliente: true } }, productos: true },
       })
-      if (!pt || !pt.activo) return { skipped: true }
+      const objetivo = objetivos[decision.recurrenteId]
+      if (!pt || !pt.activo) return saltar('INACTIVA_O_AUSENTE', objetivo?.prox ? new Date(objetivo.prox) : null)
+      // Un retry SSI conserva el objetivo leído ANTES del loop. No genera
+      // el siguiente ciclo porque otra confirmación ya avanzó el calendario.
+      if (!objetivo?.prox || pt.proxGeneracion?.toISOString() !== objetivo.prox ||
+          (objetivo.version && pt.updatedAt?.toISOString() !== objetivo.version) ||
+          (decision.proximaFecha && decision.proximaFecha !== objetivo.prox) ||
+          (decision.version && decision.version !== objetivo.version)) {
+        return saltar('CAMBIO_DESDE_REVISION', objetivo?.prox ? new Date(objetivo.prox) : null)
+      }
 
       // FIX F-N17 (hallazgo 6 parte 2): dedup admin-vs-cron sin offlineId.
       // Después de un P2034 retry (causado por SSI detectando conflicto con
@@ -1009,6 +1014,7 @@ export async function generarPedidosRecurrentes(
       throw error
     }
 
+    if (result.replayed) recuperados++
     if (result.skipped) {
       saltados.push(decision.recurrenteId)
       if (result.motivo) {
@@ -1019,11 +1025,20 @@ export async function generarPedidosRecurrentes(
         )
       }
     } else {
-      generados.push({ id: result.creado.id, numero: result.creado.numero, tipo: decision.decision })
+      const generado = { id: result.creado.id, numero: result.creado.numero, tipo: decision.decision }
+      generados.push(generado)
+      if (!result.replayed) {
+        nuevos.push(generado)
+        // La transacción ya confirmó. Notificar aquí también cubre un lote
+        // que falle más adelante; fallar al notificar nunca revierte el pedido.
+        try { await options.onCreado?.(generado) } catch (error) {
+          logger.warn({ err: error instanceof Error ? error.message : 'Unknown', pedidoId: generado.id }, '[recurrentes] no se pudo notificar el pedido confirmado')
+        }
+      }
     }
   }
 
-  return { generados, saltados, omitidos, deduped: false }
+  return { generados, saltados, omitidos, nuevos, deduped: decisiones.length > 0 && recuperados === decisiones.length }
 }
 
 /**

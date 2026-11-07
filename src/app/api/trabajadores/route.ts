@@ -9,6 +9,7 @@ import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { conDeudaPendiente } from '@/lib/trabajadores-deuda'
+import { datosPagoTrabajador } from '@/lib/trabajadores-auditoria'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -37,9 +38,9 @@ export async function GET(request: NextRequest) {
       orderBy: { nombre: 'asc' },
     })
     // #566: la deuda pendiente solo se expone a quien ya puede ver deudas
-    // (GET /api/deudas es ADMIN/CONTADOR). Un fallo del cálculo no tumba la lista.
+    // (ADMIN, CONTADOR y ASISTENTE; el detalle vive en /api/trabajadores/[id]/deudas-pendientes). Un fallo del cálculo no tumba la lista.
     const userRole = (authResult.user as { role?: string } | undefined)?.role
-    const puedeVerDeudas = userRole === ROLES.ADMIN || userRole === ROLES.CONTADOR
+    const puedeVerDeudas = userRole === ROLES.ADMIN || userRole === ROLES.CONTADOR || userRole === ROLES.ASISTENTE
     return apiSuccess({
       trabajadores: puedeVerDeudas ? await conDeudaPendiente(trabajadores) : trabajadores,
     })
@@ -63,7 +64,8 @@ export async function POST(request: NextRequest) {
     const raw = parsed.data
     const data = normalizeTrabajador(raw)
 
-    const trabajador = await prisma.trabajador.create({
+    const trabajador = await prisma.$transaction(async tx => {
+      const creado = await tx.trabajador.create({
       data: {
         nombre: data.nombre,
         rol: data.rol,
@@ -77,16 +79,21 @@ export async function POST(request: NextRequest) {
         comRepartHielo: data.comRepartHielo ?? 0,
         comRepartBotellon: data.comRepartBotellon ?? 0,
         salarioFijo: data.salarioFijo ?? 0,
+        frecuenciaPago: data.frecuenciaPago ?? null,
+        diasPago: data.diasPago ?? [],
+        frecuenciaDesde: data.frecuenciaPago ? new Date() : null,
+        pagoFueraDeCaja: data.pagoFueraDeCaja ?? false,
         telefono: data.telefono,
       },
+      })
+      await logAudit({
+        entidad: 'Trabajador', registroId: creado.id, accion: 'CREATE',
+        datos: { nombre: creado.nombre, rol: creado.rol, despues: datosPagoTrabajador(creado),
+          vigenteDesde: creado.createdAt.toISOString() },
+        usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+      }, tx)
+      return creado
     })
-    logAudit({
-      entidad: 'Trabajador',
-      registroId: trabajador.id,
-      accion: 'CREATE',
-      datos: { nombre: parsed.data.nombre, rol: parsed.data.rol },
-      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
-    }).catch(() => {})
 
     publishRealtimeEvent('trabajador.created', trabajador.id).catch(() => {})
 

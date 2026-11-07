@@ -322,6 +322,8 @@ export async function POST(
 
     return apiSuccess(result)
   } catch (error) {
+    if (error instanceof Error && error.message === 'ENTREGA_IDEMPOTENCIA_CONFLICTO')
+      return apiError('La referencia de entrega ya se usó con otros datos.', 409)
     if (error instanceof Error && error.message === 'PEDIDO_NOT_FOUND') {
       return apiError('Pedido no encontrado', 404)
     }

@@ -1,4 +1,4 @@
-// @tests #511 #513 — el neto presentado antes de cerrar debe incluir la cartera.
+// @tests #511 #513 #601 — el efectivo que debe haber incluye el efectivo de la cartera y excluye lo digital.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import CierreClient from '../index'
@@ -10,15 +10,16 @@ vi.mock('@/hooks/use-polling-refetch', () => ({ usePollingRefetch: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 vi.mock('@/components/arqueo-caja', () => ({
   DENOMINACIONES: [],
-  default: ({ netoTeorico, onChange }: { netoTeorico: number; onChange: (value: unknown) => void }) => <>
-    <output data-testid="neto-antes-del-cierre">{netoTeorico}</output>
-    <button onClick={() => onChange({ arqueo: { 10000: 1 }, totalContado: 10000, diferencia: 10000 - netoTeorico })}>Conteo de prueba</button>
+  default: ({ efectivoEsperado, onChange }: { efectivoEsperado: number; onChange: (value: unknown) => void }) => <>
+    <output data-testid="neto-antes-del-cierre">{efectivoEsperado}</output>
+    <button onClick={() => onChange({ arqueo: { 10000: 1 }, totalContado: 10000, diferencia: 10000 - efectivoEsperado })}>Conteo de prueba</button>
   </>,
 }))
 
 const cierre = {
   fecha: '2026-03-14', numPedidos: 1, totalVentas: 90000, cobrado: 90000,
-  cobroVentasHoy: 5000, cobroCartera: 5000, fiado: 0, totalNotasCredito: 0,
+  cobroVentasHoy: 5000, cobroCartera: 5000, cobroCarteraEfectivo: 5000, cobroEfectivoHoy: 10000, cobroDigitalHoy: 0,
+  fiado: 0, totalNotasCredito: 0,
   efectivo: 5000, transferencia: 0, nequi: 0, daviplata: 0, bono: 0, totalGastos: 0,
   ventasPorOrigen: [], facturasEmitidas: 0, facturas: [], embarques: [],
   descuentosRepartidorCount: 0, clientesNuevos: 0,
@@ -37,10 +38,26 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks() })
 
 describe('auditoría de la experiencia del cierre', () => {
-  it('el neto previo incluye base + Pago + abono independiente, una sola vez', async () => {
+  it('el efectivo que debe haber incluye base + Pago + abono en efectivo, una sola vez', async () => {
     render(<CierreClient initialFecha="2026-03-14" />)
-    await waitFor(() => expect(screen.getByLabelText('Base de Caja')).toHaveValue(10000))
+    await waitFor(() => expect(screen.getByTestId('cierre-efectivo-esperado')).toHaveTextContent(/Empezó con\s*\$\s*10\.000/))
     expect(await screen.findByTestId('neto-antes-del-cierre')).toHaveTextContent('20000')
+    expect(within(screen.getByTestId('cierre-efectivo-esperado')).getByTestId('efectivo-debe-haber')).toHaveTextContent(/\$\s*20\.000/)
+  })
+
+  it('#601: Nequi y demás pagos digitales no entran al efectivo que debe haber, pero se informan aparte', async () => {
+    const original = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (url: string, options?: RequestInit) => url.startsWith('/api/cierre?')
+      ? { ok: true, status: 200, json: async () => ({ cierre: { ...cierre, nequi: 3000, cobroVentasHoy: 8000, cobroDigitalHoy: 3000 }, status: 'COMPLETO', embarquesPendientes: [] }) }
+      : original(url, options))
+    render(<CierreClient initialFecha="2026-03-14" />)
+    await waitFor(() => expect(screen.getByTestId('cierre-efectivo-esperado')).toHaveTextContent(/Empezó con\s*\$\s*10\.000/))
+    // base 10.000 + efectivo 5.000 + abono en efectivo 5.000 = 20.000 (los 3.000 de Nequi no cuentan).
+    expect(await screen.findByTestId('neto-antes-del-cierre')).toHaveTextContent('20000')
+    expect(screen.getByTestId('cierre-pagos-digitales')).toHaveTextContent(/\$\s*3\.000/)
+    // «Cobrado hoy» sí los incluye (8.000 de pagos + 5.000 de abono en efectivo) y la pantalla ya no muestra el «neto».
+    expect(screen.getByTestId('cierre-kpi-cobros')).toHaveTextContent('13.000')
+    expect(screen.queryByTestId('cierre-kpi-neto')).not.toBeInTheDocument()
   })
 
   it('una respuesta HTTP 500 con JSON válido muestra el error y permite reintentar', async () => {
@@ -56,7 +73,7 @@ describe('auditoría de la experiencia del cierre', () => {
 
 async function abrirConfirmacion() {
   render(<CierreClient initialFecha="2026-03-14" />)
-  await waitFor(() => expect(screen.getByLabelText('Base de Caja')).toHaveValue(10000))
+  await waitFor(() => expect(screen.getByTestId('cierre-efectivo-esperado')).toHaveTextContent(/Empezó con\s*\$\s*10\.000/))
   fireEvent.click(screen.getByRole('button', { name: 'Conteo de prueba' }))
   fireEvent.click(screen.getByRole('button', { name: 'Cerrar Día' }))
   return screen.findByRole('dialog', { name: 'Confirmar cierre del día' })
@@ -64,27 +81,30 @@ async function abrirConfirmacion() {
 const envios = () => fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')
 
 describe('maqueta aprobada: confirmación y recuperación', () => {
-  it('separa salarios de gastos y comisiones sin alterar el neto', () => {
-    render(<CierreConfirmacion resumen={{ fecha: '2026-03-14', ventas: 260000, cobros: 270000, base: 50000, gastos: 30000, comisiones: 10000, salarios: 5000, neto: 275000 }} onResolver={vi.fn()} />)
-    expect(screen.getByText('Gastos y comisiones pagadas').closest('div')).toHaveTextContent(/-\$\s*40\.000/)
-    expect(screen.getByText('Salarios').closest('div')).toHaveTextContent(/-\$\s*5\.000/)
-    expect(screen.getByText('Neto de movimientos').closest('div')).toHaveTextContent(/\$\s*275\.000/)
+  it('muestra lo que debe haber, lo contado y la diferencia en palabras sencillas', () => {
+    render(<CierreConfirmacion resumen={{ fecha: '2026-03-14', debeHaber: 151700, contado: 150000, diferencia: -1700 }} onResolver={vi.fn()} />)
+    expect(screen.getByText('Efectivo que debe haber').closest('div')).toHaveTextContent(/\$\s*151\.700/)
+    expect(screen.getByText('Efectivo contado').closest('div')).toHaveTextContent(/\$\s*150\.000/)
+    expect(screen.getByText('Diferencia').closest('div')).toHaveTextContent(/Falta\s*\$\s*1\.700/)
   })
 
-  it('no inventa salarios cuando no están declarados', () => {
-    render(<CierreConfirmacion resumen={{ fecha: '2026-03-14', ventas: 260000, cobros: 270000, base: 50000, gastos: 30000, comisiones: 10000, salarios: 0, neto: 280000 }} onResolver={vi.fn()} />)
-    expect(screen.queryByText('Salarios')).not.toBeInTheDocument()
-    expect(screen.getByText('Gastos y comisiones pagadas').closest('div')).toHaveTextContent(/-\$\s*40\.000/)
+  it('dice «Cuadra» o «Sobra» según el conteo', () => {
+    const { unmount } = render(<CierreConfirmacion resumen={{ fecha: '2026-03-14', debeHaber: 100000, contado: 100000, diferencia: 0 }} onResolver={vi.fn()} />)
+    expect(screen.getByText('Diferencia').closest('div')).toHaveTextContent('Cuadra')
+    unmount()
+    render(<CierreConfirmacion resumen={{ fecha: '2026-03-14', debeHaber: 100000, contado: 108300, diferencia: 8300 }} onResolver={vi.fn()} />)
+    expect(screen.getByText('Diferencia').closest('div')).toHaveTextContent(/Sobra\s*\$\s*8\.300/)
   })
 
   it('exige revisión explícita y cancelar conserva los datos sin enviar', async () => {
     const dialog = await abrirConfirmacion()
     expect(within(dialog).getByRole('button', { name: 'Confirmar cierre' })).toBeDisabled()
-    expect(within(dialog).getByText(/incluye pagos digitales/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/Después de cerrar no podrás cambiar/)).toBeInTheDocument()
     await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Volver a revisar' })) })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(envios()).toHaveLength(0)
-    expect(screen.getByLabelText('Base de Caja')).toHaveValue(10000)
+    expect(screen.getByTestId('cierre-efectivo-esperado')).toHaveTextContent(/Empezó con\s*\$\s*10\.000/)
+    expect(screen.queryByLabelText('Efectivo con el que empezó el día')).not.toBeInTheDocument() // #666: ya no hay segundo campo
   })
 
   it('doble clic confirma una sola vez y vuelve a consultar el resultado registrado', async () => {
@@ -104,7 +124,7 @@ describe('maqueta aprobada: confirmación y recuperación', () => {
     fireEvent.click(button); fireEvent.click(button)
     expect(await screen.findByRole('heading', { name: 'Día cerrado' })).toBeInTheDocument()
     expect(envios()).toHaveLength(1)
-    expect(screen.getByTestId('cierre-kpi-neto')).toHaveTextContent('20.000')
+    expect(screen.getByTestId('cierre-kpi-cobros')).toBeInTheDocument()
   })
 
   it('una respuesta perdida consulta si el cierre quedó registrado sin reenviar', async () => {

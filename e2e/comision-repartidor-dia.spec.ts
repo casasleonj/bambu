@@ -70,7 +70,7 @@ test.describe('Comisión del repartidor en el cierre (#499)', () => {
     expect(Number(pagos[0].monto)).toBe(2 * TARIFA)
 
     // La caja del cierre resta lo pagado, sin que nadie teclee nada.
-    await expect(page.getByTestId('cierre-comisiones-auto')).toContainText('800')
+    await expect(page.getByTestId('cierre-efectivo-esperado')).toContainText('800')
     await page.reload()
     await expect(page.getByTestId(`comision-${r.id}`).getByTestId('comision-pagado')).toContainText('800', { timeout: 30000 })
   })
@@ -93,6 +93,56 @@ test.describe('Comisión del repartidor en el cierre (#499)', () => {
     })
     expect(res.status()).toBe(403)
     expect(await prisma.pagoComisionRepartidor.count({ where: { trabajadorId: r.id } })).toBe(0)
+  })
+
+  test('#669: muestra 206 con una entrega parcial, abre el pedido y paga solo las 3 unidades nuevas', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    await prisma.config.upsert({ where: { clave: 'GESTION_ADMIN_SIN_EMBARQUE' },
+      create: { clave: 'GESTION_ADMIN_SIN_EMBARQUE', valor: 'true' }, update: { valor: 'true' } })
+    const r = await repartidorConEntrega(page, `Parciales E2E ${Date.now()}`, 203)
+    const fecha = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    const previo = await apiPost(page, '/api/nomina/dia/pagar', { trabajadorId: r.id, fecha,
+      offlineId: `cp669-previo-${Date.now()}`, montoEsperado: 203 * TARIFA })
+    expect(previo.status()).toBe(201)
+
+    const { cliente } = await createCliente(page, { nombre: 'Cliente parcial sintético', telefono: `3${String(Date.now()).slice(-9)}` })
+    const creado = await apiPost(page, '/api/pedidos', { clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO',
+      items: [{ producto: 'PACA_AGUA', cantidad: 5 }], offlineId: `cp669-pedido-${Date.now()}` })
+    expect(creado.ok()).toBe(true)
+    const cuerpo = await creado.json()
+    const p = cuerpo.data?.pedido ?? cuerpo.pedido
+    const entregado = await apiPost(page, `/api/pedidos/${p.id}/gestion-admin/entrega`, {
+      repartidorId: r.id, itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 3 }],
+      promesaPagoFecha: new Date(Date.now() + 3 * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }),
+      offlineId: `cp669-entrega-${Date.now()}`,
+    })
+    expect(entregado.status()).toBe(200)
+    expect((await prisma.pedido.findUniqueOrThrow({ where: { id: p.id } })).estadoEntrega).toBe('PENDIENTE')
+
+    await goto(page, '/cierre')
+    const fila = page.getByTestId(`comision-${r.id}`)
+    await expect(fila.getByTestId('comision-pagado')).toContainText('81.200')
+    await expect(fila.getByTestId('comision-pendiente')).toContainText('1.200')
+    await fila.getByText('Ver entregas y cálculo').click()
+    await expect(fila).toContainText('206 unidades ×')
+    const enlace = fila.getByRole('link').filter({ hasText: `#${p.numero}` })
+    await expect(enlace).toHaveAttribute('href', `/pedidos/${p.id}`)
+    await expect(enlace).toContainText('Agua 3')
+    await enlace.click()
+    // La ruta canónica redirige al detalle sobre la lista (#377). Comprobar
+    // el pedido abierto, no aceptar como éxito su URL transitoria de redirección.
+    await expect(page.getByRole('dialog', { name: `Pedido #${p.numero}`, exact: true })).toBeVisible({ timeout: 15000 })
+    await expect(page).toHaveURL(url => url.pathname === '/pedidos')
+    await page.goBack()
+    await expect(fila.getByTestId('comision-pendiente')).toContainText('1.200')
+
+    await fila.getByTestId(`pagar-comision-${r.id}`).click()
+    await page.getByRole('button', { name: 'Sí, ya le pagué' }).click()
+    await expect(fila.getByTestId('comision-pagado')).toContainText('82.400')
+    await expect(fila.getByTestId('comision-pendiente')).toHaveCount(0)
+    const pagos = await prisma.pagoComisionRepartidor.findMany({ where: { trabajadorId: r.id } })
+    expect(pagos).toHaveLength(2)
+    expect(pagos.reduce((s, p) => s + Number(p.monto), 0)).toBe(206 * TARIFA)
   })
   test('las entregas por conciliar se explican, enlazan al embarque y no permiten pagar', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')

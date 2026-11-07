@@ -107,8 +107,13 @@ test.describe('F8 — recurrentes en el Hub (UI, NEXT_PUBLIC_PEDIDOS_V2)', () =>
     const cta = appMain(page).getByTestId('recurrentes-del-dia-cta')
     await expect(cta).toBeVisible({ timeout: 6000 })
     await cta.click()
-    await expect(page.getByTestId('recurrentes-del-dia-panel')).toBeVisible()
-    await page.getByTestId('recurrentes-del-dia-generar').click()
+    await expect(page).toHaveURL(/\/recurrentes\?volver=/)
+    await page.getByRole('button', { name: 'Revisar antes de crear', exact: true }).click()
+    const revision = page.getByTestId('habituales-dialog')
+    await expect(revision).toBeVisible()
+    await revision.getByRole('button', { name: 'Revisar selección', exact: true }).click()
+    await revision.getByRole('button', { name: 'Confirmar selección', exact: true }).click()
+    await expect(revision).toContainText('Se comprobó el resultado', { timeout: 15000 })
     // un pedido origen RECURRENTE queda para ese cliente
     await expect(async () => {
       const r = await (await apiGet(page, `/api/pedidos?all=true&conRecurrencia=true&clienteId=${cliente.id}`)).json()
@@ -116,3 +121,6 @@ test.describe('F8 — recurrentes en el Hub (UI, NEXT_PUBLIC_PEDIDOS_V2)', () =>
     }).toPass({ timeout: 10000 })
   })
 })
+
+import { definirCasosHabituales515 } from './habituales-515.casos'
+definirCasosHabituales515()

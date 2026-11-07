@@ -17,11 +17,11 @@ La comisión se calcula sola; el **pago** es un toque deliberado, porque es dine
 
 ## Reglas
 
-- **Origen de la comisión:** embarques cerrados del trabajador (por `Embarque.fecha`) más, mientras exista la gestión temporal de #472, las entregas a domicilio sin embarque (por `entregadoAt`). Día de Bogotá.
+- **Origen de la comisión:** embarques cerrados del trabajador (por `Embarque.fecha`) más las entregas a domicilio sin embarque, por la fecha y responsable de cada hecho verificable, incluidas las parciales (#669). Día de Bogotá. `entregadoAt` queda como excepción para pedidos completos anteriores sin capturas detalladas, no como sustituto de los hechos disponibles.
 - **Quién cobra:** trabajadores activos con moto y tipo de pago COMISION o MIXTO. Una tarifa en 0 significa «sin definir» y usa `COM_REPARTIDOR` (y si no existe, 200; botellón 200) (#500).
 - **Pagar:** el monto lo pone el servidor (comisión del día menos lo ya pagado). `montoEsperado` detecta una pantalla desactualizada (409 `MONTO_CAMBIO`). `offlineId` único evita el doble toque; dos personas a la vez pagan una sola vez (transacción Serializable).
 - **Un registro por pago:** si luego sube la comisión del mismo día, se paga la diferencia con otro registro.
-- **Caja:** el cierre de un día resta lo pagado ese día (`createdAt` del pago) más la comisión de sellador de Producción. La cifra que mande el cliente se ignora. Un pago hecho después del cierre cae en la caja del día siguiente.
+- **Caja:** el cierre resta las comisiones **pagadas en efectivo** ese día (`createdAt` del pago), tanto de reparto como de producción (#305, #645). La comisión calculada o pendiente no sale automáticamente de la caja. La cifra que mande el cliente se ignora. Un pago hecho después del cierre cae en la caja del día siguiente.
 - **Pendiente al cerrar:** no bloquea el cierre. Esa comisión se paga con la nómina del período.
 - **Nómina:** `total = max(0, comisiones − pagado en caja) + salario − descuentos`. Si se pagó de más (por ejemplo se anuló una entrega después), la parte de comisión queda en 0 y el salario no se toca; el excedente se ve en `comisionPagadaCaja > totalComisiones`.
 - **Día cubierto por una nómina:** ya no se paga por la caja (409 `NOMINA_EXISTENTE`).
@@ -39,3 +39,14 @@ La comisión se calcula sola; el **pago** es un toque deliberado, porque es dine
 - Las nuevas nóminas usan inicio y fin del día de Bogotá (#523), igual que la vista diaria: una entrega de las 23:30 pertenece a ese día. Las nóminas ya guardadas conservan sus fechas, tarifas e importes; no se recalculan de oficio.
 
 Límites: la excepción histórica por acumulados no prueba quién hizo cada entrega si nunca existieron eventos. Las tarifas actuales no constituyen un historial de cambios de tarifa; las nóminas y pagos ya registrados mantienen sus importes originales. El detalle vivo es un cálculo con la evidencia disponible, no una reescritura de esos registros.
+
+## Parciales sin embarque: contar lo entregado, no esperar a completar (#669)
+
+- Una entrega de 3 unidades de un pedido de 5 acredita 3, aunque siga `PENDIENTE`. Si se completan las otras 2 mañana, cada día conserva 3 y 2; no se trasladan las 5 al último `entregadoAt`.
+- La fuente común `leerEntregasConsulta` conserva fecha, repartidor y cantidades por entrega y deduplica el movimiento espejo. El cierre, la consulta diaria, el pago y la nómina usan la misma función de comisión. Una captura moderna ilegible, incompleta o de versión desconocida exige revisión; nunca se reclasifica como un registro antiguo para pagar el acumulado.
+- Se conserva la excepción de pedidos completos sin captura detallada. Un parcial histórico sin cantidades verificables, o un histórico con fechas/responsables contradictorios, queda por conciliar. No se reconstruyen entregas ausentes.
+- Un pedido con entregas atribuidas a embarques no vuelve a acreditar su acumulado por quedar desvinculado. La revisión de la oficina afecta a su responsable o a su captura propia; descubrir el mismo pedido en el rango no bloquea por sí solo al repartidor que ya tiene la entrega verificada en su misión.
+- La oficina sigue rechazando cambiar el repartidor de un pedido parcialmente atendido (`REPARTIDOR_DISTINTO`). Apagar la gestión directa impide nuevas capturas, pero no borra las entregas ya registradas.
+- Si ya se pagaron 203 unidades y la cifra correcta aumenta a 206, solo queda la comisión de 3. El replay del pago conserva su resultado y la pantalla desactualizada recibe `MONTO_CAMBIO`. No se reescriben nóminas, pagos ni cierres guardados.
+
+Pruebas: `integration/comision-parciales-669.test.ts` (datos sintéticos, PostgreSQL y handlers reales), `nomina-comision-sin-embarque.test.ts`, `comision-repartidor-dia.test.ts`, `pago-comision-repartidor.test.ts`, `comision-salario-medio-pago-305.test.ts` y `e2e/comision-repartidor-dia.spec.ts` (cantidades, enlace de detalle y pago de la diferencia). La regresión de partida reproduce 203 en vez de 206 y cero pendiente en vez de la comisión de las 3 unidades.

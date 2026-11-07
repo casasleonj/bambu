@@ -27,7 +27,7 @@ test.describe('Pantalla de detalle del pedido (P1-1 PR B)', () => {
     const detalle = appMain(page).getByTestId('pedido-detalle')
     await expect(detalle).toBeVisible({ timeout: 20000 })
 
-    await expect(detalle.getByTestId('detalle-dinero').getByText('Total Pedido', { exact: true })).toBeVisible()
+    await expect(detalle.getByTestId('detalle-dinero').getByText('Valor comercial del pedido', { exact: true })).toBeVisible()
     await expect(detalle.getByTestId('detalle-productos')).toContainText('2 und')
     await expect(detalle.getByTestId('detalle-obs')).toContainText('Dejar con el portero')
     await expect(detalle.getByTestId('detalle-contacto').getByRole('link', { name: /WhatsApp/ })).toHaveAttribute('href', `https://wa.me/57${ped.telefono}`)
@@ -38,6 +38,24 @@ test.describe('Pantalla de detalle del pedido (P1-1 PR B)', () => {
     const enBD = await prisma.pago.findMany({ where: { pedidoId: ped.id } })
     await expect(detalle.getByTestId('detalle-pago')).toHaveCount(enBD.length)
     if (enBD.length > 0) await expect(detalle.getByTestId('detalle-pago').first()).toContainText('Efectivo')
+  })
+
+  test('#517: un pago Nequi sin confirmar se marca "por confirmar" solo si el pedido sigue vigente', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const vigente = await crearPedido(page, `Detalle nequi vigente ${Date.now()}`, false)
+    const cancelado = await crearPedido(page, `Detalle nequi cancelado ${Date.now()}`, false)
+    for (const p of [vigente, cancelado]) {
+      await prisma.pago.create({ data: { pedidoId: p.id, metodo: 'NEQUI', monto: 1000, confirmacion: 'REPORTADO' } })
+    }
+    await prisma.pedido.update({ where: { id: cancelado.id }, data: { estadoEntrega: 'CANCELADO', estado: 'CANCELADO', estadoPago: 'ANULADO' } })
+
+    for (const [p, marcado] of [[vigente, true], [cancelado, false]] as const) {
+      await page.goto(`${BASE}/pedidos?openPedido=${p.id}`)
+      const detalle = appMain(page).getByTestId('pedido-detalle')
+      await expect(detalle.getByTestId('detalle-pago')).toHaveCount(1, { timeout: 20000 })
+      if (marcado) await expect(detalle.getByTestId('detalle-pago')).toContainText('por confirmar')
+      else await expect(detalle.getByTestId('detalle-pago')).not.toContainText('por confirmar')
+    }
   })
 
   test('PENDIENTE ofrece Enviar, Editar y Cancelar; Cancelar queda en la base de datos', async ({ browser }) => {

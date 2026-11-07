@@ -1,7 +1,7 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth, requireRole } from '@/lib/auth-check'
+import { requireAuth, requireRole, requirePermission } from '@/lib/auth-check'
 import { sanitizarSaltos, calcularProxGeneracion } from '@/lib/recurrentes'
 import { hydrateProductos } from '@/lib/cliente-hydrate'
 import { z } from 'zod'
@@ -9,6 +9,7 @@ import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { leerCatalogoRecurrentes } from '@/lib/recurrentes-catalogo'
 
 export const RecurrenteCreateSchema = z.object({
   // Fase 8 (Q4): la recurrencia pertenece a UN contexto comercial concreto —
@@ -90,32 +91,24 @@ function mapProductoKey(key: string): string | null {
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const permission = await requirePermission('view:recurrentes', authResult)
+  if (permission instanceof Response) return permission
 
   try {
     // Fase 8 (F8-0): filtro opcional por contexto — cliente XOR negocio.
     const { searchParams } = new URL(request.url)
     const clienteId = searchParams.get('clienteId')
     const negocioId = searchParams.get('negocioId')
-    const where: { activo: true; clienteId?: string; negocioId?: string } = { activo: true }
+    const incluirInactivos = searchParams.get('incluirInactivos')
+    if (incluirInactivos && !['true','false'].includes(incluirInactivos)) return apiError('incluirInactivos debe ser true o false', 400)
+    const where: { activo?: boolean; clienteId?: string; negocioId?: string } = incluirInactivos === 'true' ? {} : { activo: true }
     if (negocioId) where.negocioId = negocioId
     else if (clienteId) where.clienteId = clienteId
 
-    const plantillas = await prisma.plantillaRecurrente.findMany({
-      where,
-      include: {
-        cliente: { select: { id: true, nombre: true, telefono: true } },
-        negocio: { select: { id: true, nombre: true } },
-        productos: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-
-    const recurrentes = plantillas.map(pt => ({
-      ...pt,
-      productos: hydrateProductos(pt.productos),
-    }))
-
-    return apiSuccess({ recurrentes })
+    const recurrentes = await leerCatalogoRecurrentes(where)
+    const response = apiSuccess({ recurrentes, leidoAt: new Date().toISOString() })
+    response.headers.set('Cache-Control', 'private, no-store')
+    return response
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching recurrentes:')
     return apiError('Error al cargar recurrentes', 500)

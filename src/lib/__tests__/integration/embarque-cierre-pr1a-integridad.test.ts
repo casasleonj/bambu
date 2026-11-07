@@ -545,17 +545,24 @@ describe('PR-1A — integridad del procesamiento de pedidos en el cierre', () =>
     it('el mismo cierre como PARCIAL (3 de 5) -> 200, pedido PENDIENTE con 3 entregadas, pago de misión registrado y embarque CERRADO', async () => {
       const emb = await crearEmbarque({ PACA_AGUA: 5 })
       const pedido = await pedidoSinPago(emb.id, 5, 2_600)
+      const fechaFactura = new Date(Date.now() - 3600000)
+      await testPrisma.factura.create({ data: { pedidoId: pedido.id, clienteId, numero: `FAC-660-${pedido.id}`,
+        fecha: fechaFactura, subtotal: 13000, total: 13000, saldo: 13000, montoPagado: 0, estado: 'EMITIDA' } })
 
       const r = await llamarCierre(emb.id, cuerpo(pedido.id, 'PARCIAL', 3, 7_800))
 
       expect(r.status).toBe(200)
       expect(r.json.success).toBe(true)
-      const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id }, include: { pagos: true } })
+      const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id }, include: { pagos: true, factura: true } })
       expect(p.estadoEntrega).toBe('PENDIENTE')
       expect(p.cPacaAguaEnt).toBe(3)
       expect(p.pagos).toHaveLength(1)
       expect(p.pagos[0].embarqueId).toBe(emb.id)
       expect(Number(p.totalPagado)).toBe(7_800)
+      expect(Number(p.factura!.montoPagado)).toBe(7800)
+      expect(Number(p.factura!.saldo)).toBe(5200)
+      expect(p.factura!.estado).toBe('PARCIAL')
+      expect(p.factura!.fecha).toEqual(fechaFactura)
       expect((await testPrisma.embarque.findUniqueOrThrow({ where: { id: emb.id } })).estado).toBe('CERRADO')
     })
   })

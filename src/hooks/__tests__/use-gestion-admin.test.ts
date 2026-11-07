@@ -18,6 +18,7 @@ describe("#516 — estado verificable de gestión directa", () => {
       json: async () => ({
         success: true,
         activa: true,
+        fiadoParcialActivo: true,
         repartidores: [{ id: "r1", nombre: "Juan" }],
       }),
     });
@@ -26,6 +27,7 @@ describe("#516 — estado verificable de gestión directa", () => {
       expect(h.result.current.estadoConsulta).toBe("verificado"),
     );
     expect(h.result.current.activa).toBe(true);
+    expect(h.result.current.fiadoParcialActivo).toBe(true);
   });
   it("desactivación explícita sí es un estado verificado", async () => {
     fetchMock.mockResolvedValueOnce({

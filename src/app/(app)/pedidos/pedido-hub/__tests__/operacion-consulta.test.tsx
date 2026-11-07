@@ -85,6 +85,20 @@ function montar({
   return { acciones, onAccion, onOpen };
 }
 describe("#516 — productos, acciones y navegación", () => {
+  it.each(['desktop', 'mobile'] as const)('#656 %s: distingue importe comercial y saldo exigible del parcial', viewport => {
+    const pedido: Pedido = { ...base, total: 12500, totalPagado: 0, saldo: 12500, exigible: 7500,
+      items: [{ producto: 'PACA_AGUA', cantPedido: 5, cantEntrega: 3, precio: 2500, subtotal: 12500 }] }
+    render(<OperacionList pedidos={[pedido]} viewport={viewport} hoyBogota="2026-10-29" onAccion={vi.fn()} onOpen={vi.fn()} consulta={{ userRole: 'ADMIN', gestionDirecta: true, volver: '/pedidos', onVerPedido: vi.fn(), onVerFactura: vi.fn() }} />)
+    const row = screen.getByTestId(`operacion-row-${pedido.id}`)
+    expect(row.textContent).toMatch(/Importe.*12\.500/)
+    expect(row.textContent).toMatch(/Por cobrar de lo entregado.*7\.500/)
+    expect(row.textContent).toMatch(/Pendiente de entrega:.*5\.000/)
+    expect(row.textContent).toContain('5 pedidas · 3 entregadas · 2 por entregar')
+  })
+  it('#656 parcial sin hecho no anuncia deuda cero como definitiva', () => {
+    montar({ pedido: { ...base, totalPagado: 0, exigible: 0 } })
+    expect(screen.getByText('Por conciliar')).toBeInTheDocument()
+  })
   it("mezcla de productos conserva cantidades individuales y muestra el faltante del parcial", () => {
     montar();
     expect(screen.getByText("Paca Hielo")).toBeInTheDocument();

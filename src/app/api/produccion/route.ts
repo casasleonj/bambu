@@ -9,8 +9,10 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { getVentasDelDia } from '@/lib/ventas'
-import { calcComSellador } from '@/lib/comisiones'
+import { calcComSellador, itemBotellon } from '@/lib/comisiones'
 import { getTodayRange, getDateRange } from '@/lib/dates'
+import { motivoFechaProduccionInvalida } from '@/lib/produccion-fecha'
+import { netoPrevioDelDia } from '@/lib/produccion-previas'
 import { startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
 import { publishRealtimeEvent } from '@/lib/realtime'
@@ -92,17 +94,45 @@ export async function POST(request: NextRequest) {
 
   // FIX 1.6: fecha truncada a medianoche Bogotá para que
   // @@unique([trabajadorId, fecha, turno]) funcione como "1 por día"
-  const fechaProduccion = startOfDayInBogota(todayInBogota())
-  const { startOfDay, endOfDay } = getTodayRange()
+  // #645: con `fecha` (cierre atrasado) la producción se registra en ese día, hasta 7 días atrás y nunca en el futuro.
+  const hoy = todayInBogota()
+  const diaProduccion = parsed.data.fecha ?? hoy
+  if (parsed.data.fecha) {
+    const motivo = motivoFechaProduccionInvalida(diaProduccion, hoy)
+    if (motivo === 'FECHA_FUTURA') return apiError('No se puede registrar producción de un día que no ha llegado', 422, { code: motivo })
+    if (motivo) return apiError('Solo se registra producción de hoy y de los 7 días anteriores', 422, { code: motivo })
+  }
+  const fechaProduccion = startOfDayInBogota(diaProduccion)
+  const { startDate: startOfDay, endDate: endOfDay } = getDateRange(diaProduccion, diaProduccion)
+
+  // #645: un día ya cerrado no admite producción nueva (cambiaría un cierre ya guardado).
+  const cierreDelDia = await prisma.cierreDia.findFirst({ where: { fecha: fechaProduccion }, select: { id: true } })
+  if (cierreDelDia) return apiError('Ese día ya está cerrado: no se puede registrar producción', 409, { code: 'DIA_CERRADO' })
 
   // Re-leemos ventas adentro del handler para mayor fidelidad (pueden cambiar
   // entre el preview y el POST)
-  const [stockInicial, ventas] = await Promise.all([
-    resolverStockInicial(prisma),
-    getVentasDelDia(),
+  const [stockInicial, ventas, previas] = await Promise.all([
+    resolverStockInicial(prisma, parsed.data.fecha ? fechaProduccion : undefined),
+    getVentasDelDia(parsed.data.fecha ? new Date(fechaProduccion.getTime() + 12 * 3_600_000) : undefined),
+    // #645: varias producciones el mismo día (otro sellador u otro turno)
+    prisma.produccion.findMany({
+      where: { fecha: fechaProduccion },
+      select: { trabajadorId: true, turno: true, items: { select: { producto: true, producido: true, rotas: true, filtradas: true, consumoInterno: true } } },
+    }),
   ])
 
-  const { stockIniAgua, stockIniHielo } = stockInicial
+  // #645: «Jornada completa» no convive con otro turno del mismo sellador ese día.
+  const mismoSellador = previas.filter((p) => p.trabajadorId === parsed.data.trabajadorId)
+  if (mismoSellador.some((p) => (parsed.data.turno === 'JORNADA') !== (p.turno === 'JORNADA'))) {
+    return apiError('Ese sellador ya tiene producción ese día con otro tipo de turno: la jornada completa no se combina con mañana, tarde o noche', 409, { code: 'JORNADA_CON_OTRO_TURNO' })
+  }
+
+  // #645: el stock del día es uno solo. Con producciones previas del mismo día, lo que ya produjeron (menos sus pérdidas)
+  // pasa a ser parte del stock inicial de esta, para que el cuadre del día no cuente dos veces ni olvide nada.
+  const stockIniAgua = stockInicial.stockIniAgua + netoPrevioDelDia(previas, 'PACA_AGUA')
+  const stockIniHielo = stockInicial.stockIniHielo + netoPrevioDelDia(previas, 'PACA_HIELO')
+  // #618: botellones llenos (sin pérdidas): lo llenado por las producciones anteriores del día suma al inicial.
+  const stockIniBotellon = stockInicial.stockIniBotellon + netoPrevioDelDia(previas, 'BOTELLON')
 
   // FIX 1.5: validar server-side que obs esté presente si hay diferencia
   const perdidasAgua = itemAgua.rotas + itemAgua.filtradas + itemAgua.consumoInterno
@@ -111,7 +141,12 @@ export async function POST(request: NextRequest) {
   const stockFinEsperadoHielo = stockIniHielo + prodHielo - ventas.hieloVendido
   const diferenciaAgua = stockFinEsperadoAgua - itemAgua.stockFinFisico - perdidasAgua
   const diferenciaHielo = stockFinEsperadoHielo - itemHielo.stockFinFisico - perdidasHielo
-  const hayDiferencia = diferenciaAgua !== 0 || diferenciaHielo !== 0
+  // #618: inventario de botellones llenos. Sin conteo se asume que cuadra (clientes anteriores).
+  const stockFinEsperadoBotellon = stockIniBotellon + parsed.data.botellonesLlenados - ventas.botellonVendido
+  const stockFinFisicoBotellon = parsed.data.stockFinBotellones ?? stockFinEsperadoBotellon
+  const itemBot = itemBotellon(parsed.data.botellonesLlenados, 0, ventas.botellonVendido, { stockIni: stockIniBotellon, stockFinFisico: stockFinFisicoBotellon })
+  const diferenciaBotellon = stockFinEsperadoBotellon - stockFinFisicoBotellon
+  const hayDiferencia = diferenciaAgua !== 0 || diferenciaHielo !== 0 || diferenciaBotellon !== 0
   const obsTrim = (parsed.data.obs || '').trim()
 
   if (hayDiferencia && obsTrim === '') {
@@ -166,6 +201,7 @@ export async function POST(request: NextRequest) {
             select: {
               comPacaAgua: true,
               comPacaHielo: true,
+              comBotellon: true,
               rol: true,
             },
           })
@@ -177,7 +213,8 @@ export async function POST(request: NextRequest) {
             throw new Error('TRABAJADOR_NO_SELLADOR')
           }
 
-          const comSell = calcComSellador(prodAgua, prodHielo, trabajador)
+          // #645: el sellador comisiona por los botellones LLENADOS (los que digita), no por los vendidos.
+          const comSell = calcComSellador(prodAgua, prodHielo, trabajador, parsed.data.botellonesLlenados)
 
           const embarquesHoy = await tx.embarque.findMany({
             where: {
@@ -259,6 +296,8 @@ export async function POST(request: NextRequest) {
                     consumoInterno: itemHielo.consumoInterno,
                     comSellador: comSell.comHielo,
                   },
+                  // #645: botellones llenados (los vendidos del día quedan como referencia; sin ciclo de stock).
+                  { ...itemBot, comSellador: comSell.comBotellon },
                 ],
               },
             },
@@ -316,7 +355,7 @@ export async function POST(request: NextRequest) {
 
       if (lastError.message === 'PRODUCCION_DUPLICADA') {
         return apiError(
-          `Ya existe producción registrada para este trabajador en el turno ${parsed.data.turno} de hoy`,
+          `Ya existe producción registrada para este trabajador en el turno ${parsed.data.turno} de ese día`,
           409,
         )
       }
@@ -356,7 +395,7 @@ export async function POST(request: NextRequest) {
     })
     if (dup) {
       return apiError(
-        `Ya existe producción registrada para este trabajador en el turno ${parsed.data.turno} de hoy`,
+        `Ya existe producción registrada para este trabajador en el turno ${parsed.data.turno} de ese día`,
         409,
       )
     }

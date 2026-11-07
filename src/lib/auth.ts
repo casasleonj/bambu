@@ -18,6 +18,7 @@ import {
   reconcileSessionsAfterRoleChange,
 } from '@/lib/session-store'
 import type { Role } from '@/lib/constants'
+import { esUsuarioSistema } from '@/lib/usuario-sistema'
 
 const DUMMY_HASH = '$2b$12$3efHSCLxFTFy3/JJefgSmeHE/A.YexA51FcSccHtb8u0UvLR7mTWm'
 
@@ -41,7 +42,9 @@ const authOptions: NextAuthConfig = {
           dbUser = await prisma.user.findUnique({
             where: { username: credentials.username as string },
           })
-          if (dbUser && dbUser.activo) {
+          // #410: el usuario técnico del sistema nunca inicia sesión; se compara contra el hash
+          // de relleno para no delatar por el tiempo de respuesta que la cuenta existe.
+          if (dbUser && dbUser.activo && !esUsuarioSistema(dbUser.username)) {
             hashToCompare = dbUser.password
           }
         } catch (error) {
@@ -53,7 +56,7 @@ const authOptions: NextAuthConfig = {
           hashToCompare
         )
 
-        if (dbUser && dbUser.activo && valid) {
+        if (dbUser && dbUser.activo && !esUsuarioSistema(dbUser.username) && valid) {
           const displayName = dbUser.nombre || dbUser.apellido
             ? `${dbUser.nombre} ${dbUser.apellido}`.trim()
             : dbUser.username
@@ -210,8 +213,8 @@ const authOptions: NextAuthConfig = {
             where: { id: token.sub as string },
             select: { rol: true, activo: true, nombre: true, apellido: true, username: true, mustChangePassword: true },
           })
-          if (!dbUser || !dbUser.activo) {
-            // Invalidate token by returning empty — forces re-login
+          if (!dbUser || !dbUser.activo || esUsuarioSistema(dbUser.username)) {
+            // Invalidate token by returning empty — forces re-login (#410: también el usuario técnico)
             return { ...token, role: undefined, sub: undefined, sessionId: undefined }
           }
 

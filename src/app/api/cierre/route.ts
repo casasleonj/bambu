@@ -14,9 +14,10 @@ import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { whereEmbarquesPendientesCierreDia } from '@/lib/cierre-dia-embarques'
 import { CobrosSinConciliarError } from '@/lib/cobro-cartera'
 import { construirResumenCierre } from '@/lib/cierre-resumen'
-import { calcularNetoCierre } from '@/lib/cierre-totales'
+import { calcularNetoCierre, calcularEfectivoEsperado } from '@/lib/cierre-totales'
 import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
 import { analizarHueco, type DiaHueco } from '@/lib/cierre-huecos'
+import { getConfig } from '@/lib/config'
 
 /** #306: hay días anteriores sin cerrar que tuvieron operación (o son demasiados para revisarlos). */
 class HuecoConOperacionError extends Error {
@@ -160,7 +161,14 @@ export async function GET(request: NextRequest) {
       tx => construirResumenCierre(tx, fechaStr),
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 15000 },
     )
-    return apiSuccess(resumen)
+    // #631: ¿quien cierra puede confirmar los pagos digitales? Si no, el cierre solo dice quién los confirma.
+    const userId = (authResult.user as { id?: string } | undefined)?.id
+    const confirmadorId = await getConfig('USUARIO_CONFIRMA_PAGOS').catch(() => null)
+    const confirmador = confirmadorId && confirmadorId !== userId
+      ? await prisma.user.findUnique({ where: { id: confirmadorId }, select: { nombre: true, username: true } }).catch(() => null)
+      : null
+    const confirmaPagos = { puede: !!confirmadorId && confirmadorId === userId, nombre: confirmador ? (confirmador.nombre.trim() || confirmador.username) : null }
+    return apiSuccess({ ...resumen, cierre: { ...resumen.cierre, confirmaPagos } })
   } catch (error) {
     if (error instanceof CobrosSinConciliarError) return apiError(error.message, 409, {
       code: error.code, cobrosPendientes: error.cobros.map(({ referencia, importe }) => ({ referencia, importe })),
@@ -252,16 +260,24 @@ export async function POST(request: NextRequest) {
         const gastosTotal = resumen.totalGastos
         const comisiones = resumen.comisionesAuto
         // #305: solo los salarios pagados en EFECTIVO salen de la caja; sin indicarlo se asume todo.
-        const salariosEfectivo = parsed.data.salariosEfectivo ?? parsed.data.salarios
+        // #644: ya no se captura a mano. Los sueldos pagados en efectivo salen como gasto de nómina (#641), ya incluido en
+        // `gastosTotal`; lo que mande un cliente antiguo en `salarios` se ignora para no restarlo dos veces.
+        const salariosEfectivo = 0
         const netoCaja = calcularNetoCierre({
           baseDia: parsed.data.baseDia, cobroVentasHoy, cobroCartera,
           totalGastos: gastosTotal, comisiones: comisiones.total, salarios: salariosEfectivo,
         })
-        const arqueo = leerArqueoDeclarado(parsed.data.reporte, netoCaja)
+        // #601: el conteo del efectivo se compara con el efectivo esperado en la caja física
+        // (sin Nequi, transferencias ni demás pagos digitales), no con el neto total.
+        const efectivoEsperado = calcularEfectivoEsperado({
+          baseDia: parsed.data.baseDia, efectivoPagos: efectivo, cobroCarteraEfectivo: resumen.cobroCarteraEfectivo,
+          totalGastos: gastosTotal, comisiones: comisiones.total, salariosEfectivo,
+        })
+        const arqueo = leerArqueoDeclarado(parsed.data.reporte, efectivoEsperado)
         const reporteData = {
-          ...resumen, ...arqueo, _version: '2.1', netoCaja,
-          baseDia: parsed.data.baseDia, salarios: parsed.data.salarios, comisiones: comisiones.total,
-          salariosEfectivo, salariosOtrosMedios: (Math.round(parsed.data.salarios * 100) - Math.round(salariosEfectivo * 100)) / 100,
+          ...resumen, ...arqueo, _version: '2.2', netoCaja, efectivoEsperado,
+          baseDia: parsed.data.baseDia, salarios: 0, comisiones: comisiones.total,
+          salariosEfectivo, salariosOtrosMedios: 0,
         }
 
         // 8. Create cierre
@@ -279,7 +295,7 @@ export async function POST(request: NextRequest) {
             bono,
             baseDia: parsed.data.baseDia,
             comisiones: comisiones.total,
-            salarios: parsed.data.salarios,
+            salarios: 0,
             gastos: gastosTotal,
             stockIniAgua: parsed.data.stockIniAgua,
             prodAgua: parsed.data.prodAgua,
@@ -287,6 +303,10 @@ export async function POST(request: NextRequest) {
             stockIniHielo: parsed.data.stockIniHielo,
             prodHielo: parsed.data.prodHielo,
             stockFinHielo: parsed.data.stockFinHielo,
+            // #618: NULL si el cliente no manda botellones (cierre anterior a este cambio)
+            stockIniBotellon: parsed.data.stockIniBotellon ?? null,
+            prodBotellon: parsed.data.prodBotellon ?? null,
+            stockFinBotellon: parsed.data.stockFinBotellon ?? null,
             aguaVendida: resumen.aguaVendida,
             hieloVendido: resumen.hieloVendido,
             botellonVendido: resumen.botellonVendido,

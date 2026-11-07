@@ -2,12 +2,17 @@ import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
-import { TrabajadorUpdateSchema, normalizeTrabajador } from '@/lib/validators'
+import { TrabajadorCreateSchema, TrabajadorUpdateSchema, normalizeTrabajador } from '@/lib/validators'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { logger } from '@/lib/logger'
+import { datosPagoTrabajador } from '@/lib/trabajadores-auditoria'
+
+class EdicionTrabajadorError extends Error {
+  constructor(readonly status: number, message: string) { super(message) }
+}
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -51,32 +56,50 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
     const raw = parsed.data
-    const data = normalizeTrabajador(raw)
-    const trabajador = await prisma.trabajador.update({
-      where: { id },
-      data: {
+    const trabajador = await prisma.$transaction(async tx => {
+      // #671: leer después de bloquear la fila evita perder otra edición parcial.
+      await tx.$queryRaw`SELECT id FROM "Trabajador" WHERE id = ${id} FOR UPDATE`
+      const actual = await tx.trabajador.findUnique({ where: { id } })
+      if (!actual) throw new EdicionTrabajadorError(404, 'Trabajador no encontrado')
+      let data = raw
+      // Cambiar un dato de contacto no normaliza ni borra configuración salarial
+      // histórica, incluso cuando esa configuración anterior era incoherente.
+      if (Object.keys(raw).some(campo => campo !== 'nombre' && campo !== 'telefono')) {
+        const completo = TrabajadorCreateSchema.safeParse({
+          ...actual, ...datosPagoTrabajador(actual), telefono: actual.telefono ?? undefined, ...raw,
+        })
+        if (!completo.success) throw new EdicionTrabajadorError(400, formatZodError(completo.error))
+        data = normalizeTrabajador(completo.data)
+      }
+      // #644: la vigencia solo cambia si cambió el plan completo.
+      const frecuencia = data.frecuenciaPago === undefined ? actual.frecuenciaPago : data.frecuenciaPago
+      const dias = data.diasPago ?? actual.diasPago
+      const cambioPlan = frecuencia !== actual.frecuenciaPago
+        || dias.length !== actual.diasPago.length
+        || dias.some((d, i) => d !== actual.diasPago[i])
+      const guardado = await tx.trabajador.update({ where: { id }, data: {
         ...data,
-        comRepartAgua: data.comRepartAgua ?? 0,
-        comRepartHielo: data.comRepartHielo ?? 0,
-        comRepartBotellon: data.comRepartBotellon ?? 0,
-      },
+        telefono: raw.telefono === undefined ? undefined : data.telefono,
+        ...(cambioPlan ? { frecuenciaDesde: data.frecuenciaPago ? new Date() : null } : {}),
+      } })
+      const antes = datosPagoTrabajador(actual), despues = datosPagoTrabajador(guardado)
+      await logAudit({
+        entidad: 'Trabajador', registroId: id, accion: 'UPDATE',
+        datos: { nombre: guardado.nombre, rol: guardado.rol, antes, despues,
+          vigenteDesde: JSON.stringify(antes) === JSON.stringify(despues) ? null : guardado.updatedAt.toISOString() },
+        usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+      }, tx)
+      return guardado
     })
-
-    logAudit({
-      entidad: 'Trabajador',
-      registroId: trabajador.id,
-      accion: 'UPDATE',
-      datos: { nombre: trabajador.nombre, rol: trabajador.rol },
-      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
-    }).catch(() => {})
 
     publishRealtimeEvent('trabajador.updated', trabajador.id).catch(() => {})
 
     return apiSuccess({ trabajador })
   } catch (error) {
+    if (error instanceof EdicionTrabajadorError) return apiError(error.message, error.status, { formErrors: [error.message] })
     const msg = error instanceof Error ? error.message : 'Unknown'
     console.error('PUT trabajador error:', msg)
-    return apiError(`Error actualizando trabajador: ${msg}`)
+    return apiError('Error actualizando trabajador')
   }
 }
 

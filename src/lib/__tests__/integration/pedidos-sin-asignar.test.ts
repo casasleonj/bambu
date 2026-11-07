@@ -7,7 +7,7 @@
 //   4. El filtro embarqueId:null vía ListarPedidosUseCase/PrismaPedidoRepository
 //      (el mismo camino que usa GET /api/pedidos?atrasados=true) devuelve
 //      exactamente esos pedidos.
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
 
 // findPedidosHoyEnRiesgoIds ahora lee Config (horario/umbral) vía getConfigs/
 // getConfigNumber, que envuelven la query en unstable_cache — eso requiere un
@@ -273,6 +273,19 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
 
   afterAll(async () => {
     await testPrisma.config.deleteMany({ where: { clave: { in: CONFIG_KEYS } } })
+  })
+
+  // #552/#587: los pedidos se crean "hace 10 min". Si la prueba corre en los primeros
+  // minutos después de la medianoche de Bogotá, esa fecha cae en el día anterior y la
+  // consulta de "hoy" no los ve. Se fija el reloj (solo `Date`) al mediodía de hoy en
+  // Bogotá para que el resultado no dependa de la hora en que corre el CI.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(startOfDayBogota().getTime() + 12 * 60 * 60_000))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   async function crearClienteTest(nombre: string) {

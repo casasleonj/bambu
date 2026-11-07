@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Modal } from '@/components/modal'
-import type { TrabajadorFormData } from './types'
-import { rolOptions, rolLabels, tipoPagoOptions, tipoPagoLabels } from './types'
+import type { TrabajadorFormData, FrecuenciaPago } from './types'
+import { rolOptions, rolLabels, tipoPagoOptions, tipoPagoLabels, frecuenciaLabels, diasSemanaLabels } from './types'
 import { TelefonoInput } from '@/components/telefono-input'
 import { normalizarTelefono } from '@/lib/telefono'
 
@@ -35,6 +35,12 @@ export function TrabajadorFormModal({
     setFormError('')
   }
 
+  // #644: sin sueldo fijo no hay plan de pago.
+  const cuerpoPlan = (f: TrabajadorFormData) =>
+    f.tipoPago === 'COMISION'
+      ? { ...f, frecuenciaPago: null, diasPago: [], pagoFueraDeCaja: false }
+      : f
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setFormError('')
@@ -45,7 +51,7 @@ export function TrabajadorFormModal({
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            ...formData,
+            ...cuerpoPlan(formData),
             telefono: formData.telefono ? normalizarTelefono(formData.telefono) : formData.telefono,
           }),
         })
@@ -61,7 +67,7 @@ export function TrabajadorFormModal({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            ...formData,
+            ...cuerpoPlan(formData),
             telefono: formData.telefono ? normalizarTelefono(formData.telefono) : formData.telefono,
           }),
         })
@@ -201,7 +207,6 @@ export function TrabajadorFormModal({
                 ...formData,
                 usaMoto: checked,
                 capacidadKg: checked ? (formData.capacidadKg || 500) : 0,
-                tipoPago: checked ? formData.tipoPago : 'FIJO',
               })
             }}
             className="h-4 w-4 text-blue-600 border-gray-300 rounded"
@@ -332,7 +337,9 @@ export function TrabajadorFormModal({
         {(formData.tipoPago === 'FIJO' || formData.tipoPago === 'MIXTO') && (
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="trabajador-salarioFijo" className="block text-sm font-medium mb-1">Salario fijo</label>
+              <label htmlFor="trabajador-salarioFijo" className="block text-sm font-medium mb-1">
+                {formData.frecuenciaPago ? 'Monto de cada pago' : 'Salario fijo'}
+              </label>
               <input
                 id="trabajador-salarioFijo"
                 type="number"
@@ -353,6 +360,97 @@ export function TrabajadorFormModal({
                 helpText="Se agrega automáticamente +57"
               />
             </div>
+          </div>
+        )}
+
+        {(formData.tipoPago === 'FIJO' || formData.tipoPago === 'MIXTO') && (
+          <div className="space-y-3 rounded-lg border border-gray-200 p-3" data-testid="plan-pago">
+            <div>
+              <label htmlFor="trabajador-frecuenciaPago" className="block text-sm font-medium mb-1">¿Cada cuánto se le paga el sueldo?</label>
+              <select
+                id="trabajador-frecuenciaPago"
+                value={formData.frecuenciaPago ?? ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  frecuenciaPago: (e.target.value || null) as FrecuenciaPago | null,
+                  diasPago: [],
+                })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              >
+                <option value="">Una vez por nómina (como antes)</option>
+                {(Object.keys(frecuenciaLabels) as FrecuenciaPago[]).map((f) => (
+                  <option key={f} value={f}>{frecuenciaLabels[f]}</option>
+                ))}
+              </select>
+            </div>
+
+            {formData.frecuenciaPago === 'SEMANAL' && (
+              <div role="group" aria-label="Día de la semana" className="flex flex-wrap gap-2">
+                {diasSemanaLabels.map((nombre, dia) => {
+                  const activo = formData.diasPago.includes(dia)
+                  return (
+                    <button
+                      key={dia}
+                      type="button"
+                      aria-pressed={activo}
+                      onClick={() => setFormData({
+                        ...formData,
+                        diasPago: activo ? formData.diasPago.filter((d) => d !== dia) : [...formData.diasPago, dia].sort(),
+                      })}
+                      className={`px-3 py-2 rounded-lg border text-sm ${activo ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300'}`}
+                    >
+                      {nombre}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {formData.frecuenciaPago === 'MENSUAL' && (
+              <div>
+                <label htmlFor="trabajador-diaMes" className="block text-sm font-medium mb-1">Día del mes</label>
+                <input
+                  id="trabajador-diaMes"
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={formData.diasPago[0] ?? ''}
+                  onChange={(e) => setFormData({ ...formData, diasPago: e.target.value ? [Math.min(31, Math.max(1, parseInt(e.target.value, 10) || 1))] : [] })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <p className="mt-1 text-xs text-gray-500">Si el mes es más corto, se paga el último día.</p>
+              </div>
+            )}
+
+            {formData.frecuenciaPago === 'FECHAS' && (
+              <div>
+                <label htmlFor="trabajador-diasFechas" className="block text-sm font-medium mb-1">Días del mes (separados por coma)</label>
+                <input
+                  id="trabajador-diasFechas"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Ej.: 5, 20"
+                  defaultValue={formData.diasPago.join(', ')}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    diasPago: [...new Set(e.target.value.split(',').map((x) => parseInt(x.trim(), 10)).filter((n) => Number.isInteger(n) && n >= 1 && n <= 31))].sort((a, b) => a - b),
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+            )}
+
+            {formData.frecuenciaPago && (
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={formData.pagoFueraDeCaja}
+                  onChange={(e) => setFormData({ ...formData, pagoFueraDeCaja: e.target.checked })}
+                  className="mt-1"
+                />
+                <span>Se paga por fuera de la caja (queda en la nómina pero no baja el efectivo del cierre)</span>
+              </label>
+            )}
           </div>
         )}
 

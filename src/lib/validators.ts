@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { validarPlanPago } from '@/lib/sueldos-fijos'
 import { importeFiadoSchema, metodoFiadoSchema, sumarCobroFiado } from './fiados-cobro'
 import { normalizarTelefono } from "./telefono";
 
@@ -665,8 +666,15 @@ export const ProduccionItemCreateSchema = z.object({
 export const ProduccionCreateSchema = z.object({
   // NOTA: la fecha la determina el servidor (medianoche Bogotá del día actual).
   // No se acepta fecha del cliente para evitar inconsistencias con la TZ.
-  turno: z.enum(["MANANA", "TARDE", "NOCHE"]),
+  turno: z.enum(["MANANA", "TARDE", "NOCHE", "JORNADA"]),
   trabajadorId: z.string().min(1),
+  // #645: el cierre puede atrasarse; la producción del día que se está cerrando se registra en SU fecha (hasta 7 días
+  // atrás, nunca futura, y solo si ese día no está cerrado). Sin `fecha`, es la de hoy. Se valida en el handler.
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)').optional(),
+  // #645: botellones llenados (se digitan; llenados ≠ vendidos). La comisión del sellador usa los llenados.
+  botellonesLlenados: z.coerce.number().int().min(0).default(0),
+  // #618: conteo final de botellones llenos (sin él se asume que cuadra, para clientes anteriores).
+  stockFinBotellones: z.coerce.number().int().min(0).optional(),
   // Items: exactamente 2 (PACA_AGUA, PACA_HIELO). El server completa el
   // resto (producido, stockIni, ventas, stockFinEsperado, diferencia).
   items: z.array(ProduccionItemCreateSchema).length(2),
@@ -700,12 +708,15 @@ export const ProduccionItemUpdateSchema = z.object({
 
 export const ProduccionUpdateSchema = z.object({
   items: z.array(ProduccionItemUpdateSchema).length(2).optional(),
+  // #645: corrige los botellones llenados.
+  botellonesLlenados: z.coerce.number().int().min(0).optional(),
+  stockFinBotellones: z.coerce.number().int().min(0).optional(),
   obs: z.string().max(500).optional(),
   // El cliente puede pasar obs='' explícitamente para "borrar" la observación.
   // Si no se envía obs, no se modifica.
 }).strict().refine(
-  (data) => data.items !== undefined || data.obs !== undefined,
-  { message: 'Debe enviar al menos un campo (items u obs)' },
+  (data) => data.items !== undefined || data.obs !== undefined || data.botellonesLlenados !== undefined || data.stockFinBotellones !== undefined,
+  { message: 'Debe enviar al menos un campo (items, obs, botellonesLlenados o stockFinBotellones)' },
 ).refine(
   (data) => {
     if (!data.items) return true
@@ -757,9 +768,15 @@ export const CierreCreateSchema = z.object({
   stockIniHielo: z.coerce.number().int().min(0),
   prodHielo: z.coerce.number().int().min(0),
   stockFinHielo: z.coerce.number().int().min(0),
+  // #618: inventario de botellones llenos (opcional: clientes anteriores no lo envían y quedan en NULL).
+  stockIniBotellon: z.coerce.number().int().min(0).optional(),
+  prodBotellon: z.coerce.number().int().min(0).optional(),
+  stockFinBotellon: z.coerce.number().int().min(0).optional(),
   // #499: el servidor calcula las comisiones; si llega, se ignora (compat. con clientes viejos).
   comisiones: z.coerce.number().min(0).optional(),
-  salarios: z.coerce.number().min(0),
+  // #644: el campo manual «Salarios» se retiró del cierre; los sueldos se pagan con «Pagar» (Nómina) y salen como gasto
+  // de nómina. Se acepta por compatibilidad con clientes antiguos, pero el servidor lo ignora.
+  salarios: z.coerce.number().min(0).default(0),
   // #305: de los salarios, cuánto se pagó en EFECTIVO de la caja. Sin indicarlo se asume todo (clientes
   // anteriores). Lo pagado por otro medio no resta de la caja del cierre.
   salariosEfectivo: z.coerce.number().min(0).optional(),
@@ -982,15 +999,28 @@ const TrabajadorBaseObject = z.object({
   comRepartHielo: z.coerce.number().min(0).optional(),
   comRepartBotellon: z.coerce.number().min(0).optional(),
   salarioFijo: z.coerce.number().min(0).optional(),
+  // #644: cada cuánto se paga el sueldo fijo (null = una vez por nómina) y en qué días.
+  frecuenciaPago: z.enum(['SEMANAL', 'QUINCENAL', 'MENSUAL', 'FECHAS']).nullable().optional(),
+  diasPago: z.array(z.number().int().min(0).max(31)).max(31).optional(),
+  pagoFueraDeCaja: z.boolean().optional(),
   telefono: TelefonoOpcionalSinMinSchema,
 })
+
+type PlanPagoEntrada = { frecuenciaPago?: 'SEMANAL' | 'QUINCENAL' | 'MENSUAL' | 'FECHAS' | null; diasPago?: number[] }
+/** #644: el plan de pago del formulario debe ser coherente (días acordes a la frecuencia). */
+const planPagoValido = (d: PlanPagoEntrada) =>
+  d.frecuenciaPago === undefined && d.diasPago === undefined
+    ? true
+    : validarPlanPago({ frecuenciaPago: d.frecuenciaPago ?? null, diasPago: d.diasPago ?? [] }) === null
+const planPagoError = { message: 'El plan de pago no es válido: elige la frecuencia y los días que corresponden', path: ['diasPago'] }
 
 /**
  * Normaliza los campos de comisión de un trabajador según su rol y uso de moto.
  *
  * Reglas:
  * - REPARTIDOR nunca produce: comPaca* en 0.
- * - ADMIN/CONTADOR o sin moto: fijo, sin comisiones de reparto (comRepart* en 0).
+ * - ADMIN/CONTADOR: fijo, sin comisiones de reparto (comRepart* en 0).
+ * - Sin moto: no comisiona reparto, pero conserva su tipo salarial (PO, #671).
  * - SELLADOR sin moto: no reparte (comRepart* en 0).
  * - SELLADOR con moto: puede tener tanto comPaca* como comRepart*.
  */
@@ -1015,7 +1045,6 @@ export function normalizeTrabajador<T extends { usaMoto?: boolean | null; tipoPa
   }
 
   if (noMoto) {
-    base.tipoPago = 'FIJO'
     base.capacidadKg = 0
     base.usaMoto = false
     base.comRepartAgua = 0
@@ -1023,15 +1052,22 @@ export function normalizeTrabajador<T extends { usaMoto?: boolean | null; tipoPa
     base.comRepartBotellon = 0
   }
 
+  if (isAdminOrContador) base.tipoPago = 'FIJO'
+
   return base
 }
 
 export const TrabajadorCreateSchema = TrabajadorBaseObject.refine(
   (data) => !(data.usaMoto && (!data.capacidadKg || data.capacidadKg <= 0)),
   { message: 'Capacidad es requerida cuando usa moto', path: ['capacidadKg'] }
-)
+).refine(planPagoValido, planPagoError)
 
-export const TrabajadorUpdateSchema = TrabajadorBaseObject.partial()
+// Un fragmento no permite validar un plan completo: PUT lo combina con la fila
+// persistida y valida con TrabajadorCreateSchema dentro de su transacción (#671).
+export const TrabajadorUpdateSchema = TrabajadorBaseObject.partial().refine(
+  d => d.frecuenciaPago === undefined || d.diasPago === undefined || planPagoValido(d),
+  planPagoError,
+)
 
 // ====================
 // PAGAR FIADO
@@ -1039,6 +1075,9 @@ export const TrabajadorUpdateSchema = TrabajadorBaseObject.partial()
 
 const PagarFiadoBaseSchema = z.object({
   clienteId: z.string().min(1),
+  // #597: cobro de UN solo pedido del día (desde la lista de Pedidos). Sin él, el cobro
+  // sigue siendo el de Fiados: reparte entre toda la deuda entregada del cliente.
+  pedidoId: z.string().min(1).optional(),
   // Offline-first: dedup por batchId (compartido por todos los Pagos del batch)
   offlineId: z.string().min(1).max(200).optional(),
   versionDeuda: z.string().regex(/^[a-f0-9]{64}$/).optional(),

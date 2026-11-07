@@ -6,7 +6,6 @@ import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
 import { useConfirmacionCierre } from '@/components/cierre/cierre-confirmacion'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { cn, formatCurrency } from '@/lib/utils'
 import { getTodayString } from '@/lib/dates'
 import { calcularNetoCierre } from '@/lib/cierre-totales'
@@ -14,12 +13,16 @@ import { CheckCircle2, AlertTriangle, Receipt, Droplets, Snowflake, ArrowRight, 
 import ArqueoCaja, { type ArqueoData, DENOMINACIONES } from '@/components/arqueo-caja'
 import CierreHeader from '@/components/cierre/cierre-header'
 import { CierreEstadoConsulta, type ErrorConsultaCierre } from '@/components/cierre/cierre-estado-consulta'
-import CierreKpiGrid from '@/components/cierre/cierre-kpi-grid'
+import { CierreKpiGrid, CierreDetalleVentas } from '@/components/cierre/cierre-kpi-grid'
+import CierreDesgloseCobros from '@/components/cierre/cierre-desglose-cobros'
+import CierreEfectivoEsperado, { efectivoEsperadoDelCierre } from '@/components/cierre/cierre-efectivo-esperado'
 import CierreSection from '@/components/cierre/cierre-section'
 import CierreStockBlock from '@/components/cierre/cierre-stock-block'
+import AvisoUnidadesAproximadas, { unidadesAproximadasDe } from '@/components/cierre/aviso-unidades-aproximadas'
 import CierreValidationList from '@/components/cierre/cierre-validation-list'
 import type { CierreData } from './types'
-import { ComisionesRepartidores } from './comisiones-repartidores'
+import { PagosPersonal, resumenPagosPersonal } from './pagos-personal'
+import { ProduccionDelCierre } from './produccion-del-cierre'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
 const formatMoney = (val: number) => formatCurrency(val)
@@ -46,8 +49,15 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const [prodHielo, setProdHielo] = useState(0)
   const [stockFinAgua, setStockFinAgua] = useState(0)
   const [stockFinHielo, setStockFinHielo] = useState(0)
+  // #618: botellones llenos (inicial: último cierre o Config; llenados: de la producción; final: el conteo)
+  const [stockIniBotellon, setStockIniBotellon] = useState(0)
+  const [prodBotellon, setProdBotellon] = useState(0)
+  const [stockFinBotellon, setStockFinBotellon] = useState(0)
+  // #645: «ese día no se produjo» (domingo, festivo): se puede cerrar sin producción.
+  const [sinProduccion, setSinProduccion] = useState(false)
   const [baseDia, setBaseDia] = useState(0)
-  const [salarios, setSalarios] = useState(0)
+  // #644: el campo manual «Salarios» se retiró; los sueldos se pagan con «Pagar» y salen como gasto de nómina.
+  const salarios = 0
   const [arqueoData, setArqueoData] = useState<{ arqueo: ArqueoData; totalContado: number; diferencia: number }>({
     arqueo: {},
     totalContado: 0,
@@ -74,6 +84,14 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const canClose = userRole === 'ADMIN' || userRole === 'ASISTENTE'
   // #499: las comisiones las calcula el servidor; el cierre resta solo lo realmente pagado.
   const comisiones = data?.comisionesAuto?.total ?? 0
+  // #645: pérdidas del día (filtradas + merma + consumo interno) y producciones registradas ese día
+  const perdidasAgua = (data?.produccion?.filtradasAgua ?? 0) + (data?.produccion?.rotasAgua ?? 0) + (data?.produccion?.consumoInternoAgua ?? 0)
+  const perdidasHielo = (data?.produccion?.filtradasHielo ?? 0) + (data?.produccion?.rotasHielo ?? 0) + (data?.produccion?.consumoInternoHielo ?? 0)
+  const hayProduccion = (data?.producciones?.length ?? 0) > 0
+  const esperadoAgua = stockIniAgua + prodAgua - (data?.aguaVendida || 0) - perdidasAgua
+  const esperadoHielo = stockIniHielo + prodHielo - (data?.hieloVendido || 0) - perdidasHielo
+  // #618: botellones llenos (sin pérdidas): Inicial + Llenados − Vendidos (fábrica + domicilio)
+  const esperadoBotellon = stockIniBotellon + prodBotellon - (data?.botellonVendido || 0)
   const puedePagarComision = userRole === 'ADMIN' || userRole === 'CONTADOR'
   const diaCerrado = yaCerrado || (statusCierre as string | null) === 'CERRADO'
 
@@ -140,9 +158,13 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           setStockIniHielo(json.cierre.produccion.stockIniHielo || 0)
           setStockFinAgua(json.cierre.produccion.stockFinAgua || 0)
           setStockFinHielo(json.cierre.produccion.stockFinHielo || 0)
+          setStockIniBotellon(json.cierre.produccion.stockIniBotellon || 0)
+          setProdBotellon(json.cierre.produccion.botellonesLlenados || 0)
+          setStockFinBotellon(json.cierre.produccion.stockFinBotellon || 0)
         } else if (json.cierre.stockInicialSugerido) {
           setStockIniAgua(json.cierre.stockInicialSugerido.stockIniAgua || 0)
           setStockIniHielo(json.cierre.stockInicialSugerido.stockIniHielo || 0)
+          setStockIniBotellon(json.cierre.stockInicialSugerido.stockIniBotellon || 0)
         }
       }
     } catch (error) {
@@ -165,11 +187,12 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     setErrorConsulta(null)
     setStatusCierre(null)
     setBaseDia(0)
-    setSalarios(0)
     setArqueoData({ arqueo: {}, totalContado: 0, diferencia: 0 })
     setStockIniAgua(0); setStockIniHielo(0)
     setProdAgua(0); setProdHielo(0)
     setStockFinAgua(0); setStockFinHielo(0)
+    setStockIniBotellon(0); setProdBotellon(0); setStockFinBotellon(0)
+    setSinProduccion(false)
   }
 
   const calcularNetoCaja = useCallback(() => {
@@ -179,10 +202,16 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     })
   }, [data, baseDia, comisiones, salarios])
 
+  // #601: el conteo de billetes y monedas se compara con el efectivo que debe haber, no con el neto total.
+  const calcularEfectivoEsperado = useCallback(() => efectivoEsperadoDelCierre({
+    baseDia, efectivoPagos: data?.efectivo ?? 0, cobroCarteraEfectivo: data?.cobroCarteraEfectivo,
+    totalGastos: data?.totalGastos ?? 0, comisiones, salarios,
+  }), [data, baseDia, comisiones, salarios])
+
   const handleArqueoChange = useCallback((d: { arqueo: ArqueoData; totalContado: number; diferencia: number }) => {
     setArqueoData(d)
-    setNetoEnArqueo(calcularNetoCaja())
-  }, [calcularNetoCaja])
+    setNetoEnArqueo(calcularEfectivoEsperado())
+  }, [calcularEfectivoEsperado])
 
   useEffect(() => {
     if (abortControllerRef.current) abortControllerRef.current.abort()
@@ -216,7 +245,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       return
     }
     if (baseDia === 0) {
-      toast.error('No se puede cerrar: la base de caja es 0. Verifica el monto.')
+      toast.error('No se puede cerrar: el efectivo con el que empezó el día es 0. Verifica el monto.')
       return
     }
     // Use ref to avoid race condition with React state batching
@@ -226,11 +255,14 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       return
     }
     const neto = calcularNetoCaja()
+    const debeHaber = calcularEfectivoEsperado()
     cierreSolicitadoRef.current = true
     setCerrando(true)
     const ok = await confirm({
-      fecha, ventas: data.totalVentas, cobros: data.cobroVentasHoy + data.cobroCartera,
-      base: baseDia, gastos: data.totalGastos, comisiones, salarios, neto,
+      fecha, debeHaber, contado: currentArqueo.totalContado,
+      diferencia: Math.round((currentArqueo.totalContado - debeHaber) * 100) / 100,
+      ...(data?.desgloseCobros ? { cobrado: { efectivo: data.desgloseCobros.efectivo, digital: data.desgloseCobros.digital } } : {}),
+      ...(data?.fiadosDelDia ? { fiado: { total: data.fiadosDelDia.reduce((t, f) => t + f.saldo, 0), pedidos: data.fiadosDelDia.length } } : {}),
     })
     if (!ok) { cierreSolicitadoRef.current = false; setCerrando(false); return }
     setCerrando(true)
@@ -241,6 +273,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         salarios,
         stockIniAgua, prodAgua, stockFinAgua,
         stockIniHielo, prodHielo, stockFinHielo,
+        stockIniBotellon, prodBotellon, stockFinBotellon,
         reporte: JSON.stringify({
           cobroVentasHoy: data?.cobroVentasHoy,
           cobroCartera: data?.cobroCartera,
@@ -256,6 +289,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           pedidosAnuladosTotal: data?.pedidosAnuladosTotal,
           clientesNuevos: data?.clientesNuevos,
           descuentos: data?.descuentos,
+          sinProduccion,
           arqueo: currentArqueo.arqueo,
           totalContado: currentArqueo.totalContado,
           diferencia: currentArqueo.diferencia,
@@ -316,7 +350,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     />
   }
 
-  const netoTeorico = calcularNetoCaja()
+  const efectivoEsperado = calcularEfectivoEsperado()
 
   if (yaCerrado && data) {
     const post = data.postCierre
@@ -349,16 +383,18 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           <p className="text-green-700 text-sm">El cierre para este día ya fue registrado. No se puede volver a cerrar.</p>
         </div>
 
-        <CierreKpiGrid data={data} netoTeorico={Number(data.netoCaja)} />
+        <CierreKpiGrid data={data} />
+        <CierreDesgloseCobros data={data} />
+        <CierreDetalleVentas data={data} />
 
         {/* Arqueo */}
         {data.totalContado != null && (
-          <div className="bg-white rounded-xl border p-6">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Arqueo de Caja</h3>
+          <div className="bg-white rounded-xl border p-6" data-testid="cierre-conteo-cerrado">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Conteo del efectivo</h3>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <div className="text-xs text-muted-foreground">Esperado</div>
-                <div className="text-lg font-bold">{formatMoney(Number(data.netoCaja || 0))}</div>
+                <div className="text-xs text-muted-foreground">Debía haber</div>
+                <div className="text-lg font-bold">{formatMoney(Number(data.efectivoEsperado ?? data.netoCaja ?? 0))}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Contado</div>
@@ -368,10 +404,15 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
                 <div className="text-xs text-muted-foreground">Diferencia</div>
                 <div className={`text-lg font-bold ${(data.diferenciaArqueo || 0) === 0 ? 'text-green-600' : (data.diferenciaArqueo || 0) > 0 ? 'text-blue-600' : 'text-red-600'}`}>
                   {(data.diferenciaArqueo || 0) >= 0 ? '+' : ''}{formatMoney(Math.abs(data.diferenciaArqueo || 0))}
-                  {(data.diferenciaArqueo || 0) === 0 ? ' (Cuadrado)' : (data.diferenciaArqueo || 0) > 0 ? ' (Sobrante)' : ' (Faltante)'}
+                  {(data.diferenciaArqueo || 0) === 0 ? ' (Cuadra)' : (data.diferenciaArqueo || 0) > 0 ? ' (Sobra)' : ' (Falta)'}
                 </div>
               </div>
             </div>
+            {data.efectivoEsperado == null && (data.nequi + data.transferencia + data.daviplata + data.bono) > 0 && (
+              <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-900" data-testid="cierre-conteo-historico">
+                Este día se cerró antes de separar el efectivo de los pagos digitales: el valor «debía haber» incluye lo que llegó por Nequi y otros medios, así que la diferencia no refleja solo el efectivo.
+              </p>
+            )}
           </div>
         )}
 
@@ -461,28 +502,30 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         : 'Todos los embarques del día están cerrados',
     },
     {
-      label: 'Base de caja registrada',
+      label: 'Efectivo inicial del día registrado',
       ok: baseDia > 0,
-      detail: baseDia > 0 ? `Base: ${formatCurrency(baseDia)}` : 'Ingresa la base de caja en la sección 2',
+      detail: baseDia > 0 ? `Empezó con: ${formatCurrency(baseDia)}` : 'Ingresa el efectivo con el que empezó el día en la sección 1',
     },
     {
       label: 'Efectivo físico contado',
       ok: arqueoData.totalContado > 0,
       detail: arqueoData.totalContado > 0
-        ? `Contado: ${formatCurrency(arqueoData.totalContado)} — ${arqueoData.diferencia === 0 ? 'Cuadrado' : arqueoData.diferencia > 0 ? `Sobrante ${formatCurrency(arqueoData.diferencia)}` : `Faltante ${formatCurrency(Math.abs(arqueoData.diferencia))}`}`
-        : 'Cuenta el efectivo en la sección 3',
+        ? `Contado: ${formatCurrency(arqueoData.totalContado)} — ${arqueoData.diferencia === 0 ? 'Cuadra' : arqueoData.diferencia > 0 ? `Sobra ${formatCurrency(arqueoData.diferencia)}` : `Falta ${formatCurrency(Math.abs(arqueoData.diferencia))}`}`
+        : 'Cuenta el efectivo en la sección 4',
     },
     {
       label: 'Stock cuadrado',
-      ok: stockIniAgua + prodAgua - (data?.aguaVendida || 0) === stockFinAgua && stockIniHielo + prodHielo - (data?.hieloVendido || 0) === stockFinHielo,
+      ok: esperadoAgua === stockFinAgua && esperadoHielo === stockFinHielo && esperadoBotellon === stockFinBotellon,
       optional: true,
       detail: (() => {
-        const diffAgua = stockIniAgua + prodAgua - (data?.aguaVendida || 0) - stockFinAgua
-        const diffHielo = stockIniHielo + prodHielo - (data?.hieloVendido || 0) - stockFinHielo
-        if (diffAgua === 0 && diffHielo === 0) return 'Stock de agua e hielo cuadrado'
+        const diffAgua = esperadoAgua - stockFinAgua
+        const diffHielo = esperadoHielo - stockFinHielo
+        const diffBotellon = esperadoBotellon - stockFinBotellon
+        if (diffAgua === 0 && diffHielo === 0 && diffBotellon === 0) return 'Stock de agua, hielo y botellones cuadrado'
         const parts: string[] = []
         if (diffAgua !== 0) parts.push(`Agua: ${diffAgua > 0 ? '+' : ''}${diffAgua}`)
         if (diffHielo !== 0) parts.push(`Hielo: ${diffHielo > 0 ? '+' : ''}${diffHielo}`)
+        if (diffBotellon !== 0) parts.push(`Botellones: ${diffBotellon > 0 ? '+' : ''}${diffBotellon}`)
         return parts.join(' | ')
       })(),
     },
@@ -490,10 +533,10 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
 
   // Next step hint
   const getNextStep = () => {
-    if (baseDia === 0) return { label: 'Ingresa la base de caja', section: 2 }
-    if (arqueoData.totalContado === 0) return { label: 'Cuenta el efectivo físico', section: 3 }
+    if (baseDia === 0) return { label: 'Ingresa el efectivo con el que empezó el día', section: 1 }
+    if (arqueoData.totalContado === 0) return { label: 'Cuenta el efectivo físico', section: 4 }
     if (statusCierre === 'INCOMPLETO') return { label: 'Cierra los embarques pendientes', section: 1 }
-    return { label: 'Listo para cerrar el día', section: 4 }
+    return { label: 'Listo para cerrar el día', section: 5 }
   }
 
   const nextStep = getNextStep()
@@ -554,52 +597,37 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       {/* Section 1: Resumen Financiero */}
       <CierreSection
         number={1}
-        title="Resumen Financiero"
-        description="Revisa que los números del día cuadren. Los datos vienen del sistema."
+        title="Resumen del dinero del día"
+        description="Revisa que las cifras del día tengan sentido. Los datos vienen del sistema; toca el «?» para saber de dónde sale cada una."
         status={data && !fetchError ? 'completo' : 'pendiente'}
       >
-        <CierreKpiGrid data={data} netoTeorico={netoTeorico} baseDia={baseDia} comisiones={comisiones} salarios={salarios} />
+        <div className="mb-4">
+          <CierreEfectivoEsperado
+            baseDia={baseDia} onBaseChange={setBaseDia} efectivoPagos={data.efectivo ?? 0} cobroCarteraEfectivo={data.cobroCarteraEfectivo ?? 0}
+            totalGastos={data.totalGastos} comisiones={comisiones} salarios={salarios} pagosDigitales={data.cobroDigitalHoy ?? 0}
+          />
+        </div>
+        <CierreKpiGrid data={data} />
+        <CierreDesgloseCobros data={data} />
+        <CierreDetalleVentas data={data} />
       </CierreSection>
 
-      {/* Section 2: Stock y Base de Caja */}
+      {/* Section 2: Inventario */}
       <CierreSection
         number={2}
-        title="Stock y Base de Caja"
-        description="Confirma los valores que faltan por registrar. La base es el efectivo con que iniciaste el día."
+        title="Inventario"
+        description="Confirma el stock de agua, hielo y botellones. El efectivo con el que empezó el día está en la sección 1."
       >
         <div className="space-y-4">
-          {/* Base, Comisiones, Salarios */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label htmlFor="cierre-baseDia" className="text-xs text-muted-foreground">Base de Caja</label>
-              <Input id="cierre-baseDia" type="number" min="0" value={baseDia} onChange={(e) => setBaseDia(Math.max(0, Number(e.target.value)))} className="mt-1" />
-              {baseDia <= 0 && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Requerido para cerrar</p>}
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Comisiones (automático)</p>
-              <p className="mt-1 flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm font-medium" data-testid="cierre-comisiones-auto">{formatMoney(comisiones)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Lo pagado a repartidores hoy y la comisión de sellador.</p>
-            </div>
-            <div>
-              <label htmlFor="cierre-salarios" className="text-xs text-muted-foreground">Salarios</label>
-              <Input id="cierre-salarios" type="number" min="0" value={salarios} onChange={(e) => setSalarios(Math.max(0, Number(e.target.value)))} className="mt-1" />
-            </div>
-          </div>
-
-          {/* Comisiones de repartidores (#499) */}
-          <div>
-            <p className="mb-2 text-sm font-medium">Comisiones de repartidores</p>
-            <ComisionesRepartidores
-              fecha={fecha}
-              repartidores={data?.comisionesAuto?.repartidores ?? []}
-              puedePagar={puedePagarComision}
-              diaCerrado={diaCerrado}
-              onPagado={() => {
-                const signal = abortControllerRef.current?.signal
-                if (signal) void fetchCierre(fecha, signal)
-              }}
-            />
-          </div>
+          {/* #650 (2b): unidades sin detalle por día / error de reparto */}
+          <AvisoUnidadesAproximadas
+            aproximadas={data?.unidadesAproximadas}
+            error={data?.unidadesError}
+            onReintentar={() => {
+              const signal = abortControllerRef.current?.signal
+              if (signal) void fetchCierre(fecha, signal)
+            }}
+          />
 
           {/* Stock blocks */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -609,10 +637,12 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
               ini={stockIniAgua}
               prod={prodAgua}
               vend={data?.aguaVendida || 0}
+              aproximadas={unidadesAproximadasDe(data?.unidadesAproximadas, 'agua')}
+              perdidas={perdidasAgua}
               fin={stockFinAgua}
-              onIniChange={setStockIniAgua}
-              onProdChange={setProdAgua}
-              onFinChange={setStockFinAgua}
+              onFinChange={hayProduccion ? undefined : setStockFinAgua}
+              hayProduccion={hayProduccion}
+              sinProduccion={sinProduccion}
             />
             <CierreStockBlock
               label="Stock Hielo"
@@ -620,30 +650,82 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
               ini={stockIniHielo}
               prod={prodHielo}
               vend={data?.hieloVendido || 0}
+              aproximadas={unidadesAproximadasDe(data?.unidadesAproximadas, 'hielo')}
+              perdidas={perdidasHielo}
               fin={stockFinHielo}
-              onIniChange={setStockIniHielo}
-              onProdChange={setProdHielo}
-              onFinChange={setStockFinHielo}
+              onFinChange={hayProduccion ? undefined : setStockFinHielo}
+              hayProduccion={hayProduccion}
+              sinProduccion={sinProduccion}
+            />
+            <CierreStockBlock
+              label="Stock Botellones"
+              icon={<span aria-hidden>🫙</span>}
+              ini={stockIniBotellon}
+              prod={prodBotellon}
+              vend={data?.botellonVendido || 0}
+              perdidas={0}
+              fin={stockFinBotellon}
+              onFinChange={hayProduccion ? undefined : setStockFinBotellon}
+              hayProduccion={hayProduccion}
+              sinProduccion={sinProduccion}
+              esBotellon
+            />
+          </div>
+
+          {/* Producción del día (#645): el mismo registro que la sección Producción */}
+          <div>
+            <p className="mb-2 text-sm font-medium">Producción del día</p>
+            <ProduccionDelCierre
+              fecha={fecha}
+              diaCerrado={diaCerrado}
+              producciones={data?.producciones ?? []}
+              esperadoPrevio={{ agua: esperadoAgua, hielo: esperadoHielo, botellon: esperadoBotellon }}
+              botellonesVendidos={data?.botellonVendido ?? 0}
+              sinProduccion={sinProduccion}
+              onSinProduccionChange={setSinProduccion}
+              onGuardada={() => {
+                const signal = abortControllerRef.current?.signal
+                if (signal) void fetchCierre(fecha, signal)
+              }}
             />
           </div>
         </div>
       </CierreSection>
 
-      {/* Section 3: Arqueo de Caja */}
+      {/* Section 3: Pagos al personal (#646): comisiones de repartidores y selladores + sueldos que tocan */}
       <CierreSection
         number={3}
-        title="Arqueo de Caja"
-        description="Cuenta el efectivo físico y compara con lo que dice el sistema."
+        title="Pagos al personal"
+        description="Paga las comisiones y los sueldos que tocan. Lo que pagues en efectivo sale de la caja de hoy."
+        status={resumenPagosPersonal(data).pendiente > 0 ? 'actual' : 'completo'}
       >
-        <ArqueoCaja key={fecha} netoTeorico={netoTeorico} onChange={handleArqueoChange} onClose={() => {
+        <PagosPersonal
+          data={data}
+          fecha={fecha}
+          puedePagar={puedePagarComision}
+          diaCerrado={diaCerrado}
+          onPagado={() => {
+            const signal = abortControllerRef.current?.signal
+            if (signal) void fetchCierre(fecha, signal)
+          }}
+        />
+      </CierreSection>
+
+      {/* Section 4: Conteo del efectivo */}
+      <CierreSection
+        number={4}
+        title="Conteo del efectivo"
+        description="Cuenta los billetes y monedas y compáralos con el efectivo que debe haber."
+      >
+        <ArqueoCaja key={fecha} efectivoEsperado={efectivoEsperado} onChange={handleArqueoChange} onClose={() => {
           const latest = arqueoRef.current
           if (latest.totalContado > 0) {
             toast.success(`Conteo guardado: ${formatCurrency(latest.totalContado)}`, {
               description: latest.diferencia === 0
-                ? 'Cuadrado'
+                ? 'Cuadra'
                 : latest.diferencia > 0
-                  ? `Sobrante: ${formatCurrency(latest.diferencia)}`
-                  : `Faltante: ${formatCurrency(Math.abs(latest.diferencia))}`,
+                  ? `Sobra: ${formatCurrency(latest.diferencia)}`
+                  : `Falta: ${formatCurrency(Math.abs(latest.diferencia))}`,
             })
           }
         }} />
@@ -652,12 +734,12 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             {/* Header: Expected / Counted / Difference */}
             <div className="flex items-center justify-center gap-2 mb-5">
               <Receipt className="w-6 h-6 text-muted-foreground" />
-              <h4 className="text-base font-bold">Conteo de Efectivo</h4>
+              <h4 className="text-base font-bold">Tu conteo del efectivo</h4>
             </div>
 
             <div className="grid grid-cols-3 gap-4 text-center mb-5">
               <div>
-                <div className="text-xs text-muted-foreground mb-1">Esperado</div>
+                <div className="text-xs text-muted-foreground mb-1">Debe haber</div>
                 <div className="text-lg font-bold tabular-nums">{formatCurrency(netoEnArqueo)}</div>
               </div>
               <div>
@@ -678,9 +760,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
               arqueoData.diferencia > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' :
               'bg-red-50 text-red-700 border border-red-200'
             }`}>
-              {arqueoData.diferencia === 0 ? 'Cuadrado — Todo coincide' :
-                arqueoData.diferencia > 0 ? `Sobrante de ${formatCurrency(arqueoData.diferencia)}` :
-                `Faltante de ${formatCurrency(Math.abs(arqueoData.diferencia))}`}
+              {arqueoData.diferencia === 0 ? 'Cuadra — Todo coincide' :
+                arqueoData.diferencia > 0 ? `Sobra ${formatCurrency(arqueoData.diferencia)}` :
+                `Falta ${formatCurrency(Math.abs(arqueoData.diferencia))}`}
             </div>
 
             {/* Billetes */}
@@ -730,9 +812,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         )}
       </CierreSection>
 
-      {/* Section 4: Cerrar Día */}
+      {/* Section 5: Cerrar Día */}
       <CierreSection
-        number={4}
+        number={5}
         title="Cerrar el Día"
         description="Al cerrar, bloqueas el día permanentemente. No podrás editar pedidos ni embarques."
       >

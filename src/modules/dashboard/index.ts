@@ -7,6 +7,8 @@
 
 import { PrismaFinanzasRepository } from './infrastructure/finanzas.repository'
 import { getDashboardData } from './application'
+import { prisma } from '@/shared/infrastructure'
+import { unidadesEntregadasDelDia } from '@/lib/unidades-entregadas-dia'
 import {
   PrismaPedidoRepository,
   PrismaProduccionRepository,
@@ -42,6 +44,7 @@ export async function fetchDashboardData(
     alertas: alertasRepo,
     gastos: gastosRepo,
     embarques: embarquesRepo,
+    unidadesDelDia: (r) => unidadesEntregadasDelDia(prisma, { desde: r.start, hasta: r.end }),
   })
 }
 

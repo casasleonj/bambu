@@ -53,8 +53,8 @@ async function crearPedido(o: { canal?: 'DOMICILIO' | 'PUNTO'; cant?: number } =
   return pedido.id
 }
 
-/** Entrega por la ruta REAL de oficina (completa, queda fiado con promesa). */
-async function entregarDesdeOficina(pedidoId: string, repartidorId: string, cant = 10) {
+/** Captura real de oficina, también parcial, fiada con promesa. */
+async function entregarDesdeOficina(pedidoId: string, repartidorId: string, cant = 10, fechaEntrega?: Date) {
   const req = new NextRequest(`http://localhost/api/pedidos/${pedidoId}/gestion-admin/entrega`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -63,6 +63,7 @@ async function entregarDesdeOficina(pedidoId: string, repartidorId: string, cant
       itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: cant }],
       repartidorId,
       promesaPagoFecha: diaBogota(-3),
+      ...(fechaEntrega ? { fechaEntrega: fechaEntrega.toISOString() } : {}),
     }),
   })
   const res = await entregaOficina(req, { params: Promise.resolve({ id: pedidoId }) })
@@ -128,7 +129,7 @@ describe('#472 — comisión de nómina por entregas sin embarque (Postgres real
     expect(Number(n.totalComisiones)).toBe(8 * TARIFA_AGUA)
   })
 
-  it('no cuenta: punto, entrega parcial, otro repartidor, fuera del período ni anulados', async () => {
+  it('cuenta lo entregado de un parcial; excluye punto, otro repartidor, fuera del período y anulados', async () => {
     const repartidorId = await nuevoRepartidor('Diego Nómina')
     const otroId = await nuevoRepartidor('Esteban Nómina')
 
@@ -146,16 +147,16 @@ describe('#472 — comisión de nómina por entregas sin embarque (Postgres real
     await entregarDesdeOficina(deOtro, otroId, 6)
 
     const viejo = await crearPedido({ cant: 7 })
-    await entregarDesdeOficina(viejo, repartidorId, 7)
-    await testPrisma.pedido.update({ where: { id: viejo }, data: { entregadoAt: new Date(Date.now() - 20 * 86_400_000) } })
+    // Preparar la fecha del hecho real, no cambiar solo el último campo del pedido.
+    await entregarDesdeOficina(viejo, repartidorId, 7, new Date(Date.now() - 5 * 86_400_000))
 
     const anulado = await crearPedido({ cant: 8 })
     await entregarDesdeOficina(anulado, repartidorId, 8)
     await testPrisma.pedido.update({ where: { id: anulado }, data: { estadoEntrega: 'ANULADO', estado: 'ANULADO', estadoPago: 'ANULADO' } })
 
     const n = await nominaAuto(repartidorId)
-    expect(n.entregasAgua).toBe(0)
-    expect(Number(n.totalComisiones)).toBe(0)
+    expect(n.entregasAgua).toBe(4)
+    expect(Number(n.totalComisiones)).toBe(4 * TARIFA_AGUA)
   })
 
   it('un trabajador sin comisión (pago fijo) no cobra por entregas, también sin embarque', async () => {
@@ -179,6 +180,9 @@ describe('#472 — comisión de nómina por entregas sin embarque (Postgres real
     const parcial = await testPrisma.pedido.findUniqueOrThrow({ where: { id } })
     expect(parcial.cPacaAguaEnt).toBe(3)
     expect(parcial.entregadoPorId).toBe(a)
+    const trasParcial = await comisionRepartidoresDelDia(testPrisma, hoyBogota())
+    expect(trasParcial.find(r => r.trabajadorId === a)?.entregasAgua).toBe(3)
+    expect(trasParcial.find(r => r.trabajadorId === b)?.entregasAgua).toBe(0)
     await entregarDesdeOficina(id, a, 2)
     const filas = await comisionRepartidoresDelDia(testPrisma, hoyBogota())
     expect(filas.find(r => r.trabajadorId === a)?.total).toBe(5 * TARIFA_AGUA)

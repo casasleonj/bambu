@@ -36,6 +36,9 @@ export type CobroCartera = {
   pagoMonto: Prisma.Decimal | null
   pagoFecha: Date | null
   regularizacionId: string | null
+  /** #646: para listar el abono en el cierre (quién y a qué factura). */
+  clienteNombre?: string | null
+  facturaNumero?: string | null
 }
 
 /**
@@ -58,8 +61,10 @@ export async function leerAbonosDelPeriodo(
       )) AS "independienteVerificado",
       COALESCE((SELECT SUM(c."montoRevertido") FROM "CorreccionAbono" c WHERE c."abonoId" = a.id), 0) AS reversion,
       g.id AS "pagoId", g."pedidoId" AS "pagoPedidoId", g.metodo::text AS "pagoMetodo",
-      g.monto AS "pagoMonto", g."createdAt" AS "pagoFecha", g."regularizacionId"
+      g.monto AS "pagoMonto", g."createdAt" AS "pagoFecha", g."regularizacionId",
+      cl.nombre AS "clienteNombre", f.numero AS "facturaNumero"
     FROM "Abono" a
+    LEFT JOIN "Cliente" cl ON cl.id = a."clienteId"
     JOIN "Factura" f ON f.id = a."facturaId"
     JOIN "Pedido" p ON p.id = COALESCE(a."pedidoId", f."pedidoId")
     LEFT JOIN "Pago" g ON g.id = a."pagoOrigenId"
@@ -87,6 +92,61 @@ export function clasificarCobroCartera(
   return espejo ? 'ESPEJO' : 'PENDIENTE'
 }
 
+/** #646: un abono pagado a una factura por aparte (no al recibir el pedido), para listarlo en el cierre. */
+export interface AbonoDelDia {
+  abonoId: string
+  numero: string
+  cliente: string
+  factura: string | null
+  pedidoId: string | null
+  pedidoNumero: number | null
+  metodo: string
+  monto: number
+  fecha: string
+  /** Lo que se le corrigió o devolvió a este abono (suma de sus correcciones). */
+  corregido: number
+}
+
+/** #646: una corrección que resta de los cobros del día (tipo y motivo guardados al corregir). */
+export interface CorreccionDelDia {
+  numero: string
+  abonoNumero: string
+  tipo: string
+  monto: number
+  motivo: string
+  autorizadoPor: string
+  cliente: string
+  pedidoId: string | null
+  pedidoNumero: number | null
+  fecha: string
+}
+
+type FilaCorreccion = {
+  numero: string; tipo: string; montoRevertido: Prisma.Decimal; motivo: string; createdAt: Date; abonoNumero: string
+  pedidoId: string | null; pedidoNumero: number | null; cliente: string | null; autorizadoNombre: string | null; autorizadoUsuario: string | null
+}
+
+async function leerCorreccionesDeAbonos(tx: TxCobroCartera, abonoIds: string[]): Promise<CorreccionDelDia[]> {
+  if (abonoIds.length === 0) return []
+  const filas = await tx.$queryRaw<FilaCorreccion[]>(Prisma.sql`
+    SELECT c.numero, c.tipo, c."montoRevertido", c.motivo, c."createdAt", a.numero AS "abonoNumero",
+      p.id AS "pedidoId", p.numero AS "pedidoNumero", cl.nombre AS cliente,
+      u.nombre AS "autorizadoNombre", u.username AS "autorizadoUsuario"
+    FROM "CorreccionAbono" c
+    JOIN "Abono" a ON a.id = c."abonoId"
+    JOIN "Factura" f ON f.id = a."facturaId"
+    LEFT JOIN "Pedido" p ON p.id = COALESCE(a."pedidoId", f."pedidoId")
+    LEFT JOIN "Cliente" cl ON cl.id = a."clienteId"
+    LEFT JOIN "User" u ON u.id = c."autorizadoPorId"
+    WHERE c."abonoId" IN (${Prisma.join(abonoIds)})
+    ORDER BY c."createdAt", c.numero`)
+  return filas.map((f) => ({
+    numero: f.numero, abonoNumero: f.abonoNumero, tipo: f.tipo, monto: Number(f.montoRevertido), motivo: f.motivo,
+    autorizadoPor: (f.autorizadoNombre?.trim() || f.autorizadoUsuario) ?? 'Sin dato',
+    cliente: f.cliente ?? 'Sin cliente', pedidoId: f.pedidoId, pedidoNumero: f.pedidoNumero, fecha: f.createdAt.toISOString(),
+  }))
+}
+
 export async function resumirAbonosDelDia(
   tx: TxCobroCartera,
   desde: Date,
@@ -95,13 +155,29 @@ export async function resumirAbonosDelDia(
   const cobros = await leerAbonosDelPeriodo(tx, desde, hasta)
   let independientes = 0
   let reversiones = 0
+  // #601: la parte en EFECTIVO (lo único que entra o sale de la caja física).
+  let independientesEfectivo = 0
+  let reversionesEfectivo = 0
   const pendientes: Array<{ id: string; referencia: string; importe: number }> =
     []
+  // #646: el detalle explica cuáles son los abonos y las correcciones que suman y restan en el día.
+  const abonosDetalle: AbonoDelDia[] = []
+  const abonosConCorreccion: string[] = []
   for (const a of cobros) {
     const clase = clasificarCobroCartera(a)
     if (clase === 'INDEPENDIENTE') {
       independientes += Math.round(Number(a.monto) * 100)
       reversiones += Math.round(Number(a.reversion) * 100)
+      abonosDetalle.push({
+        abonoId: a.id, numero: a.numero, cliente: a.clienteNombre ?? 'Sin cliente', factura: a.facturaNumero ?? null,
+        pedidoId: a.pedidoId ?? null, pedidoNumero: a.pedidoNumero ?? null, metodo: a.metodoPago,
+        monto: Number(a.monto), fecha: a.fecha.toISOString(), corregido: Number(a.reversion),
+      })
+      if (Number(a.reversion) > 0) abonosConCorreccion.push(a.id)
+      if (a.metodoPago === 'EFECTIVO') {
+        independientesEfectivo += Math.round(Number(a.monto) * 100)
+        reversionesEfectivo += Math.round(Number(a.reversion) * 100)
+      }
       continue
     }
     if (clase !== 'ESPEJO') {
@@ -121,13 +197,21 @@ export async function resumirAbonosDelDia(
       a.pagoFecha < hasta
     ) {
       reversiones += Math.round(Number(a.reversion) * 100)
+      if (Number(a.reversion) > 0) abonosConCorreccion.push(a.id)
+      if (a.pagoMetodo === 'EFECTIVO') {
+        reversionesEfectivo += Math.round(Number(a.reversion) * 100)
+      }
     }
   }
   if (pendientes.length) throw new CobrosSinConciliarError(pendientes)
+  const correcciones = await leerCorreccionesDeAbonos(tx, abonosConCorreccion)
   return {
+    detalle: { abonos: abonosDetalle, correcciones },
     abonosIndependientes: independientes / 100,
     ajustesDeCobros: reversiones / 100,
     total: (independientes - reversiones) / 100,
+    /** Abonos independientes menos ajustes, solo en efectivo. */
+    totalEfectivo: (independientesEfectivo - reversionesEfectivo) / 100,
   }
 }
 

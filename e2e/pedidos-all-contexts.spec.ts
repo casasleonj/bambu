@@ -341,7 +341,7 @@ test.describe('Pedidos — Tab Pedidos (Hoy)', () => {
       expect(await dialog.isVisible({ timeout: 3000 }).catch(() => false)).toBe(true)
       // Check for key modal content
       const modalText = await p.locator('body').textContent()
-      expect(modalText?.includes('Total Pedido') || modalText?.includes('Productos')).toBe(true)
+      expect(modalText?.includes('Valor comercial del pedido') || modalText?.includes('Productos')).toBe(true)
     }
   })
 
@@ -410,7 +410,7 @@ test.describe('Pedidos — Tab Fiados', () => {
     await p.waitForTimeout(500)
     await expect(p.locator('text=Control de Fiados')).toBeVisible()
     // Banner explicativo
-    await expect(p.getByText(/Consulta la deuda de pedidos entregados, agrupada por cliente/)).toBeVisible()
+    await expect(p.getByText(/Consulta lo entregado y pendiente de pago, agrupado por cliente/)).toBeVisible()
   })
 
   test('filtros de Fiados estan disponibles', async () => {

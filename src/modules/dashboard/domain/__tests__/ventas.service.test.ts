@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildVentasPorPrecio,
+  calcularVendidos,
   calcularVentas,
 } from '@/modules/dashboard/domain/ventas.service'
 import type { PedidoRaw } from '@/modules/dashboard/domain/types'
@@ -112,7 +113,7 @@ describe('buildVentasPorPrecio', () => {
     expect(result[1].producto).toBe('PACA_HIELO')
   })
 
-  it('ignora pedidos que no están ENTREGADO', () => {
+  it('ignora pedidos que no están ENTREGADO y no entregaron nada', () => {
     const pedidos: PedidoRaw[] = [
       {
         id: 'p1',
@@ -126,13 +127,73 @@ describe('buildVentasPorPrecio', () => {
         cPacaHieloEnt: 0,
         cBotellonFabEnt: 0,
         cBotellonDomEnt: 0,
+        items: [{ producto: 'PACA_AGUA', cantEntrega: 0, precio: 6500 }],
+      },
+    ]
+
+    expect(buildVentasPorPrecio(pedidos)).toHaveLength(0)
+  })
+
+  it('cuenta la entrega parcial (pedido sin ENTREGADO con cantEntrega > 0) por lo realmente entregado', () => {
+    const pedidos: PedidoRaw[] = [
+      {
+        id: 'parcial',
+        numero: 693,
+        fecha: new Date(),
+        total: 65000,
+        saldo: 0,
+        estadoEntrega: 'EN_RUTA',
+        estadoPago: 'PAGADO',
+        canal: 'DOMICILIO',
+        cPacaAguaEnt: 6,
+        cPacaHieloEnt: 0,
+        cBotellonFabEnt: 0,
+        cBotellonDomEnt: 0,
+        items: [{ producto: 'PACA_AGUA', cantEntrega: 6, precio: 6500 }],
+      },
+      {
+        id: 'completo',
+        numero: 694,
+        fecha: new Date(),
+        total: 13000,
+        saldo: 0,
+        estadoEntrega: 'ENTREGADO',
+        estadoPago: 'PAGADO',
+        canal: 'DOMICILIO',
+        cPacaAguaEnt: 2,
+        cPacaHieloEnt: 0,
+        cBotellonFabEnt: 0,
+        cBotellonDomEnt: 0,
         items: [{ producto: 'PACA_AGUA', cantEntrega: 2, precio: 6500 }],
       },
     ]
 
     const result = buildVentasPorPrecio(pedidos)
 
-    expect(result).toHaveLength(0)
+    expect(result).toHaveLength(1)
+    expect(result[0].cantidad).toBe(8)
+    expect(result[0].subtotal).toBe(52000)
+  })
+
+  it('no cuenta parciales anulados o cancelados', () => {
+    const base = {
+      numero: 1,
+      fecha: new Date(),
+      total: 100,
+      saldo: 0,
+      estadoPago: 'PENDIENTE',
+      cPacaAguaEnt: 2,
+      cPacaHieloEnt: 0,
+      cBotellonFabEnt: 0,
+      cBotellonDomEnt: 0,
+      items: [{ producto: 'PACA_AGUA', cantEntrega: 2, precio: 6500 }],
+    }
+    expect(
+      buildVentasPorPrecio([
+        { ...base, id: 'a', estadoEntrega: 'ANULADO' },
+        { ...base, id: 'c', estadoEntrega: 'CANCELADO' },
+      ]),
+    ).toHaveLength(0)
   })
 
   it('separa mismo producto + precio en filas distintas por canal', () => {
@@ -222,5 +283,51 @@ describe('calcularVentas (#470)', () => {
     ]
 
     expect(calcularVentas(pedidos)).toBe(40000)
+  })
+
+  it('suma el valor entregado de una entrega parcial (cantEntrega × precio), no el total', () => {
+    const pedidos: PedidoRaw[] = [
+      { ...base, id: 'a', total: 40000, estadoEntrega: 'ENTREGADO' },
+      {
+        ...base,
+        id: 'parcial',
+        total: 65000,
+        estadoEntrega: 'EN_RUTA',
+        items: [{ producto: 'PACA_AGUA', cantEntrega: 6, precio: 6500 }],
+      },
+      {
+        ...base,
+        id: 'anulado-con-entrega',
+        total: 9999,
+        estadoEntrega: 'ANULADO',
+        items: [{ producto: 'PACA_AGUA', cantEntrega: 1, precio: 6500 }],
+      },
+    ]
+
+    expect(calcularVentas(pedidos)).toBe(79000)
+  })
+})
+
+describe('calcularVendidos con entrega parcial', () => {
+  const base = {
+    numero: 1,
+    fecha: new Date(),
+    total: 0,
+    saldo: 0,
+    estadoPago: 'PENDIENTE',
+    cPacaHieloEnt: 0,
+    cBotellonFabEnt: 0,
+    cBotellonDomEnt: 0,
+  }
+
+  it('incluye unidades de pedidos parciales y excluye anulados', () => {
+    const pedidos: PedidoRaw[] = [
+      { ...base, id: 'a', estadoEntrega: 'ENTREGADO', cPacaAguaEnt: 2 },
+      { ...base, id: 'b', estadoEntrega: 'EN_RUTA', cPacaAguaEnt: 6 },
+      { ...base, id: 'c', estadoEntrega: 'PENDIENTE', cPacaAguaEnt: 0 },
+      { ...base, id: 'd', estadoEntrega: 'ANULADO', cPacaAguaEnt: 3 },
+    ]
+
+    expect(calcularVendidos(pedidos).agua).toBe(8)
   })
 })

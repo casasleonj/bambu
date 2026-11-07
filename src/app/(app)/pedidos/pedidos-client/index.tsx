@@ -164,7 +164,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [preciosActuales, setPreciosActuales] = useState<Record<string, { precio: number; origen: string }>>({})
   const [clientes, setClientes] = useState<Cliente[]>([])
-  const [clienteCobro, setClienteCobro] = useState<{ id: string; nombre: string } | null>(null)
+  const [clienteCobro, setClienteCobro] = useState<{ id: string; nombre: string; pedido?: { id: string; numero: number } } | null>(null)
   const [facturaConsulta, setFacturaConsulta] = useState<{ id: string; volver: string; pedidoId?: string; pedidoNumero?: number; consulta?:string; desdePedido?:boolean } | null>(null)
   const [pedidoDocumento, setPedidoDocumento] = useState<{ id: string; volver: string; loading: boolean; error: string | null } | null>(null)
 
@@ -1662,6 +1662,20 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
       case 'confirmar-pago':
         router.push('/pagos-confirmar')
         break
+      case 'registrar-pago':
+        // #597: cobra SOLO este pedido (del día). El de un día anterior es un fiado (`cobrar-en-fiados`).
+        if (userRole !== 'ADMIN' && userRole !== 'ASISTENTE') {
+          toast.info('Solo Administración puede registrar pagos. Avisa a un administrador.')
+          break
+        }
+        setClienteCobro({ id: pedido.clienteId,
+          nombre: [pedido.nombreCli, pedido.apellidoCli].filter(Boolean).join(' '),
+          pedido: { id: pedido.id, numero: pedido.numero } })
+        break
+      case 'cobrar-en-fiados':
+        toast.info('Este pedido es de un día anterior, por eso es un fiado. Cóbralo en la pestaña Fiados.')
+        setActiveTab('fiados')
+        break
       case 'ver-cartera':
         router.push(pedido.clienteId === 'CONSUMIDOR_FINAL' ? '/cartera' : `/cartera?clienteId=${pedido.clienteId}`)
         break
@@ -1688,7 +1702,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
         router.push(pedido.embarqueId ? `/embarques/${pedido.embarqueId}` : '/embarques')
         break
       default:
-        // registrar-entrega / registrar-pago / resolver-excepcion /
+        // registrar-entrega / resolver-excepcion /
         // completar-pendiente → el modal de detalle tiene la acción según estado.
         handleDetail(pedido)
     }
@@ -2223,6 +2237,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
       )}
       <CobroFiadoDialog key={`cobro-fiado:${session?.user?.id ?? 'sin-sesion'}`} cliente={clienteCobro} onClose={() => setClienteCobro(null)} userRole={userRole}
         actorId={session?.user?.id ?? null} visible={activeTab === 'fiados'}
+        onIrAFiados={() => { setClienteCobro(null); setActiveTab('fiados') }}
         onRegistrado={() => { refetchFiados(); refetchCounts(); refreshPedidos() }}
         onOpenPedido={abrirDocumentoPedido}
         onOpenFactura={(id, volver) => setFacturaConsulta({ id, volver: volver ?? volverConsulta })} />
@@ -2561,13 +2576,15 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
             total: Number(registrarEntregaPara.total),
             totalPagado: Number(registrarEntregaPara.totalPagado),
             entregadoPorId: registrarEntregaPara.entregadoPorId ?? null,
-            items: (registrarEntregaPara.items ?? []).map((i) => ({ producto: i.producto, cantPedido: i.cantPedido, cantEntrega: i.cantEntrega })),
+            items: (registrarEntregaPara.items ?? []).map((i) => ({ producto: i.producto, cantPedido: i.cantPedido, cantEntrega: i.cantEntrega, precio: i.precio == null ? undefined : Number(i.precio) })),
           }}
+          fiadoParcialActivo={gestionAdmin.fiadoParcialActivo === true}
           repartidores={gestionAdmin.repartidores}
           onClose={() => setRegistrarEntregaPara(null)}
           onRegistrado={({ deduped, numero }) => {
             setRegistrarEntregaPara(null)
             refreshPedidos()
+            refetchCounts()
             refetchFiados()
             refetchAlertas()
             if (deduped) toast.info(`La entrega del pedido #${numero} ya estaba registrada`)

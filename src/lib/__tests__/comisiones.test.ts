@@ -4,8 +4,8 @@
 // se acumula mes a mes. Es el cálculo más caro de equivocarse en una
 // empresa de distribución.
 import { describe, it, expect } from 'vitest'
-import { calcComSellador, calcComRepartidor } from '@/lib/comisiones'
-import type { Trabajador } from '@prisma/client'
+import { calcComSellador, calcComRepartidor, itemBotellon } from '@/lib/comisiones'
+import { Prisma, type Trabajador } from '@prisma/client'
 
 // Helpers para fabricar un Trabajador mínimo (solo los campos que la
 // función usa). Si añadimos un campo nuevo a la función, este cast
@@ -41,7 +41,19 @@ describe('calcComSellador', () => {
   it('retorna 0 cuando no hay producción', () => {
     const t = makeTrabajador()
     const r = calcComSellador(0, 0, t)
-    expect(r).toEqual({ comAgua: 0, comHielo: 0, total: 0 })
+    expect(r).toEqual({ comAgua: 0, comHielo: 0, comBotellon: 0, total: 0 })
+  })
+
+  it('#645: suma los botellones llenados con su tarifa (330 por unidad)', () => {
+    const tarifas = { comPacaAgua: new Prisma.Decimal(330), comPacaHielo: new Prisma.Decimal(330), comBotellon: new Prisma.Decimal(330) }
+    const r = calcComSellador(10, 4, tarifas, 3)
+    expect(r).toEqual({ comAgua: 3300, comHielo: 1320, comBotellon: 990, total: 5610 })
+  })
+
+  it('#645: sin botellones o sin tarifa de botellón no suma nada', () => {
+    const t = makeTrabajador()
+    expect(calcComSellador(1, 1, t).comBotellon).toBe(0)
+    expect(calcComSellador(1, 1, { comPacaAgua: t.comPacaAgua, comPacaHielo: t.comPacaHielo }, 5).comBotellon).toBe(0)
   })
 
   it('multiplica pacas de agua por comPacaAgua', () => {
@@ -188,5 +200,16 @@ describe('calcComRepartidor', () => {
     })
     const r = calcComRepartidor(0, 0, [t])
     expect(r).toEqual({ comAgua: 0, comHielo: 0, total: 0 })
+  })
+})
+
+describe('itemBotellon — inventario de botellones llenos (#618)', () => {
+  it('Inicial + Llenados − Vendidos = Esperado; la diferencia es esperado − conteo', () => {
+    expect(itemBotellon(8, 2640, 5, { stockIni: 20, stockFinFisico: 21 })).toMatchObject({
+      producido: 8, ventas: 5, stockIni: 20, stockFinEsperado: 23, stockFinFisico: 21, diferencia: 2, comSellador: 2640, rotas: 0, filtradas: 0, consumoInterno: 0,
+    })
+  })
+  it('sin conteo (compatibilidad) se asume que cuadra', () => {
+    expect(itemBotellon(4, 1320, 1)).toMatchObject({ stockIni: 0, stockFinEsperado: 3, stockFinFisico: 3, diferencia: 0 })
   })
 })

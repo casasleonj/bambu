@@ -1,5 +1,6 @@
 import { prisma } from './prisma'
 import { getTodayRange, getDateRange } from './dates'
+import { unidadesEntregadasDelDia } from './unidades-entregadas-dia'
 
 export interface VentasDelDia {
   aguaVendida: number
@@ -17,26 +18,13 @@ export async function getVentasDelDia(fecha?: Date): Promise<VentasDelDia> {
   const start = 'startDate' in range ? range.startDate : range.startOfDay
   const end = 'endDate' in range ? range.endDate : range.endOfDay
 
-  const pedidos = await prisma.pedido.findMany({
-    where: {
-      fecha: { gte: start, lt: end },
-      estadoEntrega: 'ENTREGADO',
-    },
-    select: {
-      cPacaAguaEnt: true,
-      cPacaHieloEnt: true,
-      cBotellonFabEnt: true,
-      cBotellonDomEnt: true,
-      cBolsaAguaEnt: true,
-      cBolsaHieloEnt: true,
-    },
-  })
-
+  // #650 (2b): lo vendido es lo entregado ESE día (misma función que el cierre y el dashboard).
+  const u = await unidadesEntregadasDelDia(prisma, { desde: start, hasta: end })
   return {
-    aguaVendida: pedidos.reduce((sum, p) => sum + p.cPacaAguaEnt, 0),
-    hieloVendido: pedidos.reduce((sum, p) => sum + p.cPacaHieloEnt, 0),
-    botellonVendido: pedidos.reduce((sum, p) => sum + (p.cBotellonFabEnt || 0) + (p.cBotellonDomEnt || 0), 0),
-    bolsaAguaVendida: pedidos.reduce((sum, p) => sum + p.cBolsaAguaEnt, 0),
-    bolsaHieloVendida: pedidos.reduce((sum, p) => sum + p.cBolsaHieloEnt, 0),
+    aguaVendida: u.agua,
+    hieloVendido: u.hielo,
+    botellonVendido: u.botellon,
+    bolsaAguaVendida: u.bolsaAgua,
+    bolsaHieloVendida: u.bolsaHielo,
   }
 }

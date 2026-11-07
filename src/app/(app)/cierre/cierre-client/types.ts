@@ -1,3 +1,5 @@
+import type { DesgloseCobros, FiadoDelDia, GastoDelDia, PagoPorConfirmarDetalle } from '@/lib/cierre-desglose-cobros'
+import type { AbonoDelDia, CorreccionDelDia } from '@/lib/cobro-cartera'
 export interface VentaPorOrigen {
   origen: string
   total: number
@@ -44,11 +46,22 @@ export interface CierreData {
   cobrado: number
   cobroVentasHoy: number
   cobroCartera: number
+  /** #601: parte de `cobroCartera` recibida en efectivo (abonos independientes menos ajustes). */
+  cobroCarteraEfectivo?: number
+  /** #601: efectivo que entró en la caja hoy (pagos + abonos en efectivo). */
+  cobroEfectivoHoy?: number
+  /** #601: dinero que llegó por Nequi, transferencia, Daviplata o bono (no está en la caja). */
+  cobroDigitalHoy?: number
+  /** #601: guardado al cerrar (cierres nuevos). Los cierres anteriores no lo tienen. */
+  efectivoEsperado?: number
   abonosIndependientes?: number
   ajustesDeCobros?: number
   fiado: number
   totalNotasCredito: number
   ventasDePedidosDelDia?: number
+  /** #656: original comercial antes de distinguir entrega; los cierres anteriores no lo traen. */
+  valorComercialPedidosDelDia?: number
+  parcialesPorConciliar?: { pedidoId: string; numero: number }[]
   notasCreditoVentasAnteriores?: number
   notasCreditoSinAjusteVentas?: number
   // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 — informativo, no altera netoCaja.
@@ -58,7 +71,19 @@ export interface CierreData {
     porMetodo: Partial<Record<'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA' | 'BONO', number>>
     diasPreviosCount: number
     diasPreviosTotal: number
+    /** #631: detalle de los pagos por confirmar (cierres anteriores a este cambio no lo traen). */
+    detalleHoy?: PagoPorConfirmarDetalle[]
+    detalleDiasPrevios?: PagoPorConfirmarDetalle[]
   }
+  /** #631: de dónde viene lo cobrado y a quién se fió (cierres anteriores no lo traen). */
+  desgloseCobros?: DesgloseCobros
+  fiadosDelDia?: FiadoDelDia[]
+  /** #646: cada gasto del día (descripción, categoría, hora, quién registró, importe). */
+  gastosDelDia?: GastoDelDia[]
+  /** #646: cuáles son los abonos (suman) y las correcciones (restan) de cobros del día. */
+  abonosDelDia?: { abonos: AbonoDelDia[]; correcciones: CorreccionDelDia[] }
+  /** #631: ¿quien consulta puede confirmar pagos digitales? Si no, quién los confirma. */
+  confirmaPagos?: { puede: boolean; nombre: string | null }
 
   // Métodos
   efectivo: number
@@ -110,6 +135,10 @@ export interface CierreData {
   botellonVendido: number
   bolsaAguaVendida: number
   bolsaHieloVendida: number
+  /** #650 (2b): pedidos cuyas unidades no se pudieron repartir por día (se cuentan en el día de creación). */
+  unidadesAproximadas?: { pedidoId: string; numero: number | null; fechaCreacion: string; unidades: { agua: number; hielo: number; botellon: number; bolsaAgua: number; bolsaHielo: number } }[]
+  /** true si falló el reparto por día y se muestran las cifras por fecha de creación. */
+  unidadesError?: boolean
   produccion: {
     stockIniAgua: number
     stockIniHielo: number
@@ -119,21 +148,40 @@ export interface CierreData {
     stockFinHielo: number
     comSelladorAgua: number
     comSelladorHielo: number
+    comSelladorBotellon?: number
     comSellTotal: number
+    /** #645: pérdidas del día (filtradas, merma = rotas, consumo interno) y botellones llenados */
+    filtradasAgua?: number
+    rotasAgua?: number
+    consumoInternoAgua?: number
+    filtradasHielo?: number
+    rotasHielo?: number
+    consumoInternoHielo?: number
+    botellonesLlenados?: number
+    /** #618: inventario de botellones llenos */
+    stockIniBotellon?: number
+    stockFinBotellon?: number
     comRepartidorAgua: number
     comRepartidorHielo: number
     comRepartTotal: number
   } | null
+  /** #645: una fila por producción registrada ese día */
+  producciones?: { id: string; turno: string; trabajadorId: string; trabajador: string; prodAgua: number; prodHielo: number; botellonesLlenados: number }[]
   /** #545: stock inicial (último cierre o Config) para días sin producción registrada */
-  stockInicialSugerido?: { stockIniAgua: number; stockIniHielo: number }
+  stockInicialSugerido?: { stockIniAgua: number; stockIniHielo: number; stockIniBotellon?: number }
 
   // #499: comisiones del día calculadas por el servidor (repartidores con lo pagado y lo pendiente + sellador)
   comisionesAuto?: {
     sellador: number
+    /** #645: comisión de cada sellador del día con lo pagado y lo pendiente */
+    selladores?: { trabajadorId: string; nombre: string; total: number; pagado: number; pendiente: number; detalle: { producto: string; unidades: number; comision: number }[] }[]
     pagadoRepartidores: number
     total: number
     repartidores: ({ trabajadorId: string; nombre: string; total: number; pagado: number; pendiente: number } & Partial<import('@/lib/comision-repartidor-calculo').ComisionRepartidor>)[]
   }
+
+  // #644: sueldos fijos con fecha de pago cumplida y sin pagar
+  sueldosQueTocan?: { trabajadorId: string; nombre: string; rol: string; fecha: string; monto: number; fueraDeCaja: boolean }[]
 
   // Cierre
   netoCaja: number

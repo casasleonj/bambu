@@ -23,8 +23,9 @@ describe('nav — Pedidos habituales (/recurrentes)', () => {
     expect(rec?.requiredPermission).toBe('view:recurrentes')
   })
 
-  it('Hub ON: /recurrentes no se duplica en el nav (se opera desde el Hub)', async () => {
+  it('Hub ON: V6 conserva un solo acceso persistente a Habituales', async () => {
     const items = await loadNav('true')
-    expect(items.some(i => i.href === '/recurrentes')).toBe(false)
+    expect(items.filter(i => i.href === '/recurrentes')).toHaveLength(1)
+    expect(items.find(i => i.href === '/recurrentes')?.requiredPermission).toBe('view:recurrentes')
   })
 })

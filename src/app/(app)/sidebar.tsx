@@ -37,6 +37,7 @@ import { useAppStore } from '@/stores/app-store'
 import { useIsDesktop } from '@/hooks/use-is-desktop'
 import { getUserPermissions, type Permission } from '@/lib/permissions'
 import type { Role } from '@/lib/constants'
+import { lockBodyScroll } from '@/lib/body-scroll-lock'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, useCollapsible } from '@/components/ui/collapsible'
 import { icons, navSections, topLevelItems, defaultMenuOrder, type NavItem, type NavSubItem, type NavSection } from './nav-data'
 
@@ -581,11 +582,7 @@ export function Sidebar() {
   useEffect(() => {
     if (typeof document === 'undefined') return
     if (!isDesktop && mobileDrawerOpen) {
-      const prev = document.body.style.overflow
-      document.body.style.overflow = 'hidden'
-      return () => {
-        document.body.style.overflow = prev
-      }
+      return lockBodyScroll()
     }
   }, [isDesktop, mobileDrawerOpen])
 

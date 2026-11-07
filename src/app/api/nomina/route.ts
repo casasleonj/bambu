@@ -11,6 +11,7 @@ import { executeSerializableWithRetry } from '@/lib/serializable'
 import { calcularDeduccionesDeuda } from '@/lib/nomina-deudas'
 import { calcularComisionRepartidor, tarifasRepartidor } from '@/lib/comision-repartidor'
 import { comisionPagadaEnPeriodo } from '@/lib/comision-pagada'
+import { fechasDePago } from '@/lib/sueldos-fijos'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-3): Only ADMIN/CONTADOR can read nominas
@@ -110,6 +111,8 @@ export async function POST(request: NextRequest) {
             comRepartHielo: true,
             comRepartBotellon: true,
             salarioFijo: true,
+            frecuenciaPago: true,
+            diasPago: true,
             usaMoto: true,
           },
         })
@@ -163,7 +166,17 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        const salarioFijo = Number(trabajador.salarioFijo || 0)
+        // #644: con frecuencia de pago, `salarioFijo` es el monto de CADA pago y se suma una vez por cada fecha de
+        // pago que cae dentro del período. Sin frecuencia (trabajadores anteriores) se suma una sola vez, como siempre.
+        // #671: un importe fijo conservado al cambiar de modalidad no es sueldo
+        // en una liquidación exclusivamente por comisión. Las guardadas no cambian.
+        const montoPorPago = trabajador.tipoPago === 'COMISION' ? 0 : Number(trabajador.salarioFijo || 0)
+        const salarioFijo = trabajador.frecuenciaPago === null
+          ? montoPorPago
+          : montoPorPago * fechasDePago(
+              { frecuenciaPago: trabajador.frecuenciaPago, diasPago: trabajador.diasPago },
+              fechaInicio.slice(0, 10), fechaFin.slice(0, 10),
+            ).length
         // #499: la comisión que ya salió de la caja día a día (pagos del cierre) no se paga otra vez.
         // Si se pagó de más (p. ej. se anuló un pedido después), la parte de comisión queda en 0 y
         // el excedente se ve en `comisionPagadaCaja` > `totalComisiones`; nunca resta del salario.

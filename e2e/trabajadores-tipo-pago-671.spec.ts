@@ -1,0 +1,62 @@
+// @tests #671 — mismo formulario: conservar lo elegido, también sin moto.
+import { PrismaClient } from '@prisma/client'
+import { test, expect, apiPost, applyCachedRoleAuth, skipBaseCaja, resetTestDatabase, BASE } from './fixtures'
+
+const db = new PrismaClient()
+test.describe.configure({ mode: 'serial' })
+test.describe('Tipo salarial independiente de moto (#671)', () => {
+  test.beforeAll(() => resetTestDatabase())
+  test.afterAll(async () => { await db.$disconnect() })
+  test.setTimeout(60000)
+
+  test('crear sellador por comisión sin moto persiste después de recargar', async ({ page }) => {
+    await skipBaseCaja(page)
+    await applyCachedRoleAuth(page, 'admin')
+    await page.goto(`${BASE}/trabajadores`)
+    await expect(page.getByRole('heading', { name: 'Trabajadores', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '+ Nuevo Trabajador', exact: true }).click()
+    const nombre = `Sellador sintético ${Date.now()}`
+    await page.locator('#trabajador-nombre').fill(nombre)
+    await page.locator('#trabajador-rol').selectOption('SELLADOR')
+    await page.locator('#trabajador-tipoPago').selectOption('COMISION')
+    await expect(page.locator('#usaMoto')).not.toBeChecked()
+    const respuesta = page.waitForResponse(r => new URL(r.url()).pathname === '/api/trabajadores' && r.request().method() === 'POST')
+    await page.getByRole('button', { name: 'Guardar', exact: true }).click()
+    expect((await respuesta).status()).toBe(201)
+    const guardado = await db.trabajador.findFirstOrThrow({ where: { nombre } })
+    expect(guardado.tipoPago).toBe('COMISION')
+    expect(guardado.usaMoto).toBe(false)
+    await page.reload()
+    const tarjeta = page.getByTestId('trabajador-card').filter({ hasText: nombre })
+    await tarjeta.getByRole('button', { name: 'Editar', exact: true }).click()
+    await expect(page.locator('#trabajador-tipoPago')).toHaveValue('COMISION')
+  })
+
+  test('cambiar a mixto y desmarcar moto conserva tipo y monto; reabrir muestra lo guardado', async ({ page }) => {
+    await skipBaseCaja(page)
+    await applyCachedRoleAuth(page, 'admin')
+    const nombre = `Repartidor sintético ${Date.now()}`
+    const creado = await apiPost(page, '/api/trabajadores', { nombre, rol: 'REPARTIDOR', tipoPago: 'FIJO', usaMoto: false, salarioFijo: 12000 })
+    expect(creado.status()).toBe(201)
+    const { trabajador } = await creado.json()
+    await page.goto(`${BASE}/trabajadores`)
+    const tarjeta = page.getByTestId('trabajador-card').filter({ hasText: nombre })
+    await tarjeta.getByRole('button', { name: 'Editar', exact: true }).click()
+    await page.locator('#trabajador-tipoPago').selectOption('MIXTO')
+    await page.locator('#usaMoto').check()
+    await page.locator('#usaMoto').uncheck()
+    await expect(page.locator('#trabajador-tipoPago')).toHaveValue('MIXTO')
+    await expect(page.locator('#trabajador-salarioFijo')).toHaveValue('12000')
+    const respuesta = page.waitForResponse(r => new URL(r.url()).pathname === `/api/trabajadores/${trabajador.id}` && r.request().method() === 'PUT')
+    await page.getByRole('button', { name: 'Guardar', exact: true }).click()
+    expect((await respuesta).status()).toBe(200)
+    const guardado = await db.trabajador.findUniqueOrThrow({ where: { id: trabajador.id } })
+    expect(guardado.tipoPago).toBe('MIXTO')
+    expect(guardado.usaMoto).toBe(false)
+    expect(Number(guardado.salarioFijo)).toBe(12000)
+    await page.reload()
+    await tarjeta.getByRole('button', { name: 'Editar', exact: true }).click()
+    await expect(page.locator('#trabajador-tipoPago')).toHaveValue('MIXTO')
+    await expect(page.locator('#usaMoto')).not.toBeChecked()
+  })
+})
