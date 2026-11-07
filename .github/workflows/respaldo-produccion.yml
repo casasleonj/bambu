@@ -1,0 +1,116 @@
+# #589 — Copia de seguridad nocturna de la base de producción.
+#
+# La organización de Supabase está en el plan gratuito, que no tiene copias
+# automáticas (https://supabase.com/docs/guides/platform/backups). Este workflow
+# hace la copia cada noche, la cifra y la guarda 7 días como artefacto. Además
+# la restaura en una base vacía del propio runner y compara conteos, para
+# probar que la copia sirve (no solo que existe).
+#
+# Secrets requeridos (Settings → Secrets and variables → Actions):
+#   PROD_DIRECT_URL     URL de conexión directa (puerto 5432) de producción.
+#   BACKUP_PASSPHRASE   clave larga para cifrar la copia. Guárdala también
+#                       fuera de GitHub: sin ella la copia no se puede abrir.
+#
+# El repositorio es público: la copia SOLO se publica cifrada (gpg AES256).
+#
+# Restaurar a mano:
+#   gpg --batch --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
+#       -d bambu-AAAA-MM-DD.dump.gpg > bambu.dump
+#   pg_restore --no-owner --no-privileges -d "$DESTINO" bambu.dump
+
+name: Respaldo de producción
+
+on:
+  schedule:
+    # 02:47 en Bogotá (07:47 UTC): fuera del horario de operación.
+    - cron: '47 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: respaldo-produccion
+  cancel-in-progress: false
+
+jobs:
+  respaldo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      prueba:
+        # Misma versión mayor que producción (17.x): pg_restore la necesita.
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: restore
+          POSTGRES_PASSWORD: restore
+          POSTGRES_DB: restore
+        ports: ['5439:5432']
+        options: >-
+          --health-cmd "pg_isready -U restore" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PROD_DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      PG: docker run --rm --network host -e PGCONNECT_TIMEOUT=20 -v ${{ github.workspace }}:/w -w /w postgres:17-alpine
+    steps:
+      - name: Verificar secrets
+        run: |
+          if [ -z "$PROD_DIRECT_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::error::Faltan los secrets PROD_DIRECT_URL y/o BACKUP_PASSPHRASE (ver el encabezado de este workflow)."
+            exit 1
+          fi
+
+      - name: Copiar producción (solo el esquema public)
+        run: |
+          FECHA=$(TZ=America/Bogota date +%F)
+          echo "FECHA=$FECHA" >> "$GITHUB_ENV"
+          $PG pg_dump "$PROD_DIRECT_URL" --schema=public --no-owner --no-privileges -Fc -f "/w/bambu-$FECHA.dump"
+          ls -lh "bambu-$FECHA.dump"
+
+      - name: Conteos de referencia en producción
+        run: |
+          $PG psql "$PROD_DIRECT_URL" -At -F' ' -c \
+            'SELECT (SELECT count(*) FROM "Pedido"), (SELECT count(*) FROM "Pago"), (SELECT count(*) FROM "Cliente"), (SELECT count(*) FROM "CierreDia")' \
+            > conteo-prod.txt
+          cat conteo-prod.txt
+
+      - name: Probar la restauración en una base vacía
+        run: |
+          DESTINO=postgresql://restore:restore@localhost:5439/restore
+          # La base nueva ya trae el esquema public; pg_trgm vive en public en
+          # producción y se crea antes para que los índices de búsqueda restauren.
+          $PG psql "$DESTINO" -qc 'CREATE EXTENSION IF NOT EXISTS pg_trgm;'
+          $PG pg_restore -l "/w/bambu-$FECHA.dump" | grep -v -E ' SCHEMA - public | EXTENSION - | COMMENT - (SCHEMA public|EXTENSION) ' > lista.txt
+          $PG pg_restore --no-owner --no-privileges --exit-on-error -L /w/lista.txt -d "$DESTINO" "/w/bambu-$FECHA.dump"
+          $PG psql "$DESTINO" -At -F' ' -c \
+            'SELECT (SELECT count(*) FROM "Pedido"), (SELECT count(*) FROM "Pago"), (SELECT count(*) FROM "Cliente"), (SELECT count(*) FROM "CierreDia")' \
+            > conteo-restaurado.txt
+          echo "producción:  $(cat conteo-prod.txt)"
+          echo "restaurado:  $(cat conteo-restaurado.txt)"
+          # La copia se toma antes del conteo: con ventas a esa hora, producción
+          # puede tener algunas filas más. La copia no puede tener más ni estar vacía.
+          read -r p1 p2 p3 p4 < conteo-prod.txt
+          read -r r1 r2 r3 r4 < conteo-restaurado.txt
+          for par in "$r1:$p1" "$r2:$p2" "$r3:$p3" "$r4:$p4"; do
+            r=${par%%:*}; p=${par##*:}
+            if [ "$r" -gt "$p" ] || [ "$r" -lt $(( p - 50 )) ] || [ "$p" -gt 0 -a "$r" -eq 0 ]; then
+              echo "::error::La copia restaurada no cuadra con producción ($r vs $p)."
+              exit 1
+            fi
+          done
+          echo "Restauración verificada."
+
+      - name: Cifrar
+        run: |
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
+              --symmetric --cipher-algo AES256 -o "bambu-$FECHA.dump.gpg" "bambu-$FECHA.dump"
+          shred -u "bambu-$FECHA.dump"
+          ls -lh "bambu-$FECHA.dump.gpg"
+
+      - name: Guardar la copia cifrada (7 días)
+        uses: actions/upload-artifact@v4
+        with:
+          name: respaldo-bambu-${{ env.FECHA }}
+          path: bambu-${{ env.FECHA }}.dump.gpg
+          retention-days: 7
+          if-no-files-found: error
