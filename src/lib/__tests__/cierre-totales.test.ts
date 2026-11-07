@@ -43,6 +43,13 @@ describe('cierre: conceptos financieros y conteo declarado', () => {
     expect(leerArqueoDeclarado(JSON.stringify({ arqueo: { 50000: 2, 2000: 3 }, totalContado: 999999, diferencia: 0 }), 100000))
       .toEqual({ arqueo: { 50000: 2, 2000: 3 }, totalContado: 106000, diferenciaArqueo: 6000 })
   })
+  it('#624: acepta la moneda de $1.000 y suma su subtotal al total contado y a la diferencia', () => {
+    expect(leerArqueoDeclarado(JSON.stringify({ arqueo: { 1000: 7, 500: 2 } }), 7000))
+      .toEqual({ arqueo: { 1000: 7, 500: 2 }, totalContado: 8000, diferenciaArqueo: 1000 })
+  })
+  it.each([{ 1000: -1 }, { 1000: 1.5 }, { 1000: '3' }])('#624: rechaza conteos no válidos de la moneda de $1.000 %j', arqueo => {
+    expect(() => leerArqueoDeclarado(JSON.stringify({ arqueo }), 0)).toThrow('Arqueo inválido')
+  })
   it.each([{ 50000: -1 }, { 50000: 0.5 }, { 1234: 2 }, { 100000: 1000000 }, { 50000: '2' }])('rechaza conteos no válidos %j', arqueo => {
     expect(() => leerArqueoDeclarado(JSON.stringify({ arqueo }), 0)).toThrow('Arqueo inválido')
   })
