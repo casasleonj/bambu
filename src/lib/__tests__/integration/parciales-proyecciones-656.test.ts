@@ -19,6 +19,8 @@ import { calcularVentas, calcularFiados } from '@/modules/dashboard/domain/venta
 import { entregarPedidoUseCase } from '@/modules/pedidos'
 import { POST as pagarFiado } from '@/app/api/pedidos/pagar-fiado/route'
 import { GET as consultarCierre } from '@/app/api/cierre/route'
+import { POST as entregaOficina } from '@/app/api/pedidos/[id]/gestion-admin/entrega/route'
+import { todayStringBogota } from '@/lib/dates'
 const dia='2026-11-05', fecha=new Date(`${dia}T12:00:00-05:00`)
 let clienteId:string,parcialId:string,nuevoId:string
 const filtros=(extra='')=>leerFiltrosConsulta(new URLSearchParams(`desde=${dia}&hasta=${dia}&resumen=1&clienteId=${clienteId}&${extra}`))
@@ -65,10 +67,14 @@ describe('Parcial: misma exigibilidad entre proyecciones',()=>{
     expect(r.pedidos.some(p=>p.id===nuevoId)).toBe(false)
   })
   it('el detalle devuelve exigible, sin cambiar valor comercial o factura',async()=>{
+    const leer=()=>db.pedido.findUniqueOrThrow({where:{id:parcialId},include:{items:true,factura:true,pagos:true,entregasExigibles:true}})
+    const antes=await leer(),auditorias=await db.historial.count()
     const res=await detalle(new NextRequest(`http://localhost/api/pedidos/${parcialId}`),{params:Promise.resolve({id:parcialId})})
     expect(res.status).toBe(200)
     const body=await res.json(),p=body.pedido??body.data?.pedido
     expect(p).toMatchObject({total:12000,saldo:12000,exigible:8000})
+    expect(await leer()).toEqual(antes)
+    expect(await db.historial.count()).toBe(auditorias)
   })
   it('cobra lo entregado, conserva el remanente y refleja entrega y pago final sin duplicar',async()=>{
     const pagar=async(monto:number,offlineId=randomUUID())=>pagarFiado(new NextRequest('http://localhost/api/pedidos/pagar-fiado',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clienteId,monto,metodo:'NEQUI',offlineId})}))
@@ -120,5 +126,27 @@ describe('Parcial: misma exigibilidad entre proyecciones',()=>{
     expect(body.status).toBe('CERRADO');expect(body.cierre).toMatchObject({totalVentas:99000,fiado:7000,_version:'2.1'})
     expect(body.cierre.valorComercialPedidosDelDia).toBeUndefined()
     expect(await db.cierreDia.findUniqueOrThrow({where:{id:original.id}})).toEqual(original)
+  })
+  it('entrega directa parcial: promesa obligatoria, rollback del rechazo y reintento sin duplicar', async () => {
+    const { p, c } = await casoSinHecho()
+    await db.pedidoItem.updateMany({ where: { pedidoId: p.id }, data: { cantEntrega: 0 } })
+    await db.config.upsert({ where: { clave: 'GESTION_ADMIN_SIN_EMBARQUE' }, create: { clave: 'GESTION_ADMIN_SIN_EMBARQUE', valor: 'true' }, update: { valor: 'true' } })
+    const trabajador = await db.trabajador.create({ data: { nombre: 'Entrega sintética oficina', rol: 'REPARTIDOR', usaMoto: true, tipoPago: 'COMISION' } })
+    const body = { itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 4 }], repartidorId: trabajador.id, fechaEntrega: new Date().toISOString(), precisionFecha: 'INSTANTE', offlineId: randomUUID() }
+    const enviar = (datos: object) => entregaOficina(new NextRequest(`http://localhost/api/pedidos/${p.id}/gestion-admin/entrega`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(datos) }), { params: Promise.resolve({ id: p.id }) })
+    const antes = await db.pedido.findUniqueOrThrow({ where: { id: p.id }, include: { items: true, pagos: true, entregasExigibles: true } })
+    const rechazo = await enviar(body)
+    expect(rechazo.status).toBe(422)
+    expect(await rechazo.json()).toMatchObject({ error: { code: 'PROMESA_REQUERIDA' } })
+    expect(await db.pedido.findUniqueOrThrow({ where: { id: p.id }, include: { items: true, pagos: true, entregasExigibles: true } })).toEqual(antes)
+    const aceptado = { ...body, promesaPagoFecha: todayStringBogota() }
+    expect((await enviar(aceptado)).status).toBe(200)
+    expect((await (await enviar(aceptado)).json()).deduped).toBe(true)
+    expect((await leerExigibles(db, { id: p.id })).get(p.id)).toBe(8000)
+    expect(await db.entregaExigible.count({ where: { pedidoId: p.id } })).toBe(1)
+    expect(await db.pago.count({ where: { pedidoId: p.id } })).toBe(0)
+    const r = await consultarPedidos(leerFiltrosConsulta(new URLSearchParams(`all=true&clienteId=${c.id}&pago=fiado&resumen=1`)), 'ADMIN', db)
+    expect(r.pedidos).toHaveLength(1)
+    expect(r.pedidos[0]).toMatchObject({ id: p.id, saldo: 12000, exigible: 8000 })
   })
 })

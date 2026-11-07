@@ -13,7 +13,7 @@ const pagos = [
   { metodo: 'NEQUI', monto: '345.30', pedido }, { metodo: 'DAVIPLATA', monto: '456.40', pedido }, { metodo: 'BONO', monto: '567.00', pedido },
 ]
 const pagoFind = vi.fn()
-const ventas = [{ total: 500, totalPagado: 120, saldo: 380, cPacaAguaEnt: 0, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }]
+const ventas = [{ id: 'venta-sintetica', origen: 'PEDIDO', estadoEntrega: 'ENTREGADO', total: 500, totalPagado: 120, saldo: 380, cPacaAguaEnt: 0, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }]
 const tx = {
   embarque: { findMany: vi.fn(async () => []) },
   pedido: { findMany: vi.fn(async ({ where }: { where: { estadoEntrega: unknown } }) => typeof where.estadoEntrega === 'string' ? [] : ventas), groupBy: vi.fn(async () => []) },

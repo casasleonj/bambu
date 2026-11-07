@@ -29,7 +29,7 @@ export function CierreKpiGrid({ data }: { data: CierreData | null }) {
       <div data-testid="cierre-kpi-ventas" className="rounded-xl border border-violet-200 bg-violet-50 p-3 min-w-0">
         <div className="flex items-center text-xs font-semibold text-slate-600">
           Ventas del día
-          <AyudaTermino texto={data.valorComercialPedidosDelDia === undefined ? 'Importe conservado por el cierre histórico con la definición que tenía al guardarse. No se recalcula con las reglas nuevas.' : 'Valor de lo entregado en los pedidos de esta fecha, sin anulados y menos devoluciones de ventas anteriores. Lo que falta entregar no se suma como entregado. Se agrupa por fecha del pedido; las unidades, por fecha de entrega. El cumplimiento se consulta en su estado actual.'} />
+          <AyudaTermino texto={data.valorComercialPedidosDelDia === undefined ? 'Importe conservado por el cierre histórico con la definición que tenía al guardarse. No se recalcula con las reglas nuevas.' : 'Valor de lo entregado en los pedidos de esta fecha, sin anulados y con el ajuste de notas de crédito de pedidos anteriores. Lo que falta entregar no se suma como entregado. Se agrupa por fecha del pedido; las unidades, por fecha de entrega. El cumplimiento se consulta en su estado actual.'} />
         </div>
         <div className="text-2xl font-extrabold tabular-nums text-violet-800">{formatMoney(data.totalVentas)}</div>
         <p className="text-[11px] text-slate-500">{data.valorComercialPedidosDelDia === undefined ? 'Pedidos de esta fecha, sin anulados.' : 'Lo entregado de los pedidos de esta fecha.'}</p>
@@ -74,13 +74,13 @@ export function CierreDetalleVentas({ data }: { data: CierreData | null }) {
     <div className="mt-2 space-y-2" data-testid="cierre-detalle-ventas">
       {data.notasCreditoVentasAnteriores !== undefined ? (
         <Desplegable testid="cierre-ventas-calculo" tono="violeta" icono="📊" titulo="De dónde salen las ventas del día"
-          ayuda={data.valorComercialPedidosDelDia === undefined ? 'Importe guardado por el cierre histórico: pedidos de esta fecha menos devoluciones de ventas anteriores. Se conserva su definición original.' : 'Ventas = valor de lo entregado de los pedidos de esta fecha menos las devoluciones de ventas anteriores. El valor comercial original y lo que falta entregar se explican aparte.'}
+          ayuda={data.valorComercialPedidosDelDia === undefined ? 'Importe guardado por el cierre histórico: pedidos de esta fecha menos devoluciones de ventas anteriores. Se conserva su definición original.' : 'Ventas = valor de lo entregado de los pedidos de esta fecha menos las notas de crédito de pedidos anteriores. El valor comercial original y lo que falta entregar se explican aparte.'}
           resumen={formatMoney(data.totalVentas)}>
           <dl className="divide-y divide-slate-100">
             {data.valorComercialPedidosDelDia !== undefined && <Linea label="Valor comercial de los pedidos" value={data.valorComercialPedidosDelDia} />}
             <Linea label={data.valorComercialPedidosDelDia === undefined ? 'Pedidos de esta fecha (sin anulados)' : 'Ya entregado de esos pedidos'} value={data.ventasDePedidosDelDia ?? 0} />
             {data.valorComercialPedidosDelDia !== undefined && data.valorComercialPedidosDelDia > (data.ventasDePedidosDelDia ?? 0) && <Linea label="Pendiente de entrega (no suma como venta entregada)" value={data.valorComercialPedidosDelDia - (data.ventasDePedidosDelDia ?? 0)} />}
-            <Linea label="− Devoluciones de ventas de días anteriores" value={-data.notasCreditoVentasAnteriores} ayuda="Notas de crédito de pedidos de otros días: restan a las ventas de hoy." />
+            <Linea label={data.valorComercialPedidosDelDia === undefined ? '− Devoluciones de ventas de días anteriores' : '− Notas de crédito de pedidos anteriores'} value={-data.notasCreditoVentasAnteriores} ayuda="Notas de crédito de pedidos de otros días: ajustan las ventas de esta fecha según la regla comercial vigente. No demuestran por sí solas devolución física ni salida de efectivo." />
             <Linea label="Ventas del día" value={data.totalVentas} total />
             <Linea label="Notas de crédito emitidas hoy" value={data.totalNotasCredito} ayuda="Una nota de crédito corrige o devuelve una venta. No significa, por sí sola, que se haya devuelto dinero en efectivo." />
             {(data.notasCreditoSinAjusteVentas ?? 0) > 0 && <Linea label="De ellas, ya descontadas de las ventas" value={data.notasCreditoSinAjusteVentas ?? 0} />}

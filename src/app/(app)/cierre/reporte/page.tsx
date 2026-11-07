@@ -96,7 +96,7 @@ function ReporteContent() {
           </tbody>
         </table>
         <p className="mt-2 text-xs text-muted-foreground" data-testid="reporte-notas-al-pie">
-          * {data.valorComercialPedidosDelDia === undefined ? 'Cifras conservadas del cierre histórico con su definición original.' : 'Valor entregado de los pedidos de la fecha, menos devoluciones de ventas anteriores. Cumplimiento y deuda al consultar/cerrar; no reconstruye un corte histórico anterior.'} ** Efectivo y digital registrado en esta fecha, de pedidos de hoy y anteriores.
+          * {data.valorComercialPedidosDelDia === undefined ? 'Cifras conservadas del cierre histórico con su definición original.' : 'Valor entregado de los pedidos de la fecha, menos notas de crédito de pedidos anteriores. Cumplimiento y deuda al consultar/cerrar; no reconstruye un corte histórico anterior.'} ** Efectivo y digital registrado en esta fecha, de pedidos de hoy y anteriores.
           *** {data.valorComercialPedidosDelDia === undefined ? 'Saldo registrado entonces.' : 'Saldo por cobrar de mercancía entregada; no incluye lo pendiente de entrega.'}
         </p>
         {process.env.NEXT_PUBLIC_PAGO_CONFIRMACION === 'true' && (data.porConfirmar?.diasPreviosCount ?? 0) > 0 && (

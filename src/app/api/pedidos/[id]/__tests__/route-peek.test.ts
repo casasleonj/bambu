@@ -38,8 +38,9 @@ describe('GET /api/pedidos/[id] — peek (Fase 4b)', () => {
     expect(getBlock).toMatch(/requireOwnership\('pedido'/)
   })
 
-  it('los datos nuevos son de LECTURA — sin use cases de escritura ni $transaction en el GET', () => {
-    expect(getBlock).not.toMatch(/\$transaction/)
+  it('los datos nuevos son de LECTURA — el snapshot transaccional no ejecuta escrituras', () => {
+    expect(getBlock).toContain('Prisma.TransactionIsolationLevel.RepeatableRead')
+    expect(getBlock).not.toMatch(/\.(?:create|createMany|update|updateMany|upsert|delete|deleteMany|\$executeRaw)\s*\(/)
     expect(getBlock).not.toMatch(/actualizarPedidoUseCase|anularPedidoUseCase|cancelarPedidoUseCase/)
     expect(getBlock).not.toMatch(/withAdvisoryLock/)
   })

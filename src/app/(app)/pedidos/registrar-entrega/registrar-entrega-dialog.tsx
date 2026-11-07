@@ -20,6 +20,7 @@ import {
   pesos,
   resumen,
   saldoActual,
+  saldoEntregadoTrasEntrega,
   sumarDias,
   validar,
   DIAS_MAX_ATRAS,
@@ -34,6 +35,7 @@ import {
 interface Props {
   pedido: PedidoParaEntrega
   repartidores: Repartidor[]
+  fiadoParcialActivo?: boolean
   onClose: () => void
   /** `deduped` = esta entrega ya estaba registrada (reintento). */
   onRegistrado: (info: { deduped: boolean; numero: number }) => void
@@ -56,24 +58,26 @@ function Opcion({ name, checked, onChange, children, testId }: { name: string; c
   )
 }
 
-export function RegistrarEntregaDialog({ pedido, repartidores, onClose, onRegistrado }: Props) {
+export function RegistrarEntregaDialog({ pedido, repartidores, fiadoParcialActivo = false, onClose, onRegistrado }: Props) {
   const [datos, setDatos] = useState<DatosEntrega>(() => datosIniciales(pedido))
   const [paso, setPaso] = useState<'datos' | 'revisar'>('datos')
   const [intento, setIntento] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [errorServidor, setErrorServidor] = useState<string | null>(null)
+  const [promesaExigidaPorServidor, setPromesaExigidaPorServidor] = useState(false)
   // La clave es por BORRADOR (AGENTS.md, «Crear pedido»): cada apertura es un
   // borrador nuevo y los reintentos reusan la misma clave.
   const [offlineId] = useState(() => crypto.randomUUID())
 
-  const errores = validar(pedido, datos)
+  const modoParcial = fiadoParcialActivo || promesaExigidaPorServidor
+  const errores = validar(pedido, datos, new Date(), modoParcial)
   const esDomicilio = pedido.canal === 'DOMICILIO'
   const pend = pendientes(pedido)
   const monto = montoNumero(datos)
   const saldo = saldoActual(pedido)
-  const saldoDespues = Math.max(0, saldo - monto)
   const entregaCompleta = datos.alcance !== null && completa(pedido, datos)
-  const debe = saldoDespues > 0 && entregaCompleta && pedido.clienteId !== CLIENTE_ANONIMO
+  const deudaEntregada = saldoEntregadoTrasEntrega(pedido, datos, modoParcial)
+  const debe = (deudaEntregada ?? 0) > 0 && pedido.clienteId !== CLIENTE_ANONIMO
   const repartidorFijo = pedido.entregadoPorId ? repartidores.find((r) => r.id === pedido.entregadoPorId) : undefined
   const hoy = hoyBogota()
 
@@ -109,8 +113,13 @@ export function RegistrarEntregaDialog({ pedido, repartidores, onClose, onRegist
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(armarPayload(pedido, datos, offlineId)),
       })
-      const json = (await res.json().catch(() => null)) as { error?: { message?: string }; deduped?: boolean } | null
+      const json = (await res.json().catch(() => null)) as { error?: { message?: string; code?: string }; deduped?: boolean } | null
       if (!res.ok) {
+        if (json?.error?.code === 'PROMESA_REQUERIDA') {
+          setPromesaExigidaPorServidor(true)
+          setIntento(true)
+          setPaso('datos')
+        }
         setErrorServidor(json?.error?.message ?? 'No se pudo registrar la entrega. Intenta de nuevo.')
         return
       }
@@ -298,7 +307,8 @@ export function RegistrarEntregaDialog({ pedido, repartidores, onClose, onRegist
 
             {debe && (
               <section className="rounded-xl border border-amber-400 bg-amber-50 p-4 text-sm text-amber-900">
-                <b>Quedan debiendo {pesos(saldoDespues)}</b> a {pedido.nombreCliente}.
+                <b>Quedan debiendo {pesos(deudaEntregada ?? 0)}</b> a {pedido.nombreCliente}.
+                {!entregaCompleta && <p className={AYUDA}>Solo lo entregado; la mercancía pendiente no se cobra como recibida.</p>}
                 <label htmlFor="re-promesa" className="mt-2 block font-semibold">¿Hasta cuándo promete pagar? *</label>
                 <input id="re-promesa" type="date" className={`${CAMPO} mt-1`} value={datos.promesa} min={hoy} onChange={(e) => set('promesa', e.target.value)} />
                 {intento && errores.promesa && <p className={ERROR}>{errores.promesa}</p>}
@@ -321,7 +331,7 @@ export function RegistrarEntregaDialog({ pedido, repartidores, onClose, onRegist
         ) : (
           <>
             <ul className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-900" data-testid="re-resumen">
-              {resumen(pedido, datos, repartidores, nombreProducto).map((f) => <li key={f}>• {f}</li>)}
+              {resumen(pedido, datos, repartidores, nombreProducto, modoParcial).map((f) => <li key={f}>• {f}</li>)}
             </ul>
             <p className="rounded-lg border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900">
               <b>Esto no se puede deshacer desde aquí.</b> Si algo está mal, vuelve y corrígelo ahora.
