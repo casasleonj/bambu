@@ -36,7 +36,7 @@ test.describe('Pedidos: integridad de anulación y cobro #512/#514', () => {
     const response = await apiPost(page, `/api/pedidos/${p.id}/anular`, { motivo: 'Prueba sintética', devolverStock: false, offlineId: randomUUID() })
     expect(response.status()).toBe(200)
     await goto(page, `/pedidos?openPedido=${p.id}`)
-    const total = appMain(page).getByText('Total Pedido', { exact: true }).locator('..')
+    const total = appMain(page).getByText('Valor comercial del pedido', { exact: true }).locator('..')
     await expect(total).toContainText(/\$\s*0\b/)
     const post = await prisma.pedido.findUniqueOrThrow({ where: { id: p.id } })
     expect([Number(post.total), Number(post.saldo), Number(post.totalPagado)]).toEqual([0, 0, 0])
