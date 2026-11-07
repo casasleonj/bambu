@@ -2584,6 +2584,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
           onRegistrado={({ deduped, numero }) => {
             setRegistrarEntregaPara(null)
             refreshPedidos()
+            refetchCounts()
             refetchFiados()
             refetchAlertas()
             if (deduped) toast.info(`La entrega del pedido #${numero} ya estaba registrada`)

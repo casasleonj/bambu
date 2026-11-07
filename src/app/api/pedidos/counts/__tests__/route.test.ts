@@ -12,12 +12,6 @@ describe('FIX Bug 6: /api/pedidos/counts expone contadores ligeros', () => {
     expect(source).toMatch(/requireRole\(\s*\[/)
   })
 
-  it('FIX: cuenta fiados como clientes unicos con saldo > 0', () => {
-    expect(source).toMatch(/estadoEntrega:\s*['"]ENTREGADO['"]/)
-    expect(source).toMatch(/saldo:\s*\{\s*gt:\s*0\s*\}/)
-    expect(source).toMatch(/distinct:\s*\[\s*['"]clienteId['"]\s*\]/)
-  })
-
   it('FIX: excluye CONSUMIDOR_FINAL de fiados y alertas', () => {
     expect(source).toMatch(/CANONICAL_CONSUMIDOR_FINAL_ID/)
     expect(source.match(/CANONICAL_CONSUMIDOR_FINAL_ID/g)?.length).toBeGreaterThanOrEqual(2)

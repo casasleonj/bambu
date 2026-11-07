@@ -21,6 +21,7 @@ import { POST as pagarFiado } from '@/app/api/pedidos/pagar-fiado/route'
 import { GET as consultarCierre } from '@/app/api/cierre/route'
 import { POST as entregaOficina } from '@/app/api/pedidos/[id]/gestion-admin/entrega/route'
 import { todayStringBogota } from '@/lib/dates'
+import { GET as consultarContadores } from '@/app/api/pedidos/counts/route'
 const dia='2026-11-05', fecha=new Date(`${dia}T12:00:00-05:00`)
 let clienteId:string,parcialId:string,nuevoId:string
 const filtros=(extra='')=>leerFiltrosConsulta(new URLSearchParams(`desde=${dia}&hasta=${dia}&resumen=1&clienteId=${clienteId}&${extra}`))
@@ -76,6 +77,11 @@ describe('Parcial: misma exigibilidad entre proyecciones',()=>{
     expect(await leer()).toEqual(antes)
     expect(await db.historial.count()).toBe(auditorias)
   })
+  it('los contadores globales incluyen la parcial fiada y excluyen mercancía sin entregar', async () => {
+    const respuesta = await consultarContadores(new NextRequest('http://localhost/api/pedidos/counts?desde=2000-01-01&hasta=2000-01-01'))
+    expect(respuesta.status).toBe(200)
+    expect(await respuesta.json()).toMatchObject({ fiadosCount: 1, esperandoPagoCount: 1, esperandoPagoTotal: 8000 })
+  })
   it('cobra lo entregado, conserva el remanente y refleja entrega y pago final sin duplicar',async()=>{
     const pagar=async(monto:number,offlineId=randomUUID())=>pagarFiado(new NextRequest('http://localhost/api/pedidos/pagar-fiado',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clienteId,monto,metodo:'NEQUI',offlineId})}))
     const clave=randomUUID()
@@ -84,10 +90,12 @@ describe('Parcial: misma exigibilidad entre proyecciones',()=>{
     const parcial=await consultarPedidos(filtros(),'ADMIN',db)
     expect(parcial.resumen).toMatchObject({importe:17000,pagado:8000,saldo:9000,fiado:0,pendienteEntrega:9000})
     expect(parcial.pedidos.find(p=>p.id===parcialId)).toMatchObject({exigible:0,estadoEntrega:'PENDIENTE'})
+    expect(await (await consultarContadores(new NextRequest('http://localhost/api/pedidos/counts'))).json()).toMatchObject({ fiadosCount: 0, esperandoPagoCount: 0, esperandoPagoTotal: 0 })
     await db.pedido.update({where:{id:parcialId},data:{estado:'EN_RUTA',estadoEntrega:'EN_RUTA'}})
     await entregarPedidoUseCase.execute({pedidoId:parcialId,itemsEntregados:[{producto:'PACA_AGUA',cantidad:2}],offlineId:randomUUID()})
     const completo=await consultarPedidos(filtros(),'ADMIN',db)
     expect(completo.pedidos.find(p=>p.id===parcialId)).toMatchObject({exigible:4000,estadoEntrega:'ENTREGADO',saldo:4000})
+    expect(await (await consultarContadores(new NextRequest('http://localhost/api/pedidos/counts'))).json()).toMatchObject({ fiadosCount: 1, esperandoPagoCount: 1, esperandoPagoTotal: 4000 })
     expect((await pagar(4000)).status).toBe(200)
     const final=await consultarPedidos(filtros(),'ADMIN',db)
     expect(final.pedidos.find(p=>p.id===parcialId)).toMatchObject({total:12000,totalPagado:12000,saldo:0,exigible:0})
@@ -95,6 +103,7 @@ describe('Parcial: misma exigibilidad entre proyecciones',()=>{
     expect(Number(f.total)).toBe(12000);expect(Number(f.saldo)).toBe(0)
     expect(await db.pago.count({where:{pedidoId:parcialId}})).toBe(2)
     expect(await db.abono.count({where:{pedidoId:parcialId,origenCobro:'ESPEJO_PAGO'}})).toBe(2)
+    expect(await (await consultarContadores(new NextRequest('http://localhost/api/pedidos/counts'))).json()).toMatchObject({ fiadosCount: 0, esperandoPagoCount: 0, esperandoPagoTotal: 0 })
   })
   it('un parcial sin fuente exigible queda por conciliar, no se inventa una deuda desde el acumulado',async()=>{
     const {p,f}=await casoSinHecho()
@@ -148,5 +157,14 @@ describe('Parcial: misma exigibilidad entre proyecciones',()=>{
     const r = await consultarPedidos(leerFiltrosConsulta(new URLSearchParams(`all=true&clienteId=${c.id}&pago=fiado&resumen=1`)), 'ADMIN', db)
     expect(r.pedidos).toHaveLength(1)
     expect(r.pedidos[0]).toMatchObject({ id: p.id, saldo: 12000, exigible: 8000 })
+  })
+  it('cuenta clientes únicos y pedidos distintos desde el mismo snapshot, conservando OFF', async () => {
+    const c = await db.cliente.create({ data: { nombre: 'Dos deudas sintéticas', telefono: randomUUID() } })
+    await db.pedido.createMany({ data: [2000, 3000].map(total => ({ clienteId: c.id, fecha, total, saldo: total, estadoEntrega: 'ENTREGADO' as const, estado: 'ENTREGADO' as const })) })
+    vi.stubEnv('FIADO_ENTREGA_PARCIAL', 'false')
+    try {
+      expect(await (await consultarContadores(new NextRequest('http://localhost/api/pedidos/counts'))).json()).toMatchObject({ fiadosCount: 1, esperandoPagoCount: 2, esperandoPagoTotal: 5000 })
+    } finally { vi.unstubAllEnvs() }
+    expect(await (await consultarContadores(new NextRequest('http://localhost/api/pedidos/counts'))).json()).toMatchObject({ fiadosCount: 2, esperandoPagoCount: 3, esperandoPagoTotal: 13000 })
   })
 })
