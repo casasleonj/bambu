@@ -37,6 +37,8 @@ export const DENOMINACIONES = [
   { valor: 10000, tipo: 'BILLETE', label: '$10.000' },
   { valor: 5000, tipo: 'BILLETE', label: '$5.000' },
   { valor: 2000, tipo: 'BILLETE', label: '$2.000' },
+  // #624: moneda bimetálica de mil pesos (vigente en Colombia junto a 500, 200, 100 y 50)
+  { valor: 1000, tipo: 'MONEDA', label: '$1.000' },
   { valor: 500, tipo: 'MONEDA', label: '$500' },
   { valor: 200, tipo: 'MONEDA', label: '$200' },
   { valor: 100, tipo: 'MONEDA', label: '$100' },
@@ -48,8 +50,9 @@ export interface ArqueoData {
 }
 
 function MonedaIcon({ valor }: { valor: number }) {
-  const size = valor >= 500 ? 28 : valor >= 200 ? 26 : 24
+  const size = valor >= 1000 ? 30 : valor >= 500 ? 28 : valor >= 200 ? 26 : 24
   const colors: Record<number, { bg: string; ring: string }> = {
+    1000: { bg: '#C0C0C0', ring: '#8B8B8B' }, // anillo plateado; el centro dorado se dibuja abajo
     500: { bg: '#CD7F32', ring: '#B8860B' },
     200: { bg: '#B87333', ring: '#8B5E3C' },
     100: { bg: '#C0C0C0', ring: '#A8A8A8' },
@@ -66,8 +69,9 @@ function MonedaIcon({ valor }: { valor: number }) {
       </defs>
       <circle cx={size / 2} cy={size / 2} r={size / 2 - 0.5} fill={c.bg} stroke={c.ring} strokeWidth="1" />
       <circle cx={size / 2} cy={size / 2} r={size / 2 - 0.5} fill={`url(#coin-${valor})`} />
+      {valor === 1000 && <circle cx={size / 2} cy={size / 2} r={size / 2 - 5} fill="#E0B64A" stroke="#B8860B" strokeWidth="0.5" />}
       <circle cx={size / 2} cy={size / 2} r={size / 2 - 3} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-      <text x={size / 2} y={size / 2 + 1} textAnchor="middle" fill={valor >= 100 ? '#333' : '#fff'} fontSize={valor >= 500 ? '6' : '5'} fontWeight="bold" fontFamily="sans-serif">${valor}</text>
+      <text x={size / 2} y={size / 2 + 1} textAnchor="middle" fill={valor >= 100 ? '#333' : '#fff'} fontSize={valor >= 1000 ? '5' : valor >= 500 ? '6' : '5'} fontWeight="bold" fontFamily="sans-serif">${valor}</text>
     </svg>
   )
 }
