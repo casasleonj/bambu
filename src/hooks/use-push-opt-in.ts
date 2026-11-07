@@ -43,8 +43,30 @@ function safeSessionSet(key: string, value: string): void {
   }
 }
 
+/** Estado del intento de activación, para pintar la franja y el panel de la campana. */
+export type PushOptInStatus = 'idle' | 'activating' | 'success' | 'error'
+
+/** Cuánto se ve el «Listo: notificaciones activadas» antes de cerrarse sola. */
+const SUCCESS_VISIBLE_MS = 2500
+
 export interface UsePushOptInReturn {
+  /** Regla base de la franja: aún no se decidió y no se descartó. Ver `stripVisible` para lo que se pinta. */
   shouldShow: boolean
+  /** La franja se pinta: la regla base, o un intento de activación en curso / con resultado. */
+  stripVisible: boolean
+  /** Campana del encabezado: se puede activar, pero la franja no está a la vista. */
+  showBell: boolean
+  /** Punto naranja de la campana: nunca se descartó con «✕». */
+  bellHasDot: boolean
+  status: PushOptInStatus
+  /** El navegador bloqueó las notificaciones; la app no puede revertirlo. */
+  blocked: boolean
+  /** El intento de activación nació en el panel de la campana: ahí se muestran sus estados. */
+  panelActive: boolean
+  /** Cierra el resultado (éxito o error) de un intento sin cambiar las preferencias. */
+  clearAttempt: () => void
+  /** «Activar» desde el panel de la campana (los estados se muestran en el panel, no en la franja). */
+  acceptFromPanel: () => Promise<void>
   accept: () => Promise<void>
   /** Descarte permanente (botón "Cerrar"): no vuelve a mostrarse en ninguna sesión futura. */
   dismiss: () => void
@@ -56,8 +78,11 @@ export interface UsePushOptInReturn {
 
 export function usePushOptIn(): UsePushOptInReturn {
   const { data: session } = useSession()
-  const { permission, subscribe, loading } = usePushSubscription()
+  const { permission, subscribe, loading, subscribed, error: subscriptionError } = usePushSubscription()
   const [error, setError] = useState<string | null>(null)
+  // `attempted`: la persona pulsó «Activar» y el resultado (éxito o error) sigue a la vista.
+  const [attempted, setAttempted] = useState(false)
+  const [attemptOrigin, setAttemptOrigin] = useState<'strip' | 'panel'>('strip')
 
   // dismissed/shownThisSession/isIosWithoutStandalone dependen de
   // localStorage/sessionStorage/navigator, que no existen durante SSR y
@@ -93,24 +118,37 @@ export function usePushOptIn(): UsePushOptInReturn {
     !dismissed &&
     !shownThisSession
 
-  const accept = useCallback(async () => {
-    setError(null)
-    try {
-      await subscribe()
-      if (Notification.permission === 'granted') {
-        safeLocalSet(ACCEPTED_KEY, '1')
+  const runAccept = useCallback(
+    async (origin: 'strip' | 'panel') => {
+      setError(null)
+      setAttemptOrigin(origin)
+      setAttempted(true)
+      try {
+        await subscribe()
+        if (Notification.permission === 'granted') {
+          safeLocalSet(ACCEPTED_KEY, '1')
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Error activando notificaciones')
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error activando notificaciones')
-    }
-  }, [subscribe])
+    },
+    [subscribe],
+  )
+  const accept = useCallback(() => runAccept('strip'), [runAccept])
+  const acceptFromPanel = useCallback(() => runAccept('panel'), [runAccept])
+
+  const clearAttempt = useCallback(() => {
+    setAttempted(false)
+    setError(null)
+  }, [])
 
   const dismiss = useCallback(() => {
     safeLocalSet(DISMISSED_KEY, '1')
     safeSessionSet(SHOWN_SESSION_KEY, '1')
     setDismissed(true)
     setShownThisSession(true)
-  }, [])
+    clearAttempt()
+  }, [clearAttempt])
 
   // "Más tarde": solo oculta el toast por lo que resta de esta sesión
   // (sessionStorage). A diferencia de dismiss(), NO escribe el flag
@@ -119,11 +157,50 @@ export function usePushOptIn(): UsePushOptInReturn {
   const remindLater = useCallback(() => {
     safeSessionSet(SHOWN_SESSION_KEY, '1')
     setShownThisSession(true)
-  }, [])
+    clearAttempt()
+  }, [clearAttempt])
+
+  // Resultado del intento. Los errores de la suscripción (clave VAPID ausente,
+  // tiempo agotado, permiso denegado) viven en `usePushSubscription`; antes no
+  // se mostraban en ningún lado.
+  const succeeded = attempted && subscribed && !loading
+  const errorMessage = attempted ? (error ?? subscriptionError) : null
+  const status: PushOptInStatus = loading
+    ? 'activating'
+    : succeeded
+      ? 'success'
+      : errorMessage
+        ? 'error'
+        : 'idle'
+
+  // El «Listo» se cierra solo; el setState va en el callback del timer, no en el efecto.
+  useEffect(() => {
+    if (!succeeded) return
+    const timer = setTimeout(() => setAttempted(false), SUCCESS_VISIBLE_MS)
+    return () => clearTimeout(timer)
+  }, [succeeded])
+
+  const panelActive = status !== 'idle' && attemptOrigin === 'panel'
+  const stripVisible = shouldShow || (status !== 'idle' && attemptOrigin === 'strip')
+  // La campana sigue mientras un intento nacido en su panel muestra su resultado, aunque el
+  // permiso ya haya cambiado a granted/denied.
+  const showBell =
+    mounted &&
+    isTargetRole &&
+    !isIosWithoutStandalone &&
+    ((permission === 'default' && !stripVisible) || panelActive)
 
   return {
     shouldShow,
+    stripVisible,
+    showBell,
+    bellHasDot: !dismissed,
+    status,
+    blocked: permission === 'denied',
+    panelActive,
+    clearAttempt,
     accept,
+    acceptFromPanel,
     dismiss,
     remindLater,
     loading,
