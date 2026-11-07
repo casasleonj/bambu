@@ -109,6 +109,10 @@ vercel --prod
 
 ## Critical Architecture Decisions
 
+### Consulta de entregas parciales y deuda (#656 / #631 / #673)
+
+La presentación mínima aprobada conserva el importe comercial del pedido y distingue entregado, pendiente de entrega y exigible. Para consultar deuda usar `leerExigibles`, también en filtros y totales antes de paginar; no usar el saldo comercial como deuda de una parcial. Cierre y Dashboard comparten `valorEntregadoPedidoCentavos`. El cumplimiento/deuda es el actual de los pedidos seleccionados por su fecha; no una reconstrucción al cierre de una fecha pasada. Los cierres consolidados conservan su snapshot original. Sin evidencia exigible en una parcial se advierte «Por conciliar», sin inventar hechos ni afirmar deuda cero. Detalles y transición: `docs/fiados/656-658-entrega.md`. Conservar entrega directa, planificación secundaria y cobro FIFO.
+
 ### PostgreSQL Only
 - Single `prisma/schema.prisma` with `provider = "postgresql"`
 - Dev: Docker Compose PostgreSQL 17.10 Alpine (`docker compose up -d`)

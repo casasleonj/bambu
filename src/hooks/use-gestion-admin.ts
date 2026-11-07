@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 export interface RepartidorOpcion { id: string; nombre: string }
-export interface EstadoGestionAdmin { activa: boolean; repartidores: RepartidorOpcion[]; estadoConsulta?: 'consultando' | 'verificado' | 'error'; reintentar?: () => void }
+export interface EstadoGestionAdmin { activa: boolean; repartidores: RepartidorOpcion[]; fiadoParcialActivo?: boolean; estadoConsulta?: 'consultando' | 'verificado' | 'error'; reintentar?: () => void }
 
 const APAGADA: EstadoGestionAdmin = { activa: false, repartidores: [], estadoConsulta: 'verificado' }
 
@@ -23,9 +23,9 @@ export function useGestionAdmin(esAdmin: boolean): EstadoGestionAdmin {
     setEstado({ ...APAGADA, estadoConsulta: 'consultando' })
     fetch('/api/pedidos/gestion-admin/estado')
       .then((r) => (r.ok ? r.json() : null))
-      .then((j: { success?: boolean; activa?: boolean; repartidores?: RepartidorOpcion[] } | null) => {
+      .then((j: { success?: boolean; activa?: boolean; repartidores?: RepartidorOpcion[]; fiadoParcialActivo?: boolean } | null) => {
         if (!j?.success) throw new Error('No se pudo consultar la gestión directa')
-        if (vivo) setEstado({ activa: Boolean(j.activa), repartidores: j.repartidores ?? [], estadoConsulta: 'verificado' })
+        if (vivo) setEstado({ activa: Boolean(j.activa), repartidores: j.repartidores ?? [], fiadoParcialActivo: j.fiadoParcialActivo === true, estadoConsulta: 'verificado' })
       })
       .catch(() => {
         if (vivo) setEstado({ ...APAGADA, estadoConsulta: 'error' })

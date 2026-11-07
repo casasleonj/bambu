@@ -1,7 +1,7 @@
 // TEMPORAL-SIN-EMBARQUE(#472): reglas de la pantalla «Registrar entrega».
 import { describe, it, expect } from 'vitest'
 import {
-  armarPayload, completa, datosIniciales, erroresLineas, hayErrores, hoyBogota, itemsAEntregar, lineasConMonto, montoNumero, resumen, sumarDias, validar,
+  armarPayload, completa, datosIniciales, erroresLineas, hayErrores, hoyBogota, itemsAEntregar, lineasConMonto, montoNumero, resumen, saldoEntregadoTrasEntrega, sumarDias, validar,
   type DatosEntrega, type PedidoParaEntrega,
 } from '../logica'
 
@@ -26,6 +26,34 @@ const datos = (p: PedidoParaEntrega, o: Atajo = {}): DatosEntrega => {
   }
 }
 const nombre = (c: string) => c
+
+describe('#656 promesa de lo entregado', () => {
+  const p = pedido({ total: 12000, items: [{ producto: 'PACA_AGUA', cantPedido: 6, cantEntrega: 0, precio: 2000 }] })
+  const parcial = (o: Atajo = {}) => datos(p, { alcance: 'MENOS', cantidades: { PACA_AGUA: 4 }, ...o })
+  it('modo activo exige promesa solo por 8.000 entregados, no por el compromiso de 12.000', () => {
+    expect(saldoEntregadoTrasEntrega(p, parcial(), true)).toBe(8000)
+    expect(validar(p, parcial(), AHORA, true).promesa).toMatch(/hasta cuándo/)
+    expect(validar(p, parcial({ promesa: HOY }), AHORA, true).promesa).toBeUndefined()
+    expect(resumen(p, parcial({ promesa: HOY }), [], nombre, true)).toContain(`Quedan debiendo $8.000 de lo entregado hasta el 24 de octubre.`)
+  })
+  it.each([8000, 10000])('con %s prepagados no exige promesa por mercancía pendiente', pagado => {
+    const conAnticipo = { ...p, totalPagado: pagado }
+    expect(saldoEntregadoTrasEntrega(conAnticipo, parcial(), true)).toBe(0)
+    expect(validar(conAnticipo, parcial(), AHORA, true).promesa).toBeUndefined()
+    expect(resumen(conAnticipo, parcial(), [], nombre, true).join(' ')).toContain('Lo entregado está cubierto por los pagos.')
+  })
+  it('varios productos y pagos mixtos usan sus precios y todo lo pagado', () => {
+    const varios = { ...p, total: 18000, totalPagado: 3000, items: [...p.items, { producto: 'PACA_HIELO', cantPedido: 2, cantEntrega: 0, precio: 3000 }] }
+    const d = parcial({ cantidades: { PACA_AGUA: 4, PACA_HIELO: 1 }, lineas: [{ metodo: 'EFECTIVO', monto: '3000' }, { metodo: 'NEQUI', monto: '1000' }], quienRecibio: 'OFICINA' })
+    expect(saldoEntregadoTrasEntrega(varios, d, true)).toBe(4000)
+  })
+  it('no inventa un precio ausente y conserva el comportamiento OFF', () => {
+    const incompleto = { ...p, items: [{ producto: 'PACA_AGUA', cantPedido: 6, cantEntrega: 0 }] }
+    expect(saldoEntregadoTrasEntrega(incompleto, parcial(), true)).toBeNull()
+    expect(validar(incompleto, parcial(), AHORA, true).monto).toMatch(/comprobar el valor entregado/)
+    expect(validar(incompleto, parcial(), AHORA, false).promesa).toBeUndefined()
+  })
+})
 
 describe('datosIniciales', () => {
   it('no preselecciona ni el alcance ni quién recibió el dinero; la fecha es hoy en Bogotá', () => {

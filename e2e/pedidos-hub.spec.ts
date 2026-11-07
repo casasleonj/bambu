@@ -275,7 +275,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await expect(page.getByTestId('peek-ver-detalle-completo')).toBeVisible()
     const urlAntes = page.url()
     await page.getByTestId('peek-ver-detalle-completo').click()
-    await expect(app.getByText('Total Pedido', { exact: true })).toBeVisible({ timeout: 10000 })
+    await expect(app.getByText('Valor comercial del pedido', { exact: true })).toBeVisible({ timeout: 10000 })
     expect(page.url()).toBe(urlAntes) // no navegó
   })
 
@@ -294,7 +294,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await page.keyboard.press('Control+k')
     await expect(page.getByTestId('command-menu')).toBeVisible()
     await page.getByTestId('command-ver-detalle').click()
-    await expect(app.getByText('Total Pedido', { exact: true })).toBeVisible({ timeout: 10000 })
+    await expect(app.getByText('Valor comercial del pedido', { exact: true })).toBeVisible({ timeout: 10000 })
   })
 
   test('workspace (Composición C1): crear un pedido — el total viene del preview, el commit crea', async ({ browser }) => {

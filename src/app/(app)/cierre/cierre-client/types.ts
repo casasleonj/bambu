@@ -59,6 +59,9 @@ export interface CierreData {
   fiado: number
   totalNotasCredito: number
   ventasDePedidosDelDia?: number
+  /** #656: original comercial antes de distinguir entrega; los cierres anteriores no lo traen. */
+  valorComercialPedidosDelDia?: number
+  parcialesPorConciliar?: { pedidoId: string; numero: number }[]
   notasCreditoVentasAnteriores?: number
   notasCreditoSinAjusteVentas?: number
   // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 — informativo, no altera netoCaja.

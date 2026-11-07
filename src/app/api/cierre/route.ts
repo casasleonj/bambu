@@ -275,7 +275,7 @@ export async function POST(request: NextRequest) {
         })
         const arqueo = leerArqueoDeclarado(parsed.data.reporte, efectivoEsperado)
         const reporteData = {
-          ...resumen, ...arqueo, _version: '2.1', netoCaja, efectivoEsperado,
+          ...resumen, ...arqueo, _version: '2.2', netoCaja, efectivoEsperado,
           baseDia: parsed.data.baseDia, salarios: 0, comisiones: comisiones.total,
           salariosEfectivo, salariosOtrosMedios: 0,
         }

@@ -341,7 +341,7 @@ test.describe('Pedidos — Tab Pedidos (Hoy)', () => {
       expect(await dialog.isVisible({ timeout: 3000 }).catch(() => false)).toBe(true)
       // Check for key modal content
       const modalText = await p.locator('body').textContent()
-      expect(modalText?.includes('Total Pedido') || modalText?.includes('Productos')).toBe(true)
+      expect(modalText?.includes('Valor comercial del pedido') || modalText?.includes('Productos')).toBe(true)
     }
   })
 

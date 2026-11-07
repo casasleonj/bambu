@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
+import { leerExigibles } from "./entregas-exigibles-db";
+import { importesEntregaPedido } from "./valor-entregado-pedido";
 import { canReadFacturas } from "./permissions";
 import { getAnonymousClientDisplayName } from "./cliente-canonical";
 import { pickCoords } from "./geo/pedido-coords";
@@ -54,7 +56,7 @@ export function whereConsultaPedidos(
   if (f.pago === "registrado")
     and.push({ estadoPago: { in: ["PAGADO", "ANTICIPADO"] } });
   if (f.pago === "fiado")
-    and.push({ estadoEntrega: "ENTREGADO", saldo: { gt: 0 } });
+    and.push({ estadoEntrega: { notIn: ["CANCELADO", "ANULADO"] }, saldo: { gt: 0 } });
   if (f.foco === "porPlanificar")
     and.push({ estadoEntrega: "PENDIENTE", embarqueId: null });
   if (f.foco === "entregaParcial")
@@ -72,7 +74,7 @@ export function whereConsultaPedidos(
     });
   if (f.foco === "enRuta") and.push({ estadoEntrega: "EN_RUTA" });
   if (f.foco === "esperandoPago")
-    and.push({ estadoEntrega: "ENTREGADO", saldo: { gt: 0 } });
+    and.push({ estadoEntrega: { notIn: ["CANCELADO", "ANULADO"] }, saldo: { gt: 0 } });
   if (f.foco === "pendientesN2")
     and.push({ obligacion: { is: { estado: "ABIERTA" } } });
   if (f.foco === "excepciones")
@@ -191,8 +193,13 @@ export async function consultarPedidos(
           },
         });
       }
+      // #656: exigir deuda antes de contar/paginar; el resumen usa todo el conjunto.
+      const soloFiados = f.pago === "fiado" || f.foco === "esperandoPago";
+      const exigiblesConjunto = f.resumen || soloFiados
+        ? await leerExigibles(tx, { AND: [where, validoFinanciero] }) : null;
+      if (soloFiados) and.push({ id: { in: [...exigiblesConjunto!].filter(([, monto]) => monto > 0).map(([id]) => id) } });
       const fin: Prisma.PedidoWhereInput = { AND: [where, validoFinanciero] };
-      const [total, rows, repartidores, sumas, fiados] = await Promise.all([
+      const [total, rows, repartidores, sumas, parciales] = await Promise.all([
         tx.pedido.count({ where }),
         tx.pedido.findMany({
           where,
@@ -252,18 +259,15 @@ export async function consultarPedidos(
               _sum: { total: true, totalPagado: true, saldo: true },
             })
           : null,
-        f.resumen
-          ? tx.pedido.aggregate({
-              where: {
-                AND: [fin, { estadoEntrega: "ENTREGADO", saldo: { gt: 0 } }],
-              },
-              _sum: { saldo: true },
-            })
-          : null,
+        f.resumen ? tx.pedido.findMany({
+          where: { AND: [fin, { estadoEntrega: { not: 'ENTREGADO' }, saldo: { gt: 0 }, items: { some: { cantEntrega: { gt: 0 } } } }] },
+          select: { id: true, total: true, totalPagado: true, saldo: true, estadoEntrega: true, items: { select: { cantEntrega: true, precio: true } } },
+        }) : [],
       ]);
       let productos: ProductoConsulta[] = [],
         entregasPorConciliar = 0;
       const idsPagina = rows.map((p) => p.id);
+      const exigiblesPagina = exigiblesConjunto ?? await leerExigibles(tx, { id: { in: idsPagina } });
       const hechosPagina = await leerEntregasConsulta(tx, { ids: idsPagina });
       if (f.resumen) {
         if (f.fechaBase === "entrega" || cobros) {
@@ -424,6 +428,7 @@ export async function consultarPedidos(
           embarqueId: dto.embarqueId ?? undefined,
           tipo: tipoDesdeCanal(raw.canal),
           saldo: dec(raw.saldo),
+          exigible: exigiblesPagina.get(raw.id) ?? 0,
           nombreCli:
             getAnonymousClientDisplayName(raw.clienteId, "short") ??
             raw.cliente.nombre,
@@ -485,7 +490,7 @@ export async function consultarPedidos(
       const importe = dec(sumas?._sum.total),
         pagado = dec(sumas?._sum.totalPagado),
         saldo = dec(sumas?._sum.saldo),
-        fiado = dec(fiados?._sum.saldo);
+        fiado = [...(exigiblesConjunto?.values() ?? [])].reduce((s, monto) => s + centavos(monto), 0) / 100;
       const [{ ahora }] = await tx.$queryRaw<
         Array<{ ahora: Date }>
       >`SELECT transaction_timestamp() AS ahora`;
@@ -510,6 +515,7 @@ export async function consultarPedidos(
               entregasPorConciliar,
               importesPorConciliar:
                 centavos(importe) !== centavos(pagado) + centavos(saldo),
+              exigiblesPorConciliar: parciales.filter(p => importesEntregaPedido({ ...p, exigible: exigiblesConjunto?.get(p.id) ?? 0 }).porConciliar).length,
               cobros: cobros
                 ? {
                     medios: cobros.medios,

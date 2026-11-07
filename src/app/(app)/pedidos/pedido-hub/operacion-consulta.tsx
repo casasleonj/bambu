@@ -14,6 +14,7 @@ import {
 } from "./consulta-datos";
 import type { AccionKey, Pedido } from "./types";
 import { fechaConsulta } from "./fecha-consulta";
+import { importesEntregaPedido } from "@/lib/valor-entregado-pedido";
 import styles from "./operacion-consulta.module.css";
 
 export interface AccionesConsulta {
@@ -89,8 +90,7 @@ export function OperacionConsulta({
             ? { key: "registrar-entrega" as const, label: "Registrar entrega" }
             : derivada.accionDestacada;
         const primary = acciones.userRole === "CONTADOR" ? null : destacada;
-        const pagado = Number(p.totalPagado),
-          saldo = Number(p.saldo);
+        const importes = importesEntregaPedido(p), pagado = importes.pagado;
         const items = itemsConsulta(p);
         const resp = responsablesConsulta(p, hoyBogota);
         const repartidores = p.responsablesEntrega ?? [];
@@ -247,8 +247,9 @@ export function OperacionConsulta({
                 Pagado <strong>{formatCurrency(pagado)}</strong>
               </span>
               <span>
-                Saldo <strong>{formatCurrency(saldo)}</strong>
+                Por cobrar de lo entregado <strong>{importes.porConciliar ? 'Por conciliar' : importes.porCobrar === null ? 'Por consultar' : formatCurrency(importes.porCobrar)}</strong>
               </span>
+              {importes.parcial && <span className="text-xs text-amber-800">Pendiente de entrega: {formatCurrency(importes.pendienteEntrega)}</span>}
             </div>
             <div
               className={styles.acciones}

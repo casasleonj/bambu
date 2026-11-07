@@ -379,7 +379,7 @@ export const REGLAS: readonly Regla[] = [
   },
   {
     id: 'V18',
-    titulo: 'Snapshot de cierre 2.1 distinto de sus columnas financieras canónicas',
+    titulo: 'Snapshot de cierre 2.1/2.2 distinto de sus columnas financieras canónicas',
     severidad: 'CRITICA',
     consulta: () => Prisma.sql`
       SELECT c.id AS ref, NULL::int AS numero,
@@ -390,7 +390,7 @@ export const REGLAS: readonly Regla[] = [
         ('efectivo', c.efectivo), ('transferencia', c.transferencia), ('nequi', c.nequi),
         ('daviplata', c.daviplata), ('bono', c.bono), ('totalGastos', c.gastos), ('netoCaja', c."netoCaja")
       ) v(campo, canonico)
-      WHERE c.reporte->>'_version' = '2.1'
+      WHERE c.reporte->>'_version' IN ('2.1', '2.2')
         AND (CASE WHEN jsonb_typeof(c.reporte->v.campo) = 'number'
           THEN (c.reporte->>v.campo)::numeric END) IS DISTINCT FROM v.canonico
       ORDER BY c.id, v.campo`,
