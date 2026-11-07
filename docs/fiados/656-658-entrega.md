@@ -46,6 +46,8 @@ Decisión del PO y presentación mínima aprobada en el tercer listado de incide
 
 Evidencia reproducible: `parciales-proyecciones-656.test.ts` (PostgreSQL, flujos reales y snapshots históricos), `operacion-consulta.test.tsx` (móvil/escritorio) y `parciales-proyecciones-656.spec.ts` (navegador con Hub y exigibles activos). Las recuperaciones de datos particulares se auditan de forma separada y no se publican aquí.
 
+El job existente `E2E Hub` ejecuta ese recorrido con el fiado parcial activo para detectar regresiones entre capacidad del servidor, formulario y persistencia. La matriz general conserva su configuración anterior; no se cambian flags de producción desde CI.
+
 
 ## Seguimiento #660: reducción del remanente
 
