@@ -35,6 +35,10 @@ El cliente pidió 20, recibió 15 y decide no comprar las 5 restantes. Hoy el pe
 - La numeración usa la secuencia `nota_credito_numero_seq` (`NC-00001…`), que no se reutiliza ni se bloquea.
 - Las notas de crédito cuentan para la señal «muchas notas por cliente» de las alertas; una reducción aplicada suma una nota.
 
+## Aclaración posterior: valor comercial y entregado (#656 / #631 / #673)
+
+Fuente: tercer listado del PO y aprobación de los ajustes mínimos para entregas parciales. Los reportes nuevos de Cierre (`2.2`) distinguen el valor comercial del valor entregado, como Dashboard. El primer sumando de ventas descrito arriba pasa a ser el valor **entregado** de los pedidos de la fecha; el importe comercial se conserva aparte. Retirar unidades pendientes del mismo día baja ese compromiso, sin volver a restar una venta que nunca se incluyó como entregada. Se conserva el ajuste de notas de pedidos anteriores en su fecha de emisión y los cierres consolidados no se recalculan. Esta aclaración no convierte una nota en devolución de stock ni en reembolso de dinero. Evidencia: `reduccion-cumplimiento-stock-660.test.ts` y `parciales-proyecciones-656.test.ts`.
+
 ## Interfaz (maqueta v2 aprobada por el PO el 2026-11-01, #541)
 
 Flag `NEXT_PUBLIC_CIERRE_V2` (apagado). El principio: el sistema completa lo que ya sabe y el usuario decide solo lo que no se puede inferir.

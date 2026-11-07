@@ -10,11 +10,11 @@ Una entrega parcial genera importe exigible por lo entregado menos lo pagado, ac
 - Pedidos antiguos sin hechos siguen la transición aprobada: no se inventa exigible de parciales antiguos. Al completar, el saldo íntegro es exigible, aunque solo la última entrega tenga hecho. No hay backfill automático.
 - Correcciones de pago/precio/cantidad se reflejan al leer; los hechos no cambian. Estados cancelado/anulado aportan cero. V19 comprueba estructura de los hechos.
 
-## Activación pendiente de autorización de producción
+## Despliegue y transición
 
 `FIADO_ENTREGA_PARCIAL=false` por defecto. Con OFF, ni el registro ni la lectura de exigibles acceden a la tabla nueva, y se preserva el criterio de deuda entregada.
 
-Antes de fusionar:
+Procedimiento utilizado para el despliegue inicial (no repetir una activación ya autorizada):
 
 1. Revisar y aplicar SQL aditivo e idempotente de `20261108_entrega_exigible` y `20261109_exigible_hechos`. Ambas migraciones fueron ejecutadas dos veces sobre PostgreSQL desechable.
 2. Verificar columnas `eventoId`, `huella`, `lineas`, CHECK de importes, índice único `(pedidoId, eventoId)` y acceso bloqueado desde los roles públicos de Supabase.
@@ -29,6 +29,25 @@ Rollback de comportamiento: volver el flag a false. Los hechos ya capturados que
 Las pruebas nuevas cubren prepago menor/igual/mayor, pago posterior sin completar el pedido, saldo contractual, dos cobros concurrentes, replay A/B/A, payload cambiado, rollback transaccional, rebaja seguida de nueva entrega, FIFO retroactivo, transición histórica, estados terminales, producto duplicado y modo OFF sin tabla. La UI revisa el exigible y el excedente antes de registrar.
 
 Limitación operativa conservada: el cron que genera automáticamente deuda de trabajador sigue limitado a pedidos completos con embarque; no se atribuye por suposición el fiado parcial al último repartidor. No se alteraron fechas ni cifras de ventas/caja.
+
+## Reconciliación de proyecciones (#656 / #631 / #673)
+
+Decisión del PO y presentación mínima aprobada en el tercer listado de incidencias: el valor comercial del pedido se conserva; la deuda por cobrar solo incluye lo entregado. Por ejemplo, seis unidades de $2.000 son un pedido de $12.000; si se entregan cuatro sin pago, se pueden cobrar $8.000 y quedan $4.000 de mercancía pendiente. Cobrar esos $8.000 no completa la entrega. Este ejemplo es sintético.
+
+- Consulta de Pedidos, su filtro «fiado»/«esperando pago», detalle y Cierre usan `leerExigibles`, igual que Fiados y Dashboard. El filtro se aplica antes de contar y paginar; el resumen corresponde al conjunto completo seleccionado.
+- Los contadores globales usan la misma deuda: Fiados cuenta clientes únicos; Esperando pago cuenta pedidos y suma su exigible desde un mismo snapshot. No dependen del filtro de fecha de Pedidos. Registrar una entrega refresca también los contadores; los pagos posteriores los reducen sin confundir el remanente comercial con deuda entregada. Los contratos numéricos se prueban con PostgreSQL en lugar de imponer un `aggregate` textual sobre el saldo completo.
+- La lectura de pedido/factura/pagos/exigible en el detalle usa un mismo snapshot `RepeatableRead`. No se crea una segunda cuenta por cobrar ni se modifica el saldo contractual para presentar estas cifras.
+- Cierre comparte con Dashboard el cálculo de valor entregado. Conserva aparte el valor comercial original; las unidades pendientes no se presentan como venta entregada. Los nuevos reportes tienen versión `2.2`, incluida en la validación de integridad V18.
+- Reducir el remanente de un pedido de la misma fecha conserva la venta ya entregada y baja solo su valor comercial pendiente. Se mantiene la regla explícita de `ADR-REDUCCION-COMERCIAL-001`: las notas de pedidos anteriores ajustan la fecha de emisión, sin reescribir cierres previos. Ese ajuste comercial no acredita devolución física ni salida de efectivo; se muestra separado del valor entregado.
+- Las cifras agrupan los pedidos por su fecha y consultan su **cumplimiento y deuda actuales**. No reconstruyen cómo estaban al terminar un día pasado. Las unidades físicas siguen por fecha de entrega y el dinero por la fecha usada por su registro financiero; este cambio no corrige la atribución de fecha de las comisiones (#673).
+- Un parcial antiguo sin evidencia exigible muestra «Por conciliar» y advierte que el subtotal identificado no es definitivo. No se reconstruye automáticamente desde una cantidad acumulada. El modo OFF conserva su transición; no se cambia el flag al desplegar esta corrección.
+- Un cierre consolidado conserva sus columnas y reporte originales, incluidos sus conceptos históricos. No se recalcula ni se reetiqueta como si hubiera utilizado la versión nueva.
+- Se conservan entrega directa sin embarque, planificación secundaria, enlaces pedido/factura con retorno, pago por antigüedad, versión de deuda e idempotencia de cobros y entregas.
+- La prueba en navegador con exigibles activos detectó que el servidor exigía promesa en una entrega parcial fiada, mientras el formulario ocultaba el campo. El PO aprobó mostrar el campo existente respetando tarjetas, colores e iconos actuales. Se usa la capacidad de gestión directa del servidor; el importe previsto solo anticipa la validación, no sustituye el lector de deuda. Se conserva OFF, se descuentan los anticipos/pagos mixtos y un precio ausente impide inventar una cifra.
+
+Evidencia reproducible: `parciales-proyecciones-656.test.ts` (PostgreSQL, flujos reales y snapshots históricos), `operacion-consulta.test.tsx` (móvil/escritorio) y `parciales-proyecciones-656.spec.ts` (navegador con Hub y exigibles activos). Las recuperaciones de datos particulares se auditan de forma separada y no se publican aquí.
+
+El job existente `E2E Hub` ejecuta ese recorrido con el fiado parcial activo para detectar regresiones entre capacidad del servidor, formulario y persistencia. La matriz general conserva su configuración anterior; no se cambian flags de producción desde CI.
 
 
 ## Seguimiento #660: reducción del remanente

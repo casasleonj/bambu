@@ -28,7 +28,7 @@ describe('cierre: conceptos financieros y conteo declarado', () => {
       { monto: 30000, pedido: { fecha: inicio } },
       { monto: 5000, pedido: { fecha: new Date('2026-03-11T12:00:00-05:00') } },
     ], inicio)
-    expect(r).toEqual({ ventasDePedidosDelDia: 280000, totalNotasCredito: 55000, notasCreditoVentasAnteriores: 20000, notasCreditoSinAjusteVentas: 35000, totalVentas: 260000 })
+    expect(r).toEqual({ valorComercialPedidosDelDia: 280000, ventasDePedidosDelDia: 280000, totalNotasCredito: 55000, notasCreditoVentasAnteriores: 20000, notasCreditoSinAjusteVentas: 35000, totalVentas: 260000 })
   })
   it('reducción comercial (#451): la nota sobre un pedido de hoy no resta otra vez; sobre uno de un día anterior sí', () => {
     const inicio = new Date('2026-03-10T00:00:00-05:00')

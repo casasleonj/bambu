@@ -94,7 +94,7 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     const guardado = await prisma.cierreDia.findUniqueOrThrow({ where: { fecha: new Date(`${fecha}T00:00:00-05:00`) } })
     expect(Number(guardado.totalVentas)).toBe(20000)
     expect(Number(guardado.netoCaja)).toBe(20000)
-    expect(guardado.reporte).toMatchObject({ _version: '2.1', cobroVentasHoy: 5000, cobroCartera: 5000, salarios: 0, totalContado: 10000, netoCaja: 20000, efectivoEsperado: 20000, diferenciaArqueo: -10000 })
+    expect(guardado.reporte).toMatchObject({ _version: '2.2', cobroVentasHoy: 5000, cobroCartera: 5000, salarios: 0, totalContado: 10000, netoCaja: 20000, efectivoEsperado: 20000, diferenciaArqueo: -10000 })
     await page.reload()
     await expect(page.getByTestId('cierre-kpi-cobros')).toContainText('10.000')
     await capturar(page, testInfo, 'registrado')

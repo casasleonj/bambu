@@ -2576,13 +2576,15 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
             total: Number(registrarEntregaPara.total),
             totalPagado: Number(registrarEntregaPara.totalPagado),
             entregadoPorId: registrarEntregaPara.entregadoPorId ?? null,
-            items: (registrarEntregaPara.items ?? []).map((i) => ({ producto: i.producto, cantPedido: i.cantPedido, cantEntrega: i.cantEntrega })),
+            items: (registrarEntregaPara.items ?? []).map((i) => ({ producto: i.producto, cantPedido: i.cantPedido, cantEntrega: i.cantEntrega, precio: i.precio == null ? undefined : Number(i.precio) })),
           }}
+          fiadoParcialActivo={gestionAdmin.fiadoParcialActivo === true}
           repartidores={gestionAdmin.repartidores}
           onClose={() => setRegistrarEntregaPara(null)}
           onRegistrado={({ deduped, numero }) => {
             setRegistrarEntregaPara(null)
             refreshPedidos()
+            refetchCounts()
             refetchFiados()
             refetchAlertas()
             if (deduped) toast.info(`La entrega del pedido #${numero} ya estaba registrada`)

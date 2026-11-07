@@ -245,15 +245,17 @@ export default function CierreDesgloseCobros({ data }: { data: CierreData | null
       )}
 
       <Desplegable testid="cierre-fiados-del-dia" tono="gris" icono="🧑‍🤝‍🧑" titulo="A quién se fió hoy"
-        ayuda="Pedidos de hoy que quedaron con saldo pendiente, aunque el cliente haya pagado una parte."
+        ayuda={data.valorComercialPedidosDelDia === undefined ? 'Saldo conservado en este cierre histórico con su definición original.' : 'Saldo actual de lo entregado en pedidos de esta fecha. La mercancía pendiente de entrega no se cobra como recibida.'}
         resumen={fiados.length > 0 ? `${fiados.length} pedido${fiados.length === 1 ? '' : 's'} · ${formatCurrency(totalFiados)}` : 'Ninguno'}>
         {fiados.length === 0 ? (
-          <p className="text-slate-500">Hoy no se fió ningún pedido. ✔</p>
+          <p className="text-slate-500">{data.parcialesPorConciliar?.length ? 'No hay deuda identificada en este listado; faltan entregas por conciliar. No significa que la deuda sea cero.' : 'Hoy no se fió ningún pedido. ✔'}</p>
         ) : (
           <ListaLimitada items={fiados} render={(f) => (
             <Fila key={f.pedidoId}
               izquierda={<><Enlace href={urlFiadosDe(f.clienteId)}>{f.cliente}</Enlace>{' '}<Enlace href={urlPedido(f.pedidoId)} className="text-xs !font-normal">#{f.numero}</Enlace></>}
-              detalle={<>{f.pagado > 0 ? `Pagó ${formatCurrency(f.pagado)} de ${formatCurrency(f.total)}` : 'Fiado total'}{' · '}{f.promesaPago ? `promesa de pago: ${promesaCorta(f.promesaPago)}` : 'sin promesa'}</>}
+              detalle={<>{f.saldoComercial === undefined
+                ? <>{f.pagado > 0 ? `Pagó ${formatCurrency(f.pagado)} de ${formatCurrency(f.total)}` : 'Fiado total'} (registro histórico)</>
+                : <>Valor comercial {formatCurrency(f.total)} · pagado {formatCurrency(f.pagado)}{f.saldoComercial > f.saldo ? ` · saldo por mercancía pendiente ${formatCurrency(f.saldoComercial - f.saldo)}` : ''}</>}{' · '}{f.promesaPago ? `promesa de pago: ${promesaCorta(f.promesaPago)}` : 'sin promesa'}</>}
               derecha={formatCurrency(f.saldo)} />
           )} />
         )}

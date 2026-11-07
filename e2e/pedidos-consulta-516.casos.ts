@@ -123,7 +123,7 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
     const resumen = app.getByTestId("consulta-resumen");
     await expect(resumen).toContainText(/\$\s*20\.000/);
     await expect(resumen).toContainText(/\$\s*10\.000/);
-    await expect(resumen).toContainText("Por entregar:");
+    await expect(resumen).toContainText("Saldo de mercancía pendiente de entrega:");
     await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(1);
     await expect(app.getByTestId("consulta-productos-resumen")).toContainText(
       "4 pedidas",
@@ -259,6 +259,8 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
       .getByLabel("Cantidad entregada de Paca Hielo", { exact: true })
       .fill("2");
     await dialog.getByLabel(/¿Quién lo entregó/).selectOption(r1.id);
+    if (process.env.FIADO_ENTREGA_PARCIAL === 'true')
+      await dialog.getByLabel(/Hasta cuándo promete pagar/).fill(hoy());
     await dialog.getByTestId("re-revisar").click();
     const actualizada = page.waitForResponse(async r => {
       if (!r.url().includes('/api/pedidos/consulta?') || !r.ok()) return false;

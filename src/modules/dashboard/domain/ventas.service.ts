@@ -7,6 +7,7 @@
 
 import type { PedidoRaw, VentaPorPrecio } from './types'
 import type { ProductCode } from '@/shared/domain'
+import { valorEntregadoPedidoCentavos } from '@/lib/valor-entregado-pedido'
 
 /**
  * Filter out cancelled/annulled pedidos.
@@ -37,14 +38,6 @@ export function esEntregaParcial(p: PedidoRaw): boolean {
   )
 }
 
-/** Valor (en centavos) de lo realmente entregado: Σ cantEntrega × precio. */
-function valorEntregadoCentavos(p: PedidoRaw): number {
-  return (p.items ?? []).reduce(
-    (acc, i) => acc + i.cantEntrega * Math.round(Number(i.precio) * 100),
-    0,
-  )
-}
-
 /**
  * Calculate total sales: ENTREGADO pedidos count by their total; partial
  * deliveries count by the value actually delivered. Pending / en ruta orders
@@ -52,15 +45,7 @@ function valorEntregadoCentavos(p: PedidoRaw): number {
  * are), so they must not inflate the day's totals.
  */
 export function calcularVentas(pedidos: PedidoRaw[]): number {
-  return (
-    pedidos.reduce((acc, p) => {
-      if (p.estadoEntrega === 'ENTREGADO') {
-        return acc + Math.round(Number(p.total) * 100)
-      }
-      if (esEntregaParcial(p)) return acc + valorEntregadoCentavos(p)
-      return acc
-    }, 0) / 100
-  )
+  return pedidos.reduce((acc, p) => acc + valorEntregadoPedidoCentavos(p), 0) / 100
 }
 
 /**

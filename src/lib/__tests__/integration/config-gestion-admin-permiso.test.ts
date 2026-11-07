@@ -16,6 +16,7 @@ vi.mock('@/lib/realtime', () => ({ publishRealtimeEvent: vi.fn().mockResolvedVal
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { POST as postConfig } from '@/app/api/config/route'
 import { POST as postSection } from '@/app/api/config/section/route'
+import { GET as estadoGestion } from '@/app/api/pedidos/gestion-admin/estado/route'
 import { CLAVE_GESTION_ADMIN_SIN_EMBARQUE, gestionAdminSinEmbarqueActiva } from '@/lib/gestion-admin'
 
 let adminId: string
@@ -91,5 +92,27 @@ describe('#472 — interruptor de la gestión sin embarque: solo ADMIN, en toda 
     expect(await valorActual('DIAS_ALERTA_NO_VERIFICADO')).toBe('21')
     expect((await postSection(req('/api/config/section', { entries: [unico('DIAS_ALERTA_NO_VERIFICADO', '22')] }))).status).toBe(200)
     expect(await valorActual('DIAS_ALERTA_NO_VERIFICADO')).toBe('22')
+  })
+
+  it.each(['true', 'false'])('#656 el ADMIN recibe la capacidad de fiado parcial del servidor con modo %s', async valor => {
+    sesion('ADMIN')
+    await testPrisma.config.update({ where: { clave: CLAVE_GESTION_ADMIN_SIN_EMBARQUE }, data: { valor: 'true' } })
+    vi.stubEnv('FIADO_ENTREGA_PARCIAL', valor)
+    try {
+      const antes = await testPrisma.historial.count()
+      const respuesta = await estadoGestion()
+      expect(respuesta.status).toBe(200)
+      expect(await respuesta.json()).toMatchObject({ activa: true, fiadoParcialActivo: valor === 'true' })
+      expect(await testPrisma.historial.count()).toBe(antes)
+    } finally { vi.unstubAllEnvs() }
+  })
+
+  it('#656 otro perfil no recibe la capacidad ni datos operativos aunque estén activos', async () => {
+    sesion('CONTADOR')
+    await testPrisma.config.update({ where: { clave: CLAVE_GESTION_ADMIN_SIN_EMBARQUE }, data: { valor: 'true' } })
+    const respuesta = await estadoGestion()
+    const datos = await respuesta.json()
+    expect(datos).toMatchObject({ activa: false, repartidores: [] })
+    expect(datos.fiadoParcialActivo).toBeUndefined()
   })
 })

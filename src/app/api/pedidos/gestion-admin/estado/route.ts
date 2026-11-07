@@ -5,6 +5,7 @@ import { requireAuth } from '@/lib/auth-check'
 import { apiSuccess } from '@/lib/api-response'
 import { prisma } from '@/lib/prisma'
 import { gestionAdminSinEmbarqueActiva } from '@/lib/gestion-admin'
+import { exigiblesActivos } from '@/lib/exigibles-flag'
 
 export async function GET() {
   const authResult = await requireAuth()
@@ -20,5 +21,5 @@ export async function GET() {
     select: { id: true, nombre: true },
     orderBy: { nombre: 'asc' },
   })
-  return apiSuccess({ activa: true, repartidores })
+  return apiSuccess({ activa: true, repartidores, fiadoParcialActivo: exigiblesActivos() })
 }
