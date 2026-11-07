@@ -123,7 +123,7 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
     const resumen = app.getByTestId("consulta-resumen");
     await expect(resumen).toContainText(/\$\s*20\.000/);
     await expect(resumen).toContainText(/\$\s*10\.000/);
-    await expect(resumen).toContainText("Por entregar:");
+    await expect(resumen).toContainText("Saldo de mercancía pendiente de entrega:");
     await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(1);
     await expect(app.getByTestId("consulta-productos-resumen")).toContainText(
       "4 pedidas",

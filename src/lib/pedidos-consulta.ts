@@ -17,6 +17,7 @@ export interface ResumenConsultaPedidos {
   productos: ProductoConsulta[];
   entregasPorConciliar: number;
   importesPorConciliar: boolean;
+  exigiblesPorConciliar?: number;
   cobros: Omit<CobrosPeriodo, "movimientos"> | null;
 }
 export interface ResultadoConsultaPedidos {

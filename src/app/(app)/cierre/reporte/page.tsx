@@ -78,6 +78,7 @@ function ReporteContent() {
           <tbody>
             <tr><td className="py-1 font-medium">Pedidos</td><td className="text-right">{data.numPedidos}</td></tr>
             <tr><td className="py-1 font-medium">Ventas del día *</td><td className="text-right">{formatMoney(data.totalVentas)}</td></tr>
+            {data.valorComercialPedidosDelDia !== undefined && <tr><td className="py-1 text-muted-foreground">Valor comercial de los pedidos (incluye pendiente de entrega)</td><td className="text-right">{formatMoney(data.valorComercialPedidosDelDia)}</td></tr>}
             <tr><td className="py-1 font-medium">Cobros de pedidos (incluye pedidos de días anteriores)</td><td className="text-right">{formatMoney(data.cobroVentasHoy)}</td></tr>
             <tr><td className="py-1 font-medium">Abonos a facturas menos correcciones de cobros</td><td className="text-right">{formatMoney(data.cobroCartera)}</td></tr>
             <tr><td className="py-1 font-medium">Dinero cobrado hoy **</td><td className="text-right">{formatMoney(data.cobroVentasHoy + data.cobroCartera)}</td></tr>
@@ -95,8 +96,8 @@ function ReporteContent() {
           </tbody>
         </table>
         <p className="mt-2 text-xs text-muted-foreground" data-testid="reporte-notas-al-pie">
-          * Pedidos de la fecha sin anulados, menos devoluciones de días anteriores (por fecha del pedido). ** Efectivo y digital que entró hoy, de pedidos de hoy y de días anteriores.
-          *** Saldo que los clientes quedaron debiendo de los pedidos de esta fecha.
+          * {data.valorComercialPedidosDelDia === undefined ? 'Cifras conservadas del cierre histórico con su definición original.' : 'Valor entregado de los pedidos de la fecha, menos devoluciones de ventas anteriores. Cumplimiento y deuda al consultar/cerrar; no reconstruye un corte histórico anterior.'} ** Efectivo y digital registrado en esta fecha, de pedidos de hoy y anteriores.
+          *** {data.valorComercialPedidosDelDia === undefined ? 'Saldo registrado entonces.' : 'Saldo por cobrar de mercancía entregada; no incluye lo pendiente de entrega.'}
         </p>
         {process.env.NEXT_PUBLIC_PAGO_CONFIRMACION === 'true' && (data.porConfirmar?.diasPreviosCount ?? 0) > 0 && (
           <p className="mt-2 text-xs text-amber-700">
