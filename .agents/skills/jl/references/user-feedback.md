@@ -4,7 +4,7 @@
 
 ## 1. Investigar antes de preguntar
 
-Consultar solicitud, comentarios y conversaciones relevantes, decisiones aprobadas, pruebas existentes, contratos, pantallas y trazas. Distinguir hechos observados de deseos, suposiciones y prohibiciones explícitas. El agente investiga por su cuenta la causa técnica y las posibilidades existentes. Una respuesta dada previamente **no se vuelve a solicitar**; se referencia su fuente y vigencia.
+Consultar solicitud, comentarios y conversaciones relevantes, decisiones aprobadas, pruebas existentes, contratos, pantallas y trazas. Distinguir hechos observados de deseos, suposiciones y prohibiciones explícitas. El agente investiga por su cuenta la causa técnica y las posibilidades existentes. Una respuesta dada previamente **no se vuelve a solicitar**; se referencia su fuente, alcance y vigencia. Las prácticas de empresas/comunidad son evidencia sobre alternativas, **no autoridad para deshacer una decisión de negocio confirmada**. Si se detecta contradicción material con una decisión existente, explicar el conflicto y preguntar solo cómo resolverlo; si la decisión no es accesible, no fingir que se conoce.
 
 Formar internamente un **contrato de alcance compacto** (campos vacíos permitidos; no inventar):
 
