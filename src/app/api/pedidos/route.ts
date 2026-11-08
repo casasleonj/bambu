@@ -18,6 +18,7 @@ import {
   listarPedidosUseCase,
 } from '@/modules/pedidos'
 import { findPedidosHoyEnRiesgoIds } from '@/lib/pedidos-sin-asignar'
+import { logAudit } from '@/lib/audit'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
@@ -381,6 +382,16 @@ export async function POST(request: NextRequest) {
     })
 
     if (!result.deduped) {
+      // #408: si el usuario confirmó una advertencia de venta repetida, queda en la auditoría del pedido.
+      if (parsed.data.ventaRepetidaConfirmada === true) {
+        logAudit({
+          entidad: 'Pedido',
+          registroId: result.pedido.id,
+          accion: 'UPDATE',
+          datos: { evento: 'VENTA_REPETIDA_CONFIRMADA', numero: result.pedido.numero },
+          usuarioId: authResult.user?.id,
+        }).catch(() => {})
+      }
       publishRealtimeEvent('pedido.created', result.pedido.id).catch(() => {})
       // Push notification for new pedido (replaces SSE for off-tab users).
       // Fire-and-forget: never block the request on push delivery.
