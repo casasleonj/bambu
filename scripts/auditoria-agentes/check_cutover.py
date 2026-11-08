@@ -25,8 +25,18 @@ def evaluar(repo, matriz, evidencia):
     def exigir(id_, ok, razon):
         controles.append({"id": id_, "estado": "PASS" if bool(ok) else "FAIL", "razon": razon})
     root = repo / "AGENTS.md"
-    original = root.is_file() and blob_sha(root.read_bytes()) == ORIGINAL_BLOB
-    exigir("raiz-original-preservada", original, "Si cambió, exigir pruebas de equivalencia y activación")
+    original_en_raiz = root.is_file() and blob_sha(root.read_bytes()) == ORIGINAL_BLOB
+    segmentos = [
+        "00-entrada.md", "01-arquitectura-tecnica.md", "02-historico-incidencias.md",
+        "03-reglas-codigo.md", "04-protocolo-anterior.md", "05-flujo-entrega-anterior.md",
+    ]
+    carpeta = repo / "docs/agentes/fuente-original"
+    fuente_completa = all((carpeta / n).is_file() for n in segmentos)
+    original_archivado = fuente_completa and blob_sha(
+        b"".join((carpeta / n).read_bytes() for n in segmentos)
+    ) == ORIGINAL_BLOB
+    original = original_en_raiz or original_archivado
+    exigir("fuente-original-conservada", original, "La raíz antigua o los seis segmentos deben reconstruir SHA del AGENTS original")
     try:
         with matriz.open(newline="",encoding="utf-8") as fh:
             filas = list(csv.DictReader(fh))
