@@ -47,15 +47,24 @@ export interface MedioCobros {
   pendienteConciliacion: boolean
 }
 
+/** #524: sobrante de un cobro de fiados acreditado a saldo a favor; entra a la caja pero no tiene pedido. */
+export interface IngresoSaldoFavorPeriodo {
+  id: string
+  metodo: string
+  monto: number
+}
+
 export interface CobrosPeriodo {
   movimientos: CobroPeriodo[]
+  /** #524: ingresos sin pedido, ya sumados en `medios` y `subtotalRegistrado`; no son filas de `movimientos`. */
+  ingresosSaldoFavor?: IngresoSaldoFavorPeriodo[]
   medios: MedioCobros[]
   subtotalRegistrado: number
   creditoAplicado: number
   porConciliar: CobroPorConciliar[]
 }
 
-type Tx = Pick<Prisma.TransactionClient, '$queryRaw' | 'pago' | 'historial'>
+type Tx = Pick<Prisma.TransactionClient, '$queryRaw' | 'pago' | 'historial' | 'ingresoSaldoFavor'>
 const centavos = (valor: unknown) => Math.round(Number(valor) * 100)
 const metodoIdentificado = (valor: unknown): string | null =>
   typeof valor === 'string' &&
@@ -80,7 +89,7 @@ export async function leerCobrosPeriodo(
 ): Promise<CobrosPeriodo> {
   if (!Number.isFinite(+desde) || !Number.isFinite(+hasta) || desde >= hasta)
     throw new Error('Rango de cobros inválido')
-  const [pagos, abonos, auditorias] = await Promise.all([
+  const [pagos, abonos, auditorias, ingresos] = await Promise.all([
     tx.pago.findMany({
       where: {
         createdAt: { gte: desde, lt: hasta },
@@ -111,7 +120,16 @@ export async function leerCobrosPeriodo(
       select: { id: true, datos: true },
       orderBy: { id: 'asc' },
     }),
+    // #524: el sobrante ya registrado como ingreso no se vuelve a señalar para conciliar.
+    tx.ingresoSaldoFavor.findMany({
+      where: { createdAt: { gte: desde, lt: hasta } },
+      select: { id: true, metodo: true, monto: true, auditoriaId: true },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    }),
   ])
+  const registrados = new Set(
+    ingresos.flatMap((i) => (i.auditoriaId ? [`${i.auditoriaId}:${i.metodo}`] : [])),
+  )
   const movimientos: CobroPeriodo[] = pagos.map((p) => ({
     id: p.id,
     fuente: 'PAGO',
@@ -240,6 +258,8 @@ export async function leerCobrosPeriodo(
         desglosado += centavos(medio.saldoFavor)
         // El sobrante de crédito aplicado tampoco representa dinero nuevo.
         if (medio.metodo === 'BONO') continue
+        // Ya tiene su ingreso propio (cuenta en medios y en el cierre): nada que conciliar.
+        if (registrados.has(`${h.id}:${medio.metodo}`)) continue
         pendientesSobrante.push({
           id: `${h.id}:${i}`,
           referencia: 'Sobrante de cobro a fiados',
@@ -263,13 +283,18 @@ export async function leerCobrosPeriodo(
       })
     }
   }
-  return resumirCobrosPeriodo(movimientos, porConciliar)
+  return resumirCobrosPeriodo(
+    movimientos,
+    porConciliar,
+    ingresos.map((i) => ({ id: i.id, metodo: i.metodo, monto: Number(i.monto) })),
+  )
 }
 
 /** Misma clasificación monetaria al restringir una lectura a pedidos concretos. */
 export function resumirCobrosPeriodo(
   movimientos: CobroPeriodo[],
   incidencias: CobroPorConciliar[] = [],
+  ingresosSaldoFavor: IngresoSaldoFavorPeriodo[] = [],
 ): CobrosPeriodo {
   const porConciliar = [...incidencias]
   const grupos = new Map<string, MedioCobros>()
@@ -335,6 +360,30 @@ export function resumirCobrosPeriodo(
     else g.sinEstadoVerificable += centavos(m.neto)
     grupos.set(m.metodo, g)
   }
+  // #524: dinero recibido de más y acreditado a saldo a favor. Entra a la caja en su medio; su
+  // confirmación no se conoce, así que no se inventa (queda en «sin estado verificable»).
+  for (const i of ingresosSaldoFavor) {
+    const monto = centavos(i.monto)
+    if (!Number.isSafeInteger(monto) || monto <= 0 || i.metodo === 'BONO') continue
+    subtotal += monto
+    const g = grupos.get(i.metodo) ?? {
+      metodo: i.metodo,
+      movimientos: 0,
+      bruto: 0,
+      ajustes: 0,
+      neto: 0,
+      confirmado: 0,
+      reportado: 0,
+      discrepante: 0,
+      sinEstadoVerificable: 0,
+      pendienteConciliacion: false,
+    }
+    g.movimientos++
+    g.bruto += monto
+    g.neto += monto
+    g.sinEstadoVerificable += monto
+    grupos.set(i.metodo, g)
+  }
   for (const p of porConciliar) {
     if (p.metodo === 'BONO') continue
     const metodo = p.metodo ?? 'SIN_IDENTIFICAR'
@@ -373,6 +422,7 @@ export function resumirCobrosPeriodo(
   )
   return {
     movimientos: identificados,
+    ingresosSaldoFavor,
     medios,
     subtotalRegistrado: subtotal / 100,
     creditoAplicado: credito / 100,

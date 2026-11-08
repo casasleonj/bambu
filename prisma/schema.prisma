@@ -482,6 +482,7 @@ model Cliente {
   pedidos  Pedido[]
   facturas Factura[]
   abonos   Abono[]
+  ingresosSaldoFavor IngresoSaldoFavor[]
   casos    Caso[]    @relation("CasoCliente")
 
   // FASE 3 (obligaciones)
@@ -3204,6 +3205,35 @@ model PedidoSaldoFavorMovimiento {
   @@index([pedidoId])
   @@index([clienteId])
   @@index([origenTipo, origenId])
+}
+
+/// #524 — dinero que el cliente entregó de MÁS en un cobro de fiados y que se acreditó a
+/// `Cliente.saldoFavor`. Es un ingreso real a la caja del día (en su medio de pago), pero no tiene
+/// pedido ni factura, así que no cabe en `Pago` ni en `Abono`. Append-only: el consumo posterior
+/// del crédito NO es un ingreso nuevo y no escribe aquí. `createdAt` (now() de la base) decide la
+/// caja en que cuenta, igual que `Pago.createdAt`.
+model IngresoSaldoFavor {
+  id          String     @id @default(cuid())
+  clienteId   String
+  cliente     Cliente    @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  /// Medio en que llegó el dinero. BONO no genera ingreso (consume crédito, no entra dinero).
+  metodo      MetodoPago
+  /// Siempre > 0 (CHECK en la migración).
+  monto       Decimal    @db.Decimal(10, 2)
+  /// 'PAGAR_FIADO'
+  origen      String
+  /// Referencia idempotente del cobro que lo originó (el reintento no lo duplica).
+  offlineId   String?
+  /// `Historial.id` de la auditoría COBRO_FIADO_V2 que originó el ingreso: vínculo explícito (no se
+  /// empareja por monto ni por hora) para que el Dashboard no marque «por conciliar» lo ya registrado.
+  auditoriaId String?
+  createdById String?
+  createdAt   DateTime   @default(now()) @db.Timestamptz()
+
+  @@unique([origen, offlineId, metodo])
+  @@index([auditoriaId])
+  @@index([clienteId])
+  @@index([createdAt])
 }
 
 
