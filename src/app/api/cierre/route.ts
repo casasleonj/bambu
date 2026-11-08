@@ -16,12 +16,13 @@ import { CobrosSinConciliarError } from '@/lib/cobro-cartera'
 import { construirResumenCierre } from '@/lib/cierre-resumen'
 import { calcularNetoCierre, calcularEfectivoEsperado } from '@/lib/cierre-totales'
 import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
-import { analizarHueco, type DiaHueco } from '@/lib/cierre-huecos'
+import { diasObligatoriosAntesDe, type DiaHueco } from '@/lib/cierre-huecos'
 import { getConfig } from '@/lib/config'
+import { exigirBaseVigente, BaseCambioError, BaseFaltanteError } from '@/lib/base-caja-dia'
 
 /** #306: hay días anteriores sin cerrar que tuvieron operación (o son demasiados para revisarlos). */
 class HuecoConOperacionError extends Error {
-  constructor(readonly dias: DiaHueco[], readonly excedeTope: boolean) {
+  constructor(readonly dias: DiaHueco[]) {
     super('CIERRE_HUECO')
   }
 }
@@ -202,7 +203,6 @@ export async function POST(request: NextRequest) {
   const nextDay = new Date(startOfDay.getTime() + 86_400_000)
 
   const userId = (authResult.user as { id?: string } | undefined)?.id
-  const esAdmin = (authResult.user as { role?: string } | undefined)?.role === 'ADMIN'
 
   const MAX_RETRIES = 3
   let lastError: Error | null = null
@@ -212,38 +212,24 @@ export async function POST(request: NextRequest) {
       const cierre = await prisma.$transaction(async (tx) => {
         // 1. Advisory lock por día (ADR-CONCURRENCIA-001, §6 "Cierre").
         await acquireAdvisoryLockTx(tx, 'CIERRE', startOfDay.toISOString())
-        let saltoConOperacion: { motivo: string; dias: DiaHueco[] } | null = null
 
-        // 2. Validate sequence inside lock
-        const lastCierre = await tx.cierreDia.findFirst({ orderBy: { fecha: 'desc' } })
-        if (lastCierre) {
-          const lastDate = new Date(lastCierre.fecha)
-          const reqDate = new Date(startOfDay)
-          const diffDays = Math.floor((reqDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24))
-          if (diffDays <= 0) {
-            throw new Error('CIERRE_DUPLICADO')
-          }
-          if (diffDays > 1) {
-            // #306: los días sin operación se saltan solos; los que tuvieron operación bloquean,
-            // salvo que el ADMIN los salte con motivo (queda en el historial).
-            const hueco = await analizarHueco(tx, lastDate, reqDate)
-            const bloqueantes = hueco.excedeTope ? null : hueco.conOperacion
-            if (bloqueantes === null || bloqueantes.length > 0) {
-              const salto = parsed.data.saltarDiasConOperacion
-              if (esAdmin && salto && bloqueantes !== null) {
-                saltoConOperacion = { motivo: salto.motivo, dias: bloqueantes }
-              } else {
-                throw new HuecoConOperacionError(bloqueantes ?? [], bloqueantes === null)
-              }
-            }
-          }
-        }
+        // 2. Validar el orden dentro del lock (#306, reglas del PO 2026-11-03):
+        //    - un día YA cerrado no se cierra de nuevo (se valida abajo);
+        //    - los días sin movimiento entre el cierre anterior y este se omiten solos y se pueden cerrar
+        //      después, aunque ya exista un cierre posterior (cierre atrasado, sin huecos);
+        //    - un día CON movimiento sin cerrar bloquea: nadie lo puede saltar (dejaría un hueco contable).
+        const obligatoriosPrevios = await diasObligatoriosAntesDe(tx, fechaStr)
+        if (obligatoriosPrevios.length > 0) throw new HuecoConOperacionError(obligatoriosPrevios)
 
         // 3. Double-check no cierre exists for this date
         const existing = await tx.cierreDia.findUnique({ where: { fecha: startOfDay } })
         if (existing) {
           throw new Error('CIERRE_YA_EXISTE')
         }
+
+        // #688: la base de caja es la ingresada para esa fecha. Sin ella, o si la que mandó la pantalla ya no es
+        // la vigente (alguien la editó), no se cierra: el efectivo que debe haber saldría de un dato viejo o inventado.
+        await exigirBaseVigente(tx, fechaStr, parsed.data.baseDia)
 
         // 4. Verify no open embarques
         const embarquesAbiertos = await tx.embarque.count({
@@ -331,16 +317,6 @@ export async function POST(request: NextRequest) {
           usuarioId: userId,
         }, tx)
 
-        if (saltoConOperacion) {
-          await logAudit({
-            entidad: 'CierreDia',
-            registroId: nuevoCierre.id,
-            accion: 'CIERRE_SALTO_DIAS',
-            datos: { fecha: nuevoCierre.fecha, motivo: saltoConOperacion.motivo, diasSaltados: saltoConOperacion.dias },
-            usuarioId: userId,
-          }, tx)
-        }
-
         return nuevoCierre
       }, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -370,18 +346,21 @@ export async function POST(request: NextRequest) {
       }
 
       // Known business errors
-      if (lastError.message === 'CIERRE_DUPLICADO') {
-        return apiError('No se puede cerrar un día anterior o igual al último cierre registrado', 400)
-      }
       if (error instanceof HuecoConOperacionError) {
         const lista = error.dias.map((d) => d.fecha).join(', ')
         return apiError(
-          error.excedeTope
-            ? 'Hay demasiados días sin cerrar entre el último cierre y esta fecha. Ciérralos primero.'
-            : `Hay días sin cerrar que tuvieron operación (${lista}). Ciérralos primero.`,
+          `Hay días sin cerrar que tuvieron movimientos (${lista}). Ciérralos primero.`,
           400,
           { code: 'CIERRE_HUECO', formErrors: error.dias.map((d) => `${d.fecha}: ${d.operaciones} registros`) },
         )
+      }
+      if (error instanceof BaseFaltanteError) {
+        return apiError(`Falta la base de caja del ${error.fecha}. Ingrésala antes de cerrar el día.`, 422, { code: 'BASE_FALTANTE' })
+      }
+      if (error instanceof BaseCambioError) {
+        return apiError('La base de caja cambió mientras revisabas. Revisa los números y confirma de nuevo.', 409, {
+          code: 'BASE_CAMBIO', impacto: { baseVigente: error.baseVigente, baseEnviada: error.baseEnviada },
+        })
       }
       if (lastError.message === 'CIERRE_YA_EXISTE') {
         return apiError('Ya existe un cierre para esta fecha', 409)

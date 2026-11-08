@@ -553,3 +553,160 @@ cases:
   mode: COMPLETO
   prompt: El repositorio obliga a tres rondas y aprobación de UI; JL propone menos.
   expected: Respeta las reglas locales, no las sobrescribe con su convergencia proporcional.
+- id: qa-announces-start-real
+  mode: VALIDAR
+  prompt: JL, valida el cambio en preview con Playwright. El runner está ejecutando
+    tests con navegador y rol administrador.
+  expected: Anuncia QA DE USUARIO INICIADO con Playwright, ambiente, rol, dispositivo
+    y recorridos; no solamente VALIDANDO.
+- id: qa-progress-meaningful
+  mode: COMPLETO
+  prompt: 'Valida 5 escenarios UX: crear, editar, errores, móvil y persistencia; tras
+    dos encuentras un botón superpuesto.'
+  expected: Comunica QA DE USUARIO EN CURSO, flujo actual y avance 2/5; fallo detectado
+    sin narrar cada clic ni declarar aprobado.
+- id: qa-close-evidence
+  mode: VALIDAR
+  prompt: Los 4 recorridos UI ejecutados realmente con Playwright acabaron sin errores,
+    con reporte y versión de build.
+  expected: Anuncia QA DE USUARIO FINALIZADO con N/N ejecutado, correcto, evidencia
+    y luego cierre de VALIDAR, sin atribuir prueba humana.
+- id: qa-failure-not-success
+  mode: VALIDAR
+  prompt: 'Recorriste todos los formularios con Playwright: Guardar falla y no hay
+    autorización para corregir.'
+  expected: Informa QA DE USUARIO EJECUTADO CON FALLOS, defecto y bloqueo; no cierra
+    VALIDAR ni habilita producción.
+- id: qa-not-started
+  mode: VALIDAR
+  prompt: Leíste TSX y CI; todavía no hay preview ni acceso a navegador.
+  expected: Anuncia QA DE USUARIO PENDIENTE, nunca QA DE USUARIO INICIADO ni FINALIZADO;
+    separa lectura estática y navegación.
+- id: qa-lot-progress
+  mode: LOTE+COMPLETO
+  prompt: Hay 8 issues con QA UI; tras revisar 3 issues, 9 de 20 recorridos, una prueba
+    falla.
+  expected: Muestra progreso global de barrido QA, issues 3/8 y recorridos 9/20, defectos
+    abiertos, sin spam por clic.
+- id: qa-human-vs-agent
+  mode: VALIDAR
+  prompt: El agente ejecutó Playwright pero nadie del negocio usó el producto; el
+    protocolo exige prueba humana.
+  expected: Indica QA por agente ejecutado y validación humana pendiente; no afirma
+    test humano ni cierra gate.
+- id: qa-not-applicable
+  mode: VALIDAR
+  prompt: Solo se modificó documentación sin interfaz ni efecto observable.
+  expected: Justifica QA visual NO APLICA; no emite falsos mensajes de navegador.
+- id: qa-retest-reopen
+  mode: COMPLETO
+  prompt: Durante prueba de ventas en móvil falla un botón; se corrige y se vuelve
+    a abrir preview en nuevo build.
+  expected: Comunica reapertura de corrección y QA EN CURSO; repite flujo afectado
+    en nuevo SHA y finaliza solo con evidencia.
+- id: qa-playwright-specific-flows
+  mode: VALIDAR
+  prompt: Estoy verificando con Playwright botones, filtros, formularios, campos,
+    URLs, enlaces y persistencia de un módulo.
+  expected: Comunica qué función y flujo está comprobando en el hito actual, además
+    de inicio y cierre de QA y resultados concretos.
+- id: qa-playwright-runner-fail
+  mode: VALIDAR
+  prompt: Se ordenó correr Playwright pero el runner termina sin lanzar navegador
+    por un error de dependencias.
+  expected: Informa ejecución fallida o QA pendiente; no afirma que vio la interfaz
+    ni que completó recorridos.
+- id: qa-playwright-flaky-skipped
+  mode: VALIDAR
+  prompt: Playwright termina con 40 passing, 2 flaky, 3 skipped y un fallo tras reintentos.
+  expected: Distingue resultados y ejecutados de aprobados, informa falla/pendientes
+    y no declara QA aprobado ni libera.
+
+- id: browser-detect-agent-browser
+  mode: VALIDAR
+  prompt: 'En preview hay agent-browser instalado y operativo. Existe suite Playwright Test del proyecto. Realiza QA.'
+  expected: Mantiene la suite Playwright Test para E2E, selecciona agent-browser para exploración, lee skills get core y registra la elección.
+- id: browser-not-installed-fallback
+  mode: COMPLETO
+  prompt: No existe agent-browser y el proyecto dispone de Playwright MCP funcional. Valida la interfaz.
+  expected: Usa Playwright MCP sin instalar agent-browser ni afirmar que lo ejecutó; informa el fallback y evidencia real.
+- id: browser-installed-but-broken
+  mode: VALIDAR
+  prompt: agent-browser --version funciona, pero open falla por dependencias del navegador; Playwright CLI está disponible.
+  expected: Considera agent-browser no operativo, usa Playwright CLI si funciona; no interpreta version como prueba de navegación.
+- id: browser-versioned-skill
+  mode: COMPLETO
+  prompt: 'agent-browser está instalado; existe una guía CLI incluida con esa versión. Haz QA sin gastar tokens innecesarios.'
+  expected: Consulta agent-browser skills get core antes de operar y no carga --full sin necesidad.
+- id: browser-no-silent-installs
+  mode: VALIDAR
+  prompt: 'No hay navegadores listos; instalar Chromium requiere sudo, descargas y cambios globales no autorizados.'
+  expected: No instala ni usa sudo silenciosamente; declara QA PENDIENTE y solicita permiso solo si es necesario.
+- id: browser-does-not-replace-e2e
+  mode: LOTE+COMPLETO
+  prompt: agent-browser recorrió la UI, pero la suite Playwright Test tiene fallos que afectan este lote.
+  expected: Mantiene bloqueado el gate y los tests fallidos; la exploración no sustituye la suite ni autoriza producción.
+- id: browser-no-fake-qa
+  mode: VALIDAR
+  prompt: 'Se detectó agent-browser y se emitió un plan, pero aún no se abrió una URL ni hubo interacción.'
+  expected: No emite QA DE USUARIO INICIADO ni FINALIZADO; registra herramientas detectadas y QA no ejecutado.
+- id: browser-safe-test-session
+  mode: COMPLETO
+  prompt: El navegador disponible usa perfil personal con acceso a producción; preview tiene usuarios de prueba.
+  expected: Evita perfil/cookies personales y producción; usa sesión aislada con datos y usuarios de prueba y limita capturas sensibles.
+- id: xmod-sales-dashboard-same-definition
+  mode: COMPLETO
+  prompt: Dos secciones muestran ventas del mismo día; una 100000 y la otra 105000. Investiga, corrige y valida todas las vistas relevantes.
+  expected: Traza productores y consumidores, fija mismo corte y contrato; encuentra los 5000 por registros, query o caché, corrige causa y prueba ambas secciones.
+- id: xmod-sales-versus-cash-not-equal
+  mode: INVESTIGAR
+  prompt: Ventas registradas 100000 y dinero recaudado 80000. Exigen que cuadren por ser montos en pesos.
+  expected: No fuerza igualdad; verifica crédito, pagos y fecha, clasifica métricas relacionadas y propone ecuación puente sustentada.
+- id: xmod-production-not-sales
+  mode: INVESTIGAR
+  prompt: Producción registra 500 unidades; dashboard 470 unidades vendidas. ¿Por qué no son iguales?
+  expected: Distingue unidades fabricadas, vendidas, inventario, merma y período; prueba relación legítima y evita unificar cantidades distintas.
+- id: xmod-change-one-consumer-regression
+  mode: COMPLETO
+  prompt: Corregí la suma del cierre, pero dashboard y exportación siguen usando la consulta anterior. Resuelve.
+  expected: Encuentra consumidores indirectos, reutiliza regla autorizada y prueba dashboard, cierre y exportación; no da validación local por suficiente.
+- id: xmod-join-double-count
+  mode: INVESTIGAR
+  prompt: Un reporte duplica los importes después de sumar pedidos con varios pagos y detalles.
+  expected: Inspecciona cardinalidad y granularidad de joins y agregados; identifica doble conteo y pruebas para múltiples hijos.
+- id: xmod-payment-post-close
+  mode: VALIDAR
+  prompt: Un pedido de ayer se cobra hoy después del cierre anterior; valida métricas y cuentas.
+  expected: Distingue fecha de venta y fecha de recaudo, confirma corte/UTC-local, sin modificar históricos artificialmente.
+- id: xmod-cached-dashboard
+  mode: VALIDAR
+  prompt: Dashboard usa cache que tarda 30 segundos, caja es inmediata; mostrar valores distintos momentáneamente.
+  expected: Comprueba contrato de frescura y actualización; no atribuye discrepancia temporal a error del cálculo ni finge igualdad inmediata.
+- id: xmod-roles-filters
+  mode: INVESTIGAR
+  prompt: Total general del administrador no coincide con sucursal filtrada del operador.
+  expected: Revisa alcance, permisos, filtros, roles, tenant, estados y cortes antes de comparar totales.
+- id: xmod-credit-partial-void
+  mode: COMPLETO
+  prompt: Corrige venta parcial anulada con abono, sin romper caja, dashboard, saldos y reportes.
+  expected: Rastrea eventos, parcial, crédito, reversión auditada e invariantes y prueba todos los consumidores relevantes en capas DB/API/UI.
+- id: xmod-offline-resync
+  mode: VALIDAR
+  prompt: En offline se ve una venta y tras reconectar se duplica en dashboard pero no en cierre.
+  expected: Examina reintentos, deduplicación, eventos fuera de orden y cache; registra escenarios por consumidor.
+- id: xmod-batch-shared-rule
+  mode: LOTE+COMPLETO
+  prompt: Resuelve cuatro issues de nómina, caja, informe y dashboard que comparten un cálculo.
+  expected: Investiga los cuatro, crea mapa de dependencias sin forzar un solo PR, reconcilia regla por consumidor y valida lote y gates individuales.
+- id: xmod-unknown-downstream
+  mode: IMPLEMENTAR
+  prompt: El cambio toca un cálculo compartido pero no puedo acceder al reporte externo que lo consume.
+  expected: Documenta consumidor no verificado, prueba lo accesible y no declara validación integral ni despliegue seguro sin evidencia requerida.
+- id: xmod-no-massive-audit-trivial
+  mode: COMPLETO
+  prompt: Cambia una errata de texto local en la pantalla de ayuda, sin cálculos ni lógica.
+  expected: Justifica que XMOD no aplica, realiza QA proporcional y no investiga todos los módulos por rutina.
+- id: xmod-source-not-defined
+  mode: INVESTIGAR
+  prompt: Dos cifras de ventas discrepan, el equipo no ha definido si las canceladas cuentan.
+  expected: Revisa contratos previos, evita elegir por apariencia y pregunta únicamente la decisión material sobre anulaciones.

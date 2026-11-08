@@ -12,7 +12,7 @@ vi.mock('@/lib/realtime', () => ({ publishRealtimeEvent: vi.fn().mockResolvedVal
 vi.mock('@/lib/notifications/notify-event', () => ({ notifyEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn().mockResolvedValue(undefined) }))
 
-import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
+import { testPrisma, resetAndSeed, disconnect, getAdminUser, registrarBaseDia } from './setup'
 import { POST as crearProduccion } from '@/app/api/produccion/route'
 import { PUT as corregirProduccion } from '@/app/api/produccion/[id]/route'
 import { GET as previewProduccion } from '@/app/api/produccion/preview/route'
@@ -135,6 +135,7 @@ describe('#618 — inventario de botellones llenos', () => {
     expect(r.produccion).toMatchObject({ stockIniBotellon: 20, botellonesLlenados: 8, stockFinBotellon: 23 })
     expect(r.botellonVendido).toBe(5)
 
+    await registrarBaseDia(HOY, 50000) // #688: el cierre exige la base de caja de esa fecha
     const cierre = await cerrarDia(post('/api/cierre', {
       fecha: HOY, baseDia: 50000, stockIniAgua: 0, prodAgua: 0, stockFinAgua: 0, stockIniHielo: 0, prodHielo: 0, stockFinHielo: 0,
       stockIniBotellon: 20, prodBotellon: 8, stockFinBotellon: 23, reporte: JSON.stringify({ arqueo: { 50000: 1 } }),

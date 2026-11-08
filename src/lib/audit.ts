@@ -12,8 +12,6 @@ export type AuditAction =
   | 'FORCE_LOGOUT'
   /** PlantillaRecurrente: un intento de generación (GENERADO, SALTADO:<motivo> o ERROR). */
   | 'GENERACION'
-  /** #306: cierre que saltó días anteriores con operación (solo ADMIN, con motivo). */
-  | 'CIERRE_SALTO_DIAS'
 
 export interface AuditEntry {
   /** #515: identidad estable para el resultado de un cobro reintentable. */

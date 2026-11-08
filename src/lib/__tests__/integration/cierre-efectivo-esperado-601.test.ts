@@ -3,7 +3,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { randomUUID } from 'node:crypto'
-import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
+import { testPrisma, resetAndSeed, disconnect, getAdminUser, registrarBaseDia } from './setup'
 import { startOfDayInBogota } from '@/lib/date-helpers'
 
 const actor = { id: 'placeholder', role: 'ADMIN' }
@@ -71,6 +71,7 @@ describe('#601 — efectivo esperado en el cierre de caja', () => {
     await pedidoPagado(dia, 200000, [{ metodo: 'EFECTIVO', monto: 150000 }, { metodo: 'NEQUI', monto: 50000 }])
     await testPrisma.gasto.create({ data: { categoria: 'OTRO', descripcion: 'Prueba', monto: 20000, fecha: mediodia(dia) } })
     // Debe haber: 50.000 (base) + 150.000 (efectivo) − 20.000 (gasto) = 180.000. Contado: 180.000.
+    await registrarBaseDia(dia, 50000) // #688
     const res = await cerrar(request(payload(dia, conteo({ 100000: 1, 50000: 1, 20000: 1, 10000: 1 }))))
     expect(res.status).toBe(201)
     const guardado = await testPrisma.cierreDia.findUniqueOrThrow({ where: { fecha: startOfDayInBogota(dia) } })
@@ -87,6 +88,7 @@ describe('#601 — efectivo esperado en el cierre de caja', () => {
     await pedidoPagado(dia, 100000, [{ metodo: 'EFECTIVO', monto: 100000 }, ])
     await pedidoPagado(dia, 40000, [{ metodo: 'NEQUI', monto: 40000 }])
     // Debe haber 150.000 (50.000 de base + 100.000). Contado 145.000 → faltan 5.000.
+    await registrarBaseDia(dia, 50000) // #688
     const res = await cerrar(request(payload(dia, conteo({ 100000: 1, 20000: 2, 5000: 1 }))))
     expect(res.status).toBe(201)
     const reporte = (await testPrisma.cierreDia.findUniqueOrThrow({ where: { fecha: startOfDayInBogota(dia) } })).reporte as Record<string, unknown>

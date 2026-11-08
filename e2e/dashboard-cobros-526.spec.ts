@@ -404,7 +404,7 @@ test('el permiso de dashboard no concede datos individuales de Pedidos y una ses
   expect(await anonimo.text()).not.toContain('subtotalRegistrado')
 })
 
-test('#524: cobrar con sobrante conserva la alerta de crédito sin fabricar el ingreso que falta', async ({
+test('#524: cobrar con sobrante cuenta el ingreso en el efectivo y ya no queda nada por conciliar', async ({
   page,
 }) => {
   test.setTimeout(90000)
@@ -418,17 +418,24 @@ test('#524: cobrar con sobrante conserva la alerta de crédito sin fabricar el i
   })
   expect(respuesta.status()).toBe(200)
   await goto(page, '/dashboard')
-  await expect(card(page, 'Efectivo Cobrado')).toContainText('Por conciliar')
-  await expect(card(page, 'Efectivo Cobrado')).toContainText('10.000')
-  await appMain(page)
-    .getByRole('button', { name: 'Ver diferencia', exact: true })
-    .click()
-  await expect(page.getByTestId('dashboard-cobros-detalle')).toContainText(
-    'Sobrante a saldo a favor sin registro canónico de ingreso (#524)',
+  // El pago de 10.000 a la deuda + el sobrante de 4.000 que entró a la caja: 14.000 en efectivo.
+  await expect(card(page, 'Efectivo Cobrado')).toContainText('14.000')
+  await expect(card(page, 'Efectivo Cobrado')).not.toContainText(
+    'Por conciliar',
   )
-  await expect(page.getByTestId('dashboard-cobros-detalle')).toContainText(
-    '4.000',
-  )
+  const lectura = await page.request.get('/api/dashboard')
+  expect(lectura.status()).toBe(200)
+  const cobros = (await lectura.json()).dashboard.cobros
+  expect(
+    cobros.porConciliar.filter(
+      (x: { motivo: string }) => x.motivo === 'SOBRANTE_SIN_COBRO',
+    ),
+  ).toEqual([])
+  expect(cobros.ingresosSaldoFavor).toEqual([
+    expect.objectContaining({ metodo: 'EFECTIVO', monto: 4000 }),
+  ])
+  // La base: el crédito sigue siendo del cliente, el Pago es solo lo aplicado a la deuda
+  // y el sobrante quedó registrado una sola vez como ingreso propio.
   expect(
     Number(
       (await db.cliente.findUniqueOrThrow({ where: { id: cliente.id } }))
@@ -445,4 +452,10 @@ test('#524: cobrar con sobrante conserva la alerta de crédito sin fabricar el i
       )._sum.monto,
     ),
   ).toBe(10000)
+  const ingresos = await db.ingresoSaldoFavor.findMany({
+    where: { clienteId: cliente.id },
+  })
+  expect(ingresos).toHaveLength(1)
+  expect(ingresos[0]).toMatchObject({ metodo: 'EFECTIVO', origen: 'PAGAR_FIADO' })
+  expect(Number(ingresos[0].monto)).toBe(4000)
 })

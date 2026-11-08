@@ -1,6 +1,6 @@
 // @tests api/abono, api/cierre, api/embarque, api/factura, api/pedido, api/reporte
 import type { Page } from '@playwright/test'
-import { test, expect, loginAs, apiPost, apiGet, apiPut, createCliente, createTrabajador, createEmbarque, resetTestDatabase } from './fixtures'
+import { test, expect, loginAs, apiPost, apiGet, apiPut, createCliente, createTrabajador, createEmbarque, resetTestDatabase, registrarBaseDia } from './fixtures'
 
 function cierrePayload(partial: Record<string, unknown> = {}) {
   return {
@@ -87,6 +87,7 @@ test.describe('Ciclo Completo Pedido', () => {
     }
 
     const today = new Date().toISOString().split('T')[0]
+    await registrarBaseDia(page, today, 100000) // #688
     const cierreRes = await apiPost(page, '/api/cierre', {
       fecha: today,
       baseDia: 100000,

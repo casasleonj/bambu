@@ -80,3 +80,13 @@ export async function getSeededCliente() {
   if (!c) throw new Error('No cliente found — ¿corriste seed-test?')
   return c
 }
+
+/**
+ * #688 — el servidor solo cierra un día con la base de caja de ESA fecha (Config `BASE_DIA_<fecha>`). Las pruebas que
+ * cierran el día la registran con esto y mandan el mismo valor en `baseDia`.
+ */
+export async function registrarBaseDia(fecha: string, valor = 50000): Promise<number> {
+  const clave = `BASE_DIA_${fecha}`
+  await testPrisma.config.upsert({ where: { clave }, create: { clave, valor: String(valor) }, update: { valor: String(valor) } })
+  return valor
+}

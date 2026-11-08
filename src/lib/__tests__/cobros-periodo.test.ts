@@ -63,9 +63,11 @@ function tx(
   pagos: ReturnType<typeof pago>[] = [],
   abonos: CobroCartera[] = [],
   datos: unknown[] = [],
+  ingresos: Array<{ id: string; metodo: string; monto: ReturnType<typeof d>; auditoriaId: string | null }> = [],
 ) {
   return {
     pago: { findMany: vi.fn(async () => pagos) },
+    ingresoSaldoFavor: { findMany: vi.fn(async () => ingresos) },
     $queryRaw: vi.fn(async () => abonos),
     historial: {
       findMany: vi.fn(async () =>
@@ -194,6 +196,42 @@ describe('cobros del período #526', () => {
       motivo: 'SOBRANTE_SIN_COBRO',
       importe: 5000,
     })
+  })
+  it('#524: el sobrante ya registrado como ingreso cuenta en su medio y no se señala para conciliar', async () => {
+    const auditoria = {
+      operacion: 'COBRO_FIADO_V2',
+      resultado: {
+        montoSobrante: 5000,
+        saldoFavorAcreditado: 5000,
+        medios: [{ metodo: 'EFECTIVO', saldoFavor: 5000 }],
+      },
+    }
+    const r = await leer(
+      tx([pago('cash', 20000)], [], [auditoria], [
+        { id: 'i1', metodo: 'EFECTIVO', monto: d(5000), auditoriaId: 'h0' },
+      ]),
+    )
+    expect(r.porConciliar).toEqual([])
+    expect(r.subtotalRegistrado).toBe(25000)
+    expect(r.medios[0]).toMatchObject({ metodo: 'EFECTIVO', neto: 25000, movimientos: 2, sinEstadoVerificable: 5000 })
+    expect(r.ingresosSaldoFavor).toEqual([{ id: 'i1', metodo: 'EFECTIVO', monto: 5000 }])
+  })
+  it('#524: el ingreso de otro medio o de otra auditoría no oculta el sobrante pendiente', async () => {
+    const auditoria = {
+      operacion: 'COBRO_FIADO_V2',
+      resultado: {
+        montoSobrante: 5000,
+        saldoFavorAcreditado: 5000,
+        medios: [{ metodo: 'NEQUI', saldoFavor: 5000 }],
+      },
+    }
+    const r = await leer(
+      tx([], [], [auditoria], [
+        { id: 'i1', metodo: 'EFECTIVO', monto: d(5000), auditoriaId: 'h0' },
+        { id: 'i2', metodo: 'NEQUI', monto: d(5000), auditoriaId: 'otra' },
+      ]),
+    )
+    expect(r.porConciliar).toEqual([expect.objectContaining({ motivo: 'SOBRANTE_SIN_COBRO', metodo: 'NEQUI' })])
   })
   it('una auditoría incompleta no se convierte en cero ni en un importe inventado', async () => {
     const r = await leer(

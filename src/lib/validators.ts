@@ -98,6 +98,11 @@ export const PedidoCreateSchema = z.object({
   entregaLng: z.number().min(-180).max(180).optional().nullable(),
   // Offline-first: id generado por el cliente para dedup si se encola
   offlineId: z.string().optional(),
+  // #408: el usuario confirmó que esta venta NO es una repetida de la anterior. Solo deja rastro; no cambia el cálculo.
+  ventaRepetidaConfirmada: z.boolean().optional(),
+  // #426: guardar la ubicación del pedido (entregaLat/entregaLng) como ubicación de la tienda o del cliente.
+  // `reemplazar` solo si el usuario eligió pisar la que ya tenía. Sin este campo no se guarda nada.
+  guardarUbicacion: z.object({ reemplazar: z.boolean().optional() }).optional(),
   // TEMPORAL-SIN-EMBARQUE(#535): «venta en ruta» — el ADMIN registra la venta que un
   // repartidor hizo en la calle. `vendidoPorId` queda como `Pedido.entregadoPorId`;
   // solo vale en una venta rápida a domicilio y solo con la gestión directa encendida.
@@ -180,6 +185,8 @@ export const PreviewPedidoSchema = z.object({
   pedidoOrigenId: z.string().optional(),
   /** #542: «venta en ruta» (la vendió un repartidor en la calle): la dirección de entrega es opcional. */
   ventaEnRuta: z.boolean().optional(),
+  /** #408: clave del borrador (la misma que luego viaja como offlineId al guardar): el reintento del mismo borrador no es una venta repetida. El preview sigue siendo de solo lectura. */
+  borradorId: z.string().min(8).max(100).optional(),
   /** modo edición: preview de un PUT declarativo sobre un pedido existente. */
   pedidoId: z.string().trim().min(1).optional(),
   // F2 (Excepciones de Crédito): ver VentaLibreSchema.excepcionId.
@@ -781,9 +788,6 @@ export const CierreCreateSchema = z.object({
   // anteriores). Lo pagado por otro medio no resta de la caja del cierre.
   salariosEfectivo: z.coerce.number().min(0).optional(),
   reporte: z.string().optional(),
-  // #306: solo ADMIN. Permite cerrar saltando días anteriores que SÍ tuvieron operación;
-  // el motivo (mínimo 10 caracteres) queda en el historial.
-  saltarDiasConOperacion: z.object({ motivo: z.string().trim().min(10).max(500) }).optional(),
 }).strict().refine( // Reject extra fields like netoCaja, totalVentas, etc.
   (d) => d.salariosEfectivo === undefined || d.salariosEfectivo <= d.salarios,
   { message: 'Los salarios pagados en efectivo no pueden superar el total de salarios', path: ['salariosEfectivo'] },

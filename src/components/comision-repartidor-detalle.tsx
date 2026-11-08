@@ -2,13 +2,9 @@ import Link from 'next/link'
 import { formatCurrency } from '@/lib/utils'
 import type { ComisionRepartidor, FuenteComision, PedidoComision, UnidadesReparto } from '@/lib/comision-repartidor-calculo'
 import { ListaLimitada } from '@/components/ui/desplegable'
+import { diaCorto } from '@/lib/dia-corto'
 
-const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
-/** «2026-11-04» → «4 nov». Sin zonas horarias: el día ya viene en Bogotá. */
-export function diaCorto(dia: string): string {
-  const [, m, d] = dia.split('-').map(Number)
-  return m >= 1 && m <= 12 && d ? `${d} ${MESES[m - 1]}` : dia
-}
+export { diaCorto }
 const hoyBogota = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 const NOMBRES = [['agua', 'agua'], ['hielo', 'hielo'], ['botellon', 'botellón']] as const
 const hay = (u: UnidadesReparto) => u.agua > 0 || u.hielo > 0 || u.botellon > 0
