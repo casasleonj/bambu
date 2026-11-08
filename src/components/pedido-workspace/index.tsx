@@ -11,6 +11,7 @@ import { PedidoCreditoPanel } from './pedido-credito-panel'
 import { useExcepcionCredito } from './use-excepcion-credito'
 import { PedidoProposal } from './pedido-proposal'
 import { PedidoReview } from './pedido-review'
+import { PedidoVentaRepetida } from './pedido-venta-repetida'
 import { PedidoCommitBar } from './pedido-commit-bar'
 import { WorkspaceEntrega } from './workspace-entrega'
 import { WorkspaceComprador } from './workspace-comprador'
@@ -205,7 +206,12 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
   const onReceived = useCallback((preview: PreviewPedidoResult) => dispatch({ type: 'PREVIEW_RECEIVED', preview }), [])
   const onError = useCallback((kind: WorkspaceErrorKind, message: string) => dispatch({ type: 'PREVIEW_ERROR', kind, message }), [])
 
-  usePreview(state.draft, { onPending, onReceived, onError }, { pedidoId: pedidoInicial?.id })
+  usePreview(state.draft, { onPending, onReceived, onError }, { pedidoId: pedidoInicial?.id, borradorId: modoEdicion ? undefined : claveBorrador })
+
+  // #408: aviso (no bloqueo) de venta repetida. Se confirma por venta señalada; si cambia el aviso, hay que volver a marcar.
+  const ventaRepetida = !modoEdicion ? state.preview?.ventaRepetida : undefined
+  const [otraVentaDe, setOtraVentaDe] = useState<string | null>(null)
+  const otraVentaConfirmada = ventaRepetida != null && otraVentaDe === ventaRepetida.id
 
   const { tabla, configs, loading: pricingLoading, precioBaseFor } = useItemPricing()
   const { fiadoStatus, patron, patronLoading, loadPatron } = useClienteContext(state.draft.clienteId)
@@ -389,13 +395,16 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
   const commitEnabled = canCommit(state, accionCommit)
     && (state.phase === 'PREVIEW_READY' || (sinConexion && state.phase === 'DRAFTING'))
     && !faltaCompradorParaDespues
+    && (!ventaRepetida || otraVentaConfirmada)
   // B-20: sin preview del servidor, el cobro "completo" usa un total estimado con la tabla ya cargada.
   const totalEstimado = sinConexion && !calc
     ? estimarTotalOffline(state.draft.items, state.draft.canal, tabla, configs)
     : null
   const blockedReason = faltaCompradorParaDespues
     ? 'Para entregar después hay que identificar al comprador.'
-    : state.preview && !state.preview.allowedActions.includes(accionCommit)
+    : ventaRepetida && !otraVentaConfirmada
+      ? 'Marca «Es otra venta distinta» para continuar.'
+      : state.preview && !state.preview.allowedActions.includes(accionCommit)
       ? (state.preview.warnings[0]?.message ?? `El backend no permite ${modoEdicion ? 'guardar' : 'crear'} este pedido.`)
       : null
 
@@ -477,6 +486,7 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
         : state.draft.obs,
       entregado: state.draft.entregado,
       excepcionId: state.draft.excepcionId,
+      ...(ventaRepetida && otraVentaConfirmada ? { ventaRepetidaConfirmada: true } : {}),
       ...(ventaEnRuta ? { vendidoPorId, promesaPagoFecha: pideFechaRuta ? promesaPagoFecha : undefined } : {}),
       clienteNuevo: clienteNuevo ? { ...clienteNuevo, direccion: clienteNuevo.direccion ?? '' } : undefined,
       actualizarCliente,
@@ -754,9 +764,18 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
       {/* ── Zona: Señales de riesgo (blueprint §5.3) ── */}
       <PedidoRiskSignals
         // el panel de crédito ya explica el límite; no se repite el aviso rojo
-        warnings={(state.preview?.warnings ?? []).filter((w) => !(w.code === 'FIADO_SOBRE_LIMITE' && state.preview?.credito))}
+        warnings={(state.preview?.warnings ?? []).filter((w) => !(w.code === 'FIADO_SOBRE_LIMITE' && state.preview?.credito) && w.code !== 'VENTA_POSIBLE_DUPLICADA')}
         riskSignals={state.preview?.riskSignals ?? []}
       />
+
+      {ventaRepetida && (
+        <PedidoVentaRepetida
+          aviso={ventaRepetida}
+          confirmada={otraVentaConfirmada}
+          onConfirmadaChange={(v) => setOtraVentaDe(v ? ventaRepetida.id : null)}
+          disabled={state.phase === 'COMMITTING' || state.phase === 'COMMITTED'}
+        />
+      )}
 
       {/* ── Zona: Revisión (acción sensible, ALS §10) ── */}
       {state.phase === 'REVIEW_REQUIRED' && state.preview && (

@@ -1124,6 +1124,58 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     const items = detalle.pedido.items as Array<{ producto: string; cantPedido: number }>
     expect(items.find((i) => i.producto === 'PACA_AGUA')?.cantPedido).toBe(4)
   })
+
+  // #408: la misma venta cargada dos veces seguidas avisa (no bloquea); marcar «Es otra venta distinta» la deja
+  // guardar y queda anotado en el historial de la segunda venta. Se mira la base de datos, no solo la pantalla.
+  test('#408: venta repetida — aviso con casilla, se guardan las dos y la confirmación queda en el historial', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    await page.goto(`${BASE}/pedidos`)
+    const desde = new Date()
+    // cantidad distinta en cada intento: un reintento seguido no debe chocar con la venta del anterior
+    const pacas = 8 + Math.floor(Math.random() * 20)
+    const ventana = (valor: string) => apiPost(page, '/api/config', { clave: 'VENTA_REPETIDA_VENTANA_SEG', valor })
+    expect((await ventana('60')).ok()).toBe(true) // por defecto el aviso va apagado en la base de pruebas
+    try {
+    const cargarVenta = async () => {
+      await app.getByTestId('fab-main').click()
+      await page.getByTestId('fab-venta-rapida').click()
+      await expect(page.getByTestId('workspace-venta-rapida')).toBeVisible()
+      for (let i = 0; i < pacas; i++) await page.getByTestId('workspace-inc-PACA_AGUA').click()
+      await page.getByTestId('dinero-pagar-completo-EFECTIVO').click()
+      await expect(page.getByTestId('dinero-saldo')).toHaveText('Pagado', { timeout: 10000 })
+    }
+
+    await cargarVenta()
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    await expect(page.getByTestId('venta-repetida')).toHaveCount(0) // la primera no es repetida
+    await page.getByTestId('workspace-commit').click()
+    await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+
+    await cargarVenta()
+    const aviso = page.getByTestId('venta-repetida')
+    await expect(aviso).toBeVisible({ timeout: 10000 })
+    await expect(aviso).toContainText('Parece una venta repetida')
+    await expect(page.getByTestId('workspace-commit')).toBeDisabled()
+    await page.getByTestId('venta-repetida-confirmar').check()
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    const creado = page.waitForResponse((r) => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST')
+    await page.getByTestId('workspace-commit').click()
+    expect((await creado).status()).toBeLessThan(300)
+    await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+
+    const ventas = await prisma.pedido.findMany({
+      where: { clienteId: 'CONSUMIDOR_FINAL', createdAt: { gte: desde }, items: { some: { producto: 'PACA_AGUA', cantPedido: pacas } } },
+      orderBy: { createdAt: 'asc' },
+    })
+    expect(ventas).toHaveLength(2)
+    const hist = await prisma.historial.findMany({ where: { entidad: 'Pedido', registroId: ventas[1].id } })
+    expect(hist.some((h) => h.datos.includes('VENTA_REPETIDA_CONFIRMADA'))).toBe(true)
+    expect(await prisma.historial.count({ where: { registroId: ventas[0].id, datos: { contains: 'VENTA_REPETIDA_CONFIRMADA' } } })).toBe(0)
+    } finally {
+      await ventana('0')
+    }
+  })
 })
 
 test.describe('flag OFF: la UI de tabs sigue funcionando', () => {

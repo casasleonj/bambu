@@ -17,7 +17,7 @@ function isPreviewable(draft: DraftPedido): boolean {
   return (!!draft.clienteId || !!draft.clienteNuevo) && draft.items.some((i) => i.cantidad > 0)
 }
 
-function toRequestBody(draft: DraftPedido, pedidoId?: string) {
+function toRequestBody(draft: DraftPedido, pedidoId?: string, borradorId?: string) {
   return {
     clienteId: draft.clienteId ?? undefined,
     clienteNuevo: draft.clienteId ? undefined : draft.clienteNuevo,
@@ -39,6 +39,8 @@ function toRequestBody(draft: DraftPedido, pedidoId?: string) {
     ventaEnRuta: draft.ventaEnRuta ? true : undefined,
     excepcionId: draft.excepcionId,
     pedidoId,
+    // #408: el reintento del MISMO borrador no es una venta repetida (solo al crear).
+    borradorId: pedidoId ? undefined : borradorId,
   }
 }
 
@@ -50,14 +52,14 @@ function toRequestBody(draft: DraftPedido, pedidoId?: string) {
  * Fetch plano (lectura, no encolar en Dexie). Offline → `NETWORK_ERROR`; el
  * draft local persiste igual (ALS §13).
  */
-export function usePreview(draft: DraftPedido, cb: UsePreviewCallbacks, opts?: { pedidoId?: string }): void {
+export function usePreview(draft: DraftPedido, cb: UsePreviewCallbacks, opts?: { pedidoId?: string; borradorId?: string }): void {
   const cbRef = useRef(cb)
   useEffect(() => { cbRef.current = cb }, [cb])
 
   const abortRef = useRef<AbortController | null>(null)
   const reqRef = useRef(0)
   // serialización estable del subconjunto que afecta el preview (incluye pedidoId)
-  const key = JSON.stringify(toRequestBody(draft, opts?.pedidoId))
+  const key = JSON.stringify(toRequestBody(draft, opts?.pedidoId, opts?.borradorId))
 
   useEffect(() => {
     if (!isPreviewable(draft)) return

@@ -439,7 +439,7 @@ export interface PreviewPedidoResult {
   allowedActions: Array<'crear' | 'crear-y-enviar-a-ruta' | 'actualizar'>
   warnings: Array<{ code: string; message: string; field?: string }>
   /** #408: venta igual registrada hace pocos segundos (aviso, no bloqueo). */
-  ventaRepetida?: { numero: number; haceSegundos: number }
+  ventaRepetida?: { id: string; numero: number; haceSegundos: number }
   riskSignals: Array<{ tipo: string; severidad: 'BAJA' | 'MEDIA' | 'ALTA'; detalle: string }>
   /**
    * F2: mismo campo que expone `GetFiadoStatusUseCase` — el preview lo

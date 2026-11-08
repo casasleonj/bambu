@@ -51,6 +51,7 @@ describe('#408 — aviso de venta repetida (Postgres real)', () => {
     expect(r).not.toBeNull()
     expect(r!.numero).toBe(await numeroDe(v.id))
     expect(r!.haceSegundos).toBeLessThan(60)
+    expect(r!.id).toBeTruthy() // la pantalla ofrece abrir la venta señalada
   })
 
   it('no avisa si cambia la cantidad, el total, el cliente o ya pasó la ventana', async () => {
@@ -82,6 +83,10 @@ describe('#408 — aviso de venta repetida (Postgres real)', () => {
   })
 
   it('el preview real emite el aviso (sin bloquear) y lo omite para el mismo borrador', async () => {
+    // La base de pruebas trae el aviso apagado (VENTA_REPETIDA_VENTANA_SEG = 0): este caso lo enciende y lo deja como estaba.
+    const antes = await testPrisma.config.findUnique({ where: { clave: 'VENTA_REPETIDA_VENTANA_SEG' } })
+    await testPrisma.config.upsert({ where: { clave: 'VENTA_REPETIDA_VENTANA_SEG' }, update: { valor: '60' }, create: { clave: 'VENTA_REPETIDA_VENTANA_SEG', valor: '60' } })
+    try {
     const v = await vender(3)
     const pedido = { clienteId, canal: 'DOMICILIO' as const, origen: 'PEDIDO' as const, items: [{ producto: 'PACA_AGUA' as const, cantidad: 3 }], actorId: adminId }
     const con = await previewPedidoUseCase.execute(pedido)
@@ -92,6 +97,10 @@ describe('#408 — aviso de venta repetida (Postgres real)', () => {
     expect(mismoBorrador.warnings.map((w) => w.code)).not.toContain('VENTA_POSIBLE_DUPLICADA')
     const otra = await previewPedidoUseCase.execute({ ...pedido, items: [{ producto: 'PACA_AGUA' as const, cantidad: 2 }] })
     expect(otra.warnings.map((w) => w.code)).not.toContain('VENTA_POSIBLE_DUPLICADA')
+    } finally {
+      if (antes) await testPrisma.config.update({ where: { clave: 'VENTA_REPETIDA_VENTANA_SEG' }, data: { valor: antes.valor } })
+      else await testPrisma.config.deleteMany({ where: { clave: 'VENTA_REPETIDA_VENTANA_SEG' } })
+    }
   })
 
   it('al guardar una venta con la advertencia confirmada, la confirmación queda en el historial', async () => {
