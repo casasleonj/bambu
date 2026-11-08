@@ -1,10 +1,14 @@
 # Dictamen compacto (expandir solo según riesgo)
 
+**Mapa de escenarios ESC (si hay impacto humano multietapa):** IDs, tareas, botones/entradas, siguiente operación, historial, reversas, estado (`CONFIRMADO/PROPUESTO/PENDIENTE/NO_APLICA/NO_VERIFICADO`), evidencia y prueba real; presentar resumen cotidiano visible antes del plan y mantener trazabilidad hasta cierre. Ver [escenarios-impacto-usuario.md](../references/escenarios-impacto-usuario.md).
+
 **Contrato breve de alcance (solo lo relevante):** `QUIERE / NO QUIERE / PRESERVAR / FUERA DE ALCANCE / ACEPTACIÓN`, fuente y certeza; pregunta concreta pendiente/contestada y decisión que cambia. No inventar límites ni repetir preguntas ya contestadas. No repetir en cada reporte los datos ya confirmados.
 
 **Solicitud y estado:** ID/título, versión/SHA/fecha, fase (`INVESTIGAR/IMPLEMENTAR/VALIDAR/COMPLETO`), alcance (`UNO/LOTE`), decisiones vigentes, nivel de riesgo.
 
-**Para quien usa el producto (breve):** qué problema había, a quién afectaba, qué cambiará, qué seguirá igual, ejemplo antes → acción → después, 2–5 «¿y si…?» relevantes, qué falta por comprobar.
+**Para quien usa el producto (breve):** problema, a quién afectaba, qué cambiará y qué seguirá igual. **Obligatorio al presentar solución y en el cierre:** un ejemplo cotidiano `antes → acción de la persona → después`, rotulado `hipotético` si no refleja un hecho comprobado. Añadir «¿y si…?» adversarial pertinente y estado de prueba; explicación técnica como respaldo, no sustituto. Ver [comunicacion-usuario.md](../references/comunicacion-usuario.md).
+
+**Síntesis SYN-1/SYN-2 (si aplica):** patrones existentes en el proyecto y precedentes verificables de empresas/comunidad → hallazgos que añaden o cambian IDs ESC → alternativa adoptada/adaptada/descartada con razón; decisiones previas vigentes que no deben volver a preguntarse; lagunas que sí necesitan autorización. No atribuir éxito real a publicidad o ejemplos ilustrativos.
 
 **Reutilización de código (si aplica):** REUSE-1/REUSE-2; qué función/objeto/componente ya existe, consumidores, contrato, decisión (usar/extender/componer/extraer/crear) y por qué no duplicar.
 
@@ -25,5 +29,7 @@
 **Si son varios issues:** dictamen resumido por issue con cobertura `N/N` y tabla `issue | dependencia/conflicto | contrato o entidad compartida | fase sugerida | bloqueo`. Investigar todos, no mezclar aprobaciones ni cambios inadvertidamente.
 
 **Presupuesto de salida:** por defecto 1 resumen y una tabla focalizada. Añadir anexos solo para riesgos o evidencias que cambian decisiones. No sacrificar información esencial; evitar repetir fuentes o procesos ya citados.
+
+**Comunicación de maquetas y pruebas de agente:** distinguir `maqueta en preparación / visible / aprobación pendiente / aprobada`, `evals definidas / pruebas estáticas ejecutadas / ejecuciones reales del agente`, y cambios de flujo relevantes; no hacer afirmaciones sobre capturas inexistentes, usuarios humanos simulados o herramientas no usadas.
 
 **Si `COMPLETO`:** comunicar inicio y fin verificados de cada etapa (o pausa/reapertura); avance por etapa, permisos/gates y próxima acción. No duplicar avisos ya emitidos en el informe. Si `LOTE+COMPLETO`: inventario `N/N`, matriz de estado individual (investigado/implementado/validado/bloqueado), dependencias y regresión transversal; no declarar terminado por mayoría.
