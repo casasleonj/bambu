@@ -1,3 +1,5 @@
+> **ACTA HISTÓRICA PREVIA A LA REESTRUCTURACIÓN (#718).** Este documento refleja los gates/pendientes del análisis del 8 de noviembre **antes** de redactarse la solución de #704. No es una segunda política. La propuesta operativa aprobable está en [`AGENTS.md`](../../../AGENTS.md), [protocolo](../protocolo-investigacion.md) y [flujo de entrega](../flujo-entrega.md). La decisión #704 pasa a ser vigente solo al fusionar y verificar el PR correspondiente. El estado de las pruebas reales de agentes continúa sin certificarse.
+
 # Migración de instrucciones · Fase 0 (no operativa)
 
 **Issue:** #716 · **Política que requiere PO:** #704 · **Duplicación histórica:** #335.
