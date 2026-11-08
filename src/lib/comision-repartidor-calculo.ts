@@ -1,12 +1,47 @@
 /** Regla pura compartida: unidades de reparto × tarifa; nunca precio de venta o sellado. */
 export interface TarifasRepartidor { agua: number; hielo: number; botellon: number }
 export interface UnidadesReparto { agua: number; hielo: number; botellon: number }
+/** #622: un día con entregas de un pedido (día del HECHO, no de creación). `propia` = la entrega de esta comisión. */
+export interface DiaEntregaComision { dia: string; unidades: UnidadesReparto; propia: boolean }
+/** #622: detalle por pedido. Solo presentación: las unidades de dinero siguen siendo las de la fuente. */
+export interface PedidoComision {
+  id: string
+  numero: number
+  href: string
+  /** Negocio primero; si no hay, el cliente («Cliente final» para una venta sin cliente real). */
+  nombre: string
+  /** Cliente como dato secundario cuando el pedido es de un negocio y el nombre difiere. */
+  cliente?: string
+  /** Día en que se CREÓ el pedido (informativo; no es fecha de entrega). */
+  creadoDia: string
+  /** Lo que cuenta en esta comisión (la parte de la fuente que corresponde a este pedido). */
+  unidades: UnidadesReparto
+  /** Lo que pedía el pedido y lo que lleva entregado en total hoy. */
+  pedido: UnidadesReparto
+  entregadoActual: UnidadesReparto
+  /** POR_DIA = entregas por día verificadas; SIN_DETALLE = no se reparte el acumulado; HISTORICO = entrega completa anterior sin detalle. */
+  detalle: 'POR_DIA' | 'SIN_DETALLE' | 'HISTORICO'
+  /** Fecha de la entrega completa registrada (solo HISTORICO). */
+  entregadoDia?: string
+  dias?: DiaEntregaComision[]
+  /** Acumulado al terminar el último día de esta comisión, y lo pendiente a ese día (POR_DIA). */
+  alDia?: UnidadesReparto
+  pendiente?: UnidadesReparto
+  /** Esta comisión fue la que completó el pedido. */
+  completoAqui: boolean
+  /** Si no estaba completo a ese día y se completó después: el día. */
+  completadoDespues?: string
+}
 export interface FuenteComision {
   id: string
   numero?: number
   href: string
   origen: 'EMBARQUE_VIVO' | 'EMBARQUE_LEGADO' | 'SIN_EMBARQUE'
   unidades: UnidadesReparto
+  /** #622: detalle por pedido (solo cierre y cierre de embarque; ausente en cierres anteriores y en nómina). */
+  pedidos?: PedidoComision[]
+  /** #622: unidades vendidas en ruta o cargadas por el cierre que no pertenecen a un pedido. */
+  sinPedido?: UnidadesReparto
 }
 export interface RevisionComision { embarqueId: string; motivo: string }
 export interface ComisionRepartidor {
