@@ -1,5 +1,7 @@
 # Integridad transversal de reglas, estados y métricas | JL
 
+**Complemento obligatorio de escenarios (ESC):** XMOD detecta productores, transformaciones y consumidores; [ESC-1/2/3](escenarios-impacto-usuario.md) identifica tareas y decisiones humanas en el tiempo. Un dato mostrado en historial no equivale a poder utilizarlo en la próxima operación. Para saldo, crédito o derechos reutilizables, revisar origen, selección, aplicación, persistencia, próxima compra, anulaciones y concurrencia; mostrar el mapa al usuario.
+
 **Cuándo cargar (XMOD):** un issue cambia o diagnostica una regla, saldo, total, contador, estado, derivación, fecha, inventario, permiso o hecho de negocio que puede aparecer o influir en **más de un módulo**. Incluye cambios aparentemente locales en consultas, APIs, reportes, dashboard, cierre diario, producción, nómina, exportaciones, trabajos programados, integraciones o clientes offline. **Agnóstico** a tecnología y dominio: no asumir arquitectura o tablas concretas. Para una errata puramente visual, basta justificar que XMOD no aplica.
 
 **Principio:** no basta corregir la pantalla señalada. Identificar quién produce el dato y todos los consumidores **razonablemente detectables**, incluidos usos indirectos, y probar el **contrato semántico**. No es correcto obligar a que dos números sean iguales solo porque ambos están expresados en dinero o llevan un nombre similar. Una divergencia puede ser un bug, un desfase temporal legítimo o una comparación inválida.
