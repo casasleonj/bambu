@@ -19,6 +19,13 @@ class RuntimeEvaluatorTests(unittest.TestCase):
     def test_explicit_native_tool_call_is_provisional_evidence(self):
         raw='{"type":"tool_use","name":"skill","input":{"id":"jl"}}'
         self.assertEqual(mod.scan_tool_calls(raw,"jl"),["skill-tool"])
+    def test_provider_key_is_redacted_from_trace(self):
+        secret="sk-TEST-SYNTHETIC-KEY-1234567890"
+        raw="tool error: "+secret
+        self.assertNotIn(secret,mod.redact(raw,{"OPENAI_API_KEY":secret}))
+    def test_redaction_does_not_fake_skill_events(self):
+        self.assertEqual(mod.scan_tool_calls(mod.redact('{"type":"message","text":"skill jl"}',{}),"jl"),[])
+
     def test_no_cli_claimed_in_inventory(self):
         versions=mod.executable_versions()
         self.assertEqual(set(versions),set(mod.AGENTS))
