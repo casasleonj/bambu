@@ -74,6 +74,24 @@ def verificar(repo: Path):
     b = bridge.read_text(encoding="utf-8") if bridge.is_file() else ""
     check("opencode_usa_canon", "docs/agentes/protocolo-investigacion.md" in b)
     check("opencode_sin_3_r3_obsoletas", "CICLO DE 3 RONDAS" not in b)
+    # Enlaces Markdown: comprobar destinos locales de documentos canónicos.
+    archivos_documentales = [
+        repo / "AGENTS.md",
+        repo / "docs/agentes/README.md",
+        repo / "docs/agentes/protocolo-investigacion.md",
+        repo / "docs/agentes/flujo-entrega.md",
+        repo / "docs/agentes/contratos-tecnicos.md",
+        repo / "docs/agentes/historial-y-trazabilidad.md",
+        repo / "docs/agentes/reglas-codigo.md",
+    ]
+    for archivo in archivos_documentales:
+        if not archivo.is_file():
+            check("enlaces_"+archivo.name, False)
+            continue
+        rutas = re.findall(r"\\]\\(([^)]+)\\)", archivo.read_text(encoding="utf-8"))
+        locales = [url.split("#",1)[0] for url in rutas
+                   if not url.startswith(("https://","http://","mailto:","#"))]
+        check("enlaces_"+archivo.name, all((archivo.parent / url).exists() for url in locales))
     readme = repo/"docs/agentes/README.md"
     t=readme.read_text(encoding="utf-8") if readme.is_file() else ""
     check("fuente_historica_no_normativa", "evidencia histórica" in t.lower())
