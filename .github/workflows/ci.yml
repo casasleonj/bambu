@@ -18,20 +18,15 @@ on:
         description: 'Construir y correr el job e2e con NEXT_PUBLIC_PEDIDOS_V2=true'
         type: boolean
         default: false
-  # Soak temporal del Pedido Hub V2 (Fase 10). Cada 3h dispara SOLO el job
-  # `e2e-hub` (los demás jobs se saltan vía `if: github.event_name !=
-  # 'schedule'`). El objetivo es medir estabilidad sostenida en el tiempo,
-  # independiente del ritmo de merges. Criterio de salida: >=72h + >=18
-  # ejecuciones programadas verdes (0 failed / 0 flaky / sin retries).
-  # Se elimina junto con el job `e2e-hub` en F10b.
-  #
-  # Minuto :23 (no :00) y cada 3h (no 4h): GitHub Actions descarta/retrasa
-  # los cron al tope de la hora bajo carga — las corridas de 00:00Z y 04:00Z
-  # del intento a `0 */4` no dispararon (total_count=0). :23 evita el minuto
-  # congestionado; */3 da 24 ticks en 72h → margen para drops residuales sin
-  # estirar el soak (el gate real es >=72h + >=18 verdes).
-  schedule:
-    - cron: '23 */3 * * *'
+  # El cron de soak del Hub V2 (cada 3h) se retiró (#703): su criterio de salida
+  # (>=72h y >=18 ejecuciones verdes) venció el 2026-10-10 sin decisión y gastaba
+  # minutos sin decidir nada. El job `e2e-hub` SE CONSERVA en push/PR porque
+  # producción corre con NEXT_PUBLIC_PEDIDOS_V2=true y la matriz `e2e` prueba V2
+  # OFF; su eliminación definitiva es F10b (#312). Para restaurar el soak, volver
+  # a agregar un bloque `schedule` con cron.
+
+permissions:
+  contents: read
 
 concurrency:
   # `github.event_name` en el grupo: una corrida programada (soak) y una
@@ -634,10 +629,9 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   # e2e-hub — soak del Pedido Hub V2 (Fase 10-C).
   #
-  # Se ejecuta en push a `main` y en cada PR (validación de cambios) Y cada
-  # 3h (:23) por `schedule` (soak temporal — mide estabilidad sostenida sin
-  # depender del ritmo de merges). Es el ÚNICO job que corre en el cron: los
-  # demás llevan `if: github.event_name != 'schedule'`.
+  # Se ejecuta en push a `main`, en cada PR y por `workflow_dispatch`. Ya no hay
+  # cron de soak (#703); los `if: github.event_name != 'schedule'` de otros jobs
+  # quedan como defensa por si se restaura.
   #
   # Job SEPARADO y transitorio: corre SOLO la suite del Hub con
   # NEXT_PUBLIC_PEDIDOS_V2=true, mientras el job `e2e` de arriba se mantiene
@@ -842,3 +836,56 @@ jobs:
           name: playwright-traces-hub
           path: test-results/
           retention-days: 7
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # ci-gate — check-resumen estable (#703). Corre SIEMPRE (`if: always()`) y
+  # solo pasa si las validaciones exigidas realmente pasaron: un job omitido,
+  # cancelado o ausente NO cuenta como éxito (GitHub reporta `skipped` como
+  # verde para checks requeridos; aquí se trata como falla, salvo el E2E de un
+  # PR solo de documentación, que `detect-changes` omite a propósito).
+  # Exige: detect-changes, quality (tsc + unit) y e2e-hub en `success`, y el
+  # E2E de 8 turnos en `success` cuando `e2e_required == 'true'`.
+  # `lint` e `integration` son informativos (continue-on-error) y solo se listan.
+  # NO está marcado como required en `main`: eso es decisión del PO (ver
+  # docs/ci/GATES.md).
+  # ───────────────────────────────────────────────────────────────────────────
+  ci-gate:
+    name: CI gate (resumen)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs: [detect-changes, quality, e2e, e2e-hub, lint, integration]
+    steps:
+      - name: Evaluar resultados exigidos
+        env:
+          R_DETECT: ${{ needs.detect-changes.result }}
+          R_QUALITY: ${{ needs.quality.result }}
+          R_E2E: ${{ needs.e2e.result }}
+          R_HUB: ${{ needs.e2e-hub.result }}
+          R_LINT: ${{ needs.lint.result }}
+          R_INTEGRATION: ${{ needs.integration.result }}
+          E2E_REQUIRED: ${{ needs.detect-changes.outputs.e2e_required }}
+        run: |
+          fail=0
+          check() { # nombre resultado esperado-descripcion
+            if [ "$2" != "success" ]; then
+              echo "::error::$1: $2 (se esperaba success)"
+              fail=1
+            else
+              echo "OK   $1: success"
+            fi
+          }
+          check "detect-changes" "$R_DETECT"
+          check "quality (tsc + unit)" "$R_QUALITY"
+          check "e2e-hub (V2 ON)" "$R_HUB"
+          if [ "$E2E_REQUIRED" = "true" ]; then
+            check "e2e (8 turnos)" "$R_E2E"
+          elif [ "$E2E_REQUIRED" = "false" ] && [ "$R_E2E" = "skipped" ]; then
+            echo "OK   e2e: omitido (el diff es solo documentación, allowlist de detect-changes)"
+          else
+            echo "::error::e2e: resultado '$R_E2E' con e2e_required='$E2E_REQUIRED' no es interpretable como éxito"
+            fail=1
+          fi
+          echo "INFO lint (informativo): $R_LINT"
+          echo "INFO integration (informativo): $R_INTEGRATION"
+          exit $fail
