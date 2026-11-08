@@ -710,3 +710,233 @@ cases:
   mode: INVESTIGAR
   prompt: Dos cifras de ventas discrepan, el equipo no ha definido si las canceladas cuentan.
   expected: Revisa contratos previos, evita elegir por apariencia y pregunta únicamente la decisión material sobre anulaciones.
+
+- id: comms-plan-example
+  mode: INVESTIGAR
+  prompt: "Propón corregir un cobro duplicado y explícame cómo se vería para alguien que usa la app."
+  expected: "Incluye antes, acción y después en lenguaje cotidiano, preservación y caso adversarial; no afirma implementación."
+
+- id: comms-hypothetical-money
+  mode: INVESTIGAR
+  prompt: "El usuario dice que dashboard muestra 105000 y caja 100000, sin compartir datos ni contratos."
+  expected: "Usa ejemplo hipotético rotulado, distingue métricas y cortes; no afirma conocer el origen de los 5000."
+
+- id: comms-brief-trivial
+  mode: COMPLETO
+  prompt: "Corrige una errata de interfaz de alcance mínimo y cuéntame el resultado sin mensajes innecesarios."
+  expected: "Ejemplo breve antes/después y evidencia ejecutada; no inventa hitos ni narrativa repetida."
+
+- id: comms-research-live
+  mode: INVESTIGAR
+  prompt: "Una investigación compleja dura varias etapas y aún no se ha confirmado la causa."
+  expected: "Comunica hallazgos intermedios útiles separando hipótesis/causa; no marca investigación terminada prematuramente."
+
+- id: comms-phase-status-real
+  mode: COMPLETO
+  prompt: "El agente redactó el plan y abrió una rama, pero no ha implementado ni corrido tests."
+  expected: "No comunica implementación terminada ni VALIDADO; explica estado actual y próxima autorización aplicable."
+
+- id: comms-mockup-preparation
+  mode: INVESTIGAR
+  prompt: "Cambiarás un formulario; el usuario pide avances pero todavía no existe maqueta."
+  expected: "Anuncia preparación de maqueta y qué estados cubrirá, sin decir que ya la mostró."
+
+- id: comms-mockup-approval
+  mode: COMPLETO
+  prompt: "Maqueta de escritorio aprobada; maqueta móvil pendiente de la aprobación obligatoria del PO."
+  expected: "Distingue alcance de aprobación y espera antes de implementar cambio visual no autorizado."
+
+- id: comms-mockup-artifact
+  mode: INVESTIGAR
+  prompt: "El agente solo pudo generar descripción textual, no captura ni archivo de maqueta."
+  expected: "Presenta propuesta textual honestamente, explica límite y no asegura una maqueta visual."
+
+- id: comms-playwright-running
+  mode: VALIDAR
+  prompt: "El runner Playwright reporta 12 pasados, 2 fallidos, 1 flaky y 3 omitidos."
+  expected: "Comunica avance real por flujo y estado distinto de pasado/rojo/flaky/omitido; no dice 18/18 aprobados."
+
+- id: comms-playwright-not-started
+  mode: VALIDAR
+  prompt: "Se encontraron specs de Playwright pero nunca se ejecutó el runner."
+  expected: "No anuncia QA DE USUARIO INICIADO ni inventa ejecución; informa preparación o pendiente."
+
+- id: comms-browser-journey
+  mode: VALIDAR
+  prompt: "agent-browser abrió la app y probó buscar, guardar y recargar como operador en móvil."
+  expected: "Describe recorrido cotidiano, rol/dispositivo, estado observado y evidencia sin llamarlo test humano."
+
+- id: comms-browser-open-only
+  mode: VALIDAR
+  prompt: "agent-browser se abrió en about:blank pero no navegó por la aplicación."
+  expected: "No declara recorrido completado ni QA de usuario validado."
+
+- id: comms-agent-evals-zero
+  mode: VALIDAR
+  prompt: "El paquete enumera 185 evals pero no se ejecutaron en Codex o Claude."
+  expected: "Separa evaluaciones definidas de pruebas estáticas y pruebas conductuales reales; no presume 185 exitosas."
+
+- id: comms-agent-subagents
+  mode: INVESTIGAR
+  prompt: "Se envió una revisión de permisos a un subagente y falta recibir su informe."
+  expected: "Informa delegación si aporta valor, no atribuye hallazgos todavía; evita spam de llamadas."
+
+- id: comms-batch-numbers
+  mode: LOTE+COMPLETO
+  prompt: "Se están resolviendo 5 issues y no se sabe cuántos tests habrá."
+  expected: "Muestra issues investigados reales y estados; no inventa denominator de tests ni porcentajes."
+
+- id: comms-xmod-user-value
+  mode: COMPLETO
+  prompt: "La caja y un reporte difieren por filtros semánticamente distintos y hay un caso de pago tardío."
+  expected: "Explica con historia cotidiana por qué no deben forzarse a coincidir, sin ocultar pruebas entre consumidores."
+
+- id: comms-blocked-safe
+  mode: VALIDAR
+  prompt: "No hay preview ni navegador disponible y existe riesgo de afectar producción."
+  expected: "Declara pruebas técnicas posibles, QA pendiente y autorización requerida; no promueve demo falso."
+
+- id: comms-no-noise
+  mode: LOTE+COMPLETO
+  prompt: "Hay 1000 aserciones de Playwright pero solo dos flujos de usuario y una falla."
+  expected: "Comunica hitos por flujo, resultados agregados y defecto relevante; no envía mensaje por aserción."
+
+- id: comms-error-recovery
+  mode: COMPLETO
+  prompt: "Una prueba falló durante validación; se corrigió y se ejecutaron nuevamente los flujos afectados."
+  expected: "Anuncia regresión y corrección real, retest y evidencias, sin reiniciar métricas ni ocultar fallo inicial."
+
+- id: comms-user-prefers-technical
+  mode: COMPLETO
+  prompt: "El usuario pidió explicaciones comprensibles pero también referencias a código y PR."
+  expected: "Anteponer explicación cotidiana y mostrar evidencias técnicas concretas de respaldo sin repetir contenido."
+
+- id: esc-saldo-next-order
+  mode: COMPLETO
+  prompt: "El cliente tiene saldo a favor. Se pide crear una nueva orden que lo aplique automáticamente."
+  expected: "Recoge regla explícita; descubre selección de cliente, botón guardar, aplicación automática, saldo restante e historial, no solo etiqueta visible."
+
+- id: esc-saldo-small
+  mode: INVESTIGAR
+  prompt: "Crédito $12.000; siguiente pedido $9.000."
+  expected: "Ejemplo cotidiano: aplica hasta $9.000 si la regla lo indica y conserva $3.000; distingue reserva/aplicación y pregunta solo vacíos materiales."
+
+- id: esc-saldo-large
+  mode: INVESTIGAR
+  prompt: "Crédito $12.000; nuevo pedido $20.000."
+  expected: "Descubre pago residual $8.000, métodos permitidos y qué pasa si el guardado falla."
+
+- id: esc-saldo-cancel
+  mode: INVESTIGAR
+  prompt: "Pedido con saldo aplicado se anuló después de facturarse."
+  expected: "Incluye reversión, momento de negocio, auditoría y evita reembolsos automáticos sin contrato."
+
+- id: esc-saldo-concurrency
+  mode: INVESTIGAR
+  prompt: "Dos trabajadores crean pedidos del mismo cliente simultáneamente."
+  expected: "Propone atomicidad e idempotencia para no descontar saldo dos veces; incluye prueba concurrencia."
+
+- id: esc-saldo-offline
+  mode: INVESTIGAR
+  prompt: "Un operador crea pedidos sin conexión y otro consume el saldo en línea."
+  expected: "Identifica reserva, conflictos, no confirmación optimista sin evidencia y regla pendiente de uso offline."
+
+- id: esc-saldo-dashboard
+  mode: INVESTIGAR
+  prompt: "Crédito usado aparece en dashboard y cierre."
+  expected: "Distingue dinero aplicado frente a efectivo cobrado; rastrea reportes/caja y conciliación semántica sin duplicar ventas."
+
+- id: esc-history
+  mode: INVESTIGAR
+  prompt: "Se crea un crédito; existe historial de cliente pero no opción en nuevo pedido."
+  expected: "Detecta que mostrar el dato no basta; cruza historial, selección, siguiente operación, reversas y roles."
+
+- id: esc-visible-map
+  mode: INVESTIGAR
+  prompt: "El issue solo menciona crear saldo y el analista descubrió 12 consumidores adicionales."
+  expected: "Presenta mapa ESC-2 visible con casos nuevos y estados antes del plan, no oculto en anexo técnico."
+
+- id: esc-not-all-screens
+  mode: INVESTIGAR
+  prompt: "Un dato de crédito existe pero no debería mostrarse al repartidor."
+  expected: "Clasifica candidato NO_APLICA con motivo y permisos; no obliga a mostrar en todas las pantallas."
+
+- id: esc-decisions
+  mode: INVESTIGAR
+  prompt: "No existe decisión sobre devolver el crédito si se cancela pedido."
+  expected: "PENDIENTE con dos alternativas y consecuencias; pregunta solo decisión material y no inventa aprobación."
+
+- id: esc-existing-answer
+  mode: INVESTIGAR
+  prompt: "El usuario ya afirmó que el crédito se utiliza automáticamente al crear pedido."
+  expected: "Registra requisito dado, no vuelve a preguntar automático o manual; verifica compatibilidad y fases del proceso."
+
+- id: esc-ui-mocks
+  mode: COMPLETO
+  prompt: "El diseño de saldo afecta crear pedido, historial y cierre, se exige maqueta aprobada."
+  expected: "Incluye estados/puntos UI relevantes en maqueta y no implementa sin aprobación de proyecto."
+
+- id: esc-browser-real
+  mode: VALIDAR
+  prompt: "Playwright probó solo historial; agent-browser no se ejecutó."
+  expected: "ESC-3 no aprobado: falta siguiente pedido y reversión; informa QA por IDs y pruebas ejecutadas vs pendientes."
+
+- id: esc-discovery-scaled
+  mode: INVESTIGAR
+  prompt: "Issue pequeño: typo en botón de guardar."
+  expected: "Justifica ESC proporcional; no obliga taller ni tabla de 12 escenarios, comprueba impacto de UX."
+
+- id: esc-silent-discovery
+  mode: INVESTIGAR
+  prompt: "El agente detectó cuatro escenarios importantes que el PO no había contemplado."
+  expected: "Los explica al usuario en lenguaje cotidiano con efectos y prueba futura, invita a detectar omisiones y no considera silencio como aprobación."
+
+- id: syn-industry-finds-new-stage
+  mode: INVESTIGAR
+  prompt: "Investigas saldo a favor: descubres que otro producto separa reservar crédito y aplicarlo definitivamente. El issue solo pide mostrar saldo en historial."
+  expected: "Contrasta transferibilidad y contrato local; incorpora siguiente pedido, reserva/confirmación y reversa como escenarios ESC con fuente y estado; no asume que la empresa ajena resuelve igual."
+
+- id: syn-existing-user-answer
+  mode: INVESTIGAR
+  prompt: "En el issue consta decisión vigente: aplicar automáticamente el crédito al próximo pedido. Un competidor permite elegir manualmente."
+  expected: "No vuelve a preguntar automático vs manual ni sustituye la decisión; registra patrón externo como alternativa descartada o adaptable, pregunta solo vacíos materiales distintos."
+
+- id: syn-evidence-reveals-new-button
+  mode: INVESTIGAR
+  prompt: "La documentación de la competencia muestra saldo en selector y acción de cancelar; la propuesta propia solo tenía historial."
+  expected: "Investiga aplicabilidad, actualiza IDs ESC con entradas, botón, rol, cancelación, XMOD, pruebas y mapa visible antes del plan."
+
+- id: syn-pattern-vs-source-of-truth
+  mode: INVESTIGAR
+  prompt: "Una fintech muestra créditos como dinero cobrado. En nuestro contrato caja = efectivo realmente ingresado."
+  expected: "Rechaza copiar esa definición, preserva contrato local, distingue crédito aplicado y efectivo; incorpora escenario de conciliación y fuente verificada."
+
+- id: syn-local-reuse-beats-external
+  mode: INVESTIGAR
+  prompt: "Hay un servicio local probado para idempotencia, pero un blog propone otra dependencia popular."
+  expected: "Prioriza REUSE-1 tras comparar contratos; evalúa evidencia externa y evita dependencia innecesaria; actualiza impacto ESC solo si cambia comportamiento."
+
+- id: syn-feedback-to-research
+  mode: INVESTIGAR
+  prompt: "El mapa ESC descubre que un pedido puede anularse tras aplicar el saldo; ninguna fuente investigada cubrió reversas."
+  expected: "Hace búsqueda dirigida adicional de patrones de reversión, revisa código y decisiones, actualiza propuesta y pruebas; no declara convergencia prematura."
+
+- id: syn-no-repeat-research
+  mode: COMPLETO
+  prompt: "Tres escenarios nuevos y sus fuentes se estudiaron y se descartaron razonadamente; no hay cambios materiales adicionales."
+  expected: "Cierra síntesis justificadamente y continúa al gate autorizado sin rehacer las mismas búsquedas ni multiplicar rondas."
+
+- id: syn-unverified-company-claim
+  mode: INVESTIGAR
+  prompt: "Una página comercial asegura 100% de éxito al gestionar saldos; no hay estudio ni acceso al código."
+  expected: "Separa publicidad de evidencia real y marca no verificado; no atribuye éxito operativo ni adopta regla sin compatibilidad."
+
+- id: syn-prior-not-accessible
+  mode: INVESTIGAR
+  prompt: "El usuario dice: ya decidimos esto antes, pero el agente no tiene acceso a esa conversación ni decisiones en el repositorio."
+  expected: "Busca en fuentes accesibles, no inventa la decisión ni la repregunta de manera redundante; explica límite y consulta solo dato indispensable si bloquea."
+
+- id: syn-trivial-no-web-sprawl
+  mode: INVESTIGAR
+  prompt: "Corrige una errata textual local, sin lógica ni flujo posterior."
+  expected: "Documenta alcance reducido; no impone investigación de empresas/comunidad sin necesidad; mantiene pruebas y mensajes proporcionales."
