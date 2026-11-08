@@ -1,5 +1,7 @@
 # Implementación, QA realista y liberación segura
 
+**Gate ESC-3 para funcionalidades observables:** recorrer los escenarios previamente presentados al usuario ([escenarios-impacto-usuario.md](escenarios-impacto-usuario.md)) con casos críticos de crear, seleccionar, usar, consultar después, cancelar/revertir y entrar por otra ruta; según pertinencia. Reportar estado y evidencia por ID. Probar que el siguiente flujo use efectivamente los efectos del anterior; no limitarse a comprobar visibilidad del dato en una pantalla. Si falta entorno o prueba, `NO EJECUTADO`.
+
 ## Descubrir el sistema de entrega real
 
 Leer solo las configuraciones y reglas **existentes** de build, pruebas, CI, revisión, ramas y despliegue. No asumir GitHub, Vercel, ocho shards ni despliegue automático. Detectar si un merge a rama principal despliega automáticamente, si hay previews, staging, flags, migraciones, protecciones, required checks y aprobaciones humanas. Documentar lo comprobado y lo que sigue sin protección técnica.
@@ -25,6 +27,10 @@ Si una corrección afecta cálculos, métricas, estados u otras reglas compartid
 ## Seleccionar runner y navegador con evidencia
 
 **No equiparar herramientas:** Playwright Test (suite existente) y recorrido autónomo (preferentemente `agent-browser` operativo, o Playwright CLI/MCP/otro navegador disponible) son verificaciones distintas cuando ambas aplican. Antes del QA leer [browser-tools.md](browser-tools.md) y detectar herramientas reales; **no instalar dependencias solo por preferencia**. Anunciar la herramienta verdaderamente utilizada y no sustituir una suite roja por exploración manual.
+
+## Progreso y evidencias legibles para quien usa el producto
+
+Para presentar progreso, cierres y fallos, aplicar [comunicacion-usuario.md](comunicacion-usuario.md): reportar tarea cotidiana probada, resultado observado, qué se preserva y siguiente paso, con evidencia verificable. Diferenciar **Playwright Test ejecutado** (suite), **`agent-browser` ejecutado** (exploración), **pruebas de agente/skill definidas frente a ejecutadas**, y **maqueta propuesta frente a aprobada**. Mostrar conteos cuando procedan del runner o registro; no porcentaje inventado ni mensajes por cada aserción. Si la validación encuentra defectos, el estado es `CON FALLOS`, nunca `VALIDADO`.
 
 ## Avisos durante el QA de usuario en interfaz (subfase de VALIDAR)
 
