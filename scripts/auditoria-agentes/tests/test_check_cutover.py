@@ -32,6 +32,18 @@ class CutoverTests(unittest.TestCase):
         self.assertEqual(result["pendientes_semanticos"],0)
         self.assertEqual(result["estado"],"BLOQUEADO")
         self.assertEqual(next(x for x in result["checks"] if x["id"]=="runtime-codex")["estado"],"FAIL")
+    def test_line_marking_cannot_substitute_atomic_review(self):
+        with self.matrix.open("w",encoding="utf-8",newline="") as fh:
+            w=csv.writer(fh)
+            w.writerow(["linea_original","clase","destino","certificacion_semantica"])
+            for n in range(1,799):
+                w.writerow([n,"REGLA","docs/x.md","VERIFICADA_IDENTICA"])
+        result=gate.evaluar(self.repo,self.matrix,self.ev)
+        self.assertEqual(result["pendientes_semanticos"],0)
+        self.assertEqual(result["atomos_revisados"],0)
+        atom=next(x for x in result["checks"] if x["id"]=="obligaciones-atomicas-con-evidencia")
+        self.assertEqual(atom["estado"],"FAIL")
+
     def test_github_blob(self):
         self.assertEqual(gate.blob_sha(b"hello\n"),"ce013625030ba8dba906f756967f9e9ca394464a")
     def test_duplicates_block(self):
