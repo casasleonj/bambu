@@ -31,6 +31,7 @@ beforeEach(() => {
     ok: true, status: 200,
     json: async () => url.startsWith('/api/config') ? { config: { valor: '10000' } }
       : url === '/api/cierre/last' ? { cierre: null }
+      : url === '/api/cierre/pendientes' ? { hoy: '2026-11-08', dias: [] }
       : { cierre, status: 'COMPLETO', embarquesPendientes: [] },
   }))
   vi.stubGlobal('fetch', fetchMock)
