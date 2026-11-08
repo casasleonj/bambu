@@ -14,7 +14,7 @@ vi.mock('@/lib/realtime', () => ({ publishRealtimeEvent: vi.fn().mockResolvedVal
 vi.mock('@/lib/notifications/notify-event', () => ({ notifyEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn().mockResolvedValue(undefined) }))
 
-import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
+import { testPrisma, resetAndSeed, disconnect, getAdminUser, registrarBaseDia } from './setup'
 import { POST as cerrar } from '@/app/api/cierre/route'
 import { GET as pendientes } from '@/app/api/cierre/pendientes/route'
 import { startOfDayInBogota } from '@/lib/date-helpers'
@@ -35,11 +35,13 @@ async function gastoEn(fecha: string) {
   })
 }
 
-function post(body: Record<string, unknown>) {
+async function post(body: Record<string, unknown>) {
+  // #688: el cierre exige la base de caja de esa fecha; estas pruebas son del salto de días, no de la base.
+  if (typeof body.fecha === 'string') await registrarBaseDia(body.fecha, 50000)
   return cerrar(new NextRequest('http://localhost/api/cierre', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ baseDia: 0, stockIniAgua: 0, prodAgua: 0, stockFinAgua: 0, stockIniHielo: 0, prodHielo: 0, stockFinHielo: 0, salarios: 0, ...body }),
+    body: JSON.stringify({ baseDia: 50000, stockIniAgua: 0, prodAgua: 0, stockFinAgua: 0, stockIniHielo: 0, prodHielo: 0, stockFinHielo: 0, salarios: 0, ...body }),
   }))
 }
 

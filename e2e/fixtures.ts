@@ -576,6 +576,15 @@ export async function apiPost(page: Page, path: string, data: unknown) {
   return page.request.post(`${BASE}${path}`, { data })
 }
 
+/**
+ * #688 — el cierre exige la base de caja de ESA fecha (Config `BASE_DIA_<fecha>`). La registra por la misma API que usa
+ * «Caja base»; los E2E que cierran o muestran un día la llaman antes, con el mismo valor que envían en `baseDia`.
+ */
+export async function registrarBaseDia(page: Page, fecha: string, valor = 100000) {
+  const res = await apiPost(page, '/api/config', { clave: `BASE_DIA_${fecha}`, valor: String(valor) })
+  if (!res.ok()) throw new Error(`No se pudo registrar la base de caja de ${fecha}: ${res.status()}`)
+}
+
 export async function apiGet(page: Page, path: string) {
   return page.request.get(`${BASE}${path}`)
 }

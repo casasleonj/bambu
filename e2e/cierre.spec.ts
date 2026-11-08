@@ -1,5 +1,5 @@
 // @tests api/cierre, api/cierre-dia, api/embarque, api/pedido, api/trabajador
-import { test, expect, loginAs, goto, apiPost, apiGet, resetDatabase } from './fixtures'
+import { test, expect, loginAs, goto, apiPost, apiGet, resetDatabase, registrarBaseDia } from './fixtures'
 
 let _uniqueDateOffset = 0
 function getUniqueFutureDate(): string {
@@ -77,6 +77,7 @@ test.describe('Cierre', () => {
   test('admin can close day via API', async ({ page }) => {
     await loginAs(page, 'admin')
     const fecha = getUniqueFutureDate()
+    await registrarBaseDia(page, fecha, 100000) // #688
     const res = await apiPost(page, '/api/cierre', {
       fecha,
       baseDia: 100000,
@@ -99,6 +100,7 @@ test.describe('Cierre', () => {
   test('double close same day fails', async ({ page }) => {
     await loginAs(page, 'admin')
     const fecha = getUniqueFutureDate()
+    await registrarBaseDia(page, fecha, 100000) // #688
     const data = {
       fecha,
       baseDia: 100000,
@@ -171,6 +173,7 @@ test.describe('Cierre', () => {
       return
     }
     const today = new Date().toISOString().split('T')[0]
+    await registrarBaseDia(page, today, 100000) // #688
     const cierreRes = await apiPost(page, '/api/cierre', {
       fecha: today,
       baseDia: 100000,
@@ -191,6 +194,7 @@ test.describe('Cierre', () => {
   test('post-cierre: ventas nocturnas aparecen despues del cierre', async ({ page }) => {
     await loginAs(page, 'admin')
     const fecha = getUniqueFutureDate()
+    await registrarBaseDia(page, fecha, 50000) // #688
     // 1. Cerrar el día
     const cierreRes = await apiPost(page, '/api/cierre', {
       fecha,

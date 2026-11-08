@@ -16,7 +16,7 @@ vi.mock('@/lib/realtime', () => ({ publishRealtimeEvent: vi.fn().mockResolvedVal
 vi.mock('@/lib/notifications/notify-event', () => ({ notifyEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn().mockResolvedValue(undefined) }))
 
-import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
+import { testPrisma, resetAndSeed, disconnect, getAdminUser, registrarBaseDia } from './setup'
 import { GET as comisionDelDia } from '@/app/api/nomina/dia/route'
 import { POST as pagarComision } from '@/app/api/nomina/dia/pagar/route'
 import { POST as crearNomina } from '@/app/api/nomina/route'
@@ -155,6 +155,7 @@ describe('#499 — pago de la comisión del repartidor (Postgres real)', () => {
     const pagadoHoy = sumar(await testPrisma.pagoComisionRepartidor.findMany())
     expect(pagadoHoy).toBe((5 + 2 + 3 + 1 + 2) * TARIFA) // r1 (5+2), r2 (3), r3 (1) y el de la carrera (2)
 
+    await registrarBaseDia(HOY, 1000) // #688
     const res = await cerrarDia(json('/api/cierre', {
       fecha: HOY, baseDia: 1000, comisiones: 999_999, salarios: 0,
       stockIniAgua: 0, prodAgua: 0, stockFinAgua: 0, stockIniHielo: 0, prodHielo: 0, stockFinHielo: 0,

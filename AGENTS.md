@@ -586,7 +586,7 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
 
    42. **Cierre de caja: encabezados sin solapamientos y efectivo inicial en un solo lugar (#665 y #666)**: solo presentación; ninguna cifra ni regla de dinero cambia.
       - **Encabezado del desplegable** (`desplegable.tsx`): en móvil el título ocupa todo el ancho y el resumen (cantidad e importe) va en una segunda línea; desde 640 px va a la derecha. Se quitó la `insignia` (un número suelto junto al importe confundía): la cantidad va dentro del `resumen`. «Pagos por confirmar» dice «Total: N pagos · $X» y debajo separa «Hoy» de «Días anteriores» (`pc.count/total` y `diasPreviosCount/Total`, que ya traía el cierre).
-      - **Efectivo inicial** (`cierre-efectivo-esperado.tsx`): el campo de la sección 2 desapareció (la sección ahora se llama «Inventario»). El valor se ve en la ficha «Empezó con» de la sección 1; solo si falta (0) la ficha se vuelve un aviso con el campo, que no desaparece al teclear. El cierre sigue exigiendo base > 0. El valor sale de Config `BASE_DIA_<fecha>` (o `BASE_DIA`), que fija el modal de base de caja.
+      - **Efectivo inicial** (#666, reemplazado por #688, Known Issue #46): el campo de la sección 2 desapareció y el cierre ya no ofrece un campo local para escribirlo.
       - **Anti-patrón a evitar**: un número suelto (insignia) junto a un importe que suma cosas distintas; un `whitespace-nowrap shrink-0` en una fila flex con un título que debe poder envolver.
       - Pruebas: `desplegable.test.tsx`, `cierre-desglose-cobros.test.tsx`, `cierre-efectivo-esperado.test.tsx`, `cierre-adversarial.test.tsx`, E2E `cierre-desglose-631.spec.ts` (mide el diseño en 360 px y escritorio), `cierre-511-513.spec.ts`.
 
@@ -613,6 +613,14 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
       - **Sin inventar**: si las entregas por día no son confiables (históricas, sin cantidades, que no suman el acumulado) o no reproducen lo que el dinero cuenta, el pedido queda `SIN_DETALLE`/`HISTORICO` y se mantiene el aviso «Por conciliar».
       - **Anti-patrón a evitar**: mostrar las unidades del pedido como si fueran las entregadas, o dar por completo un pedido en el día de su creación o en un día anterior a la entrega que lo completó.
       - Pruebas: `comision-detalle-pedidos.test.ts`, `comision-repartidor-detalle.test.tsx`, integración `comision-detalle-622.test.ts` (Postgres: parcial, completa otro día, dos embarques, histórico, misión con ventas en ruta, suma = embarque), E2E `comision-repartidor-dia.spec.ts`.
+
+   46. **La base de caja del cierre es la ingresada para esa fecha y el cierre solo la lee (#688)**: el efectivo con el que empezó el día sale de Config `BASE_DIA_<fecha>` (la que se ingresa al empezar el día o se edita en «Caja base»). El cierre no la escribe, no usa el valor por defecto `BASE_DIA` en silencio y no cierra con una vieja.
+      - **Pantalla** (`use-base-caja-cierre.ts`, `base-caja-cierre.tsx`): se relee al volver a la pestaña, cada 60 s, al guardarla en «Caja base» (evento `base-caja-actualizada`) y justo antes de cerrar; si cambió con la pantalla abierta avisa «antes → ahora» y el efecto en lo que debe haber. La ficha dice de dónde viene («Base de caja de hoy · actualizada 7:42 a. m.»; «Editar en Caja base» solo ADMIN/ASISTENTE, hoy y día abierto). Sin base: «—», aviso y «Cerrar Día» bloqueado; hoy abre el modal de base de caja y un día atrasado la guarda como la base de esa fecha (misma escritura `POST /api/config`).
+      - **Servidor** (`base-caja-dia.ts`, `POST /api/cierre`): dentro del lock del cierre, `exigirBaseVigente` → 422 `BASE_FALTANTE` si esa fecha no tiene base (o es 0) y 409 `BASE_CAMBIO` (con `impacto.baseVigente`) si la base enviada no es la vigente. Un cierre ya registrado sigue respondiendo lo de siempre.
+      - **Pruebas que cierran el día**: deben registrar la base de esa fecha antes (`registrarBaseDia` en `integration/setup.ts` y en `e2e/fixtures.ts`) y mandar el mismo valor en `baseDia`.
+      - **Pendiente**: `POST /api/cierre-dia` (solo ADMIN, sin uso en la interfaz) inserta un cierre crudo y no aplica esta regla.
+      - **Anti-patrón a evitar**: un valor por defecto silencioso para un dato de dinero; un campo local que parece editar un dato cuya fuente está en otro lugar; confiar en el valor que manda la pantalla para una regla de dinero.
+      - Pruebas: `use-base-caja-cierre.test.tsx`, `base-caja-cierre.test.tsx`, `cierre-adversarial.test.tsx`, integración `cierre-base-caja-688.test.ts`, E2E `cierre-base-caja-688.spec.ts`.
 
 ## Registro de tareas
 

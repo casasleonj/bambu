@@ -18,6 +18,7 @@ import { calcularNetoCierre, calcularEfectivoEsperado } from '@/lib/cierre-total
 import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
 import { diasObligatoriosAntesDe, type DiaHueco } from '@/lib/cierre-huecos'
 import { getConfig } from '@/lib/config'
+import { exigirBaseVigente, BaseCambioError, BaseFaltanteError } from '@/lib/base-caja-dia'
 
 /** #306: hay días anteriores sin cerrar que tuvieron operación (o son demasiados para revisarlos). */
 class HuecoConOperacionError extends Error {
@@ -226,6 +227,10 @@ export async function POST(request: NextRequest) {
           throw new Error('CIERRE_YA_EXISTE')
         }
 
+        // #688: la base de caja es la ingresada para esa fecha. Sin ella, o si la que mandó la pantalla ya no es
+        // la vigente (alguien la editó), no se cierra: el efectivo que debe haber saldría de un dato viejo o inventado.
+        await exigirBaseVigente(tx, fechaStr, parsed.data.baseDia)
+
         // 4. Verify no open embarques
         const embarquesAbiertos = await tx.embarque.count({
           where: whereEmbarquesPendientesCierreDia({ gte: startOfDay, lt: nextDay }),
@@ -348,6 +353,14 @@ export async function POST(request: NextRequest) {
           400,
           { code: 'CIERRE_HUECO', formErrors: error.dias.map((d) => `${d.fecha}: ${d.operaciones} registros`) },
         )
+      }
+      if (error instanceof BaseFaltanteError) {
+        return apiError(`Falta la base de caja del ${error.fecha}. Ingrésala antes de cerrar el día.`, 422, { code: 'BASE_FALTANTE' })
+      }
+      if (error instanceof BaseCambioError) {
+        return apiError('La base de caja cambió mientras revisabas. Revisa los números y confirma de nuevo.', 409, {
+          code: 'BASE_CAMBIO', impacto: { baseVigente: error.baseVigente, baseEnviada: error.baseEnviada },
+        })
       }
       if (lastError.message === 'CIERRE_YA_EXISTE') {
         return apiError('Ya existe un cierre para esta fecha', 409)

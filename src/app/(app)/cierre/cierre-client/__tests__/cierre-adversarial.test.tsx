@@ -183,3 +183,84 @@ describe('maqueta aprobada: confirmación y recuperación', () => {
     expect(screen.getByRole('button', { name: 'Cerrar Día' })).toBeDisabled()
   })
 })
+
+// #688 — la base de caja la ingresa «Caja base»; el cierre solo la lee, la mantiene actualizada y no cierra con una vieja o inexistente.
+describe('#688 base de caja en el cierre', () => {
+  const configCon = (valor: string | null) => async (url: string, options?: RequestInit) => {
+    const original = fetchMock.getMockImplementation()
+    void original
+    if (url.startsWith('/api/config?clave=BASE_DIA_')) {
+      return valor === null
+        ? { ok: false, status: 404, json: async () => ({ success: false }) }
+        : { ok: true, status: 200, json: async () => ({ config: { valor, updatedAt: '2026-03-14T12:42:00.000Z' } }) }
+    }
+    if (options?.method === 'POST') return { ok: true, status: 201, json: async () => ({ cierre: { netoCaja: 20000 } }) }
+    return {
+      ok: true, status: 200,
+      json: async () => url === '/api/cierre/last' ? { cierre: null } : { cierre, status: 'COMPLETO', embarquesPendientes: [] },
+    }
+  }
+
+  it('sin base de ese día no inventa un valor: «—», aviso para ingresarla y «Cerrar Día» bloqueado, sin consultar el valor por defecto', async () => {
+    fetchMock.mockImplementation(configCon(null))
+    render(<CierreClient initialFecha="2026-03-14" />)
+    expect(await screen.findByTestId('base-caja-faltante')).toHaveTextContent('Falta la base de caja del 14 mar')
+    expect(screen.getByTestId('efectivo-debe-haber')).toHaveTextContent('—')
+    fireEvent.click(screen.getByRole('button', { name: 'Conteo de prueba' }))
+    expect(screen.getByRole('button', { name: 'Cerrar Día' })).toBeDisabled()
+    expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith('clave=BASE_DIA'))).toBe(false)
+    expect(envios()).toHaveLength(0)
+  })
+
+  it('con base ingresada la ficha dice su fuente y el cierre no ofrece ningún campo para escribirla', async () => {
+    fetchMock.mockImplementation(configCon('10000'))
+    render(<CierreClient initialFecha="2026-03-14" />)
+    await waitFor(() => expect(screen.getByTestId('base-caja-fuente')).toHaveTextContent('Base de caja del 14 mar · actualizada'))
+    expect(screen.getByTestId('cierre-efectivo-esperado')).toHaveTextContent(/Empezó con\s*\$\s*10\.000/)
+    expect(screen.queryByLabelText('Efectivo con el que empezó el día')).toBeNull()
+    expect(screen.queryByTestId('base-caja-faltante')).toBeNull()
+  })
+
+  it('si la base cambió antes de confirmar, no se abre la confirmación ni se envía: se avisa antes → ahora y se actualiza lo que debe haber', async () => {
+    let valor = '10000'
+    fetchMock.mockImplementation(async (url: string, options?: RequestInit) => configCon(valor)(url, options))
+    render(<CierreClient initialFecha="2026-03-14" />)
+    await waitFor(() => expect(screen.getByTestId('cierre-efectivo-esperado')).toHaveTextContent(/Empezó con\s*\$\s*10\.000/))
+    fireEvent.click(screen.getByRole('button', { name: 'Conteo de prueba' }))
+    valor = '15000' // alguien editó la base en «Caja base»
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar Día' }))
+    const dialogo = await screen.findByRole('alertdialog')
+    expect(dialogo).toHaveTextContent('La base de caja cambió')
+    expect(dialogo).toHaveTextContent(/\$\s*10\.000/); expect(dialogo).toHaveTextContent(/\$\s*15\.000/)
+    expect(screen.queryByRole('dialog', { name: 'Confirmar cierre del día' })).toBeNull()
+    expect(envios()).toHaveLength(0)
+    fireEvent.click(screen.getByTestId('base-caja-revisar'))
+    expect(screen.getByTestId('cierre-efectivo-esperado')).toHaveTextContent(/Empezó con\s*\$\s*15\.000/)
+    expect(screen.getByTestId('base-caja-aviso')).toHaveTextContent('Base de caja actualizada')
+    expect(screen.getByTestId('efectivo-debe-haber')).toHaveTextContent(/\$\s*25\.000/) // 15.000 + 5.000 + 5.000
+  })
+
+  it('si el servidor rechaza con BASE_CAMBIO no se cierra y se pide revisar con el valor vigente', async () => {
+    fetchMock.mockImplementation(async (url: string, options?: RequestInit) => options?.method === 'POST'
+      ? { ok: false, status: 409, json: async () => ({ error: { code: 'BASE_CAMBIO', message: 'La base cambió', impacto: { baseVigente: 15000, baseEnviada: 10000 } } }) }
+      : configCon('10000')(url, options))
+    const dialog = await abrirConfirmacion()
+    fireEvent.click(within(dialog).getByRole('checkbox'))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar cierre' }))
+    const aviso = await screen.findByRole('alertdialog')
+    expect(aviso).toHaveTextContent('La base de caja cambió')
+    expect(aviso).toHaveTextContent(/\$\s*15\.000/)
+    expect(screen.queryByRole('heading', { name: 'Día cerrado' })).toBeNull()
+    expect(envios()).toHaveLength(1)
+  })
+
+  it('un día ya cerrado no pide ingresar la base ni la lee de nuevo (usa lo que quedó en su cierre)', async () => {
+    fetchMock.mockImplementation(async (url: string, options?: RequestInit) => url.startsWith('/api/cierre?')
+      ? { ok: true, status: 200, json: async () => ({ cierre: { ...cierre, baseDia: 40000, netoCaja: 20000 }, status: 'CERRADO' }) }
+      : configCon(null)(url, options))
+    render(<CierreClient initialFecha="2026-03-14" />)
+    expect(await screen.findByRole('heading', { name: 'Día cerrado' })).toBeInTheDocument()
+    expect(screen.queryByTestId('base-caja-faltante')).toBeNull()
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+})

@@ -7,7 +7,7 @@
 // después. Este test invoca los handlers REALES contra Postgres.
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest'
 import type { EstadoEmbarque } from '@prisma/client'
-import { testPrisma, resetAndSeed, disconnect } from './setup'
+import { testPrisma, resetAndSeed, disconnect, registrarBaseDia } from './setup'
 import { startOfDayInBogota } from '@/lib/date-helpers'
 
 const authUser = { id: 'placeholder', role: 'ADMIN' }
@@ -27,9 +27,11 @@ function getReq(fecha: string) {
 }
 function postReq(fecha: string) {
   return {
-    json: async () => ({
+    json: async () => {
+      await registrarBaseDia(fecha, 50000) // #688: el cierre exige la base de caja de esa fecha
+      return {
       fecha,
-      baseDia: 0,
+      baseDia: 50000,
       stockIniAgua: 0,
       prodAgua: 0,
       stockFinAgua: 0,
@@ -38,7 +40,8 @@ function postReq(fecha: string) {
       stockFinHielo: 0,
       comisiones: 0,
       salarios: 0,
-    }),
+      }
+    },
   } as unknown as import('next/server').NextRequest
 }
 

@@ -1,5 +1,6 @@
 'use client'
 
+import { avisarBaseCajaActualizada } from '@/lib/client/base-caja-evento'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -195,6 +196,7 @@ export default function BaseCajaModal() {
 
       if (res.ok) {
         persistBaseDia(baseDiaInput)
+        avisarBaseCajaActualizada()
         toast.success('Base de caja guardada')
         closeModal()
       } else {
