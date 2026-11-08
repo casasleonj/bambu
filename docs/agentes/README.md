@@ -35,6 +35,11 @@ Se han colocado seis `AGENTS.md` acotados por directorio, en `src/app/api/`, `sr
 
 Para Claude Code, `.claude/rules/*.md` usa `paths:` para indicar cuándo recuperar la guía local; para Codex/OpenCode los `AGENTS.md` anidados son los mecanismos nativos de instrucción por ámbito. Son mecanismos de **descubrimiento**, no prueba de obediencia. `scripts/auditoria-agentes/check_scoped_rules.py` verifica rutas y normas críticas, no rendimiento de agentes.
 
+## Reconciliación semántica en curso
+
+- [Catálogo de contratos con condiciones y excepciones](contratos-operativos.md), con vigencia aún por comprobar.
+- [Reconciliación documentada del PR #718](auditoria-2026-11/RECONCILIACION_SEMANTICA_PR718.md), con pendientes diferenciados de cláusulas descompuestas.
+
 ## Invariantes de la reestructuración
 
 El [snapshot original de seis partes](fuente-original/) conserva **todo el `AGENTS.md` anterior**, incluyendo el protocolo viejo que tenía el conflicto #704. Es **evidencia histórica** y no debe ser leído como autoridad paralela a las guías canónicas. El verificador CI exige identidad byte-a-byte de su concatenación respecto al blob Git `4182d57064c7f89c2eea39e86d1e0b469179bb06`.

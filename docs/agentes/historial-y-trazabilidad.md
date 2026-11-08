@@ -4,6 +4,8 @@ La sección «Known Issues» original se conserva **literalmente** en [fuente-or
 
 **[Índice de 49 registros históricos por título y ancla](indice-historico-49.md)**. Cada entrada debe consultarse en su contexto, sin asumir que su estado de 2026 es todavía el actual.
 
+Los contratos de incidentes significativos están también descompuestos como preanálisis en [contratos operativos](contratos-operativos.md). Consultar decisiones posteriores antes de tratarlos como vigentes.
+
 **Antes de utilizar un elemento histórico:**
 1. Identificar su número **y título**, no solo el número: el 13 aparece duplicado y algunos números posteriores se reutilizaron. Conservar ambos rastros hasta deduplicación comprobada; issue #335 registra esa deuda.
 2. Determinar si es HECHO, DECISIÓN, PROPUESTA, DESCARTADO, OBSOLETO o EVIDENCIA HISTÓRICA a partir de PR/Issue y decisiones posteriores.

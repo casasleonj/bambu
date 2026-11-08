@@ -13,6 +13,8 @@ La fuente original `AGENTS.md` documentó el stack, configuración, accesos, esq
 - Antes de cambiar una función compartida, usar JL REUSE y XMOD; no equiparar dos totales con definición diferente.
 - No utilizar credenciales demostrativas mencionadas en documentación como acceso legítimo; nunca publicar secretos reales.
 
+Para contratos de dominio y excepciones extraídos del documento original consultar [contratos operativos](contratos-operativos.md), sin suponer que la nota histórica es el estado técnico de `main`.
+
 ## Índice rápido
 
 - Configuración, toolchain y base de datos: fuente original inicio.

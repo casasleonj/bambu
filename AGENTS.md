@@ -43,7 +43,7 @@ R1: recuperar decisiones y código antes de preguntar; investigar alternativas, 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
-[Reglas completas de código](docs/agentes/reglas-codigo.md) · [Contratos de arquitectura](docs/agentes/contratos-tecnicos.md).
+[Reglas completas de código](docs/agentes/reglas-codigo.md) · [Contratos de arquitectura](docs/agentes/contratos-tecnicos.md) · [Catálogo de contratos con condiciones y excepciones](docs/agentes/contratos-operativos.md).
 
 ## 6. Backlog, ramas, CI y liberación
 
