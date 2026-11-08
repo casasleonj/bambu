@@ -37,6 +37,7 @@ NECESARIOS = (
     "docs/agentes/contratos-tecnicos.md",
     "docs/agentes/historial-y-trazabilidad.md",
     "docs/agentes/README.md",
+    "docs/agentes/indice-historico-49.md",
     ".agents/skills/jl/SKILL.md",
     ".agents/skills/hallazgo/SKILL.md",
     "CLAUDE.md",

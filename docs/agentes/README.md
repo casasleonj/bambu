@@ -9,6 +9,7 @@
 - [`flujo-entrega.md`](flujo-entrega.md) es **canónico** para ramas, fases, CI, QA, migraciones, merge, integración y rollback.
 - [`reglas-codigo.md`](reglas-codigo.md) conserva convenciones de código, fuentes y contrato de respuesta.
 - [`contratos-tecnicos.md`](contratos-tecnicos.md) dirige a las decisiones técnicas documentadas, versión y verificación con `main`.
+- [`indice-historico-49.md`](indice-historico-49.md) indexa 49 registros históricos con sus anclas (los números 13, 43 y 45 se repiten).
 - [`historial-y-trazabilidad.md`](historial-y-trazabilidad.md) dirige a 49 bloques de incidentes y contratos históricos, sin declarar automáticamente obsoleto o vigente ninguno.
 - [`auditoria-2026-11/`](auditoria-2026-11/README.md) contiene matriz, evidencia, limitaciones de pruebas por agente y gate, no es documento normativo.
 

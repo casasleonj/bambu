@@ -31,6 +31,8 @@ jobs:
         run: python -m unittest discover -s scripts/auditoria-agentes/tests -v
       - name: Verify modularization and exact original snapshot
         run: python scripts/auditoria-agentes/check_modularizacion.py --repo . --salida /tmp/agent-modularization-report.json
+      - name: Verify 49 historic records indexed and linked
+        run: python scripts/auditoria-agentes/check_indice_historico.py --repo .
       - name: Emit conservative audit report
         shell: bash
         run: |
