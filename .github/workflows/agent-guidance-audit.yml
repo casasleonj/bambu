@@ -1,0 +1,53 @@
+name: Agent Instructions Audit (preparatory)
+
+on:
+  pull_request:
+    paths:
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+      - 'opencode.json'
+      - '.agents/skills/**'
+      - '.claude/skills/**'
+      - '.opencode/prompts/**'
+      - 'scripts/auditoria-agentes/**'
+      - 'docs/agentes/auditoria-2026-11/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Unit tests of verification gate
+        run: python -m unittest discover -s scripts/auditoria-agentes/tests -v
+      - name: Emit conservative audit report
+        shell: bash
+        run: |
+          python scripts/auditoria-agentes/check_cutover.py \
+            --repo . \
+            --matriz docs/agentes/auditoria-2026-11/matriz_fuente_798.csv \
+            --evidencia docs/agentes/auditoria-2026-11/evidencia_no_ejecutada.json \
+            --salida /tmp/agent-guidance-audit.json
+      - name: Block premature AGENTS.md cutover
+        shell: bash
+        run: |
+          git diff --name-only "${{ github.event.pull_request.base.sha || 'HEAD~1' }}" HEAD > /tmp/changed-files
+          if grep -qx 'AGENTS.md' /tmp/changed-files; then
+            python scripts/auditoria-agentes/check_cutover.py \
+              --repo . \
+              --matriz docs/agentes/auditoria-2026-11/matriz_fuente_798.csv \
+              --evidencia docs/agentes/auditoria-2026-11/evidencia_no_ejecutada.json \
+              --salida /tmp/agent-guidance-cutover.json \
+              --exigir-corte
+          else
+            echo "AGENTS.md intacto: no intentar declarar el cutover validado."
+          fi
