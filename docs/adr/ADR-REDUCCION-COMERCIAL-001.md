@@ -41,7 +41,7 @@ Fuente: tercer listado del PO y aprobación de los ajustes mínimos para entrega
 
 ## Interfaz (maqueta v2 aprobada por el PO el 2026-11-01, #541)
 
-Flag `NEXT_PUBLIC_CIERRE_V2` (apagado). El principio: el sistema completa lo que ya sabe y el usuario decide solo lo que no se puede inferir.
+Flag `NEXT_PUBLIC_CIERRE_V2` (activo en producción desde el 2026-11-01, ver #447). El principio: el sistema completa lo que ya sabe y el usuario decide solo lo que no se puede inferir.
 
 | Dato | Quién lo resuelve |
 |---|---|
@@ -73,5 +73,5 @@ Flag `NEXT_PUBLIC_CIERRE_V2` (apagado). El principio: el sistema completa lo que
 ## Consecuencias
 
 - La migración es solo aditiva: se aplica en producción **antes** del merge (AGENTS.md, paso 7).
-- Nadie tiene el permiso al desplegar: un ADMIN debe asignarlo desde Administración → Usuarios. La interfaz no se ve hasta encender `NEXT_PUBLIC_CIERRE_V2`.
+- Nadie tiene el permiso al desplegar: un ADMIN debe asignarlo desde Administración → Usuarios. La interfaz depende de `NEXT_PUBLIC_CIERRE_V2` (hoy activo en producción).
 - El caso «pagó de más» lo resuelve ADR-SALDO-FAVOR-EXCEDENTE-001 (#533); la pantalla sigue pendiente de maqueta.

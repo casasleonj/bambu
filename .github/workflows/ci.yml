@@ -316,74 +316,10 @@ jobs:
         run: npx prisma db push
 
       - name: Apply raw-SQL sequence migrations (not covered by db push)
-        # Mismo motivo/patrón que el job E2E: `prisma db push` no crea las
-        # secuencias raw-SQL (factura/abono/embarque/compra_insumo numero_seq)
-        # que getNextNumero() necesita. Ver comentario del job e2e para el
-        # detalle completo.
-        #
-        # También aplica (bug #2 y #3 encontrados en la primera corrida real
-        # de este job, PR #120):
-        #   - pg_trgm: la extensión solo se crea vía migration.sql
-        #     (20260530_add_pg_trgm_search, 20260618_add_import_staging);
-        #     `db push` no ejecuta CREATE EXTENSION. Sin ella, similarity()/
-        #     word_similarity() (usadas por src/lib/import/matcher.ts,
-        #     supplier-matcher.ts, worker-matcher.ts) fallan con
-        #     "function similarity(text, text) does not exist" — root cause
-        #     de los fallos en import-historico.test.ts.
-        #   - 20260817_plan_maestro_ledgers: migración consolidada e
-        #     idempotente (CREATE TABLE/INDEX/CONSTRAINT IF NOT EXISTS, DO $$
-        #     IF NOT EXISTS por cada CHECK/FK) que agrega, entre otras cosas,
-        #     los CHECK constraints del ledger físico (chk_embarque_movimiento_*,
-        #     chk_obligacion_*, chk_recovery_*) y las secuencias
-        #     pedido_numero_seq/nota_credito_numero_seq — ninguna de las dos
-        #     cosas es expresable en schema.prisma, así que `db push` no las
-        #     crea. Root cause de los fallos en ledger-fisico-constraints.test.ts
-        #     y de parte de los fallos de secuencias-atomicas.test.ts (además
-        #     del bug de this-binding en sequence.ts, ya corregido aparte).
-        #     Las tablas que este archivo declara con CREATE TABLE IF NOT
-        #     EXISTS ya existen (creadas por `db push` desde schema.prisma),
-        #     así que esos statements son no-ops aquí; solo aplican los CHECK/
-        #     índices parciales/secuencias que sí son exclusivos del SQL.
-        run: |
-          export PGPASSWORD=bambu_dev
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "
-            DO \$\$ BEGIN
-              IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'app_write') THEN
-                CREATE ROLE app_write;
-              END IF;
-            END \$\$;
-          "
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260610_add_factura_numero_seq/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260611_add_abono_embarque_seqs/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260619_import_fase2_proveedor_compra_seq/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260817_plan_maestro_ledgers/migration.sql
-          # 20260817 (arriba) crea ReceivableEntry_offlineId_key UNIQUE; esta
-          # migración posterior lo baja a índice normal (bug pagar-fiado con
-          # abonos que cubren 2+ pedidos). Se aplica acá para replicar el
-          # orden de `prisma migrate deploy` de prod.
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260829_receivable_entry_offlineid_not_unique/migration.sql
-          # ADR-CORRECCION-MONETARIA-001 g2.1: el CHECK `chk_correccion_monto_pos`
-          # y los GRANT no son expresables en schema.prisma, así que `db push`
-          # no los crea. Idempotente (IF NOT EXISTS por tabla/índice/FK/CHECK).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260901_add_correccion_abono/migration.sql
-          # G5.5 (ADR-PEDIDO-ESTADO-CANONICO-001 §2): CHECK `chk_pedido_estadopago_proyectado`
-          # no expresable en schema.prisma. `db push` no la crea; sin esta línea
-          # los tests de `pedido-estadopago-check.test.ts` (y cualquier otro que
-          # dependa del CHECK) correrían en CI sin el constraint presente.
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
-          # #401: una sola secuencia para Pedido.numero (DEFAULT + índice único parcial + trigger).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
-          # #427: una sola secuencia para Embarque.numero (mismo patrón que #401).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261103_embarque_numero_autoridad_unica/migration.sql
-          # #402: Pago.ocurridoAt/regularizacionId + tabla Regularizacion (CHECK no expresable en schema.prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261024_pago_tres_fechas_regularizacion/migration.sql
-          # #513: procedencia y vínculo de abonos (CHECK fuera de Prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261027_abono_procedencia_pago/migration.sql
-          # #524: ingreso del sobrante de un cobro de fiados (CHECK fuera de Prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261110_ingreso_saldo_favor/migration.sql
-          # #701: search_clientes(text, int) — función que `db push` no crea. Solo la definición final (CREATE OR REPLACE, idempotente); 20260530 indexa columnas ya eliminadas del schema.
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260729210000_fix_search_clientes_phone_negocio/migration.sql
+        # `prisma db push` no crea secuencias, CHECK, triggers ni pg_trgm. UNA sola lista
+        # (scripts/migraciones-sql-crudas.txt) para CI y para desarrollo local (#714):
+        # antes estaba copiada a mano en los jobs integration, e2e y e2e-hub.
+        run: bash scripts/aplicar-migraciones-sql-crudas.sh
 
       - name: Run integration tests
         run: npm run test:integration
@@ -507,52 +443,10 @@ jobs:
         run: npx prisma db push
 
       - name: Apply raw-SQL sequence migrations (not covered by db push)
-        # `prisma db push` only syncs what's declared in schema.prisma. These
-        # 3 migrations create Postgres sequences (factura_numero_seq,
-        # abono_numero_seq, embarque_numero_seq, compra_insumo_numero_seq)
-        # via raw SQL — db push never creates them, so getNextNumero() (used
-        # by every pedido/venta-libre/recurrente/abono/compra creation) 500s
-        # with `relation "..._seq" does not exist` on any CI-fresh database.
-        # Root cause confirmed by reproducing e2e/offline-resilience.spec.ts
-        # locally against a fresh db-push'd Postgres. The migration files
-        # GRANT to `app_write`, which doesn't exist in this ephemeral
-        # container (only the POSTGRES_USER superuser does) — create it
-        # first so the migrations apply unmodified, same SQL as prod.
-        run: |
-          export PGPASSWORD=bambu_dev
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "
-            DO \$\$ BEGIN
-              IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'app_write') THEN
-                CREATE ROLE app_write;
-              END IF;
-            END \$\$;
-          "
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260610_add_factura_numero_seq/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260611_add_abono_embarque_seqs/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260619_import_fase2_proveedor_compra_seq/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260817_plan_maestro_ledgers/migration.sql
-          # 20260817 (arriba) crea ReceivableEntry_offlineId_key UNIQUE; esta
-          # migración posterior lo baja a índice normal (bug pagar-fiado con
-          # abonos que cubren 2+ pedidos). Se aplica acá para replicar el
-          # orden de `prisma migrate deploy` de prod.
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260829_receivable_entry_offlineid_not_unique/migration.sql
-          # ADR-CORRECCION-MONETARIA-001 g2.1 — CHECK + GRANT no expresables en schema.prisma.
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260901_add_correccion_abono/migration.sql
-          # G5.5 — CHECK `chk_pedido_estadopago_proyectado`, no expresable en schema.prisma.
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
-          # #401: una sola secuencia para Pedido.numero (DEFAULT + índice único parcial + trigger).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
-          # #427: una sola secuencia para Embarque.numero (mismo patrón que #401).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261103_embarque_numero_autoridad_unica/migration.sql
-          # #402: Pago.ocurridoAt/regularizacionId + tabla Regularizacion (CHECK no expresable en schema.prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261024_pago_tres_fechas_regularizacion/migration.sql
-          # #513: procedencia y vínculo de abonos (CHECK fuera de Prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261027_abono_procedencia_pago/migration.sql
-          # #524: ingreso del sobrante de un cobro de fiados (CHECK fuera de Prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261110_ingreso_saldo_favor/migration.sql
-          # #701: search_clientes(text, int) — función que `db push` no crea. Solo la definición final (CREATE OR REPLACE, idempotente); 20260530 indexa columnas ya eliminadas del schema.
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260729210000_fix_search_clientes_phone_negocio/migration.sql
+        # `prisma db push` no crea secuencias, CHECK, triggers ni pg_trgm. UNA sola lista
+        # (scripts/migraciones-sql-crudas.txt) para CI y para desarrollo local (#714):
+        # antes estaba copiada a mano en los jobs integration, e2e y e2e-hub.
+        run: bash scripts/aplicar-migraciones-sql-crudas.sh
 
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts
@@ -740,35 +634,10 @@ jobs:
         run: npx prisma db push
 
       - name: Apply raw-SQL sequence migrations (not covered by db push)
-        run: |
-          export PGPASSWORD=bambu_dev
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "
-            DO \$\$ BEGIN
-              IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'app_write') THEN
-                CREATE ROLE app_write;
-              END IF;
-            END \$\$;
-          "
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260610_add_factura_numero_seq/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260611_add_abono_embarque_seqs/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260619_import_fase2_proveedor_compra_seq/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260817_plan_maestro_ledgers/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260829_receivable_entry_offlineid_not_unique/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260901_add_correccion_abono/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
-          # #401: una sola secuencia para Pedido.numero (DEFAULT + índice único parcial + trigger).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
-          # #427: una sola secuencia para Embarque.numero (mismo patrón que #401).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261103_embarque_numero_autoridad_unica/migration.sql
-          # #402: Pago.ocurridoAt/regularizacionId + tabla Regularizacion (CHECK no expresable en schema.prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261024_pago_tres_fechas_regularizacion/migration.sql
-          # #513: procedencia y vínculo de abonos (CHECK fuera de Prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261027_abono_procedencia_pago/migration.sql
-          # #524: ingreso del sobrante de un cobro de fiados (CHECK fuera de Prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261110_ingreso_saldo_favor/migration.sql
-          # #701: search_clientes(text, int) — función que `db push` no crea. Solo la definición final (CREATE OR REPLACE, idempotente); 20260530 indexa columnas ya eliminadas del schema.
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260729210000_fix_search_clientes_phone_negocio/migration.sql
+        # `prisma db push` no crea secuencias, CHECK, triggers ni pg_trgm. UNA sola lista
+        # (scripts/migraciones-sql-crudas.txt) para CI y para desarrollo local (#714):
+        # antes estaba copiada a mano en los jobs integration, e2e y e2e-hub.
+        run: bash scripts/aplicar-migraciones-sql-crudas.sh
 
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts

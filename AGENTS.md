@@ -67,6 +67,9 @@ npx prisma generate
 # 5. Push schema to local DB
 npx prisma db push
 
+# 5b. Objetos que db push no crea (CHECK, secuencias, triggers): sin esto fallan tests de integración (#714)
+bash scripts/aplicar-migraciones-sql-crudas.sh   # lista: scripts/migraciones-sql-crudas.txt (la misma que usa CI)
+
 # 6. Seed initial data
 npx tsx prisma/seed.ts
 
