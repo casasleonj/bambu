@@ -19,6 +19,19 @@ class RuntimeEvaluatorTests(unittest.TestCase):
     def test_explicit_native_tool_call_is_provisional_evidence(self):
         raw='{"type":"tool_use","name":"skill","input":{"id":"jl"}}'
         self.assertEqual(mod.scan_tool_calls(raw,"jl"),["skill-tool"])
+    def test_fixture_includes_all_scoped_guides(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            repo=Path(__file__).resolve().parents[3]
+            dst=Path(d)/"scratch"
+            dst.mkdir()
+            mod.fixture(repo,dst)
+            for scope in ("src/app/api","src/lib","src/components","src/modules","prisma","e2e"):
+                self.assertTrue((dst/scope/"AGENTS.md").is_file(),scope)
+                self.assertTrue((dst/".claude/rules"/(scope.split("/")[-1] if scope!="src/app/api" else "api")).with_suffix(".md").is_file())
+            self.assertFalse((dst/"src/lib/prisma.ts").exists())
+            self.assertTrue((dst/"src/datos-ficticios.md").exists())
+
     def test_provider_key_is_redacted_from_trace(self):
         secret="sk-TEST-SYNTHETIC-KEY-1234567890"
         raw="tool error: "+secret

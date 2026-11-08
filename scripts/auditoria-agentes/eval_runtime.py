@@ -89,7 +89,20 @@ def fixture(repo,dest):
             dst=dest/source
             dst.parent.mkdir(parents=True,exist_ok=True)
             shutil.copy2(src,dst)
-    for source in [".agents/skills/jl",".agents/skills/hallazgo",".claude/skills/jl",".claude/skills/hallazgo","docs/agentes"]:
+    # Incluir las reglas por directorio y las reglas Claude path-scoped.
+    # Copiar solamente la documentación de instrucciones, jamás datos de la app.
+    for scope in ("src/app/api","src/lib","src/components","src/modules","prisma","e2e"):
+        rule=repo/scope/"AGENTS.md"
+        if rule.is_file():
+            destination=dest/scope/"AGENTS.md"
+            destination.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(rule,destination)
+    domain=repo/"docs/fiados/656-658-entrega.md"
+    if domain.is_file():
+        target_domain=dest/"docs/fiados/656-658-entrega.md"
+        target_domain.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(domain,target_domain)
+    for source in [".claude/rules",".agents/skills/jl",".agents/skills/hallazgo",".claude/skills/jl",".claude/skills/hallazgo","docs/agentes"]:
         src=repo/source
         if src.is_dir():
             shutil.copytree(src,dest/source,dirs_exist_ok=True,symlinks=False)
