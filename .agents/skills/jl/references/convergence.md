@@ -4,9 +4,10 @@
 
 1. Definir causa demostrada o hipótesis; resultados esperados, límites negativos explícitos, invariantes a preservar, no-objetivos y criterios de aceptación. No inventar restricciones por querer ser exhaustivo.
 2. Proponer alternativas **materialmente distintas** si existen (reutilizar, adaptar, construir). Una candidata suficiente es válida si las demás son claramente dominadas o no aplican; justificar.
-3. **Falsación:** buscar deliberadamente evidencia en contra de la candidata favorita, escenarios adversariales, interacciones entre módulos y riesgos introducidos por la propia solución, no solo por el bug original.
-4. Corregir/refinar `vN → debilidad → cambio → nuevo riesgo → evidencia` y comparar con alternativas. Reexaminar tras cambios relevantes.
-5. **Criterio de parada:** riesgos relevantes mitigados o delimitados, invariantes preservadas, efectos transversales considerados, evidencia suficiente para elegir, sin mejora **material** pendiente tras al menos una revisión crítica posterior a la última modificación. Para alto/crítico, realizar una segunda revisión independiente o con hipótesis adversa distinta; si descubre problema, iterar. No exigir rondas arbitrarias sin hallazgos.
+3. **SYN-2, antes de cerrar el diseño:** comprobar que la investigación externa e interna ha alimentado ESC/XMOD/REUSE, que todo escenario crítico y precedente determinante está clasificado, y que no se preguntan decisiones ya confirmadas. Ver [evidence-reuse.md](evidence-reuse.md).
+4. **Falsación:** buscar deliberadamente evidencia en contra de la candidata favorita, escenarios adversariales, interacciones entre módulos y riesgos introducidos por la propia solución, no solo por el bug original.
+5. Corregir/refinar `vN → debilidad → cambio → nuevo riesgo → evidencia` y comparar con alternativas. Reexaminar tras cambios relevantes.
+6. **Criterio de parada:** riesgos relevantes mitigados o delimitados, invariantes preservadas, efectos transversales considerados, evidencia suficiente para elegir, sin mejora **material** pendiente tras al menos una revisión crítica posterior a la última modificación. Para alto/crítico, realizar una segunda revisión independiente o con hipótesis adversa distinta; si descubre problema, iterar. No exigir rondas arbitrarias sin hallazgos.
 
 **Mejora material**: cambia resultado, integridad, seguridad, compatibilidad, funcionamiento del usuario, accesibilidad, recuperabilidad o costo/mantenimiento de modo significativo. Cambios cosméticos de informe no son motivo para reiniciar.
 
