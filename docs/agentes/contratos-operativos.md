@@ -1,6 +1,6 @@
 # Contratos y cláusulas originales descompuestos · Agua Bambú
 
-> **PREANÁLISIS, NO CERTIFICACIÓN DE VIGENCIA.** 193 cláusulas fueron descompuestas conceptualmente por significado, condición y excepción. Cada regla requiere cotejo con decisión posterior, Contexto/Plan Maestro autorizado y código `main`. No se han firmado revisiones humanas ni ejecutado pruebas conductuales de los agentes. Estos son **contratos de regresión por validar**, no órdenes para imponer estados históricos como norma vigente.
+> **PREANÁLISIS, NO CERTIFICACIÓN DE VIGENCIA.** 354 cláusulas fueron descompuestas conceptualmente por significado, condición y excepción. Cada regla requiere cotejo con decisión posterior, Contexto/Plan Maestro autorizado y código `main`. No se han firmado revisiones humanas ni ejecutado pruebas conductuales de los agentes. Estos son **contratos de regresión por validar**, no órdenes para imponer estados históricos como norma vigente.
 
 **Activación:** al investigar un issue, leer solo el dominio relevante de este catálogo, recuperar la fuente original enlazada y contrastar código del SHA actual. Usar JL/XMOD para recorrer los consumidores indirectos. Una contradicción es `BRECHA PLAN ↔ CÓDIGO` o `PENDIENTE`, no un permiso de improvisar.
 
@@ -319,7 +319,7 @@
 
 ## Fuentes y límites
 
-Los seis archivos en [fuente-original/](fuente-original/) preservan exactamente el documento antiguo; son evidencia, **no autoridad normativa paralela**. La matriz [obligaciones_atomicas.csv](auditoria-2026-11/obligaciones_atomicas.csv) incluye 394 pasajes no descompuestos o sin clasificación suficiente. **No llamar completo ni marcar `VERIFICADA` hasta terminar esos pasajes y obtener revisión humana.** Las notas técnicas históricas no demuestran el estado de `main`.
+Los seis archivos en [fuente-original/](fuente-original/) preservan exactamente el documento antiguo; son evidencia, **no autoridad normativa paralela**. La matriz [obligaciones_atomicas.csv](auditoria-2026-11/obligaciones_atomicas.csv) conserva 798 posiciones en 810 registros: 354 cláusulas de preanálisis con condiciones/excepciones y 456 referencias de contexto e historia pendientes de revisión de autoridad (223 estructurales y 233 documentales). No confundir inventario de historia con obligación de agente. **No llamar completo ni marcar `VERIFICADA` hasta terminar esos pasajes y obtener revisión humana.** Las notas técnicas históricas no demuestran el estado de `main`.
 
 
 ## Complemento: segunda pasada crítica (113 cláusulas)

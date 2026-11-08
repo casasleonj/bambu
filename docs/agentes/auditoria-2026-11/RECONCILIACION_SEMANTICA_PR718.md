@@ -2,9 +2,9 @@
 
 **Estado:** PREANÁLISIS, no equivalencia aprobada. Se tomaron las seis fuentes originales byte a byte, archivadas con el hash Git de referencia `4182d57064c7f89c2eea39e86d1e0b469179bb06`.
 
-- **193 cláusulas distintas** descompuestas conceptualmente, con alcance, condición, excepción, fuente y destino operativo.
-- **394 pasajes adicionales** clasificados como pendientes de atomización o contexto. **223 posiciones estructurales** sin registro textual independiente. Estos números NO son porcentajes de equivalencia ni firmas.
-- Inventario total: **798 posiciones con entrada de revisión** (incluidas 223 líneas estructurales). Matriz anterior: **530 filas candidatas**, no equivalentes a 530 obligaciones.
+- **354 cláusulas distintas** descompuestas conceptualmente, con alcance, condición, excepción, fuente y destino operativo.
+- **456 referencias de contexto y evidencia histórica** siguen pendientes de revisión para confirmar que no oculten obligaciones: **223 posiciones estructurales** y **233 pasajes documentales**. Estos números NO son porcentajes de equivalencia ni firmas.
+- Inventario total: **810 registros para 798 posiciones con entrada de revisión** (incluidas 223 líneas estructurales). Matriz anterior: **530 filas candidatas**, no equivalentes a 530 obligaciones.
 - El catálogo [contratos-operativos.md](../contratos-operativos.md) permite descubrir reglas de pagos, cartera, inventario, offline, autenticación, geografía, CI y UX sin depender de buscar ciegamente en el archivo antiguo.
 - Se omitieron/redactaron 3 extractos de contexto con credenciales de ejemplo o identificadores personales; la fuente no se modifica. **Ninguna cláusula se marca `VERIFICADA`**, porque falta comprobar código actual, decisiones más recientes y aprobación de revisor con evidencia.
 

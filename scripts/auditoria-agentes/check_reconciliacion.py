@@ -92,12 +92,15 @@ def evaluar(repo):
     for secret in ("admin123","asist123","cont123","rep123","bambu_dev","jhonnatan"):
         if secret in rawcsv.lower():
             errors.append("ejemplo privado duplicado en matriz")
+    cotejadas=sum(bool(x.get("evidencia_main")) and x.get("comparacion_main") not in ("NO_VERIFICADO_MAIN","PENDIENTE_EVIDENCIA_MAIN") for x in rows)
     return {"estado":"PASS_PREANALISIS" if not errors else "FAIL",
             "lineas_referenciadas":len(lines),"filas":len(rows),
             "clausulas_descompuestas":types["CLAUSULA_DESCOMPUESTA"],
             "pasajes_pendientes":types["PASAJE_POR_DESCOMPONER"],
             "contextos_pendientes":types["CONTEXTO_ESTRUCTURAL"]+types["CONTEXTO_EVIDENCIA"],
             "certificaciones_humanas":sum(x.get("estado_revision")=="VERIFICADA" for x in rows),
+            "evidencia_codigo_acotada":cotejadas,
+            "clausulas_sin_comparacion_main":sum(x.get("tipo")=="CLAUSULA_DESCOMPUESTA" and not x.get("evidencia_main") for x in rows),
             "errores":errors,
             "limite":"PASS_PREANALISIS no es PASS_SEMANTICO; no desbloquea merge"}
 
