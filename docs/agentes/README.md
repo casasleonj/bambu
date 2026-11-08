@@ -29,6 +29,12 @@
 4. Especificaciones y skills de terceros son soporte de implementación, nunca sustituto de la autoridad del PO.
 5. Fuentes externas y comunidad ayudan a investigar alternativas, no convierten patrones ajenos en reglas comerciales locales.
 
+## Contratos locales junto al código
+
+Se han colocado seis `AGENTS.md` acotados por directorio, en `src/app/api/`, `src/lib/`, `src/components/`, `src/modules/`, `prisma/` y `e2e/`. Incluyen criterios críticos de seguridad, dinero, UX, migraciones y QA extraídos del texto anterior y siempre sujetos a verificación en `main` y decisiones de producto.
+
+Para Claude Code, `.claude/rules/*.md` usa `paths:` para indicar cuándo recuperar la guía local; para Codex/OpenCode los `AGENTS.md` anidados son los mecanismos nativos de instrucción por ámbito. Son mecanismos de **descubrimiento**, no prueba de obediencia. `scripts/auditoria-agentes/check_scoped_rules.py` verifica rutas y normas críticas, no rendimiento de agentes.
+
 ## Invariantes de la reestructuración
 
 El [snapshot original de seis partes](fuente-original/) conserva **todo el `AGENTS.md` anterior**, incluyendo el protocolo viejo que tenía el conflicto #704. Es **evidencia histórica** y no debe ser leído como autoridad paralela a las guías canónicas. El verificador CI exige identidad byte-a-byte de su concatenación respecto al blob Git `4182d57064c7f89c2eea39e86d1e0b469179bb06`.

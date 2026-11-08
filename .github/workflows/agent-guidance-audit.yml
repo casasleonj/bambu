@@ -4,6 +4,10 @@ on:
   pull_request:
     paths:
       - 'AGENTS.md'
+      - 'src/**/AGENTS.md'
+      - 'e2e/AGENTS.md'
+      - 'prisma/AGENTS.md'
+      - '.claude/rules/**'
       - 'CLAUDE.md'
       - 'opencode.json'
       - '.agents/skills/**'
@@ -35,6 +39,8 @@ jobs:
         run: python scripts/auditoria-agentes/check_indice_historico.py --repo .
       - name: Verify JL and Hallazgo skill routes (not runtime)
         run: python scripts/auditoria-agentes/check_skills.py --repo .
+      - name: Verify scoped contracts and Claude path rules
+        run: python scripts/auditoria-agentes/check_scoped_rules.py --repo .
       - name: Emit conservative audit report
         shell: bash
         run: |
