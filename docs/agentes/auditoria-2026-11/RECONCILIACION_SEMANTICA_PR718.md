@@ -42,3 +42,11 @@ Esta revisión no altera reglas de producto ni certifica las decisiones históri
 - 174 pasajes permanecen `PENDIENTE_ATOMIZACION`.
 - 0 líneas intentadas ya estaban descompuestas o no eran un pasaje: ninguna.
 - Cero cláusulas certificadas por humano; el gate de cutover debe permanecer bloqueado.
+
+
+## Tercera pasada de contraste contra la fuente
+
+- Se descompusieron **48 cláusulas nuevas** con condición y excepción. Total de cláusulas descompuestas de diseño: **354**.
+- Se clasificaron **126 pasajes restantes** como `EVIDENCIA_HISTORICA_POR_VALIDAR`, **no** como obsoletos/certificados. Su fuente y descripción se conservan. Continúa siendo obligación del revisor detectar reglas aún no extraídas.
+- La matriz base de 798 posiciones vincula 342 posiciones al catálogo con IDs AB-#### y condiciones/excepciones. Esto es trazabilidad de trabajo IA, **no equivalencia aprobada**.
+- La clasificación automatizada/contextual no debe confundirse con lectura humana ni con validación de las 354 cláusulas frente a main. Cero certificados por revisión humana.
