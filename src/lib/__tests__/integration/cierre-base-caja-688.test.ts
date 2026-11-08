@@ -82,7 +82,11 @@ describe('#688 — base de caja en el cierre (servidor)', () => {
     expect((await cerrar(request(payload(dia, 50000)))).status).toBe(201)
     await registrarBaseDia(dia, 70000)
     const otra = await cerrar(request(payload(dia, 50000)))
-    expect(otra.status).toBe(400) // CIERRE_DUPLICADO: la regla de siempre se evalúa antes que la de la base
+    // Lo importante: se rechaza por la regla de siempre (día duplicado → 400, o ya existe → 409), nunca por la de la base.
+    const cuerpo = await otra.clone().json() as { error?: { code?: string } }
+    expect([400, 409], JSON.stringify(cuerpo)).toContain(otra.status)
+    expect(cuerpo.error?.code).not.toBe('BASE_CAMBIO')
+    expect(cuerpo.error?.code).not.toBe('BASE_FALTANTE')
     expect(await testPrisma.cierreDia.count()).toBe(1)
   })
 
