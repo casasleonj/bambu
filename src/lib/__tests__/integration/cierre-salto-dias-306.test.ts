@@ -16,6 +16,7 @@ vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn().mockResolvedValue(undefin
 
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { POST as cerrar } from '@/app/api/cierre/route'
+import { GET as pendientes } from '@/app/api/cierre/pendientes/route'
 import { startOfDayInBogota } from '@/lib/date-helpers'
 
 let adminId: string
@@ -74,42 +75,70 @@ describe('#306 POST /api/cierre con hueco entre cierres', () => {
     await testPrisma.gasto.delete({ where: { id: g.id } })
   })
 
-  it('el ASISTENTE no puede saltar días con operación aunque mande motivo', async () => {
+  it('ni el ADMIN ni el ASISTENTE pueden cerrar saltándose un día con movimiento', async () => {
     const base = '2035-03-01'
     await ultimoCierreEn(base)
     const g = await gastoEn(suma(base, 1))
-    sesion('ASISTENTE')
-    const res = await post({ fecha: suma(base, 3), saltarDiasConOperacion: { motivo: 'Motivo suficientemente largo' } })
-    expect(res.status).toBe(400)
-    expect((await res.json()).error.code).toBe('CIERRE_HUECO')
+    for (const rol of ['ADMIN', 'ASISTENTE'] as const) {
+      sesion(rol)
+      const res = await post({ fecha: suma(base, 3) })
+      expect(res.status).toBe(400)
+      expect((await res.json()).error.code).toBe('CIERRE_HUECO')
+    }
     expect(await testPrisma.cierreDia.count({ where: { fecha: startOfDayInBogota(suma(base, 3)) } })).toBe(0)
     await testPrisma.gasto.delete({ where: { id: g.id } })
   })
 
-  it('un motivo corto se rechaza antes de tocar nada', async () => {
+  it('el campo de «saltar con motivo» ya no existe: se rechaza', async () => {
     const base = '2036-03-01'
     await ultimoCierreEn(base)
-    const g = await gastoEn(suma(base, 1))
-    const res = await post({ fecha: suma(base, 3), saltarDiasConOperacion: { motivo: 'corto' } })
+    const res = await post({ fecha: suma(base, 2), saltarDiasConOperacion: { motivo: 'Feria del pueblo, se concilia a mano' } })
     expect(res.status).toBe(400)
-    expect(await testPrisma.cierreDia.count({ where: { fecha: startOfDayInBogota(suma(base, 3)) } })).toBe(0)
-    await testPrisma.gasto.delete({ where: { id: g.id } })
+    expect(await testPrisma.cierreDia.count({ where: { fecha: startOfDayInBogota(suma(base, 2)) } })).toBe(0)
   })
 
-  it('el ADMIN salta el día con operación indicando motivo: cierra y queda en el historial', async () => {
+  it('cerrar el día con movimiento primero y luego el siguiente funciona (el orden correcto)', async () => {
     const base = '2037-03-01'
     await ultimoCierreEn(base)
     const g = await gastoEn(suma(base, 1))
-    const motivo = 'Feria del pueblo: se concilia a mano'
-    const res = await post({ fecha: suma(base, 3), saltarDiasConOperacion: { motivo } })
-    expect(res.status).toBe(201)
-    const cierre = await testPrisma.cierreDia.findUnique({ where: { fecha: startOfDayInBogota(suma(base, 3)) } })
-    expect(cierre).not.toBeNull()
-    const h = await testPrisma.historial.findFirst({ where: { accion: 'CIERRE_SALTO_DIAS', registroId: cierre!.id } })
-    expect(h).not.toBeNull()
-    const datos = JSON.parse(h!.datos) as { motivo: string; diasSaltados: { fecha: string }[] }
-    expect(datos.motivo).toBe(motivo)
-    expect(datos.diasSaltados.map((d) => d.fecha)).toEqual([suma(base, 1)])
+    expect((await post({ fecha: suma(base, 1) })).status).toBe(201)
+    expect((await post({ fecha: suma(base, 3) })).status).toBe(201)
     await testPrisma.gasto.delete({ where: { id: g.id } })
+  })
+
+  it('un día omitido (sin movimientos) se puede cerrar DESPUÉS de un cierre posterior, sin hueco', async () => {
+    const base = '2038-03-01'
+    await ultimoCierreEn(base)
+    expect((await post({ fecha: suma(base, 3) })).status).toBe(201) // el 2 y el 3 se omiten
+    const tarde = await post({ fecha: suma(base, 1) }) // día omitido, anterior al último cierre
+    expect(tarde.status).toBe(201)
+    expect(await testPrisma.cierreDia.count({ where: { fecha: startOfDayInBogota(suma(base, 1)) } })).toBe(1)
+    const otraVez = await post({ fecha: suma(base, 1) })
+    expect(otraVez.status).toBe(409) // ya está cerrado
+  })
+
+  it('un día omitido que luego recibe movimientos bloquea el siguiente cierre, y se cierra atrasado', async () => {
+    const base = '2039-03-01'
+    await ultimoCierreEn(base)
+    expect((await post({ fecha: suma(base, 3) })).status).toBe(201) // se omite el día 1 y el 2
+    const g = await gastoEn(suma(base, 1)) // aparece movimiento en el día omitido
+    const siguiente = await post({ fecha: suma(base, 5) })
+    expect(siguiente.status).toBe(400)
+    expect((await siguiente.json()).error.code).toBe('CIERRE_HUECO')
+    expect((await post({ fecha: suma(base, 1) })).status).toBe(201) // cierre atrasado del día con movimiento
+    expect((await post({ fecha: suma(base, 5) })).status).toBe(201)
+    await testPrisma.gasto.delete({ where: { id: g.id } })
+  })
+
+  it('GET /api/cierre/pendientes devuelve los días por cerrar con sus movimientos y si son obligatorios', async () => {
+    sesion('ASISTENTE')
+    const res = await pendientes()
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(Array.isArray(json.dias)).toBe(true)
+    expect(typeof json.hoy).toBe('string')
+    for (const d of json.dias as Array<{ fecha: string; operaciones: number; obligatorio: boolean }>) {
+      expect(d.obligatorio).toBe(d.operaciones > 0)
+    }
   })
 })
