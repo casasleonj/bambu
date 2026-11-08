@@ -36,6 +36,16 @@ class RuntimeEvaluatorTests(unittest.TestCase):
         secret="sk-TEST-SYNTHETIC-KEY-1234567890"
         raw="tool error: "+secret
         self.assertNotIn(secret,mod.redact(raw,{"OPENAI_API_KEY":secret}))
+    def test_redacts_unlisted_token_from_trace(self):
+        token="sk-"+"a"*24
+        self.assertNotIn(token,mod.redact("error "+token,{}))
+        self.assertIn("[REDACTED_TOKEN]",mod.redact("error "+token,{}))
+    def test_redacts_github_token_from_trace(self):
+        token="ghp_"+"z"*24
+        self.assertNotIn(token,mod.redact("error "+token,{}))
+    def test_keeps_normal_trace_text(self):
+        self.assertEqual(mod.redact("tool read SKILL.md",{}),"tool read SKILL.md")
+
     def test_redaction_does_not_fake_skill_events(self):
         self.assertEqual(mod.scan_tool_calls(mod.redact('{"type":"message","text":"skill jl"}',{}),"jl"),[])
 

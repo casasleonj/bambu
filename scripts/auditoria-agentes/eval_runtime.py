@@ -69,7 +69,7 @@ def redact(value,environment):
         secret=environment.get(key)
         if secret and len(secret)>=12:
             value=value.replace(secret,"[PROVIDER_KEY_REDACTED]")
-    value=re.sub(r"(?i)\\b(?:sk-[A-Za-z0-9_-]{18,}|gh[pousr]_[A-Za-z0-9]{20,})\\b",
+    value=re.sub(r"(?i)\b(?:sk-[A-Za-z0-9_-]{18,}|gh[pousr]_[A-Za-z0-9]{20,})\b",
                  "[REDACTED_TOKEN]",value)
     return value
 
