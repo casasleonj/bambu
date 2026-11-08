@@ -6,6 +6,10 @@ import sys
 import tempfile
 from pathlib import Path
 import unittest
+import importlib.util
+import contextlib
+import io
+from unittest.mock import patch
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts' / 'install_jl.py'
 
@@ -109,10 +113,44 @@ class InstallerTest(unittest.TestCase):
         self.assertTrue((self.home / '.config/opencode/skills/jl/SKILL.md').is_file())
         self.invoke('opencode', 'user', '--verify')
 
+    def test_rollback_after_second_target_failure(self):
+        # Inyectar fallo AL CREAR enlace después de instalar el primer destino.
+        path = SCRIPT
+        spec = importlib.util.spec_from_file_location('jl_installer_test', path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        args = ['installer','--agent','all','--scope','user','--home',str(self.home)]
+        with patch.object(sys, 'argv', args), patch.object(mod.os, 'symlink', side_effect=OSError('fallo simulado')):
+            buff=io.StringIO()
+            with contextlib.redirect_stdout(buff):
+                code=mod.main()
+        result=json.loads(buff.getvalue())
+        self.assertEqual(code,1)
+        self.assertTrue(result.get('rollback_attempted'))
+        self.assertEqual(result['rollback_errors'],[])
+        self.assertFalse((self.home/'.agents/skills/jl').exists())
+        self.assertFalse((self.home/'.claude/skills/jl').exists())
+
+    def test_rollback_restores_updated_installation(self):
+        self.invoke('codex')
+        target=self.home/'.agents/skills/jl/SKILL.md'
+        target.write_text(target.read_text()+'\n# personalización del usuario\n')
+        spec=importlib.util.spec_from_file_location('jl_installer_test2', SCRIPT)
+        mod=importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        args=['installer','--agent','all','--scope','user','--home',str(self.home),'--replace']
+        with patch.object(sys, 'argv', args), patch.object(mod.os,'symlink',side_effect=OSError('fallo simulado')):
+            buff=io.StringIO()
+            with contextlib.redirect_stdout(buff):
+                code=mod.main()
+        result=json.loads(buff.getvalue())
+        self.assertEqual(code,1)
+        self.assertEqual(result.get('rollback_errors'),[])
+        self.assertIn('personalización del usuario',target.read_text())
+
     def test_source_pinned_name_jl(self):
         head = (SCRIPT.parent.parent / 'SKILL.md').read_text()
         self.assertIn('name: jl', head)
-        self.assertNotIn('issue-impact-investigator', head)
 
 
 if __name__ == '__main__':

@@ -1,68 +1,135 @@
 #!/usr/bin/env python3
-"""Validador offline de JL, sin paquetes externos. No implica prueba conductual."""
+"""Validador estático sin dependencias externas. NO evalúa obediencia de agentes.
+
+Comprobar estructura/contrato y correspondencia de cobertura; la verificación
+conductual debe ejecutarse separadamente con un agente real.
+"""
 from pathlib import Path
 import json
 import re
 import sys
 
-root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[1]
-errors = []
-file = root / 'SKILL.md'
-content = file.read_text(encoding='utf-8') if file.is_file() else ''
-if not content:
-    errors.append('missing/empty SKILL.md')
-match = re.match(r'\A---\n(.*?)\n---\n', content, re.S)
-if not match:
-    errors.append('missing/invalid YAML frontmatter')
+ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[1]
+ERRORS: list[str] = []
+
+
+def fail(message: str):
+    ERRORS.append(message)
+
+
+def text(path: Path) -> str:
+    if not path.is_file() or path.is_symlink():
+        fail(f'Archivo ausente o symlink: {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}')
+        return ''
+    try:
+        return path.read_text(encoding='utf-8')
+    except (UnicodeError, OSError) as err:
+        fail(f'Archivo ilegible: {path}: {err}')
+        return ''
+
+
+SKILL = text(ROOT/'SKILL.md')
+fm = re.match(r'\A---\r?\n(.*?)\r?\n---\r?\n', SKILL, re.S)
+meta = {}
+if not fm:
+    fail('Frontmatter YAML ausente o mal formado')
 else:
-    frontmatter = match.group(1)
-    name_m = re.search(r'^name:\s*([a-z0-9-]+)\s*$', frontmatter, re.M)
-    desc_m = re.search(r'^description:\s*\S(.+)$', frontmatter, re.M)
-    if not name_m:
-        errors.append('missing/invalid name')
-    else:
-        name = name_m.group(1)
-        if not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', name):
-            errors.append('invalid skill name convention')
-        if name != root.name or name != 'jl':
-            errors.append('frontmatter name must be jl and match folder jl')
-    if not desc_m:
-        errors.append('missing description')
-    elif len(desc_m.group(1)) > 1024:
-        errors.append('description longer than 1024 characters')
-if content and len(content.splitlines()) > 500:
-    errors.append('SKILL.md > 500 lines')
-if '# JL' not in content:
-    errors.append('missing visible JL heading')
-for term in ('Agua Bambú','casasleonj/bambu','Next.js 16.2.4','Prisma 6.19.3'):
-    if term in content:
-        errors.append('project hardcode: ' + term)
-for name in ('evidence-reuse.md','engineering.md','experience.md','convergence.md','verification-release.md','code-reuse.md','installation.md'):
-    if not (root/'references'/name).is_file():
-        errors.append('missing conditional reference ' + name)
-for path in sorted(root.rglob('*.md')):
-    txt = path.read_text(encoding='utf-8')
-    # Only links to local markdown within the skill are checked; external links omitted.
-    for target in re.findall(r'(?<!!)\[[^]]*\]\(([^)]+\.md)(?:#[^)]*)?\)',txt):
-        if '://' in target or target.startswith(('http:', 'https:','mailto:')):
+    for line in fm.group(1).splitlines():
+        if line and not line.startswith((' ', '\t')):
+            if ':' not in line:
+                fail(f'Campo frontmatter inválido: {line}')
+                continue
+            key, val = line.split(':',1)
+            key = key.strip()
+            if key in meta:
+                fail(f'Campo frontmatter duplicado: {key}')
+            meta[key] = val.strip().strip('"\'')
+    name = meta.get('name', '')
+    if not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', name) or name != ROOT.name or name != 'jl':
+        fail('name debe ser jl y coincidir con la carpeta')
+    desc = meta.get('description','')
+    if not desc or len(desc) > 1024:
+        fail('description inválida, vacía o >1024 caracteres')
+    if len(desc) > 200:
+        fail('description >200 caracteres: optimizar descubrimiento entre clientes')
+
+if len(SKILL.splitlines()) > 500 or len(SKILL.encode('utf-8')) > 12000:
+    fail('Punto de entrada excesivo (>500 líneas o >12 KB), revisar carga progresiva')
+
+# Contrato esencial: una prueba de presencia detecta omisiones, NO prueba conducta.
+CONTRACT = {
+    'modos': ['INVESTIGAR', 'IMPLEMENTAR', 'VALIDAR', 'COMPLETO', 'LOTE', 'INSTALAR'],
+    'etapas': ['INVESTIGANDO', 'IMPLEMENTANDO', 'VALIDANDO', 'INVESTIGACIÓN TERMINADA', 'IMPLEMENTACIÓN TERMINADA', 'VALIDACIÓN TERMINADA', 'BLOQUEADA', 'REABIERTA'],
+    'alcance': ['QUIERE', 'NO QUIERE', 'PRESERVAR', 'FUERA DE ALCANCE', 'ACEPTACIÓN'],
+    'tecnicas': ['DOC-1','DOC-2','REUSE-1','REUSE-2','Context7','convergencia'],
+    'seguridad': ['producción','QA','autorización','regresión','baseline','evidencia'],
+}
+for group, words in CONTRACT.items():
+    for word in words:
+        if word.casefold() not in SKILL.casefold():
+            fail(f'Contrato ausente ({group}): {word}')
+
+for term in ['casasleonj/bambu','Agua Bambú','Next.js 16.2.4','Prisma 6.19.3','e2e/rutas.spec.ts']:
+    if term in SKILL:
+        fail(f'Acoplamiento de proyecto: {term}')
+
+# Referencias relativas desde cada markdown; bloquear escapes fuera de la raíz.
+for path in ROOT.rglob('*.md'):
+    if path.is_symlink():
+        fail(f'Markdown symlink inesperado: {path}')
+        continue
+    body = text(path)
+    for target in re.findall(r'(?<!!)\[[^\]]*\]\(([^)]+)\)', body):
+        address = target.split('#',1)[0]
+        if not address or '://' in address or address.startswith(('mailto:','#')):
             continue
-        resolved=(path.parent / target).resolve()
-        if not resolved.is_file() or root not in resolved.parents:
-            errors.append('broken/escaping markdown link '+str(path.relative_to(root))+' -> '+target)
-    if path.stat().st_size < 40:
-        errors.append('empty markdown file '+str(path.relative_to(root)))
-eval_file=root/'tests'/'evals.yaml'
-ids=[]
-if not eval_file.is_file():
-    errors.append('missing eval scenarios')
+        if not address.endswith('.md'):
+            continue
+        dest = (path.parent/address).resolve()
+        if not dest.is_file() or (dest != ROOT and ROOT not in dest.parents):
+            fail(f'Link local roto/fuera de skill: {path.relative_to(ROOT)} -> {target}')
+
+refs = ['workflow','user-feedback','code-reuse','evidence-reuse','engineering','convergence','experience','verification-release','installation']
+for r in refs:
+    if not (ROOT/'references'/f'{r}.md').is_file():
+        fail(f'Referencia obligatoria ausente: {r}.md')
+    if f'references/{r}.md' not in SKILL:
+        fail(f'Entrada no descubre referencia {r}.md')
+if not (ROOT/'assets'/'report.md').is_file():
+    fail('Plantilla adaptable ausente')
+
+# Validación acotada del YAML del catálogo (formato simple de casos, sin dependencia PyYAML).
+# El test externo con PyYAML comprueba además el parseo sintáctico integral.
+evals = text(ROOT/'tests'/'evals.yaml')
+ids = re.findall(r'^- id:\s*([\w-]+)\s*$', evals, re.M)
+if len(ids) < 135 or len(ids) != len(set(ids)):
+    fail(f'Casos de evaluación insuficientes/duplicados: total={len(ids)}, únicos={len(set(ids))}')
+for block in re.split(r'(?=^- id:)', evals, flags=re.M):
+    if not block.startswith('- id:'):
+        continue
+    for field in ('mode', 'prompt', 'expected'):
+        if not re.search(r'^\s*'+field+r':\s*\S', block, re.M):
+            fail(f'Caso sin campo {field}: {block.splitlines()[0]}')
+try:
+    import yaml  # opcional: aumenta certeza sintáctica, sin bloquear ejecución del skill sin PyYAML
+except ImportError:
+    yaml_parsed = False
 else:
-    ids=re.findall(r'^- id:\s*([\w-]+)\s*$', eval_file.read_text(encoding='utf-8'),re.M)
-    if len(ids)<68:
-        errors.append(f'expected >=68 eval cases, got {len(ids)}')
-    if len(set(ids)) != len(ids):
-        errors.append('duplicate eval case ids')
-    if 'mode:' not in eval_file.read_text(encoding='utf-8'):
-        errors.append('evals incomplete')
-report={'ok':not errors,'errors':errors,'skill_name':root.name,'skill_lines':len(content.splitlines()),'skill_bytes':len(content.encode('utf-8')),'references':len(list((root/'references').glob('*.md'))),'manual_eval_cases':len(ids)}
+    yaml_parsed = True
+    try:
+        doc = yaml.safe_load(evals)
+        cases = doc['cases']
+        if not isinstance(cases, list) or len(cases) != len(ids):
+            fail('Catálogo YAML con tamaño o estructura incoherente')
+        elif any(not isinstance(c,dict) or any(not isinstance(c.get(x),str) or not c[x] for x in ('id','mode','prompt','expected')) for c in cases):
+            fail('Caso YAML con campos no válidos')
+    except (ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
+        fail(f'Catálogo YAML no parseable: {exc}')
+report = {'ok':not ERRORS, 'errors':ERRORS,'skill':ROOT.name,
+          'entry_bytes':len(SKILL.encode('utf-8')),'entry_lines':len(SKILL.splitlines()),
+          'references':len(list((ROOT/'references').glob('*.md'))),
+          'defined_eval_cases':len(ids), 'yaml_semantic_parse':yaml_parsed,
+          'actual_agent_executions':0,
+          'notes':'El validador estructural no prueba activación ni ejecución conductual.'}
 print(json.dumps(report,ensure_ascii=False,indent=2))
-sys.exit(bool(errors))
+sys.exit(1 if ERRORS else 0)

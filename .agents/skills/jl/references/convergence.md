@@ -2,7 +2,7 @@
 
 ## Bucle de decisión
 
-1. Definir causa demostrada o hipótesis; criterios de aceptación e invariantes.
+1. Definir causa demostrada o hipótesis; resultados esperados, límites negativos explícitos, invariantes a preservar, no-objetivos y criterios de aceptación. No inventar restricciones por querer ser exhaustivo.
 2. Proponer alternativas **materialmente distintas** si existen (reutilizar, adaptar, construir). Una candidata suficiente es válida si las demás son claramente dominadas o no aplican; justificar.
 3. **Falsación:** buscar deliberadamente evidencia en contra de la candidata favorita, escenarios adversariales, interacciones entre módulos y riesgos introducidos por la propia solución, no solo por el bug original.
 4. Corregir/refinar `vN → debilidad → cambio → nuevo riesgo → evidencia` y comparar con alternativas. Reexaminar tras cambios relevantes.
@@ -16,7 +16,7 @@
 
 - ¿Se consideró la hipótesis de que el issue ya está resuelto o el test está obsoleto?
 - ¿El patrón externo se traslada correctamente o introduce complejidad y dependencia innecesarias?
-- ¿La solución cambia en silencio contratos, históricos, permisos o hechos comerciales?
+- ¿La solución viola algún NO QUIERE explícito, invariante PRESERVAR o altera contratos, históricos, permisos o hechos comerciales sin autorización? ¿Se confundió FUERA DE ALCANCE con permiso de romperlo?
 - ¿Lo que se «automatiza» se conoce o es una conjetura?
 - ¿Se evaluó el fallo en la reparación, no solo en el escenario original?
 - ¿Se han revisado lectores, consumidores, rutas de error, seguridad y contexto real?
