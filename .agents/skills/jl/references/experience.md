@@ -35,3 +35,7 @@ No automatizar pagos, entregas, accesos, cifras físicas o acciones irreversible
 ## Benchmark y refutación
 
 Comparar el flujo con patrones de productos comparables, no copiar superficialmente la estética de una empresa grande. Justificar cada desviación del patrón existente. Una maqueta visualmente consistente puede seguir siendo UX mala; una UX rápida puede ser inaccesible. Ambas requieren pruebas independientes.
+
+## Feedback sobre UX y tareas reales
+
+Cuando el criterio de comprensión o uso no está documentado, preguntar **qué intenta conseguir** la persona y observar el recorrido sin sugerir el control que debe pulsar. Tras la tarea preguntar «¿Qué esperabas que ocurriera aquí?» o «¿Qué fue fácil o difícil de completar?». No transformar una preferencia aislada en estándar de diseño. Para activar preguntas solo cuando cambien decisiones, ver [user-feedback.md](user-feedback.md).

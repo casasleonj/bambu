@@ -149,6 +149,34 @@ def install_link(target: Path, dest: Path, replace: bool, dry: bool) -> dict:
         raise
 
 
+def rollback_completed_installations(items: list[dict]) -> list[str]:
+    """Deshacer los destinos ya escritos en instalación múltiple si una etapa falla.
+
+    Los respaldos existentes se restauran; instalaciones nuevas se retiran.
+    Si una restauración falla, se notifica explícitamente para recuperación manual.
+    """
+    failures: list[str] = []
+    for item in reversed(items):
+        if item.get('status') not in ('instalado', 'enlace compartido creado'):
+            continue  # Destino idéntico o previamente existente: no tocar.
+        dest = Path(item['path'])
+        backup = Path(item['backup']) if item.get('backup') else None
+        try:
+            if dest.is_symlink():
+                dest.unlink()
+            elif dest.is_dir():
+                shutil.rmtree(dest)
+            elif dest.exists():
+                raise RuntimeError(f'Destino no es directorio ni enlace: {dest}')
+            if backup is not None:
+                if not (backup.exists() or backup.is_symlink()):
+                    raise RuntimeError(f'No existe respaldo para restaurar: {backup}')
+                backup.rename(dest)
+        except Exception as exc:
+            failures.append(f'{dest}: {exc}')
+    return failures
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description='Instalar y verificar JL sin red ni dependencias')
     parser.add_argument('--agent', choices=['codex', 'claude', 'opencode', 'all'], required=True)
@@ -195,6 +223,10 @@ def main() -> int:
         result['next'] = 'Iniciar nueva sesión del agente y verificar su catálogo y lectura real de jl/SKILL.md. Esta prueba no puede automatizarse aquí.'
     except Exception as error:
         result['error'] = str(error)
+        if opts.agent == 'all' and not opts.verify and not opts.dry_run and result['items']:
+            result['rollback_attempted'] = True
+            result['rollback_errors'] = rollback_completed_installations(result['items'])
+            result['items'] = []  # No conservar estados «instalado» tras revertir.
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result['ok'] else 1
 

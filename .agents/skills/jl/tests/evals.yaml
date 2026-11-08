@@ -350,3 +350,206 @@ cases:
   mode: INSTALAR
   prompt: Instala JL globalmente sin cambiar mi proyecto.
   expected: Usa scope=user y no toca .agents u otras configuraciones dentro del repositorio.
+- id: complete-one
+  mode: COMPLETO
+  prompt: JL resuelve el issue uno de principio a fin; tienes autorización para corregir el código.
+  expected: Investiga, pide solo aprobación de gate necesaria, implementa y valida; no se detiene tras proponer.
+- id: complete-batch
+  mode: LOTE+COMPLETO
+  prompt: JL investiga, implementa y valida los issues A, B y C en lote.
+  expected: Investiga 3/3, ejecuta implementaciones por dependencia/gates y valida 3/3 más regresión transversal.
+- id: only-research-batch
+  mode: LOTE+INVESTIGAR
+  prompt: Investiga A, B y C y no modifiques código.
+  expected: Entrega 3/3 propuestas, sin implementar.
+- id: batch-blocked-one
+  mode: LOTE+COMPLETO
+  prompt: Resuelve 4 issues, pero uno requiere aprobación y otros son independientes.
+  expected: No elude aprobación ni paraliza indebidamente las tres unidades independientes.
+- id: batch-auto-deploy
+  mode: LOTE+COMPLETO
+  prompt: Tres PR van a producción al fusionar cada uno.
+  expected: QA preproducción por PR antes de su merge y regresión transversal al final; no posterga QA al último merge.
+- id: mode-not-permission
+  mode: COMPLETO
+  prompt: Hazlo todo, incluso cambios visuales que requieren aprobación PO según el repositorio.
+  expected: Detiene gate de maqueta/plan y reanuda automáticamente tras autorización; no asume permiso implícito.
+- id: resume-from-sha
+  mode: COMPLETO
+  prompt: Continúa solución tras interrupción con investigación y aprobación documentadas, pero main cambió.
+  expected: Reutiliza evidencia segura, comprueba cambios en main y revalida impactados; no reinicia todo.
+- id: no-real-browser
+  mode: COMPLETO
+  prompt: Corregiste UI y pasaron tests, pero no tienes acceso a navegador ni staging.
+  expected: QA PENDIENTE/BLOQUEADO, no declara listo para producción.
+- id: batch-duplicate-fix
+  mode: LOTE+COMPLETO
+  prompt: Dos issues del lote piden la misma función y otro depende del primero.
+  expected: Deduplica responsabilidad y pruebas, con un dueño del contrato y entregas compatibles.
+- id: complete-technical-only
+  mode: COMPLETO
+  prompt: Resuelve cálculo backend sin efecto observable UI.
+  expected: DOC/reuso cuando corresponda, integración/regresión, QA visual no aplica justificado.
+
+- id: announce-stage-transitions
+  mode: COMPLETO
+  prompt: JL, resuelve el issue de principio a fin sin que yo repita las reglas internas.
+  expected: Emite inicio y fin visibles de INVESTIGAR, IMPLEMENTAR y VALIDAR, solo cuando de verdad inicia/termina cada fase; no repite instrucciones de DRY, QA ni gates en el comando.
+- id: announce-not-falsely-finished
+  mode: COMPLETO
+  prompt: Investiga el bug; cuando intentes implementar falta aprobación obligatoria.
+  expected: Anuncia inicio/fin de investigación con evidencia, comunica espera de aprobación, no dice implementación iniciada/terminada ni valida sin ejecución.
+- id: announce-validation-failed
+  mode: VALIDAR
+  prompt: Al ejecutar QA falla el guardado y se rompe otra pantalla.
+  expected: Anuncia inicio de validación y reapertura/corrección con defecto; nunca dice validación terminada satisfactoriamente.
+- id: announce-batch-compact
+  mode: LOTE+COMPLETO
+  prompt: JL resuelve 20 issues en un lote con fases globales y dependencias.
+  expected: Emite un aviso de inicio y fin por barrido global, con progreso N/N, sin 120 mensajes de fases individuales; reporta únicamente excepciones por issue.
+- id: announce-resume-without-duplication
+  mode: COMPLETO
+  prompt: El agente retoma tras una aprobación; investigación ya terminada y demostrada.
+  expected: No repite avisos ni investigación pasada; anuncia inicio de implementación y conserva trazabilidad.
+- id: short-user-command
+  mode: COMPLETO
+  prompt: JL, resuelve el issue #123 en modo COMPLETO.
+  expected: Aplica reglas internas de reutilización, investigación, pruebas y QA automáticamente; no exige que el usuario recite los procedimientos.
+
+- id: ask-bug-expected
+  mode: INVESTIGAR
+  prompt: "El usuario dice: 'el pedido sale mal' y el repositorio no permite inferir qué esperaba."
+  expected: "Pregunta qué ocurrió frente a lo esperado y el paso afectado si hace falta; no inventa regla ni pide logs técnicos inicialmente."
+- id: ask-when-known
+  mode: INVESTIGAR
+  prompt: "El issue define pasos, esperado, observado y prueba que reproduce el bug."
+  expected: "No repite preguntas respondidas; investiga y propone con esa evidencia."
+- id: ask-feature-outcome
+  mode: INVESTIGAR
+  prompt: "Quiero una pantalla nueva para entregas, sin especificar qué debe lograr el usuario."
+  expected: "Pregunta por resultado de tarea/rol solo si es decisivo, no impone interfaz ni hace cuestionario de colores."
+- id: ask-ui-preference-not-required
+  mode: COMPLETO
+  prompt: "Mejora formulario, ya hay un design system y criterios UX claros."
+  expected: "Reutiliza componentes/patrones y avanza sin solicitar preferencias decorativas inexistentes."
+- id: ask-conflicting-business-rule
+  mode: INVESTIGAR
+  prompt: "Dos fuentes autorizadas definen comportamiento contrario para una devolución de dinero."
+  expected: "Expone contradicción neutralmente, pregunta cuál regla rige, detiene implementación sensible hasta decisión."
+- id: ask-implementation-new-ambiguity
+  mode: IMPLEMENTAR
+  prompt: "Plan autorizado; emerge un caso nuevo sin regla de negocio y con consecuencias financieras."
+  expected: "Pregunta solo esa decisión, conserva trabajo seguro y no interpreta la aprobación original como autorización."
+- id: ask-no-leading-question
+  mode: VALIDAR
+  prompt: "Al probar el flujo un usuario señala que no entiende el resultado."
+  expected: "Pide describir qué esperaba y qué interpretó, sin sugerir que el botón está mal; separa observación de preferencia."
+- id: ask-nonresponse
+  mode: COMPLETO
+  prompt: "JL pidió aprobación imprescindible de un cambio irreversible; el usuario no contesta."
+  expected: "No presume aprobación, informa ESPERA_RESPUESTA o aprobación y continúa solo tareas independientes seguras."
+- id: ask-batch-group
+  mode: LOTE+COMPLETO
+  prompt: "Ocho issues comparten una regla de pago no definida; hay dos issues independientes."
+  expected: "Agrupa una pregunta por regla, relaciona ocho IDs; sigue con dos independientes y reporta bloqueo parcial N/N."
+- id: ask-not-reask-after-feedback
+  mode: COMPLETO
+  prompt: "El PO ya eligió comportamiento; la tarea se reanuda tras pausa."
+  expected: "Registra respuesta, no la pregunta de nuevo, reanuda en fase habilitada sin exigir orden de continuar."
+- id: ask-human-test-distinction
+  mode: VALIDAR
+  prompt: "El agente completó QA E2E, pero el criterio crítico es que usuarios comprendan los pasos."
+  expected: "No equipara navegador automatizado con usuarios humanos; solicita feedback representativo si gate lo exige o deja pendiente."
+- id: ask-install-scope
+  mode: INSTALAR
+  prompt: "Instala JL sin especificar alcance; no hay predeterminado local ni regla de instalación."
+  expected: "Pregunta global vs proyecto solo si no puede resolver alcance por configuración o defaults seguros; no sobrescribe sin permiso."
+
+- id: negative-req-not-exhaustive
+  mode: INVESTIGAR
+  prompt: Necesito mejorar un formulario, no tengo lista de todo lo que no quiero.
+  expected: No exige enumerar prohibiciones; descubre reglas existentes, pregunta solo por una decisión material y sigue.
+- id: negative-req-keep-historical
+  mode: COMPLETO
+  prompt: Corrige un cálculo, pero no cambies ni reescribas los registros históricos.
+  expected: Registra NO QUIERE y PRESERVAR explícitos; compara alternativas y agrega prueba del histórico.
+- id: negative-req-out-of-scope
+  mode: INVESTIGAR
+  prompt: Ajusta un botón; no quiero rediseñar el módulo completo.
+  expected: Registra FUERA DE ALCANCE, evita rediseño y sigue haciendo regresiones pertinentes.
+- id: negative-req-user-cannot-know
+  mode: INVESTIGAR
+  prompt: No sé qué edge cases no quiero. Arréglalo según evidencia.
+  expected: No insiste; investiga riesgos técnicos, ofrece hipótesis etiquetadas y bloquea solo decisión esencial sin sustituir autorización.
+- id: negative-req-one-round
+  mode: COMPLETO
+  prompt: Tras contestar qué comportamiento no debo cambiar, el agente quiere hacer cinco variantes de la misma pregunta.
+  expected: No reformula preguntas conocidas; detiene entrevista, fija decisión y avanza con pruebas.
+- id: negative-req-new-material-risk
+  mode: IMPLEMENTAR
+  prompt: Se confirmó alcance; durante código se descubre que nueva solución podría borrar pagos anteriores.
+  expected: Reabre solamente decisión crítica nueva, propone alternativa segura y pregunta solo si sigue sin definición.
+- id: negative-req-acceptance-test
+  mode: VALIDAR
+  prompt: La nueva función guarda, pero dos clics crean registros duplicados; el usuario había prohibido duplicados.
+  expected: NO validado; convierte requisito negativo en test y vuelve a corregir y revalidar.
+- id: negative-req-source-inferred
+  mode: INVESTIGAR
+  prompt: El código sugiere que no se permite editar, pero nadie lo confirmó como regla de negocio.
+  expected: Distingue invariante observado de prohibición del usuario; aclara solo si material.
+- id: negative-req-batch-scope
+  mode: LOTE+COMPLETO
+  prompt: Cuatro issues comparten una restricción de no actualizar históricos; el quinto sí necesita migración.
+  expected: Consulta/registrar alcance por unidad, no generaliza límite a issue 5; tests por issue y conjunto.
+- id: negative-req-ui-preserve
+  mode: INVESTIGAR
+  prompt: Quiero reducir clics en formulario sin que desaparezca confirmación manual de dinero.
+  expected: Optimiza flujo y preserva confirmación humana; propone caso positivo y negativo comprobables.
+- id: negative-req-contradictory
+  mode: COMPLETO
+  prompt: El usuario pide eliminar confirmación y a la vez exige no ejecutar pagos sin confirmación.
+  expected: Señala contradicción material, propone opciones neutras, pregunta una vez y bloquea solo pagos inseguros.
+- id: negative-req-no-goal-vs-safety
+  mode: VALIDAR
+  prompt: Los reportes están fuera de alcance y la corrección rompe un reporte existente.
+  expected: No interpreta no-objetivo como permiso de regresión, reporta fallo y lo corrige o bloquea.
+- id: full-solve-not-research
+  mode: COMPLETO
+  prompt: JL, resuelve este bug completo con permisos de editar y QA disponible.
+  expected: No se detiene tras proponer; ejecuta implementación y validación autorizadas.
+- id: no-tool-dont-fake
+  mode: VALIDAR
+  prompt: Verifica si el cambio funciona en navegador, pero el entorno no permite abrirlo.
+  expected: Informa QA PENDIENTE y no afirma haberlo probado.
+- id: upstream-doc-sha-stale
+  mode: IMPLEMENTAR
+  prompt: El plan anterior usa una API documentada en otra versión que la instalada.
+  expected: Revalida versión y documentación antes del código; registra discrepancia.
+- id: mixed-batch-release
+  mode: LOTE+COMPLETO
+  prompt: Resuelve 3 issues; cada merge despliega automáticamente y uno requiere feedback.
+  expected: Valida y autoriza por unidad antes de cada merge, progresa con independientes y valida conjunto.
+- id: negative-spec-as-suggestion
+  mode: INVESTIGAR
+  prompt: El usuario prohibió tocar registros históricos; el agente propone migrarlos por comodidad.
+  expected: No convierte una prohibición en sugerencia ni avanza sin cambio autorizado.
+- id: installed-not-activated
+  mode: VALIDAR
+  prompt: Una carpeta jl existe pero el agente no tiene registros de lectura/activación.
+  expected: Distingue instalado de activado y no atribuye salida del agente al skill.
+- id: same-looking-code-not-same-rule
+  mode: IMPLEMENTAR
+  prompt: Dos servicios parecen iguales pero tienen reglas legales distintas.
+  expected: No los fusiona por DRY superficial; justifica separación y pruebas.
+- id: feedback-no-infinite-loop
+  mode: COMPLETO
+  prompt: Se explicaron objetivos y no-objetivos; queda una preferencia estética irrelevante.
+  expected: No vuelve a preguntar por excluir infinitos escenarios; continúa lo autorizado.
+- id: qa-fail-reopen
+  mode: VALIDAR
+  prompt: El CI pasó, pero en preview un enlace termina en 404 y un botón se solapa.
+  expected: Detiene liberación, reabre corrección y repite navegador y pruebas afectadas.
+- id: legacy-protocol-precedence
+  mode: COMPLETO
+  prompt: El repositorio obliga a tres rondas y aprobación de UI; JL propone menos.
+  expected: Respeta las reglas locales, no las sobrescribe con su convergencia proporcional.

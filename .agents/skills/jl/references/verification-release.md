@@ -6,6 +6,8 @@ Leer solo las configuraciones y reglas **existentes** de build, pruebas, CI, rev
 
 ## Orden de controles (adaptar al proyecto)
 
+En modo `COMPLETO`, estos controles se ejecutan como continuación automática de la investigación y la implementación autorizadas. En `LOTE+COMPLETO`, se aplican por cada unidad antes de cualquier merge que despliegue y nuevamente de forma transversal al lote. Véase [workflow.md](workflow.md) únicamente en esos modos.
+
 0. **Permisos y plan:** requisitos, decisiones de negocio, cambio visual/UX aprobado cuando el proceso local lo exige; no usar datos productivos sin autorización. Implementación solo si solicitada.
 1. **Código:** cambio enfocado, DOC-2 de documentación de API, invariantes, pruebas que fallan antes y pasan después cuando sea posible, regresión relevante. Si se cambian datos/migraciones, prever compatibilidad, respaldo, reversibilidad y el momento seguro para aplicarlos.
 2. **Calidad técnica:** tests unitarios, integración, contrato, seguridad, accesibilidad automática y CI/shards aplicables. Revisar resultado individual, baseline conocido y defectos nuevos. Un test omitido, flaky o rojo no es verde.
@@ -26,3 +28,7 @@ Leer solo las configuraciones y reglas **existentes** de build, pruebas, CI, rev
 ## Sobre «gates obligatorios»
 
 La orden escrita en un skill no impide físicamente desplegar. El equipo debe configurar el mecanismo de control real (checks obligatorios, restricciones de merge, aprobaciones de ambientes, o equivalente) según su plataforma. Recomendación genérica, **no** modificación autorizada. No usar el entorno productivo como sustituto de preview/QA.
+
+## Validación con feedback humano (cuando proceda)
+
+Si la tarea crítica depende de comprensión/operación humana, realizar el recorrido de QA en navegador **y** solicitar evaluación del usuario representativo conforme a las reglas del proyecto; son evidencias diferentes. Preguntar qué hizo, qué esperaba y qué resultado obtuvo **sin guiarlo**. Registrar observaciones concretas y decisión posterior, nunca asumir «me gusta» = aceptación formal. Si aparece un defecto material, volver a corrección y revalidación. Ver [user-feedback.md](user-feedback.md).
