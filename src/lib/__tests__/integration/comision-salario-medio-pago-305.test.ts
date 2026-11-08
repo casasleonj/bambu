@@ -18,7 +18,7 @@ vi.mock('@/lib/realtime', () => ({ publishRealtimeEvent: vi.fn().mockResolvedVal
 vi.mock('@/lib/notifications/notify-event', () => ({ notifyEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn().mockResolvedValue(undefined) }))
 
-import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
+import { testPrisma, resetAndSeed, disconnect, getAdminUser, registrarBaseDia } from './setup'
 import { POST as pagarComision } from '@/app/api/nomina/dia/pagar/route'
 import { POST as crearNomina } from '@/app/api/nomina/route'
 import { POST as cerrarDia } from '@/app/api/cierre/route'
@@ -107,6 +107,7 @@ describe('#305 — medio de pago de comisiones y salarios (Postgres real)', () =
   })
 
   it('el cierre resta de la caja solo la comisión pagada en efectivo y deja constancia de la otra', async () => {
+    await registrarBaseDia(HOY, 1000) // #688
     const res = await cerrarDia(json('/api/cierre', cierreBody({ fecha: HOY })))
     expect(res.status).toBe(201)
     const cierre = await testPrisma.cierreDia.findFirstOrThrow({ where: { fecha: startOfDayInBogota(HOY) } })
@@ -140,11 +141,12 @@ describe('#305 — medio de pago de comisiones y salarios (Postgres real)', () =
 
     it('el cierre ignora lo que un cliente antiguo mande en «Salarios»: ya no se resta de la caja', async () => {
       const dia = '2040-05-01'
-      const res = await cerrarDia(json('/api/cierre', cierreBody({ fecha: dia, baseDia: 0, salarios: 100_000, salariosEfectivo: 40_000 })))
+      await registrarBaseDia(dia, 1000) // #688
+      const res = await cerrarDia(json('/api/cierre', cierreBody({ fecha: dia, baseDia: 1000, salarios: 100_000, salariosEfectivo: 40_000 })))
       expect(res.status).toBe(201)
       const cierre = await testPrisma.cierreDia.findFirstOrThrow({ where: { fecha: startOfDayInBogota(dia) } })
       expect(Number(cierre.salarios)).toBe(0)
-      expect(Number(cierre.netoCaja)).toBe(0)
+      expect(Number(cierre.netoCaja)).toBe(1000) // solo la base de caja: los salarios que mandó el cliente no restan nada
       const reporte = cierre.reporte as { salariosEfectivo: number; salariosOtrosMedios: number }
       expect(reporte.salariosEfectivo).toBe(0)
       expect(reporte.salariosOtrosMedios).toBe(0)

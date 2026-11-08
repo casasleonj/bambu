@@ -1,6 +1,6 @@
 // @tests F2.2: Concurrent cierre de día — 2 admins intentan cerrar el mismo día
 // Falla si no hay advisory lock, race en getNextNumero para factura, etc.
-import { test, expect, fullLogin, apiPost, apiGet, resetTestDatabase } from '../fixtures'
+import { test, expect, fullLogin, apiPost, apiGet, resetTestDatabase, registrarBaseDia } from '../fixtures'
 
 test.describe('Race Condition: Cierre de Día Concurrente', () => {
   test.describe.configure({ mode: 'serial' })
@@ -58,6 +58,8 @@ test.describe('Race Condition: Cierre de Día Concurrente', () => {
         salarios: 0,
         reporte: '{}',
       }
+
+      await registrarBaseDia(page1, fecha, 100000) // #688: el cierre exige la base de caja de esa fecha
 
       // Lanzar dos cierres en paralelo
       const [res1, res2] = await Promise.all([

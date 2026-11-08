@@ -23,7 +23,8 @@ import CierreValidationList from '@/components/cierre/cierre-validation-list'
 import type { CierreData } from './types'
 import { PagosPersonal, resumenPagosPersonal } from './pagos-personal'
 import { ProduccionDelCierre } from './produccion-del-cierre'
-import { usePollingRefetch } from '@/hooks/use-polling-refetch'
+import { useBaseCajaCierre } from './use-base-caja-cierre'
+import { FuenteBaseCaja, AvisoBaseActualizada, BaseCajaFaltante, DialogoBaseCambio } from '@/components/cierre/base-caja-cierre'
 
 const formatMoney = (val: number) => formatCurrency(val)
 
@@ -55,7 +56,8 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const [stockFinBotellon, setStockFinBotellon] = useState(0)
   // #645: «ese día no se produjo» (domingo, festivo): se puede cerrar sin producción.
   const [sinProduccion, setSinProduccion] = useState(false)
-  const [baseDia, setBaseDia] = useState(0)
+  // #688: la base de caja que cambió mientras se revisaba (aviso/diálogo); el valor mismo lo lee `useBaseCajaCierre`.
+  const [cambioBase, setCambioBase] = useState<{ antes: number; ahora: number } | null>(null)
   // #644: el campo manual «Salarios» se retiró; los sueldos se pagan con «Pagar» y salen como gasto de nómina.
   const salarios = 0
   const [arqueoData, setArqueoData] = useState<{ arqueo: ArqueoData; totalContado: number; diferencia: number }>({
@@ -95,28 +97,16 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const puedePagarComision = userRole === 'ADMIN' || userRole === 'CONTADOR'
   const diaCerrado = yaCerrado || (statusCierre as string | null) === 'CERRADO'
 
+  // #688: el efectivo con el que empezó el día es la base de caja de la fecha. Aquí solo se LEE (se refresca al volver
+  // a la pestaña, cada 60 s, al guardarla en «Caja base» y justo antes de cerrar); no hay valor por defecto ni campo.
+  const base = useBaseCajaCierre(fecha, cerrando || diaCerrado)
+  // Un día ya cerrado muestra la base que quedó guardada en su cierre, no la configuración de hoy.
+  const baseDia = diaCerrado ? Number(data?.baseDia ?? 0) : base.valor
+  const baseLista = diaCerrado || base.estado === 'ingresada'
+  const sinBase = !diaCerrado && base.estado === 'faltante'
+  const esHoy = fecha === getTodayString()
+  const puedeEditarBase = userRole === 'ADMIN' || userRole === 'ASISTENTE'
 
-  const loadBaseDia = useCallback(async (dateStr: string, signal: AbortSignal) => {
-    try {
-      const [res, defaultRes] = await Promise.all([
-        fetch(`/api/config?clave=BASE_DIA_${dateStr}`, { signal }),
-        fetch('/api/config?clave=BASE_DIA', { signal }),
-      ])
-      if (res.ok) {
-        const data = await res.json()
-        if (signal.aborted) return
-        if (data.config) {
-          setBaseDia(Number(data.config.valor))
-          return
-        }
-      }
-      if (defaultRes.ok) {
-        const defaultData = await defaultRes.json()
-        if (signal.aborted) return
-        if (defaultData.config?.valor) setBaseDia(Number(defaultData.config.valor))
-      }
-    } catch { /* ignore */ }
-  }, [])
 
   const checkLastCierre = useCallback(async (signal: AbortSignal) => {
     try {
@@ -186,7 +176,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     setData(null)
     setErrorConsulta(null)
     setStatusCierre(null)
-    setBaseDia(0)
+    setCambioBase(null)
     setArqueoData({ arqueo: {}, totalContado: 0, diferencia: 0 })
     setStockIniAgua(0); setStockIniHielo(0)
     setProdAgua(0); setProdHielo(0)
@@ -221,17 +211,10 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     void Promise.resolve().then(() => {
       if (ctrl.signal.aborted) return
       void fetchCierre(fecha, ctrl.signal)
-      void loadBaseDia(fecha, ctrl.signal)
       void checkLastCierre(ctrl.signal)
     })
     return () => ctrl.abort()
-  }, [fecha, fetchCierre, loadBaseDia, checkLastCierre])
-
-  // Polling: refetch base de caja every 60s (replaces config.updated SSE).
-  usePollingRefetch(() => {
-    const signal = abortControllerRef.current?.signal
-    if (signal && !cerrando) void loadBaseDia(fecha, signal)
-  }, 60_000)
+  }, [fecha, fetchCierre, checkLastCierre])
 
   const handleCerrar = async (e?: React.FormEvent) => {
     e?.preventDefault()
@@ -244,8 +227,18 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       toast.error(`No se puede cerrar: ${embarquesPendientes.length} embarque(s) abierto(s). Ciérralos primero.`)
       return
     }
-    if (baseDia === 0) {
-      toast.error('No se puede cerrar: el efectivo con el que empezó el día es 0. Verifica el monto.')
+    if (!baseLista) {
+      toast.error('No se puede cerrar: falta la base de caja de este día.')
+      return
+    }
+    // #688: lectura nueva justo antes de pedir la confirmación. Si la base cambió, no se confirma con números viejos.
+    const fresca = await base.refrescar()
+    if (fresca && fresca.estado !== 'ingresada') {
+      toast.error('No se puede cerrar: falta la base de caja de este día.')
+      return
+    }
+    if (fresca && fresca.valor !== baseDia) {
+      setCambioBase({ antes: baseDia, ahora: fresca.valor })
       return
     }
     // Use ref to avoid race condition with React state batching
@@ -308,6 +301,14 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         const ctrl = new AbortController()
         abortControllerRef.current = ctrl
         await fetchCierre(fecha, ctrl.signal)
+      } else if (res.status === 409 && json.error?.code === 'BASE_CAMBIO') {
+        // El servidor no cierra con una base que ya no es la vigente: se actualiza y se pide revisar.
+        const vigente = Number(json.error?.impacto?.baseVigente)
+        setCambioBase({ antes: baseDia, ahora: Number.isFinite(vigente) ? vigente : baseDia })
+        await base.refrescar()
+      } else if (res.status === 422 && json.error?.code === 'BASE_FALTANTE') {
+        toast.error(json.error.message)
+        await base.refrescar()
       } else if (res.status === 409) {
         toast.error(json.error?.message || 'No se pudo confirmar el cierre. Revisa los datos de esta fecha.')
         const ctrl = new AbortController()
@@ -502,9 +503,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         : 'Todos los embarques del día están cerrados',
     },
     {
-      label: 'Efectivo inicial del día registrado',
-      ok: baseDia > 0,
-      detail: baseDia > 0 ? `Empezó con: ${formatCurrency(baseDia)}` : 'Ingresa el efectivo con el que empezó el día en la sección 1',
+      label: 'Base de caja del día registrada',
+      ok: baseLista,
+      detail: baseLista ? `Empezó con: ${formatCurrency(baseDia)}` : 'Falta la base de caja de este día (sección 1)',
     },
     {
       label: 'Efectivo físico contado',
@@ -533,14 +534,31 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
 
   // Next step hint
   const getNextStep = () => {
-    if (baseDia === 0) return { label: 'Ingresa el efectivo con el que empezó el día', section: 1 }
+    if (!baseLista) return { label: 'Ingresa la base de caja del día', section: 1 }
     if (arqueoData.totalContado === 0) return { label: 'Cuenta el efectivo físico', section: 4 }
     if (statusCierre === 'INCOMPLETO') return { label: 'Cierra los embarques pendientes', section: 1 }
     return { label: 'Listo para cerrar el día', section: 5 }
   }
 
   const nextStep = getNextStep()
-  const allReady = baseDia > 0 && arqueoData.totalContado > 0 && statusCierre === 'COMPLETO'
+
+  // #688: con la base ingresada, la ficha dice de dónde viene (y avisa si cambió); sin base, se exige ingresarla.
+  const debeHaberCon = (b: number) => efectivoEsperadoDelCierre({
+    baseDia: b, efectivoPagos: data?.efectivo ?? 0, cobroCarteraEfectivo: data?.cobroCarteraEfectivo,
+    totalGastos: data?.totalGastos ?? 0, comisiones, salarios,
+  })
+  const pieBase = base.estado === 'ingresada' ? (
+    <>
+      <FuenteBaseCaja fecha={fecha} hoy={esHoy} actualizadaAt={base.actualizadaAt} puedeEditar={puedeEditarBase} diaCerrado={diaCerrado} valor={baseDia} />
+      {base.aviso && (
+        <AvisoBaseActualizada antes={base.aviso.antes} ahora={base.aviso.ahora}
+          debeHaberAntes={debeHaberCon(base.aviso.antes)} debeHaberAhora={debeHaberCon(base.aviso.ahora)} onEntendido={base.descartarAviso} />
+      )}
+    </>
+  ) : base.estado === 'faltante' ? (
+    <BaseCajaFaltante fecha={fecha} hoy={esHoy} puedeIngresar={puedeEditarBase} />
+  ) : null
+  const allReady = baseLista && arqueoData.totalContado > 0 && statusCierre === 'COMPLETO'
 
   return (
     <div className="p-4 max-w-5xl mx-auto space-y-6 pb-32">
@@ -594,6 +612,11 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         embarquesPendientes={embarquesPendientes.length}
       />
 
+      {cambioBase && (
+        <DialogoBaseCambio antes={cambioBase.antes} ahora={cambioBase.ahora}
+          debeHaberAntes={debeHaberCon(cambioBase.antes)} debeHaberAhora={debeHaberCon(cambioBase.ahora)} onRevisar={() => setCambioBase(null)} />
+      )}
+
       {/* Section 1: Resumen Financiero */}
       <CierreSection
         number={1}
@@ -603,7 +626,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       >
         <div className="mb-4">
           <CierreEfectivoEsperado
-            baseDia={baseDia} onBaseChange={setBaseDia} efectivoPagos={data.efectivo ?? 0} cobroCarteraEfectivo={data.cobroCarteraEfectivo ?? 0}
+            baseDia={baseDia} sinBase={sinBase} pie={pieBase} efectivoPagos={data.efectivo ?? 0} cobroCarteraEfectivo={data.cobroCarteraEfectivo ?? 0}
             totalGastos={data.totalGastos} comisiones={comisiones} salarios={salarios} pagosDigitales={data.cobroDigitalHoy ?? 0}
           />
         </div>
@@ -847,7 +870,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             <form onSubmit={handleCerrar} className="space-y-2">
               <Button
                 type="submit"
-                disabled={cerrando || statusCierre === 'INCOMPLETO' || baseDia === 0 || arqueoData.totalContado === 0}
+                disabled={cerrando || statusCierre === 'INCOMPLETO' || !baseLista || arqueoData.totalContado === 0}
                 className="w-full py-6 text-lg"
               >
                 {cerrando ? 'Cerrando...' : 'Cerrar Día'}

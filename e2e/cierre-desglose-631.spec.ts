@@ -10,7 +10,11 @@ const instante = (d: string) => new Date(`${d}T12:00:00-05:00`)
 
 test.describe('Cierre #631: desglose de cobros y fiados', () => {
   test.describe.configure({ mode: 'serial' })
-  test.beforeEach(() => { resetTestDatabase() })
+  // #688: el cierre solo lee la base de caja de la fecha; estas pruebas son del desglose, no de la base.
+  test.beforeEach(async () => {
+    resetTestDatabase()
+    for (const dia of [fecha, ayer]) await prisma.config.upsert({ where: { clave: `BASE_DIA_${dia}` }, update: { valor: '50000' }, create: { clave: `BASE_DIA_${dia}`, valor: '50000' } })
+  })
   test.afterAll(async () => { await prisma.$disconnect() })
 
   async function pedido(dia: string, nombre: string, total: number, pagado: number) {

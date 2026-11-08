@@ -31,7 +31,12 @@ async function repartidorConEntrega(page: PaginaAdmin, nombre: string, pacas: nu
 }
 
 test.describe('Comisión del repartidor en el cierre (#499)', () => {
-  test.beforeAll(() => { resetTestDatabase() })
+  test.beforeAll(async () => {
+    resetTestDatabase()
+    // #688: el cierre solo lee la base de caja del día; la de hoy se registra como lo haría «Caja base».
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    await prisma.config.upsert({ where: { clave: `BASE_DIA_${hoy}` }, update: { valor: '100000' }, create: { clave: `BASE_DIA_${hoy}`, valor: '100000' } })
+  })
   test.afterAll(async () => { await prisma.$disconnect() })
 
   test('el ADMIN ve la comisión del día, la paga con un toque confirmado y la base lo registra', async ({ browser }) => {
