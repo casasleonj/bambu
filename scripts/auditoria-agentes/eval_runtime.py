@@ -113,7 +113,7 @@ def fixture(repo,dest):
         "permission":{"*":"deny","read":"allow","glob":"allow","grep":"allow",
                       "skill":"allow","edit":"deny","bash":"deny"}
     },ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
-    (dest/"src").mkdir()
+    (dest/"src").mkdir(exist_ok=True)
     (dest/"src"/"datos-ficticios.md").write_text("DATOS FICTICIOS: pedido 7, cobro 10, saldo 3; consumidores Cliente, Caja, Dashboard. No realizar modificaciones.\n",encoding="utf-8")
     subprocess.run(["git","init","-q",str(dest)],capture_output=True,check=False,timeout=8)
 
