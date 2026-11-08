@@ -119,6 +119,8 @@ export interface PedidoUnifiedData {
   vendidoPorId?: string
   /** Fecha (YYYY-MM-DD) hasta la que promete pagar el cliente real que queda debiendo. */
   promesaPagoFecha?: string
+  /** #408: el usuario confirmó que esta venta es distinta de la que el aviso de venta repetida mostró. */
+  ventaRepetidaConfirmada?: boolean
 }
 
 // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: el toggle "entregar después" de la
