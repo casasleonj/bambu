@@ -4,9 +4,9 @@
 
 - **193 cláusulas distintas** descompuestas conceptualmente, con alcance, condición, excepción, fuente y destino operativo.
 - **394 pasajes adicionales** clasificados como pendientes de atomización o contexto. **223 posiciones estructurales** sin registro textual independiente. Estos números NO son porcentajes de equivalencia ni firmas.
-- Inventario total: **798 posiciones**. Matriz anterior: **530 filas candidatas**, no equivalentes a 530 obligaciones.
+- Inventario total: **798 posiciones con entrada de revisión** (incluidas 223 líneas estructurales). Matriz anterior: **530 filas candidatas**, no equivalentes a 530 obligaciones.
 - El catálogo [contratos-operativos.md](../contratos-operativos.md) permite descubrir reglas de pagos, cartera, inventario, offline, autenticación, geografía, CI y UX sin depender de buscar ciegamente en el archivo antiguo.
-- **Ninguna cláusula se marca `VERIFICADA`**, porque falta comprobar código actual, decisiones más recientes y aprobación de revisor con evidencia.
+- Se omitieron/redactaron 3 extractos de contexto con credenciales de ejemplo o identificadores personales; la fuente no se modifica. **Ninguna cláusula se marca `VERIFICADA`**, porque falta comprobar código actual, decisiones más recientes y aprobación de revisor con evidencia.
 
 ## Contradicciones descubiertas y reflejadas
 
