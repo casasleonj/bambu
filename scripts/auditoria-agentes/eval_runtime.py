@@ -64,6 +64,15 @@ def executable_versions():
             result[n]={"estado":"VERSION_NO_VERIFICABLE","error":str(e)[:180]}
     return result
 
+def redact(value,environment):
+    for key in ("OPENAI_API_KEY","ANTHROPIC_API_KEY"):
+        secret=environment.get(key)
+        if secret and len(secret)>=12:
+            value=value.replace(secret,"[PROVIDER_KEY_REDACTED]")
+    value=re.sub(r"(?i)\\b(?:sk-[A-Za-z0-9_-]{18,}|gh[pousr]_[A-Za-z0-9]{20,})\\b",
+                 "[REDACTED_TOKEN]",value)
+    return value
+
 def cli_command(agent,prompt):
     if agent=="codex":
         return ["codex","exec","--json","--sandbox","read-only",prompt]
@@ -110,14 +119,21 @@ def execute(repo,out,agent,timeout):
                     results.append({"caso":item["id"],"agente":current,"estado":"NO_EJECUTADO_CLI_AUSENTE"})
                     continue
                 command=cli_command(current,item["prompt"])
+                # HOME/XDG vacíos: nunca heredar MCPs/plugins, auth o hooks globales.
+                # Las claves de proveedor solo pasan explícitamente por variables permitidas.
+                home=Path(d)/"_sandbox_home"
+                home.mkdir(exist_ok=True)
                 environment={k:v for k,v in os.environ.items() if k in
-                    ("PATH","HOME","LANG","LC_ALL","TERM","OPENAI_API_KEY","ANTHROPIC_API_KEY",
-                     "OPENAI_BASE_URL","ANTHROPIC_BASE_URL")}
-                environment["CI"]="1"
+                    ("PATH","LANG","LC_ALL","TERM","OPENAI_API_KEY","ANTHROPIC_API_KEY")}
+                environment.update({"CI":"1","HOME":str(home),
+                    "XDG_CONFIG_HOME":str(home/".config"),
+                    "XDG_DATA_HOME":str(home/".local/share"),
+                    "XDG_CACHE_HOME":str(home/".cache"),
+                    "CODEX_HOME":str(home/".codex")})
                 try:
                     p=subprocess.run(command,cwd=d,env=environment,capture_output=True,text=True,
                                      timeout=timeout,stdin=subprocess.DEVNULL)
-                    raw=p.stdout or ""
+                    raw=redact(p.stdout or "",environment)
                     trace=out/(current+"_"+item["id"]+".jsonl")
                     trace.write_text(raw,encoding="utf-8")
                     evidence=scan_tool_calls(raw,item["skill"]) if item.get("skill") else []
@@ -125,7 +141,7 @@ def execute(repo,out,agent,timeout):
                                     "estado":"TRAZA_PARA_REVISION" if p.returncode==0 else "FALLO_EJECUCION",
                                     "codigo":p.returncode,"eventos_skill":evidence,
                                     "traza":trace.name,"sha256":hashlib.sha256(raw.encode()).hexdigest(),
-                                    "stderr_resumen":(p.stderr or "")[-350:]})
+                                    "stderr_resumen":redact(p.stderr or "",environment)[-350:]})
                 except subprocess.TimeoutExpired:
                     results.append({"caso":item["id"],"agente":current,"estado":"TIEMPO_AGOTADO"})
     return results
