@@ -173,7 +173,8 @@ test.describe('Comisión del repartidor en el cierre (#499)', () => {
     const entrega = async (dia: string, cantidad: number) => {
       const r = await apiPost(page, `/api/pedidos/${p.id}/gestion-admin/entrega`, {
         repartidorId: repartidor.id, itemsEntregados: [{ producto: 'PACA_AGUA', cantidad }],
-        fechaEntrega: new Date(`${dia}T12:00:00-05:00`).toISOString(), precisionFecha: 'DIA',
+        // Hoy no puede ser futura: antes del mediodía de Bogotá «hoy 12:00» aún no ocurrió, así que se usa el instante actual.
+        fechaEntrega: (dia === hoy ? new Date(Date.now() - 60_000) : new Date(`${dia}T12:00:00-05:00`)).toISOString(), precisionFecha: 'DIA',
         promesaPagoFecha: new Date(Date.now() + 3 * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }),
         offlineId: `c622-entrega-${dia}-${Date.now()}`,
       })
