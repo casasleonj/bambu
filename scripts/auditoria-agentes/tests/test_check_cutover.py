@@ -38,5 +38,20 @@ class CutoverTests(unittest.TestCase):
         self.matrix.write_text("linea_original,clase,destino,certificacion_semantica\n1,REGLA,docs/a.md,VERIFICADA_IDENTICA\n1,REGLA,docs/a.md,VERIFICADA_IDENTICA\n")
         self.assertEqual(next(x for x in gate.evaluar(self.repo,self.matrix,self.ev)["checks"] if x["id"]=="inventario-integro")["estado"],"FAIL")
 
+    def test_archived_verbatim_source_satisfies_source_gate_only(self):
+        from unittest.mock import patch
+        folder=self.repo/"docs/agentes/fuente-original"
+        folder.mkdir(parents=True)
+        names=("00-entrada.md","01-arquitectura-tecnica.md","02-historico-incidencias.md",
+               "03-reglas-codigo.md","04-protocolo-anterior.md","05-flujo-entrega-anterior.md")
+        blocks=[("BLOQUE-"+str(i)+"\\n").encode("utf-8") for i in range(6)]
+        for name,data in zip(names,blocks):
+            (folder/name).write_bytes(data)
+        with patch.object(gate,"ORIGINAL_BLOB",gate.blob_sha(b"".join(blocks))):
+            result=gate.evaluar(self.repo,self.matrix,self.ev)
+        source=next(x for x in result["checks"] if x["id"]=="fuente-original-conservada")
+        self.assertEqual(source["estado"],"PASS")
+        self.assertEqual(result["estado"],"BLOQUEADO")
+
 if __name__=="__main__":
     unittest.main()
