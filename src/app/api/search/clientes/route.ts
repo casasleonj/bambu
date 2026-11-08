@@ -33,9 +33,11 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(parseInt(limitParam || '20', 10), 50)
 
   try {
-    // Usar la función search_clientes de PostgreSQL con pg_trgm
+    // Usar la función search_clientes de PostgreSQL con pg_trgm.
+    // `::int` es obligatorio (#701): Prisma envía el número como bigint y la
+    // función declara `limit_results int`; sin el cast Postgres no la resuelve.
     const results = await prisma.$queryRaw`
-      SELECT * FROM search_clientes(${query}, ${limit})
+      SELECT * FROM search_clientes(${query}, ${limit}::int)
     ` as Array<{
       id: string
       nombre: string
