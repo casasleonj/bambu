@@ -26,6 +26,7 @@ import { offlineDb } from '@/lib/db/offline'
 import { SYNC_ITEM_DONE_EVENT } from '@/lib/db/sync'
 import { ClienteHistorial } from './cliente-historial'
 import { ClienteStats } from './cliente-stats'
+import { ClienteSaldoFavor } from './cliente-saldo-favor'
 import { NegocioForm } from '@/components/negocio-form'
 import { NegocioDetailModal, type NegocioDetail } from '@/components/negocio-detail-modal'
 import { calcularAlertasCliente } from '@/app/(app)/pedidos/pedidos-client/alertas-utils'
@@ -1920,6 +1921,8 @@ export default function ClientesClient({
             <div className="flex-1 overflow-y-auto p-4">
               {activeTab === 'info' && (
                 <div className="space-y-5">
+                  {/* #696: saldo a favor del cliente y de dónde viene (cargando, error y sin saldo tienen su propio estado). */}
+                  <ClienteSaldoFavor clienteId={selectedCliente.id} />
                   {/* Contact section */}
                   <div>
                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">

@@ -25,6 +25,7 @@ import { PagosPersonal, resumenPagosPersonal } from './pagos-personal'
 import { ProduccionDelCierre } from './produccion-del-cierre'
 import { useBaseCajaCierre } from './use-base-caja-cierre'
 import { FuenteBaseCaja, AvisoBaseActualizada, BaseCajaFaltante, DialogoBaseCambio } from '@/components/cierre/base-caja-cierre'
+import { DiasPendientes, diaQueBloquea, etiquetaDiaLarga, type DiaPendienteUI, type EstadoPendientes } from './dias-pendientes'
 
 const formatMoney = (val: number) => formatCurrency(val)
 
@@ -68,15 +69,11 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const arqueoRef = useRef(arqueoData)
   useEffect(() => { arqueoRef.current = arqueoData }, [arqueoData])
 
-  // Gap days between last cierre and selected fecha — derivado durante el
-  // render, no requiere estado propio ni efecto.
-  const hasGap = (() => {
-    if (!lastCierreDate || !fecha) return false
-    const last = new Date(lastCierreDate + 'T00:00:00-05:00')
-    const selected = new Date(fecha + 'T00:00:00-05:00')
-    const diffDays = Math.floor((selected.getTime() - last.getTime()) / (1000 * 60 * 60 * 24))
-    return diffDays > 1
-  })()
+  // #306: días por cerrar (con o sin movimientos). Un día con movimientos anterior al elegido bloquea el cierre.
+  const [diasPendientes, setDiasPendientes] = useState<DiaPendienteUI[]>([])
+  const [estadoPendientes, setEstadoPendientes] = useState<EstadoPendientes>('cargando')
+  const [pendientesKey, setPendientesKey] = useState(0)
+  const diaBloqueante = estadoPendientes === 'ok' ? diaQueBloquea(diasPendientes, fecha) : null
   const [netoEnArqueo, setNetoEnArqueo] = useState(0)
   const abortControllerRef = useRef<AbortController | null>(null)
   const cierreSolicitadoRef = useRef(false)
@@ -168,8 +165,10 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     }
   }, [])
 
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newFecha = e.target.value
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => elegirDia(e.target.value)
+
+  function elegirDia(newFecha: string) {
+    if (!newFecha || newFecha === fecha) return
     setFecha(newFecha)
     setLoading(true)
     setYaCerrado(false)
@@ -204,6 +203,25 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   }, [calcularEfectivoEsperado])
 
   useEffect(() => {
+    const ctrl = new AbortController()
+    void Promise.resolve().then(async () => {
+      if (ctrl.signal.aborted) return
+      setEstadoPendientes('cargando')
+      try {
+        const res = await fetch('/api/cierre/pendientes', { signal: ctrl.signal })
+        const json = res.ok ? await res.json() : null
+        if (ctrl.signal.aborted) return
+        if (!json || !Array.isArray(json.dias)) { setEstadoPendientes('error'); return }
+        setDiasPendientes(json.dias as DiaPendienteUI[])
+        setEstadoPendientes('ok')
+      } catch {
+        if (!ctrl.signal.aborted) setEstadoPendientes('error')
+      }
+    })
+    return () => ctrl.abort()
+  }, [pendientesKey])
+
+  useEffect(() => {
     if (abortControllerRef.current) abortControllerRef.current.abort()
     const ctrl = new AbortController()
     abortControllerRef.current = ctrl
@@ -221,6 +239,14 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     if (cierreSolicitadoRef.current || cerrando) return
     if (!canClose || !data || loading || fetchError || data.fecha !== fecha || diaCerrado) {
       toast.error('Carga y revisa los datos de esta fecha antes de confirmar el cierre.')
+      return
+    }
+    if (diaBloqueante) {
+      toast.error(`Antes hay que cerrar ${etiquetaDiaLarga(diaBloqueante.fecha)}: tuvo movimientos.`)
+      return
+    }
+    if (estadoPendientes !== 'ok') {
+      toast.error('No se pudo revisar qué días faltan por cerrar. Reintenta antes de cerrar.')
       return
     }
     if (statusCierre === 'INCOMPLETO') {
@@ -301,6 +327,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         const ctrl = new AbortController()
         abortControllerRef.current = ctrl
         await fetchCierre(fecha, ctrl.signal)
+        setPendientesKey((k) => k + 1)
       } else if (res.status === 409 && json.error?.code === 'BASE_CAMBIO') {
         // El servidor no cierra con una base que ya no es la vigente: se actualiza y se pide revisar.
         const vigente = Number(json.error?.impacto?.baseVigente)
@@ -564,21 +591,18 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     <div className="p-4 max-w-5xl mx-auto space-y-6 pb-32">
       {modal}
 
-      {/* Gap warning */}
-      {hasGap && lastCierreDate && (
-        <div className="bg-red-50 border border-red-300 rounded-xl p-4 flex items-start gap-3">
-          <AlertTriangle className="w-6 h-6 text-red-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="font-semibold text-red-900">Días sin cerrar</p>
-            <p className="text-sm text-red-800 mt-1">
-              Hay días sin cerrar entre el último cierre (<strong>{lastCierreDate}</strong>) y la fecha seleccionada (<strong>{fecha}</strong>). Debes cerrar los días intermedios primero.
-            </p>
-          </div>
-        </div>
-      )}
+      <DiasPendientes
+        estado={estadoPendientes}
+        dias={diasPendientes}
+        fecha={fecha}
+        hoy={getTodayString()}
+        deshabilitado={cerrando}
+        onElegir={elegirDia}
+        onReintentar={() => setPendientesKey((k) => k + 1)}
+      />
 
       {/* Backdate warning */}
-      {isBackDate && lastCierreDate && !hasGap && (
+      {isBackDate && lastCierreDate && !diaBloqueante && (
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
           <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
           <div>
@@ -870,7 +894,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             <form onSubmit={handleCerrar} className="space-y-2">
               <Button
                 type="submit"
-                disabled={cerrando || statusCierre === 'INCOMPLETO' || !baseLista || arqueoData.totalContado === 0}
+                disabled={cerrando || !!diaBloqueante || estadoPendientes !== 'ok' || statusCierre === 'INCOMPLETO' || !baseLista || arqueoData.totalContado === 0}
                 className="w-full py-6 text-lg"
               >
                 {cerrando ? 'Cerrando...' : 'Cerrar Día'}

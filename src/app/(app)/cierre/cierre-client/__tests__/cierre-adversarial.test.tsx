@@ -31,6 +31,7 @@ beforeEach(() => {
     ok: true, status: 200,
     json: async () => url.startsWith('/api/config') ? { config: { valor: '10000' } }
       : url === '/api/cierre/last' ? { cierre: null }
+      : url === '/api/cierre/pendientes' ? { hoy: '2026-11-08', dias: [] }
       : { cierre, status: 'COMPLETO', embarquesPendientes: [] },
   }))
   vi.stubGlobal('fetch', fetchMock)
@@ -197,7 +198,9 @@ describe('#688 base de caja en el cierre', () => {
     if (options?.method === 'POST') return { ok: true, status: 201, json: async () => ({ cierre: { netoCaja: 20000 } }) }
     return {
       ok: true, status: 200,
-      json: async () => url === '/api/cierre/last' ? { cierre: null } : { cierre, status: 'COMPLETO', embarquesPendientes: [] },
+      json: async () => url === '/api/cierre/last' ? { cierre: null }
+        : url === '/api/cierre/pendientes' ? { hoy: '2026-11-08', dias: [] }
+        : { cierre, status: 'COMPLETO', embarquesPendientes: [] },
     }
   }
 

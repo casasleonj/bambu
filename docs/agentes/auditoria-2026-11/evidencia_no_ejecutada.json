@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "nota": "Documento de estado, NO evidencia de ejecución. No cambiar valores a PASS sin traza, revisión y SHA.",
+  "baseline_sha": "50d3d69b18f4c9c4c5fa4ff14ca95045c3308c6c",
+  "decisiones_normativas": "PENDIENTES_704_Y_ATRIBUCION",
+  "referencias_aprobaciones": [],
+  "runtime": {
+    "codex": {
+      "estado": "NO_EJECUTADO_SIN_CLI"
+    },
+    "claude": {
+      "estado": "NO_EJECUTADO_SIN_CLI"
+    },
+    "opencode": {
+      "estado": "NO_EJECUTADO_SIN_CLI"
+    }
+  },
+  "adversariales": "DISEÑADOS_NO_EJECUTADOS",
+  "reporte_adversariales": "",
+  "revision_humana": "PENDIENTE",
+  "revisor_referencia": "",
+  "invariantes": {}
+}

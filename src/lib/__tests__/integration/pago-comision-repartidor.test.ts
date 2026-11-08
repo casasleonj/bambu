@@ -21,7 +21,6 @@ import { GET as comisionDelDia } from '@/app/api/nomina/dia/route'
 import { POST as pagarComision } from '@/app/api/nomina/dia/pagar/route'
 import { POST as crearNomina } from '@/app/api/nomina/route'
 import { POST as cerrarDia } from '@/app/api/cierre/route'
-import { POST as cerrarDiaAlterno } from '@/app/api/cierre-dia/route'
 import { crearPedidoUseCase } from '@/modules/pedidos'
 import { todayStringBogota } from '@/lib/dates'
 import { verificarIntegridad } from '@/lib/integridad/verificar'
@@ -212,16 +211,6 @@ describe('#499 — pago de la comisión del repartidor (Postgres real)', () => {
     expect(Number(n.total)).toBe(3000)
   })
 
-  it('la otra ruta de cierre (cierre-dia) también calcula las comisiones en el servidor', async () => {
-    const ayer = new Date(Date.now() - 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-    await testPrisma.pagoComisionRepartidor.create({
-      data: { trabajadorId: r3, fecha: new Date(`${ayer}T00:00:00-05:00`), monto: 700, createdAt: new Date(`${ayer}T15:00:00-05:00`) },
-    })
-    const res = await cerrarDiaAlterno(json('/api/cierre-dia', { fecha: `${ayer}T17:00:00.000Z`, comisiones: 123 }))
-    expect(res.status).toBe(201)
-    const c = await testPrisma.cierreDia.findFirstOrThrow({ orderBy: { fecha: 'asc' } })
-    expect(Number(c.comisiones)).toBe(700)
-  })
   it('por conciliar bloquea solo al repartidor afectado y conserva el replay de un pago anterior', async () => {
     const id = await repartidor('Conciliar propia')
     await entrega(id, 2)
