@@ -80,7 +80,7 @@ def evaluar(repo):
         elif typ=="PASAJE_POR_DESCOMPONER":
             if x.get("estado_revision")!="PENDIENTE_ATOMIZACION":
                 errors.append("pasaje indebidamente certificado "+id_)
-        elif typ=="CONTEXTO_ESTRUCTURAL":
+        elif typ in ("CONTEXTO_ESTRUCTURAL","CONTEXTO_EVIDENCIA"):
             if x.get("estado_revision")!="CONTEXTO_PENDIENTE_VALIDACION":
                 errors.append("contexto indebidamente certificado "+id_)
         else:
@@ -96,7 +96,7 @@ def evaluar(repo):
             "lineas_referenciadas":len(lines),"filas":len(rows),
             "clausulas_descompuestas":types["CLAUSULA_DESCOMPUESTA"],
             "pasajes_pendientes":types["PASAJE_POR_DESCOMPONER"],
-            "contextos_pendientes":types["CONTEXTO_ESTRUCTURAL"],
+            "contextos_pendientes":types["CONTEXTO_ESTRUCTURAL"]+types["CONTEXTO_EVIDENCIA"],
             "certificaciones_humanas":sum(x.get("estado_revision")=="VERIFICADA" for x in rows),
             "errores":errors,
             "limite":"PASS_PREANALISIS no es PASS_SEMANTICO; no desbloquea merge"}

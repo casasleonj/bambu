@@ -33,3 +33,12 @@
 5. Evaluación runtime Codex/Claude/OpenCode independiente. No simularla a partir de rutas o índices.
 
 Esta revisión no altera reglas de producto ni certifica las decisiones históricas por su mera transcripción.
+
+
+## Segunda pasada de reconciliación
+
+- 113 cláusulas adicionales descompuestas conceptualmente con condiciones y excepciones (total 306).
+- 107 pasajes de inventario/comandos históricos diferenciados como `CONTEXTO_EVIDENCIA`, **aún pendientes de evaluación**; no se declararon obsoletos ni inválidos sin consultar `main`.
+- 174 pasajes permanecen `PENDIENTE_ATOMIZACION`.
+- 0 líneas intentadas ya estaban descompuestas o no eran un pasaje: ninguna.
+- Cero cláusulas certificadas por humano; el gate de cutover debe permanecer bloqueado.
