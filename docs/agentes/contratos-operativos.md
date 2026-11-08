@@ -489,3 +489,8 @@ Los seis archivos en [fuente-original/](fuente-original/) preservan exactamente 
 - **AB-0969 · [fuente 672](fuente-original/04-protocolo-anterior.md#L6)**: Usar refutación iterativa para reducir sesgos. **Condición:** Investigación de solución. **Excepción/límite:** No prometer eliminación total de sesgo sin evidencia. **Estado:** PREANÁLISIS.
 - **AB-0970 · [fuente 707](fuente-original/05-flujo-entrega-anterior.md#L3)**: Minimizar deuda de integración y contexto no necesario. **Condición:** Flujo por fases. **Excepción/límite:** No ahorrar contexto ocultando normas financieras críticas. **Estado:** PREANÁLISIS.
 - **AB-0971 · [fuente 781](fuente-original/05-flujo-entrega-anterior.md#L77)**: Optimizar costo de comprensión e integración, no conteo de commits. **Condición:** Diseño de flujo de entrega. **Excepción/límite:** No maximizar commits como métrica de calidad. **Estado:** PREANÁLISIS.
+
+
+## Cambios de estado técnico comprobados en main
+
+La guía original no sustituye al código actual. El [contraste puntual de las cláusulas frente al main verificado](auditoria-2026-11/CONTRASTE_MAIN_VERIFICADO_PR718.md) documenta que el CRUD Contactos sí existe, el POST alterno de /api/cierre-dia fue eliminado (#691) y el destino de coordenadas propio del pedido tiene prioridad sobre Negocio y Cliente. Ninguna de estas observaciones revoca una decisión comercial sin su fuente aprobada.

@@ -50,3 +50,8 @@ Esta revisión no altera reglas de producto ni certifica las decisiones históri
 - Se clasificaron **126 pasajes restantes** como `EVIDENCIA_HISTORICA_POR_VALIDAR`, **no** como obsoletos/certificados. Su fuente y descripción se conservan. Continúa siendo obligación del revisor detectar reglas aún no extraídas.
 - La matriz base de 798 posiciones vincula 342 posiciones al catálogo con IDs AB-#### y condiciones/excepciones. Esto es trazabilidad de trabajo IA, **no equivalencia aprobada**.
 - La clasificación automatizada/contextual no debe confundirse con lectura humana ni con validación de las 354 cláusulas frente a main. Cero certificados por revisión humana.
+
+
+## Comparación con main en SHA
+
+Se cotejaron 22 posiciones/temas con código `main` 03523c6778a8a252e8decff4ea1891c2e99815ec. Algunas entradas incluyen varios contratos y quedaron verificados solamente por el aspecto observado. Ver [tabla de evidencia main](CONTRASTE_MAIN_VERIFICADO_PR718.md). Los demás siguen sin verificación de código ni revisión humana.

@@ -40,6 +40,8 @@ Para Claude Code, `.claude/rules/*.md` usa `paths:` para indicar cuándo recuper
 - [Catálogo de contratos con condiciones y excepciones](contratos-operativos.md), con vigencia aún por comprobar.
 - [Reconciliación documentada del PR #718](auditoria-2026-11/RECONCILIACION_SEMANTICA_PR718.md), con pendientes diferenciados de cláusulas descompuestas.
 
+- [Comparación puntual con código main](auditoria-2026-11/CONTRASTE_MAIN_VERIFICADO_PR718.md): 22 hallazgos técnicos con SHA, evidencia, limitaciones y distinción entre histórico y código.
+
 ## Invariantes de la reestructuración
 
 El [snapshot original de seis partes](fuente-original/) conserva **todo el `AGENTS.md` anterior**, incluyendo el protocolo viejo que tenía el conflicto #704. Es **evidencia histórica** y no debe ser leído como autoridad paralela a las guías canónicas. El verificador CI exige identidad byte-a-byte de su concatenación respecto al blob Git `4182d57064c7f89c2eea39e86d1e0b469179bb06`.
