@@ -32,6 +32,10 @@ No automatizar pagos, entregas, accesos, cifras físicas o acciones irreversible
 - Probar con y sin datos, errores de escritura, teclados/puntero, latencia, errores temporales, ausencia de permisos y recuperación. Validar con personas del perfil objetivo si están disponibles; la simulación de agente **no demuestra** comprensión humana.
 - Comparar `antes → después`: pasos/campos que el humano completa, errores evitables, tiempo observable, resultados correctos, comprensión real. Reducir clics no es criterio aislado; no usar números inventados.
 
+## Visibilidad de las pruebas de experiencia
+
+Al iniciar **pruebas reales de Playwright E2E o un recorrido real de interfaz por agente**, y no al escribir specs o planes, usar los avisos `QA DE USUARIO INICIADO / EN CURSO / FINALIZADO` descritos en [verification-release.md](verification-release.md). Informar a la persona del flujo en prueba, rol, dispositivo y avance entre escenarios, no de cada clic. Distinguir observación visual, aserción automática, feedback humano y evidencia pendiente; una inspección del componente o una maqueta **no son** una prueba en navegador.
+
 ## Benchmark y refutación
 
 Comparar el flujo con patrones de productos comparables, no copiar superficialmente la estética de una empresa grande. Justificar cada desviación del patrón existente. Una maqueta visualmente consistente puede seguir siendo UX mala; una UX rápida puede ser inaccesible. Ambas requieren pruebas independientes.

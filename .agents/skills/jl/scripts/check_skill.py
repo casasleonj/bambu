@@ -60,9 +60,11 @@ if len(SKILL.splitlines()) > 500 or len(SKILL.encode('utf-8')) > 12000:
 CONTRACT = {
     'modos': ['INVESTIGAR', 'IMPLEMENTAR', 'VALIDAR', 'COMPLETO', 'LOTE', 'INSTALAR'],
     'etapas': ['INVESTIGANDO', 'IMPLEMENTANDO', 'VALIDANDO', 'INVESTIGACIÓN TERMINADA', 'IMPLEMENTACIÓN TERMINADA', 'VALIDACIÓN TERMINADA', 'BLOQUEADA', 'REABIERTA'],
+    'qa_navegador': ['Playwright','QA DE USUARIO INICIADO', 'QA DE USUARIO EN CURSO', 'QA DE USUARIO FINALIZADO', 'QA DE USUARIO PENDIENTE', 'flujo en curso','agent-browser'],
     'alcance': ['QUIERE', 'NO QUIERE', 'PRESERVAR', 'FUERA DE ALCANCE', 'ACEPTACIÓN'],
-    'tecnicas': ['DOC-1','DOC-2','REUSE-1','REUSE-2','Context7','convergencia'],
+    'tecnicas': ['DOC-1','DOC-2','REUSE-1','REUSE-2','XMOD-1','XMOD-2','XMOD-3','Context7','convergencia'],
     'seguridad': ['producción','QA','autorización','regresión','baseline','evidencia'],
+    'transversal': ['cross-module-consistency.md','consumidores indirectos','conciliación entre consumidores','misma métrica'],
 }
 for group, words in CONTRACT.items():
     for word in words:
@@ -89,7 +91,7 @@ for path in ROOT.rglob('*.md'):
         if not dest.is_file() or (dest != ROOT and ROOT not in dest.parents):
             fail(f'Link local roto/fuera de skill: {path.relative_to(ROOT)} -> {target}')
 
-refs = ['workflow','user-feedback','code-reuse','evidence-reuse','engineering','convergence','experience','verification-release','installation']
+refs = ['workflow','user-feedback','code-reuse','evidence-reuse','engineering','convergence','experience','verification-release','browser-tools','installation','cross-module-consistency']
 for r in refs:
     if not (ROOT/'references'/f'{r}.md').is_file():
         fail(f'Referencia obligatoria ausente: {r}.md')
@@ -102,7 +104,7 @@ if not (ROOT/'assets'/'report.md').is_file():
 # El test externo con PyYAML comprueba además el parseo sintáctico integral.
 evals = text(ROOT/'tests'/'evals.yaml')
 ids = re.findall(r'^- id:\s*([\w-]+)\s*$', evals, re.M)
-if len(ids) < 135 or len(ids) != len(set(ids)):
+if len(ids) < 169 or len(ids) != len(set(ids)):
     fail(f'Casos de evaluación insuficientes/duplicados: total={len(ids)}, únicos={len(set(ids))}')
 for block in re.split(r'(?=^- id:)', evals, flags=re.M):
     if not block.startswith('- id:'):
