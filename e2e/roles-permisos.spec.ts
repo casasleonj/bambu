@@ -100,16 +100,9 @@ test.describe('2. ADMIN — acceso total', () => {
     expect(body.success).toBe(true)
   })
 
-  test('Cierra día (API) → 200', async ({ page }) => {
-    const res = await apiPost(page, '/api/cierre-dia', {
-      numPedidos: 0, totalVentas: 0, aguaVendida: 0, hieloVendido: 0,
-      cobrado: 0, fiado: 0, efectivo: 0, transferencia: 0, nequi: 0,
-      daviplata: 0, baseDia: 100000, comisiones: 0, salarios: 0, gastos: 0,
-      stockIniAgua: 0, prodAgua: 0, stockFinAgua: 0,
-      stockIniHielo: 0, prodHielo: 0, stockFinHielo: 0,
-      netoCaja: 100000,
-    })
-    expect(res.ok()).toBe(true)
+  test('POST /api/cierre-dia ya no existe (#691): el día se cierra solo con /api/cierre → 405', async ({ page }) => {
+    const res = await apiPost(page, '/api/cierre-dia', { baseDia: 100000, netoCaja: 100000 })
+    expect(res.status()).toBe(405)
   })
 
   test('Crea abono (API) → 200', async ({ page }) => {
@@ -239,16 +232,9 @@ test.describe('3. ASISTENTE — acceso limitado', () => {
     expect(embarqueRes.status()).toBe(201)
   })
 
-  test('NO puede cerrar día (API) → 403', async ({ page }) => {
-    const res = await apiPost(page, '/api/cierre-dia', {
-      numPedidos: 0, totalVentas: 0, cobrado: 0, fiado: 0,
-      efectivo: 0, transferencia: 0, nequi: 0, daviplata: 0,
-      baseDia: 100000, comisiones: 0, salarios: 0, gastos: 0,
-      stockIniAgua: 0, prodAgua: 0, stockFinAgua: 0,
-      stockIniHielo: 0, prodHielo: 0, stockFinHielo: 0,
-      netoCaja: 100000,
-    })
-    expect(res.status()).toBe(403)
+  test('POST /api/cierre-dia tampoco existe para el ASISTENTE (#691) → 405', async ({ page }) => {
+    const res = await apiPost(page, '/api/cierre-dia', { baseDia: 100000, netoCaja: 100000 })
+    expect(res.status()).toBe(405)
   })
 
   test('NO puede crear abono (API) → 403', async ({ page }) => {
