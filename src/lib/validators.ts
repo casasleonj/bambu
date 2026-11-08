@@ -100,6 +100,9 @@ export const PedidoCreateSchema = z.object({
   offlineId: z.string().optional(),
   // #408: el usuario confirmó que esta venta NO es una repetida de la anterior. Solo deja rastro; no cambia el cálculo.
   ventaRepetidaConfirmada: z.boolean().optional(),
+  // #426: guardar la ubicación del pedido (entregaLat/entregaLng) como ubicación de la tienda o del cliente.
+  // `reemplazar` solo si el usuario eligió pisar la que ya tenía. Sin este campo no se guarda nada.
+  guardarUbicacion: z.object({ reemplazar: z.boolean().optional() }).optional(),
   // TEMPORAL-SIN-EMBARQUE(#535): «venta en ruta» — el ADMIN registra la venta que un
   // repartidor hizo en la calle. `vendidoPorId` queda como `Pedido.entregadoPorId`;
   // solo vale en una venta rápida a domicilio y solo con la gestión directa encendida.
