@@ -33,6 +33,8 @@ jobs:
         run: python scripts/auditoria-agentes/check_modularizacion.py --repo . --salida /tmp/agent-modularization-report.json
       - name: Verify 49 historic records indexed and linked
         run: python scripts/auditoria-agentes/check_indice_historico.py --repo .
+      - name: Verify JL and Hallazgo skill routes (not runtime)
+        run: python scripts/auditoria-agentes/check_skills.py --repo .
       - name: Emit conservative audit report
         shell: bash
         run: |
