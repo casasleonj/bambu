@@ -29,6 +29,8 @@ jobs:
           python-version: '3.12'
       - name: Unit tests of verification gate
         run: python -m unittest discover -s scripts/auditoria-agentes/tests -v
+      - name: Verify modularization and exact original snapshot
+        run: python scripts/auditoria-agentes/check_modularizacion.py --repo . --salida /tmp/agent-modularization-report.json
       - name: Emit conservative audit report
         shell: bash
         run: |
