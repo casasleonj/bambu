@@ -1,5 +1,6 @@
 // @tests api/ruta
 import {test, expect, handleBaseCaja, loginAs, goto, apiPost, apiGet,  resetDatabase} from './fixtures'
+import { nuevoEmbarqueLogin, crearPedido, abrirWizard, irAPasoConfirmar } from './embarque-wizard'
 
 test.describe('Rutas', () => {
   test.describe.configure({ mode: 'serial' })
@@ -199,30 +200,31 @@ test.describe('Rutas', () => {
   })
 
   test('ruta aparece en crear embarque', async ({ page }) => {
-    await loginAs(page, 'admin')
+    // «Nuevo Embarque» es un asistente de dos pasos: el paso 1 elige pedidos y la ruta se
+    // elige en el paso 2, dentro de «Más opciones». Se recorre hasta ahí; contar `<select>`
+    // en el paso 1 no probaba nada (#567).
+    await nuevoEmbarqueLogin(page)
 
-    const name = `Ruta Emb ${Date.now() % 100000}`
-    const res = await apiPost(page, '/api/rutas', {
-      nombre: name,
-      dias: 'LUNES,MARTES',
-    })
-    const body = await res.json()
-    expect(body.ruta?.id).toBeTruthy()
+    const nombre = `Ruta Emb ${Date.now() % 100000}`
+    const res = await apiPost(page, '/api/rutas', { nombre, dias: 'LUNES,MARTES' })
+    const rutaId = (await res.json()).ruta?.id as string | undefined
+    expect(rutaId).toBeTruthy()
 
-    await goto(page, '/embarques')
+    const pedido = await crearPedido(page)
+    expect(pedido.id).toBeTruthy()
 
-    await page.click('button:has-text("Nuevo Embarque")')
-    await page.waitForTimeout(500)
+    await abrirWizard(page)
+    await page.getByTestId(`pedido-check-${pedido.numero}`).check()
+    await irAPasoConfirmar(page)
 
-    const selects = page.locator('select')
-    const count = await selects.count()
-    expect(count).toBeGreaterThanOrEqual(1)
+    await page.getByTestId('mas-opciones').click()
+    // El selector de ruta es el único <select> que ofrece «Sin ruta».
+    const selectorRuta = page.locator('select').filter({ has: page.locator('option', { hasText: 'Sin ruta' }) })
+    await expect(selectorRuta).toHaveCount(1)
+    await expect(selectorRuta.locator('option', { hasText: nombre })).toHaveCount(1)
 
-    const dialog = page.locator('[role="dialog"]')
-    if (await dialog.isVisible({ timeout: 3000 }).catch(() => false)) {
-      const dialogText = await dialog.innerText()
-      expect(dialogText.length).toBeGreaterThan(0)
-    }
+    await selectorRuta.selectOption({ label: nombre })
+    await expect(selectorRuta).toHaveValue(rutaId as string)
   })
 
   test('crear con todos los campos', async ({ page }) => {
