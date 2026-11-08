@@ -33,7 +33,7 @@ class ValidatorTest(unittest.TestCase):
 
     def test_original(self):
         out=self.check(True)
-        self.assertGreaterEqual(out['defined_eval_cases'],169)
+        self.assertGreaterEqual(out['defined_eval_cases'],215)
         self.assertEqual(out['actual_agent_executions'],0)
 
     def test_no_name(self):
@@ -147,6 +147,72 @@ class ValidatorTest(unittest.TestCase):
 
     def test_missing_semantic_comparability(self):
         self.change('misma métrica', 'cualquier número')
+        self.check(False)
+
+    def test_missing_communication_reference(self):
+        (self.root/'references/comunicacion-usuario.md').unlink()
+        self.check(False)
+
+    def test_missing_everyday_example_gate(self):
+        self.change('antes → acción', 'solo explicación de código')
+        self.check(False)
+
+    def test_missing_communication_reference_link(self):
+        self.change('references/comunicacion-usuario.md', 'references/missing-communication.md')
+        self.check(False)
+
+    def test_missing_hypothetical_disclosure(self):
+        self.change('hipotético', 'definitivo')
+        self.check(False)
+
+    def test_missing_user_value_update(self):
+        self.change('qué ocurre, qué significa para el usuario y qué sigue', 'estado vacío')
+        self.check(False)
+
+    def test_missing_evaluation_distinction(self):
+        self.change('definidas vs ejecutadas', 'todas aprobadas')
+        self.check(False)
+
+    def test_missing_scenarios_reference(self):
+        (self.root/'references/escenarios-impacto-usuario.md').unlink()
+        self.check(False)
+
+    def test_missing_scenario_discovery(self):
+        self.change('ESC-1','NO_SCENARIO_DISCOVERY')
+        self.check(False)
+
+    def test_missing_scenario_user_map(self):
+        self.change('MAPA DE ESCENARIOS DESCUBIERTOS','MAPA OCULTO')
+        self.check(False)
+
+    def test_missing_scenario_qa(self):
+        self.change('ESC-3','SIN_COBERTURA_ESCENARIOS')
+        self.check(False)
+
+    def test_missing_synthesis_discovery(self):
+        self.change('SYN-1', 'NO_SYNTHESIS_DISCOVERY')
+        self.check(False)
+
+    def test_missing_synthesis_gate(self):
+        self.change('SYN-2', 'NO_SYNTHESIS_GATE')
+        self.check(False)
+
+    def test_missing_existing_decision_protection(self):
+        self.change('no se pregunten otra vez', 'se pregunten otra vez')
+        self.check(False)
+
+    def test_missing_external_feedback_reference(self):
+        path=self.root/'references/evidence-reuse.md'
+        s=path.read_text(encoding='utf8')
+        self.assertIn('No reabrir decisiones existentes',s)
+        path.write_text(s.replace('No reabrir decisiones existentes','Reabrir siempre decisiones existentes'),encoding='utf8')
+        self.check(False)
+
+    def test_missing_external_scenarios_bridge(self):
+        path=self.root/'references/escenarios-impacto-usuario.md'
+        s=path.read_text(encoding='utf8')
+        self.assertIn('precedentes externos',s)
+        path.write_text(s.replace('precedentes externos','sin fuentes'),encoding='utf8')
         self.check(False)
 
     def test_missing_evals(self):
