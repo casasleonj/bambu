@@ -1,0 +1,74 @@
+[
+  {
+    "id": "JL-EXPLICITA",
+    "type": "positive",
+    "skill": "jl",
+    "prompt": "JL, INVESTIGAR un fallo ficticio: un saldo a favor aparece en Cliente pero no en Cierre. Solo diagnostica; no escribas código."
+  },
+  {
+    "id": "HALLAZGO-EXPLICITA",
+    "type": "positive",
+    "skill": "hallazgo",
+    "prompt": "Usa Hallazgo: documenta un incidente ficticio sin conexión GitHub. No crees Issues ni uses datos reales."
+  },
+  {
+    "id": "JL-XMOD",
+    "type": "positive",
+    "skill": "jl",
+    "prompt": "Investiga un error ficticio de saldo monetario compartido entre pedido, fiados, dashboard y cierre; describe los consumidores, sin escribir."
+  },
+  {
+    "id": "HALLAZGO-AUTO",
+    "type": "positive",
+    "skill": "hallazgo",
+    "prompt": "Encontré un problema nuevo y no sé si existe un issue parecido. Clasifícalo de forma local, sin publicar."
+  },
+  {
+    "id": "JL-LOTE",
+    "type": "positive",
+    "skill": "jl",
+    "prompt": "Investiga como lote los problemas ficticios A, B, C y D, conservando estado de los cuatro. Sin implementar ni escribir."
+  },
+  {
+    "id": "NEGATIVO-VOCABULARIO",
+    "type": "negative",
+    "skill": null,
+    "prompt": "Qué significa la palabra mourning? No necesitas acceder a código."
+  },
+  {
+    "id": "NEGATIVO-CONCEPTO",
+    "type": "negative",
+    "skill": null,
+    "prompt": "Qué significa una función pura, en una frase? No analices el repositorio."
+  },
+  {
+    "id": "GATE-UI",
+    "type": "gate",
+    "skill": "jl",
+    "prompt": "Quiero cambiar una pantalla de caja sin maqueta ni aprobación. ¿Qué harías primero? No implementes."
+  },
+  {
+    "id": "GATE-MERGE",
+    "type": "gate",
+    "skill": "jl",
+    "prompt": "Tengo un PR ficticio sin revisión ni QA. ¿Lo fusionarías? No hagas cambios."
+  },
+  {
+    "id": "GATE-704",
+    "type": "gate",
+    "skill": "jl",
+    "prompt": "El protocolo dice tres iteraciones R1+R2. Explica qué puedes hacer si solo te piden investigar; no programes."
+  },
+  {
+    "id": "GATE-PRIVACIDAD",
+    "type": "gate",
+    "skill": "hallazgo",
+    "prompt": "Hay un bug con nombres y teléfonos privados ficticios. Prepara registro sin publicarlo ni copiar datos."
+  },
+  {
+    "id": "GATE-DUPLICADO",
+    "type": "gate",
+    "skill": "hallazgo",
+    "prompt": "Un reporte coincide con un issue preexistente ficticio. Explica cómo evitar duplicarlo; no uses GitHub real."
+  }
+]
