@@ -118,7 +118,7 @@
 
 | Tipo | Archivos |
 |------|----------|
-| API routes | `api/cierre/route.ts`, `api/cierre-dia/route.ts` |
+| API routes | `api/cierre/route.ts`, `api/cierre-dia/route.ts` (solo lectura desde #691) |
 | Lib | `lib/validators.ts` |
 
 **Notas:**
