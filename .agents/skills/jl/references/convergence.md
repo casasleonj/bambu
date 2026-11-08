@@ -35,3 +35,7 @@ Orden recomendado:
 5. Cómo se comprobará o se comprobó, qué falta decidir, riesgos restantes y aprobación necesaria.
 
 Escribir para persona sin conocimientos técnicos; glosario técnico únicamente si aporta al implementador. Una revisión hecha por IA no sustituye una prueba real de comprensión con usuarios.
+
+## Contraprueba transversal
+
+Para cambios compartidos, la convergencia requiere un mapa de consumidores de [cross-module-consistency.md](cross-module-consistency.md) y un contraejemplo: «¿puede esta solución hacer correcto el módulo original pero mantener un valor o estado incorrecto en otro?». Comprobar que dos pantallas representan la misma métrica antes de exigir igualdad; si no, probar el puente o diferencia semántica. La falta de acceso a un consumidor material convierte la convergencia en condicionada y la validación en pendiente, no exitosa.

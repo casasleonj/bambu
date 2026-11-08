@@ -8,6 +8,8 @@
 
 **Reutilización de código (si aplica):** REUSE-1/REUSE-2; qué función/objeto/componente ya existe, consumidores, contrato, decisión (usar/extender/componer/extraer/crear) y por qué no duplicar.
 
+**Consistencia entre módulos (si XMOD aplica):** métrica/invariante y significado, fuente de verdad demostrada, consumidores directos/indirectos, clasificación igual/relacionada/distinta, período/filtros, diferencia y origen, N/N comprobados, tests API/DB/UI, estados PENDIENTE/PASÓ. No forzar igualdad entre métricas no equivalentes.
+
 **Diagnóstico y evidencia:** confirmado / hipótesis / no verificado; causa y grafo entrada → servicio → datos → consumidores → efecto; fuentes con URLs o archivos+SHA, versiones, divergencias; DOC-1/DOC-2 cuando aplique.
 
 **Alternativas y convergencia:** solución interna reutilizable, patrones externos transferibles, candidatas comparadas, principal contraejemplo, corrección de debilidad, iteraciones significativas y motivo de parada o bloqueo.
@@ -15,6 +17,8 @@
 **Impactos activados:** backend/API/datos/offline/infra/seguridad/UI/UX. Para cada dimensión no aplicable registrar **motivo** en una línea. Si UI: distinguir design system, UI, UX y automatización por procedencia de datos.
 
 **Criterios y pruebas:** resultado deseado + efecto prohibido/invariante → escenario positivo/negativo → test/evidencia; regresión, adversariales y plan de QA antes de producción. Registrar ejecución real, ambiente, SHA, defectos y re-test (o PENDIENTE).
+
+**QA por agente en interfaz (si aplica):** herramienta (Playwright E2E/u otra), aviso de inicio real, **función/flujo en curso** (botones, filtros, formularios, links/URLs, navegación, lógica, UX), `j/N` recorridos y resultados, hitos relevantes, cierre `PASÓ/FALLÓ/PENDIENTE`, entorno/build/rol/dispositivo, incidencia y re-test. Nunca llamar test humano a una simulación por agente. Si no aplica o no hubo navegador, consignar motivo, sin inventar mensajes de ejecución.
 
 **Decisión:** CONVERGENCIA DE DISEÑO / CONDICIONADA / BLOQUEADA / VALIDADA; aprobación pendiente, permiso de merge/deploy, riesgos conocidos. Nunca dar por aprobado solo con CI en verde.
 

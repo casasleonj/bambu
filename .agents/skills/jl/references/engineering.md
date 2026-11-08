@@ -6,7 +6,7 @@ Activar solo las partes afectadas. **Descubrir tecnología y versión del reposi
 
 **Control REUSE-1/REUSE-2:** comprobar si las funciones, servicios, DTO, objetos y reglas ya existen; decidir reutilizar, extender o extraer una implementación compartida con compatibilidad de consumidores, según `code-reuse.md` (cargar solo cuando haya una decisión real sobre reutilización). Evitar funciones duplicadas o abstracciones forzadas.
 
-Dibujar `entrada/acción → validación/autorización → función/servicio → persistencia/efecto → consumidores → resultado`. Seguir referencias en ambas direcciones, incluyendo reportes, trabajos en segundo plano, integración, offline y registros. Distinguir *hecho del negocio* de cálculo, saldo o visualización.
+Dibujar `entrada/acción → validación/autorización → función/servicio → persistencia/efecto → consumidores → resultado`. Seguir referencias en ambas direcciones, incluyendo reportes, trabajos en segundo plano, integración, offline y registros. Distinguir *hecho del negocio* de cálculo, saldo o visualización. **Si la regla o valor alimenta varios módulos, activar XMOD-1/2/3** de [cross-module-consistency.md](cross-module-consistency.md), siguiendo productores y consumidores indirectos.
 
 ### Servicios y reglas
 
