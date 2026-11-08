@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   loadClienteStats,
   loadClienteHistorial,
+  loadClienteSaldoFavor,
+  peekClienteSaldoFavor,
   peekClienteStats,
   peekClienteHistorial,
   prefetchClientePanel,
@@ -167,7 +169,7 @@ describe('panel-prefetch', () => {
     expect(peeked?.events[0].titulo).toBe('Pedido #1')
   })
 
-  it('prefetchClientePanel dispara ambas cargas (stats + historial)', async () => {
+  it('prefetchClientePanel dispara las tres cargas (stats + historial + saldo a favor)', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes('/stats')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, stats: STATS_STUB }) })
@@ -184,7 +186,8 @@ describe('panel-prefetch', () => {
     const urls = fetchMock.mock.calls.map((c) => c[0] as string)
     expect(urls).toContain('/api/clientes/c1/stats')
     expect(urls).toContain('/api/clientes/c1/historial?meses=12&page=1&pageSize=20')
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(urls).toContain('/api/clientes/c1/saldo-favor')
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('invalidateClientePanelCaches limpia ambas cachés', async () => {
@@ -208,5 +211,36 @@ describe('panel-prefetch', () => {
     // Tras invalidar, la próxima carga refetchea
     await loadClienteStats('c1')
     expect(fetchMock.mock.calls.filter((c) => (c[0] as string).includes('/stats'))).toHaveLength(2)
+  })
+
+  describe('saldo a favor (#696)', () => {
+    const LECTURA = { success: true, cliente: { id: 'c1', nombre: 'Pedro Gómez' }, saldo: 4000, movimientos: [], hayMas: false }
+
+    it('fetchea una vez, cachea y peek la lee; segunda llamada dentro del TTL no refetchea', async () => {
+      const fetchMock = mockFetchOnce(LECTURA)
+      vi.stubGlobal('fetch', fetchMock)
+      const a = await loadClienteSaldoFavor('c1')
+      const b = await loadClienteSaldoFavor('c1')
+      expect(a?.saldo).toBe(4000)
+      expect(b).toEqual(a)
+      expect(peekClienteSaldoFavor('c1')?.saldo).toBe(4000)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock.mock.calls[0][0]).toBe('/api/clientes/c1/saldo-favor')
+    })
+
+    it('un fallo o una respuesta con forma inválida es null y NO queda cacheado (no se toma por cero)', async () => {
+      vi.stubGlobal('fetch', mockFetchOnce({}, false))
+      expect(await loadClienteSaldoFavor('c1')).toBeNull()
+      vi.stubGlobal('fetch', mockFetchOnce({ success: true }))
+      expect(await loadClienteSaldoFavor('c1')).toBeNull()
+      expect(peekClienteSaldoFavor('c1')).toBeNull()
+    })
+
+    it('invalidateClientePanelCaches también limpia el saldo a favor', async () => {
+      vi.stubGlobal('fetch', mockFetchOnce(LECTURA))
+      await loadClienteSaldoFavor('c1')
+      invalidateClientePanelCaches()
+      expect(peekClienteSaldoFavor('c1')).toBeNull()
+    })
   })
 })

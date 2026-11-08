@@ -139,3 +139,65 @@ describe('ClienteTable — clearFilters', () => {
     expect(options).toEqual({ scroll: false })
   })
 })
+
+describe('ClienteTable — etiqueta «A favor» (#696)', () => {
+  beforeEach(() => {
+    vi.mocked(useRouter).mockReturnValue({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), back: vi.fn() } as unknown as ReturnType<typeof useRouter>)
+  })
+  afterEach(() => cleanup())
+
+  const fila = (saldoFavor: unknown, id = 'c1') =>
+    ({
+      id,
+      clienteId: id,
+      nombre: 'Pedro',
+      apellido: 'Gómez',
+      telefono: '3105550142',
+      frecuencia: 'SEMANAL',
+      activo: true,
+      saldoFavor,
+    }) as unknown as Parameters<typeof ClienteTable>[0]['clientes'][number]
+
+  const renderConFilas = (clientes: Array<ReturnType<typeof fila>>) =>
+    render(
+      <ClienteTable
+        clientes={clientes}
+        total={clientes.length}
+        page={1}
+        pageSize={25}
+        totalPages={1}
+        search=""
+        onSearchChange={vi.fn()}
+        onPageChange={vi.fn()}
+        fetchError={null}
+        onRetry={vi.fn()}
+        onCreateClick={vi.fn()}
+        onViewCliente={vi.fn()}
+        onViewNegocio={vi.fn()}
+        sortBy="createdAt"
+        sortDir="desc"
+        onSortChange={vi.fn()}
+        selectedClienteId={null}
+        filtroActivo={null}
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+      />,
+    )
+
+  it('un cliente con saldo a favor muestra «A favor $X» (el Decimal llega como texto)', () => {
+    renderConFilas([fila('4000.00')])
+    expect(screen.getByTestId('chip-saldo-favor')).toHaveTextContent('A favor $4000')
+    expect(screen.getByTestId('chip-saldo-favor-movil')).toHaveTextContent('A favor: $4000')
+  })
+
+  it.each([[0], ['0.00'], [null], [undefined], ['abc'], [-5]])('con saldo %s no muestra la etiqueta', (valor) => {
+    renderConFilas([fila(valor)])
+    expect(screen.queryByTestId('chip-saldo-favor')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('chip-saldo-favor-movil')).not.toBeInTheDocument()
+  })
+
+  it('solo los clientes con saldo la llevan', () => {
+    renderConFilas([fila('1500', 'a'), fila(0, 'b')])
+    expect(screen.getAllByTestId('chip-saldo-favor')).toHaveLength(1)
+  })
+})
+
