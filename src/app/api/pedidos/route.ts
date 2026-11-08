@@ -23,6 +23,7 @@ import { publishRealtimeEvent } from '@/lib/realtime'
 import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
 import { pickCoords } from '@/lib/geo/pedido-coords'
+import { guardarUbicacionDestino, type ResultadoGuardarUbicacion } from '@/lib/geo/guardar-ubicacion-destino'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 import { cargarEmbarquesLista, camposEmbarqueLista } from '@/lib/embarque-lista'
 import { gestionAdminSinEmbarqueActiva } from '@/lib/gestion-admin'
@@ -414,10 +415,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // #426: guardar la ubicación del pedido como ubicación de la tienda o del cliente. Es un efecto APARTE y
+    // best-effort: si falla, la venta ya está guardada y solo se informa que la ubicación no se guardó.
+    let ubicacionGuardada: ResultadoGuardarUbicacion | { resultado: 'ERROR' } | undefined
+    if (!result.deduped && parsed.data.guardarUbicacion) {
+      try {
+        ubicacionGuardada = await guardarUbicacionDestino({
+          clienteId: result.pedido.clienteId,
+          negocioId: parsed.data.negocioId,
+          lat: parsed.data.entregaLat,
+          lng: parsed.data.entregaLng,
+          reemplazar: parsed.data.guardarUbicacion.reemplazar,
+          pedidoId: result.pedido.id,
+          usuarioId: authResult.user?.id,
+        })
+      } catch (err) {
+        logger.error({ err: err instanceof Error ? err.message : 'Unknown', pedidoId: result.pedido.id }, 'No se pudo guardar la ubicación del pedido (#426)')
+        ubicacionGuardada = { resultado: 'ERROR' }
+      }
+    }
+
     // FIX M4-OFFLINE: devolver 200 + deduped=true cuando el pedido ya existía
     // (reintento offline). Antes siempre devolvía 201, rompiendo el contrato
     // offline-first con los hooks que esperan 200 para dedup.
-    return apiSuccess({ pedido: result.pedido, deduped: result.deduped }, result.deduped ? 200 : 201)
+    return apiSuccess({ pedido: result.pedido, deduped: result.deduped, ...(ubicacionGuardada ? { ubicacionGuardada } : {}) }, result.deduped ? 200 : 201)
   } catch (error) {
     Sentry.captureException(error, {
       extra: { route: 'POST /api/pedidos' },
