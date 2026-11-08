@@ -25,6 +25,8 @@ import { SolicitarExcepcionCreditoUseCase } from './use-cases/SolicitarExcepcion
 import { ResolverExcepcionCreditoUseCase } from './use-cases/ResolverExcepcionCreditoUseCase'
 import { getPrecioMinimos } from '@/lib/pricing'
 import { resolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
+import { getConfigInt } from '@/lib/config'
+import { buscarVentaRepetida, VENTA_REPETIDA_CONFIG_KEY, VENTA_REPETIDA_VENTANA_SEG_DEFAULT } from '@/lib/venta-repetida'
 
 const txManager = new PrismaTransactionManager()
 const pedidoRepo = new PrismaPedidoRepository()
@@ -99,6 +101,11 @@ export const previewPedidoUseCase = new PreviewPedidoUseCase({
   getFiadoStatusUseCase,
   getPrecioMinimos,
   resolverCoordsDeLink,
+  // #408: la ventana (segundos) es editable en Configuración; 0 apaga el aviso.
+  buscarVentaRepetida: async (q) => {
+    const ventanaSeg = await getConfigInt(VENTA_REPETIDA_CONFIG_KEY, VENTA_REPETIDA_VENTANA_SEG_DEFAULT)
+    return buscarVentaRepetida({ ...q, ventanaSeg })
+  },
 })
 
 // F2 (Excepciones de Crédito): ambas reutilizan la MISMA autoridad de F1
