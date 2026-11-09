@@ -25,3 +25,22 @@ Este registro cruza la fuente original con el catálogo previo `contratos-operat
 ## Evidencia y límites
 
 El nuevo archivo permite auditar sin perder una línea candidata y hace visibles las excepciones ya extraídas. **No pasa todavía el gate semántico** porque la revisión de las 556 entradas, la resolución de contradicciones y la certificación de comportamiento requieren evidencia adicional. El estado debe permanecer bloqueado hasta entonces. No modificar `evidencia_no_ejecutada.json` para simular aprobación.
+
+
+## Cuarta revisión: contraste dirigido con `main` actualizado (2026-11-09)
+
+**SHA de `main`:** `ef0bc0dd0736e3acfd9d9d0bf64ffc5ff62fb44f`. Fuente: lectura por GitHub a SHA, **no prueba E2E ni certificado de producto**.
+
+| Cláusula / fuente | Hallazgo verificable | Criterio y excepción | Resultado |
+|---|---|---|---|
+| AB-0049 / AGENTS L223 | `src/lib/geo/pedido-coords.ts#L52` usa `Pedido → Negocio → Cliente`; el archivo antiguo solo citaba Negocio → Cliente | No revertir destino propio por copiar una nota vieja; rastrear su Plan Maestro | Estado técnico nuevo identificado |
+| AB-0144 / AGENTS L621 | `src/app/api/cierre-dia/route.ts` solo tiene GET; #691 eliminó POST alternativo | No abrir bug por endpoint eliminado; auditar otros escritores si hay evidencia | Hallazgo concreto superado |
+| AB-0104 / AGENTS L525 | `src/lib/cierre-totales.ts#L17-L25` aún descuenta todos los gastos y comisiones como efectivo | Puede divergir de métodos de desembolso y del ADR vigente; no inventar decisión ni modificar caja sin pruebas | SUPUESTO TÉCNICO POR VALIDAR |
+| AB-0010 / L114 | `src/lib/cierre-totales.ts#L35-L44` distingue valor comercial, entregado y notas crédito del período | El importe histórico no reconstruye saldo pasado; considerar snapshots y exigibilidad | Contrato relevante a XMOD |
+| AB-0027 / L156 | `src/lib/fiados-cobro-server.ts#L87-L93` rechaza sobrepago **puntual** de pedido del día | No confundir con sobrante permitido en cobro general de fiados | Dos flujos distintos |
+| AB-0132 / L598 | `src/app/api/pedidos/pagar-fiado/route.ts#L171-L185` acredita sobrante al cliente real y crea `IngresoSaldoFavor` | No acreditarlo a consumidor final; comprobar reintentos, monto por método y downstream | Implementación observada, tests no ejecutados |
+| AB-0009 / L50 | `prisma/schema.prisma` usa `Decimal(10,2)` para saldoFavor; `Pago.offlineId` es índice no único | `Pedido.offlineId` sí es único. No imponer constraint igual a todos los modelos | Persistencia diferencial |
+
+**Decisiones posteriores relevantes:** `docs/adr/ADR-MONETARIO-002.md`, `ADR-CIERRE-004.md`, `ADR-REDUCCION-COMERCIAL-001.md` de `main` recogen autorización de saldo a favor en sobrepago de corrección/reducción, nota de crédito para reducción y pendiente #713 para corrección de precio a la baja. Algunas secciones históricas de esos ADR contienen la redacción antigua de rechazo; la decisión posterior documentada tiene prioridad, pero no se modifica el ADR silenciosamente.
+
+**Límite explícito:** las filas no inspeccionadas en código conservan el estado `NO_VERIFICADO_MAIN` cuando esa comprobación sea pertinente. Las 556 entradas no están firmadas por revisor, y la evaluación de agentes A/B sigue pendiente.
