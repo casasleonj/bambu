@@ -9,6 +9,15 @@ from pathlib import Path
 PARTS=("00-entrada.md","01-arquitectura-tecnica.md","02-historico-incidencias.md",
        "03-reglas-codigo.md","04-protocolo-anterior.md","05-flujo-entrega-anterior.md")
 CANDIDATES={"CANDIDATO_NORMATIVO","CONTRATO","GATE","REGLA","HISTORICO_MIXTO"}
+# No duplicar credenciales de ejemplo ni datos identificables al publicar
+# un inventario. El snapshot original (en el mismo repo) sigue intacto.
+SENSITIVE=("admin123","asist123","cont123","rep123","bambu_dev","jhonnatan",
+           "cmrqut8tj0003ih04r4wc26tc")
+def sanitize(text):
+    for token in SENSITIVE:
+        text=re.sub(re.escape(token), "[REDACTADO]", text, flags=re.IGNORECASE)
+    return text
+
 
 def check(repo):
     base=repo/"docs/agentes"
@@ -44,7 +53,7 @@ def check(repo):
             errors.append("linea inexistente "+str(i))
             continue
         coverage.add(n)
-        if row.get("clausula_original","").strip()!=lines[n-1].strip():
+        if row.get("clausula_original","").strip()!=sanitize(lines[n-1]).strip():
             errors.append("fuente literal divergente "+ident)
         if ident.startswith("AB-EX-"):
             extracted+=1
