@@ -711,7 +711,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                     </div>
                     {/* Mobile-only badges */}
                     <div className="flex flex-wrap gap-1 mt-1 md:hidden">
-                      {cliente.saldoPendiente && cliente.saldoPendiente > 0 && (
+                      {cliente.saldoPendiente != null && cliente.saldoPendiente > 0 && (
                         <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] font-medium rounded">
                           Saldo: {formatCurrency(cliente.saldoPendiente)}
                         </span>
