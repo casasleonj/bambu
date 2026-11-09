@@ -9,6 +9,9 @@ on:
       - 'prisma/migrations/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: prisma-migrate-production
   cancel-in-progress: false
