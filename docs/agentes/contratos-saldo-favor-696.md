@@ -6,7 +6,7 @@
 
 ## #691 · Un único escritor de cierre
 
-- **Regla vigente observada:** `POST /api/cierre-dia` fue eliminado; `GET /api/cierre-dia` conserva consulta histórica. La operación de cierre usa `POST /api/cierre`, con validación de la base vigente dentro del bloqueo/transacción.
+- **Regla vigente observada:** `POST /api/cierre-dia` fue eliminado; `GET /api/cierre-dia` conserva consulta histórica. La operación de cierre usa `POST /api/cierre`, con validación de la base vigente dentro del bloqueo/transacción. Si la base falta, el flujo puede rechazar con `BASE_FALTANTE` y, si cambió respecto a la confirmada por pantalla, con `BASE_CAMBIO`; comprobar la implementación actual y la auditoría del día.
 - **Condición:** al crear, modificar o auditar cierres y permisos.
 - **Excepciones/límites:** la ausencia de este `POST` no prueba que otras rutas carezcan de bypass. Revisar antes de inferir seguridad global. Pruebas registradas: `src/app/api/cierre-dia/__tests__/route.test.ts` y `e2e/roles-permisos.spec.ts` (405).
 - **Fuente:** [AGENTS L621](https://github.com/casasleonj/bambu/blob/ef0bc0dd0736e3acfd9d9d0bf64ffc5ff62fb44f/AGENTS.md#L621). No reabrir la incidencia histórica como si continuara activa.
