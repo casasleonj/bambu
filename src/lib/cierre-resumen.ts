@@ -438,7 +438,8 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         produccion: produccionFlat,
         producciones: produccionesDelDia,
         // #545: stock inicial a mostrar cuando el día aún no tiene producción registrada
-        stockInicialSugerido: await resolverStockInicial(prisma),
+        // #668: para un cierre atrasado, solo cierres anteriores a la fecha que se cierra (no el último que exista).
+        stockInicialSugerido: await resolverStockInicial(prisma, startOfDay),
         // #644: sueldos fijos con fecha de pago cumplida y sin pagar
         sueldosQueTocan: await sueldosPendientesAl(prisma, fechaStr),
         comisionesAuto: {

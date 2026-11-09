@@ -122,31 +122,41 @@ export async function POST(request: NextRequest) {
   ])
 
   // #645: «Jornada completa» no convive con otro turno del mismo sellador ese día.
-  const mismoSellador = previas.filter((p) => p.trabajadorId === parsed.data.trabajadorId)
-  if (mismoSellador.some((p) => (parsed.data.turno === 'JORNADA') !== (p.turno === 'JORNADA'))) {
+  const conflictoJornada = (prev: typeof previas) => prev
+    .filter((p) => p.trabajadorId === parsed.data.trabajadorId)
+    .some((p) => (parsed.data.turno === 'JORNADA') !== (p.turno === 'JORNADA'))
+  if (conflictoJornada(previas)) {
     return apiError('Ese sellador ya tiene producción ese día con otro tipo de turno: la jornada completa no se combina con mañana, tarde o noche', 409, { code: 'JORNADA_CON_OTRO_TURNO' })
   }
-
-  // #645: el stock del día es uno solo. Con producciones previas del mismo día, lo que ya produjeron (menos sus pérdidas)
-  // pasa a ser parte del stock inicial de esta, para que el cuadre del día no cuente dos veces ni olvide nada.
-  const stockIniAgua = stockInicial.stockIniAgua + netoPrevioDelDia(previas, 'PACA_AGUA')
-  const stockIniHielo = stockInicial.stockIniHielo + netoPrevioDelDia(previas, 'PACA_HIELO')
-  // #618: botellones llenos (sin pérdidas): lo llenado por las producciones anteriores del día suma al inicial.
-  const stockIniBotellon = stockInicial.stockIniBotellon + netoPrevioDelDia(previas, 'BOTELLON')
 
   // FIX 1.5: validar server-side que obs esté presente si hay diferencia
   const perdidasAgua = itemAgua.rotas + itemAgua.filtradas + itemAgua.consumoInterno
   const perdidasHielo = itemHielo.rotas + itemHielo.filtradas + itemHielo.consumoInterno
-  const stockFinEsperadoAgua = stockIniAgua + prodAgua - ventas.aguaVendida
-  const stockFinEsperadoHielo = stockIniHielo + prodHielo - ventas.hieloVendido
-  const diferenciaAgua = stockFinEsperadoAgua - itemAgua.stockFinFisico - perdidasAgua
-  const diferenciaHielo = stockFinEsperadoHielo - itemHielo.stockFinFisico - perdidasHielo
-  // #618: inventario de botellones llenos. Sin conteo se asume que cuadra (clientes anteriores).
-  const stockFinEsperadoBotellon = stockIniBotellon + parsed.data.botellonesLlenados - ventas.botellonVendido
-  const stockFinFisicoBotellon = parsed.data.stockFinBotellones ?? stockFinEsperadoBotellon
-  const itemBot = itemBotellon(parsed.data.botellonesLlenados, 0, ventas.botellonVendido, { stockIni: stockIniBotellon, stockFinFisico: stockFinFisicoBotellon })
-  const diferenciaBotellon = stockFinEsperadoBotellon - stockFinFisicoBotellon
-  const hayDiferencia = diferenciaAgua !== 0 || diferenciaHielo !== 0 || diferenciaBotellon !== 0
+
+  // #645: el stock del día es uno solo. Con producciones previas del mismo día, lo que ya produjeron (menos sus pérdidas)
+  // pasa a ser parte del stock inicial de esta, para que el cuadre del día no cuente dos veces ni olvide nada.
+  // #668: se calcula DOS veces — acá para avisar pronto, y otra vez dentro del lock con lo que haya en ese momento, que es lo
+  // que se guarda. Si no, dos selladores a la vez guardarían el mismo inicial sin ver lo del otro.
+  const cuadrar = (prev: typeof previas, base: Awaited<ReturnType<typeof resolverStockInicial>>) => {
+    const stockIniAgua = base.stockIniAgua + netoPrevioDelDia(prev, 'PACA_AGUA')
+    const stockIniHielo = base.stockIniHielo + netoPrevioDelDia(prev, 'PACA_HIELO')
+    // #618: botellones llenos (sin pérdidas): lo llenado por las producciones anteriores del día suma al inicial.
+    const stockIniBotellon = base.stockIniBotellon + netoPrevioDelDia(prev, 'BOTELLON')
+    const stockFinEsperadoAgua = stockIniAgua + prodAgua - ventas.aguaVendida
+    const stockFinEsperadoHielo = stockIniHielo + prodHielo - ventas.hieloVendido
+    const diferenciaAgua = stockFinEsperadoAgua - itemAgua.stockFinFisico - perdidasAgua
+    const diferenciaHielo = stockFinEsperadoHielo - itemHielo.stockFinFisico - perdidasHielo
+    // #618: inventario de botellones llenos. Sin conteo se asume que cuadra (clientes anteriores).
+    const stockFinEsperadoBotellon = stockIniBotellon + parsed.data.botellonesLlenados - ventas.botellonVendido
+    const stockFinFisicoBotellon = parsed.data.stockFinBotellones ?? stockFinEsperadoBotellon
+    const itemBot = itemBotellon(parsed.data.botellonesLlenados, 0, ventas.botellonVendido, { stockIni: stockIniBotellon, stockFinFisico: stockFinFisicoBotellon })
+    const diferenciaBotellon = stockFinEsperadoBotellon - stockFinFisicoBotellon
+    const hayDiferencia = diferenciaAgua !== 0 || diferenciaHielo !== 0 || diferenciaBotellon !== 0
+    return {
+      stockIniAgua, stockIniHielo, stockFinEsperadoAgua, stockFinEsperadoHielo, diferenciaAgua, diferenciaHielo, itemBot, hayDiferencia,
+    }
+  }
+  const { hayDiferencia } = cuadrar(previas, stockInicial)
   const obsTrim = (parsed.data.obs || '').trim()
 
   if (hayDiferencia && obsTrim === '') {
@@ -195,6 +205,17 @@ export async function POST(request: NextRequest) {
           if (existing) {
             throw new Error('PRODUCCION_DUPLICADA')
           }
+
+          // #668: lo que se guarda se calcula AQUÍ, con el lock tomado y lo que ya esté confirmado. Lo calculado antes del lock
+          // pudo quedar viejo si otro sellador guardó entre la lectura y este punto.
+          const previasTx = await tx.produccion.findMany({
+            where: { fecha: fechaProduccion },
+            select: { trabajadorId: true, turno: true, items: { select: { producto: true, producido: true, rotas: true, filtradas: true, consumoInterno: true } } },
+          })
+          if (conflictoJornada(previasTx)) throw new Error('JORNADA_CON_OTRO_TURNO')
+          const baseTx = await resolverStockInicial(tx, parsed.data.fecha ? fechaProduccion : undefined)
+          const cuadre = cuadrar(previasTx, baseTx)
+          if (cuadre.hayDiferencia && obsTrim === '') throw new Error('OBS_REQUERIDA')
 
           const trabajador = await tx.trabajador.findUnique({
             where: { id: parsed.data.trabajadorId },
@@ -249,10 +270,6 @@ export async function POST(request: NextRequest) {
           }
           const comRepartTotal = comRepartAgua + comRepartHielo
 
-          // Stock fin esperado por item
-          const stockFinEsperadoAgua = stockIniAgua + prodAgua - ventas.aguaVendida
-          const stockFinEsperadoHielo = stockIniHielo + prodHielo - ventas.hieloVendido
-
           return { deduped: false as const, produccion: await tx.produccion.create({
             data: {
               fecha: fechaProduccion,
@@ -271,11 +288,11 @@ export async function POST(request: NextRequest) {
                     conteoA: itemAgua.conteoA,
                     conteoB: itemAgua.conteoB,
                     producido: prodAgua,
-                    stockIni: stockIniAgua,
+                    stockIni: cuadre.stockIniAgua,
                     ventas: ventas.aguaVendida,
-                    stockFinEsperado: stockFinEsperadoAgua,
+                    stockFinEsperado: cuadre.stockFinEsperadoAgua,
                     stockFinFisico: itemAgua.stockFinFisico,
-                    diferencia: diferenciaAgua,
+                    diferencia: cuadre.diferenciaAgua,
                     filtradas: itemAgua.filtradas,
                     rotas: itemAgua.rotas,
                     consumoInterno: itemAgua.consumoInterno,
@@ -286,18 +303,18 @@ export async function POST(request: NextRequest) {
                     conteoA: itemHielo.conteoA,
                     conteoB: itemHielo.conteoB,
                     producido: prodHielo,
-                    stockIni: stockIniHielo,
+                    stockIni: cuadre.stockIniHielo,
                     ventas: ventas.hieloVendido,
-                    stockFinEsperado: stockFinEsperadoHielo,
+                    stockFinEsperado: cuadre.stockFinEsperadoHielo,
                     stockFinFisico: itemHielo.stockFinFisico,
-                    diferencia: diferenciaHielo,
+                    diferencia: cuadre.diferenciaHielo,
                     filtradas: itemHielo.filtradas,
                     rotas: itemHielo.rotas,
                     consumoInterno: itemHielo.consumoInterno,
                     comSellador: comSell.comHielo,
                   },
                   // #645: botellones llenados (los vendidos del día quedan como referencia; sin ciclo de stock).
-                  { ...itemBot, comSellador: comSell.comBotellon },
+                  { ...cuadre.itemBot, comSellador: comSell.comBotellon },
                 ],
               },
             },
@@ -327,8 +344,8 @@ export async function POST(request: NextRequest) {
           turno: produccion.turno,
           prodAgua,
           prodHielo,
-          diferenciaAgua,
-          diferenciaHielo,
+          diferenciaAgua: produccion.items.find((i) => i.producto === 'PACA_AGUA')?.diferencia,
+          diferenciaHielo: produccion.items.find((i) => i.producto === 'PACA_HIELO')?.diferencia,
           obs: produccion.obs,
           items: produccion.items.map(i => ({
             producto: i.producto,
@@ -358,6 +375,12 @@ export async function POST(request: NextRequest) {
           `Ya existe producción registrada para este trabajador en el turno ${parsed.data.turno} de ese día`,
           409,
         )
+      }
+      if (lastError.message === 'JORNADA_CON_OTRO_TURNO') {
+        return apiError('Ese sellador ya tiene producción ese día con otro tipo de turno: la jornada completa no se combina con mañana, tarde o noche', 409, { code: 'JORNADA_CON_OTRO_TURNO' })
+      }
+      if (lastError.message === 'OBS_REQUERIDA') {
+        return apiError('Si hay diferencia de stock debés explicar la causa en observaciones', 400)
       }
       if (lastError.message === 'TRABAJADOR_NO_ENCONTRADO') {
         return apiError('Trabajador no encontrado', 400)
