@@ -1158,6 +1158,7 @@ export const UserUpdateSchema = z.object({
   apellido: z.string().max(100).optional(),
   puedeAutorizarExcepcionCredito: z.boolean().optional(),
   puedeAutorizarReduccionComercial: z.boolean().optional(),
+  puedeConfirmarPagos: z.boolean().optional(),
 })
 
 // ====================

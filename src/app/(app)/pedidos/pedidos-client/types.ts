@@ -11,12 +11,28 @@ export interface PedidoItem {
   tramoVolumen?: { cantMin: number; cantMax: number | null } | null
 }
 
+/** #617: una corrección de la fecha efectiva de un cobro (append-only). */
+export interface CorreccionFechaPago {
+  id: string
+  fechaAnterior: string
+  fechaNueva: string
+  motivo: string
+  corregidoAt: string
+  corregidoPor: string
+}
+
 export interface PagoDetalle {
   id: string
   metodo: string
   monto: number
+  /** Fecha de REGISTRO del pago (concilia la caja; nunca cambia). */
   fecha: string
   confirmacion: string | null
+  /** #617: cuándo se cobró de verdad; `null`/ausente = el mismo instante del registro. */
+  ocurridoAt?: string | null
+  /** #617: viene de una regularización formal (#402): su fecha no se edita desde el detalle. */
+  regularizado?: boolean
+  correccionesFecha?: CorreccionFechaPago[]
 }
 
 export interface Pedido {

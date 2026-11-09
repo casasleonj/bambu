@@ -1,6 +1,7 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { puedeConfirmarPagos, listarConfirmadoresDePagos } from '@/lib/confirmador-pagos'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { CierreCreateSchema } from '@/lib/validators'
 import { EstadoEmbarque, EstadoEntrega, Prisma } from '@prisma/client'
@@ -17,7 +18,6 @@ import { construirResumenCierre } from '@/lib/cierre-resumen'
 import { calcularNetoCierre, calcularEfectivoEsperado } from '@/lib/cierre-totales'
 import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
 import { diasObligatoriosAntesDe, type DiaHueco } from '@/lib/cierre-huecos'
-import { getConfig } from '@/lib/config'
 import { exigirBaseVigente, BaseCambioError, BaseFaltanteError } from '@/lib/base-caja-dia'
 
 /** #306: hay días anteriores sin cerrar que tuvieron operación (o son demasiados para revisarlos). */
@@ -164,11 +164,9 @@ export async function GET(request: NextRequest) {
     )
     // #631: ¿quien cierra puede confirmar los pagos digitales? Si no, el cierre solo dice quién los confirma.
     const userId = (authResult.user as { id?: string } | undefined)?.id
-    const confirmadorId = await getConfig('USUARIO_CONFIRMA_PAGOS').catch(() => null)
-    const confirmador = confirmadorId && confirmadorId !== userId
-      ? await prisma.user.findUnique({ where: { id: confirmadorId }, select: { nombre: true, username: true } }).catch(() => null)
-      : null
-    const confirmaPagos = { puede: !!confirmadorId && confirmadorId === userId, nombre: confirmador ? (confirmador.nombre.trim() || confirmador.username) : null }
+    const puede = await puedeConfirmarPagos(prisma, userId).catch(() => false)
+    const quienes = puede ? [] : await listarConfirmadoresDePagos(prisma).catch(() => [] as string[])
+    const confirmaPagos = { puede, nombre: quienes.length ? quienes.join(' o ') : null }
     return apiSuccess({ ...resumen, cierre: { ...resumen.cierre, confirmaPagos } })
   } catch (error) {
     if (error instanceof CobrosSinConciliarError) return apiError(error.message, 409, {

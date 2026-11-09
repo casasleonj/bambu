@@ -228,6 +228,8 @@ export async function leerSaldoFavorCliente(
   db: Db,
   clienteId: string,
   limite: number = LIMITE_MOVIMIENTOS_SALDO_FAVOR,
+  /** Solo movimientos desde esta fecha (el Historial del cliente respeta su rango de meses). */
+  desde?: Date,
 ): Promise<SaldoFavorCliente | null> {
   const cliente = await db.cliente.findUnique({
     where: { id: clienteId },
@@ -242,8 +244,8 @@ export async function leerSaldoFavorCliente(
 
   // limite + 1 por fuente alcanza para saber si hay más al unirlas.
   const [ingresos, movimientos] = await Promise.all([
-    db.ingresoSaldoFavor.findMany({ where: { clienteId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limite + 1 }),
-    db.pedidoSaldoFavorMovimiento.findMany({ where: { clienteId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limite + 1 }),
+    db.ingresoSaldoFavor.findMany({ where: { clienteId, ...(desde ? { createdAt: { gte: desde } } : {}) }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limite + 1 }),
+    db.pedidoSaldoFavorMovimiento.findMany({ where: { clienteId, ...(desde ? { createdAt: { gte: desde } } : {}) }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limite + 1 }),
   ])
 
   const auditoriaIds = [...new Set(ingresos.flatMap((i) => (i.auditoriaId ? [i.auditoriaId] : [])))]

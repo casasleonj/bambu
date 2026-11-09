@@ -195,9 +195,33 @@ describe('ClienteTable — etiqueta «A favor» (#696)', () => {
     expect(screen.queryByTestId('chip-saldo-favor-movil')).not.toBeInTheDocument()
   })
 
+  it('el filtro «Con saldo a favor» se activa por separado de «Con deuda»', () => {
+    renderConFilas([fila('1500')])
+    expect(screen.getByRole('button', { name: /Con deuda/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Con saldo$/ })).not.toBeInTheDocument()
+    const boton = screen.getByTestId('filtro-saldo-favor')
+    expect(boton).toHaveAttribute('aria-pressed', 'false')
+  })
+
   it('solo los clientes con saldo la llevan', () => {
     renderConFilas([fila('1500', 'a'), fila(0, 'b')])
     expect(screen.getAllByTestId('chip-saldo-favor')).toHaveLength(1)
+  })
+
+  // #706: `0 && ...` pintaba un «0» suelto en la tarjeta móvil de un cliente sin deuda.
+  it('un cliente con saldoPendiente 0 no pinta un «0» suelto en las insignias móviles (#706)', () => {
+    const { container } = renderConFilas([
+      { ...fila(null), saldoPendiente: 0 } as unknown as ReturnType<typeof fila>,
+    ])
+    const insignias = container.querySelector('div.flex-wrap.md\\:hidden')
+    expect(insignias).not.toBeNull()
+    expect(insignias?.textContent).not.toContain('0')
+    expect(screen.queryByText(/^Saldo:/)).not.toBeInTheDocument()
+  })
+
+  it('un cliente con deuda sigue mostrando «Saldo:» (#706)', () => {
+    renderConFilas([{ ...fila(null), saldoPendiente: 2500 } as unknown as ReturnType<typeof fila>])
+    expect(screen.getByText(/^Saldo:/)).toBeInTheDocument()
   })
 })
 

@@ -13,6 +13,7 @@ import {
   MENSAJES_AUTORIZADOR,
   type ErrorAutorizador,
 } from '@/lib/autorizador-credito'
+import { rolPuedeConfirmarPagos } from '@/lib/confirmador-roles'
 
 /** otras personas activas, con rol válido y con el permiso (para no dejar el sistema sin autorizador). */
 async function contarOtrosAutorizadores(
@@ -48,6 +49,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         activo: true,
         puedeAutorizarExcepcionCredito: true,
         puedeAutorizarReduccionComercial: true,
+        puedeConfirmarPagos: true,
         createdAt: true,
         trabajador: { select: { id: true, nombre: true } },
       },
@@ -75,7 +77,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return apiError('Datos invalidos', 400, { formErrors: [parsed.error.issues.map(e => e.message).join(', ')] })
     }
 
-    const { username, rol, activo, password, nombre, apellido, puedeAutorizarExcepcionCredito, puedeAutorizarReduccionComercial } = parsed.data
+    const { username, rol, activo, password, nombre, apellido, puedeAutorizarExcepcionCredito, puedeAutorizarReduccionComercial, puedeConfirmarPagos } = parsed.data
 
     // FIX F-27a/F-27b: read+check+update DENTRO de tx con optimistic lock.
     // Antes: findUnique (línea 58) + update directo. Dos races:
@@ -113,6 +115,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (puedeAutorizarReduccionComercial !== undefined) {
         data.puedeAutorizarReduccionComercial = puedeAutorizarReduccionComercial
       }
+      if (puedeConfirmarPagos !== undefined) {
+        data.puedeConfirmarPagos = puedeConfirmarPagos
+      }
 
       if (Object.keys(data).length === 0) {
         throw new Error('USER_NO_DATA')
@@ -121,7 +126,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       // Read updatedAt para optimistic lock (+ estado actual para las reglas del autorizador)
       const existingTarget = await tx.user.findUnique({
         where: { id },
-        select: { updatedAt: true, rol: true, activo: true, puedeAutorizarExcepcionCredito: true, puedeAutorizarReduccionComercial: true },
+        select: { updatedAt: true, rol: true, activo: true, puedeAutorizarExcepcionCredito: true, puedeAutorizarReduccionComercial: true, puedeConfirmarPagos: true },
       })
       if (!existingTarget) throw new Error('USER_NOT_FOUND')
 
@@ -152,6 +157,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         data.puedeAutorizarReduccionComercial = false
       }
 
+      // #406: «Puede confirmar pagos» no se da a un Repartidor (confirmaría lo que él mismo cobra) ni a un Sellador;
+      // cambiar a un rol sin derecho lo quita.
+      if (puedeConfirmarPagos === true && !rolPuedeConfirmarPagos(rolFinal)) {
+        throw new Error('CONFIRMADOR_ROL_NO_PUEDE')
+      }
+      if (!rolPuedeConfirmarPagos(rolFinal) && existingTarget.puedeConfirmarPagos) {
+        data.puedeConfirmarPagos = false
+      }
+
       // Update con condición sobre updatedAt
       const updateResult = await tx.user.updateMany({
         where: { id, updatedAt: existingTarget.updatedAt },
@@ -164,7 +178,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       // Re-leer para devolver el estado final
       return tx.user.findUnique({
         where: { id },
-        select: { id: true, username: true, nombre: true, apellido: true, rol: true, activo: true, puedeAutorizarExcepcionCredito: true, puedeAutorizarReduccionComercial: true },
+        select: { id: true, username: true, nombre: true, apellido: true, rol: true, activo: true, puedeAutorizarExcepcionCredito: true, puedeAutorizarReduccionComercial: true, puedeConfirmarPagos: true },
       })
     })
 
@@ -179,6 +193,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         resetPassword: !!password,
         puedeAutorizarExcepcionCredito: user.puedeAutorizarExcepcionCredito,
         puedeAutorizarReduccionComercial: user.puedeAutorizarReduccionComercial,
+        puedeConfirmarPagos: user.puedeConfirmarPagos,
       },
       usuarioId: adminId,
     }).catch(() => {})
@@ -195,6 +210,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
       if (error.message === 'USER_NO_DATA') {
         return apiError('No hay datos para actualizar', 400)
+      }
+      if (error.message === 'CONFIRMADOR_ROL_NO_PUEDE') {
+        return apiError('Solo un Admin, un Asistente o un Contador puede recibir el permiso de confirmar pagos.', 409)
       }
       if (error.message === 'AUTORIZADOR_REDUCCION_ROL_NO_PUEDE') {
         return apiError('Solo un Admin o un Asistente puede recibir el permiso de autorizar reducciones comerciales.', 409)

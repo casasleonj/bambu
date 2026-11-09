@@ -477,7 +477,7 @@ jobs:
           npx playwright install-deps chromium
 
       - name: Run Playwright tests (shard ${{ matrix.shard }})
-        run: npx playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=html
+        run: npx playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=list,html
 
       - name: Dump Postgres/Redis container logs and resource usage
         # Investigación de capacidad de CI (continuación de Known Issue #25):

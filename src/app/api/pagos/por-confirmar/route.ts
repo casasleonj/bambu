@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
-import { getConfig } from '@/lib/config'
+import { puedeConfirmarPagos } from '@/lib/confirmador-pagos'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
@@ -23,9 +23,8 @@ export async function GET(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   const userId = (authResult.user as { id?: string } | undefined)?.id
 
-  const confirmador = await getConfig('USUARIO_CONFIRMA_PAGOS')
-  if (!confirmador || confirmador !== userId) {
-    return apiError('Solo el usuario designado para confirmar pagos puede ver esta cola', 403)
+  if (!(await puedeConfirmarPagos(prisma, userId))) {
+    return apiError('Solo quien tiene el permiso «Puede confirmar pagos» puede ver esta cola', 403)
   }
 
   try {
