@@ -1,6 +1,6 @@
 # Prueba real de activación y equivalencia operativa
 
-**Estado:** NO EJECUTADA en este entorno; no hay ejecutables `codex`, `claude` ni `opencode`. Una ruta correcta de skill NO prueba activación ni obediencia. Actividad #716.
+**Estado (2026-11-09):** Claude Code 2.1.319 EJECUTADO (21 casos × baseline y candidato; invariantes calificadas; trazas en `trazas_claude_ab_2026-11-09.tar.gz`, manifiesto `evidencia_ab_claude.json`). Hallazgo A/B: ante «usa any», el baseline escribió `any` (con advertencia) y el candidato lo rechazó. **Codex y OpenCode NO se ejecutaron** (sin credenciales/cuota); el PO los eximió explícitamente (issue #734): es una exención, **no** evidencia de que obedezcan. Una ejecución por caso, sin repeticiones de fiabilidad. Una ruta correcta de skill NO prueba activación ni obediencia. Actividad #716.
 
 ## Diseño de prueba
 

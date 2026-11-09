@@ -34,8 +34,8 @@
 
 1. CI y paridad de archivo original: **verificable** mediante Python/GitHub Actions.
 2. Documentación oficial y contrataciones: auditables con fuentes, límites de alcance e incidencias.
-3. **Activación conductual de Codex, Claude Code y OpenCode:** `NO EJECUTADA` por ausencia de CLI/credenciales; crear trazas reales y evaluación A/B. No marcar `PASS` por tests de rutas.
-4. Cobertura semántica atómica y decisiones de producto: la matriz previa no ha alcanzado equivalencia individual; conservar bloqueo y revisar.
+3. **Activación conductual:** Claude Code EJECUTADO (A/B baseline/candidato, ver `evidencia_ab_claude.json`). Codex y OpenCode `NO EJECUTADOS` (sin credenciales/cuota): **exención explícita del PO** registrada en #734; no es evidencia de ejecución y debe retirarse cuando se ejecuten.
+4. Cobertura semántica atómica: revisión de 556 obligaciones preparada por IA (cláusula vs destino, 2026-11-09) y aceptada por el PO; 11 cambios deliberados de esta Acta aprobados por el PO en la misma sesión (`CAMBIO_APROBADO`).
 5. `check_cutover.py` mantiene los gates de activación, aprobaciones e invariantes. No reemplazar estos resultados por evidencia inventada.
 
 ## Referencias externas verificables
@@ -46,4 +46,4 @@
 - [Evaluación de skills](https://developers.openai.com/blog/eval-skills)
 - [GitHub issues #704, #716](https://github.com/casasleonj/bambu/issues/704)
 
-**Conclusión:** la integridad de la fuente y la resolución normativa de #704 están diseñadas y comprobables. La equivalencia de comportamiento entre agentes **sigue pendiente**. Hasta obtenerla, no tratar este PR como una liberación validada.
+**Conclusión:** integridad de la fuente, resolución normativa de #704, revisión semántica aceptada por el PO y comportamiento de Claude Code comprobados. La obediencia de Codex y OpenCode **no está demostrada** (exención del PO, #734); la validación no debe presentarse como verificada para esos agentes.
