@@ -38,6 +38,7 @@ import { CerrarEmbarqueSideEffectsService } from '../../domain/services/cerrar-e
 import { CierreDedupService } from '../../domain/services/cierre-dedup.service'
 import { validarCoberturaPedidos } from '../../domain/services/cobertura-pedidos.service'
 import { resolverCambiosDelCierre, type CambiosAgregados } from '../../domain/services/cambios-sustituciones.service'
+import { leerCorreccionesALaBaja, type CorreccionesReader } from '../../domain/services/correcciones-a-la-baja.service'
 import { calcularSenales, type VentaLibreResumen } from '../../domain/services/senales-cierre.service'
 import { UMBRAL_MINIMO_FALTANTE_CAJA } from '@/lib/constants'
 import { RegistrarMovimientosCierre } from '../../domain/services/registrar-movimientos-cierre.service'
@@ -163,6 +164,8 @@ export class CerrarEmbarqueUseCase {
         cambiosAgregados = r.cambios
       }
 
+      // #712: pedidos corregidos a la baja desde la salida (solo aviso).
+      const correccionesALaBaja = await leerCorreccionesALaBaja(client as unknown as CorreccionesReader, input.id, embarque.horaSalida ?? embarque.createdAt)
       const pedidosHijosCreados: Array<{ id: string; numero: number }> = []
       const pedidosActualizados: Array<{ id: string; estado: string }> = []
       let totalVentas = 0
@@ -331,6 +334,7 @@ export class CerrarEmbarqueUseCase {
           notaCaja: input.justificacionFaltante,
           umbralCaja: UMBRAL_MINIMO_FALTANTE_CAJA,
           cambios: cambiosAgregados,
+          correccionesALaBaja,
         }),
         // FASE 6 (§13): el cierre detecta y crea ResponsibilityCase pendientes de
         // resolución autorizada; ya NO crea el cargo económico automáticamente.
