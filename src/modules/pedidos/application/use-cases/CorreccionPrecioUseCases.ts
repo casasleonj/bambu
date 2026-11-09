@@ -1,8 +1,8 @@
 /**
  * Corrección de precio de una línea del pedido (ADR-MONETARIO-002 §1, ADR-CIERRE-004).
  *
- * - `SolicitarCorreccionPrecioUseCase`: ADMIN y ASISTENTE registran. Si la registra un
- *   ADMIN se aplica en el acto; si la registra un ASISTENTE queda PENDIENTE.
+ * - `SolicitarCorreccionPrecioUseCase`: solo un ADMIN corrige y se aplica en el acto, con motivo y rastro (#616).
+ *   El ASISTENTE ya no solicita; las solicitudes PENDIENTE anteriores las resuelve un ADMIN.
  * - `ResolverCorreccionPrecioUseCase`: solo ADMIN autoriza (aplica) o rechaza.
  *
  * Ambos serializan por pedido con el lock `PEDIDO` y son idempotentes (`offlineId` al
@@ -51,7 +51,7 @@ export interface CorreccionResultado {
 export class SolicitarCorreccionPrecioUseCase {
   async execute(input: SolicitarCorreccionPrecioInput): Promise<CorreccionResultado> {
     if (!puedeSolicitarCorreccion(input.actorRol)) {
-      throw new Error('FORBIDDEN: solo ADMIN y ASISTENTE pueden corregir un precio.')
+      throw new Error('FORBIDDEN: solo un administrador puede corregir el precio.')
     }
     const motivo = input.motivo.trim()
     if (motivo.length < 3) throw new Error('MOTIVO_REQUERIDO: indica por qué se corrige el precio.')

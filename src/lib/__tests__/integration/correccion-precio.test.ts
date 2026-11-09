@@ -4,11 +4,11 @@
 //   1. Aplicada por ADMIN: ítem, columna legacy, total, saldo, estadoPago y factura se
 //      recalculan juntos y respetan las reglas de integridad (V1: pagado + saldo = total;
 //      V3: factura con el mismo saldo).
-//   2. El ASISTENTE solo solicita; el ADMIN autoriza o rechaza.
+//   2. #616: solo el ADMIN corrige (el ASISTENTE ya no solicita); las solicitudes PENDIENTE anteriores las resuelve un ADMIN.
 //   3. Pagó de más → se rechaza y no cambia nada.
 //   4. Precio raro se marca; idempotencia; una pendiente por línea; obsoleta; cancelado.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { testPrisma, resetAndSeed, disconnect, getAdminUser, getSeededCliente, uniqueId } from './setup'
+import { testPrisma, resetAndSeed, disconnect, getAdminUser, getSeededCliente, uniqueId, sembrarSolicitudPendiente } from './setup'
 import {
   SolicitarCorreccionPrecioUseCase,
   ResolverCorreccionPrecioUseCase,
@@ -155,18 +155,33 @@ describe('Corrección de precio (ADR-MONETARIO-002 §1)', () => {
     expect(pagos.map((g) => Number(g.monto))).toEqual([25000])
   })
 
-  it('ASISTENTE solo solicita: queda PENDIENTE y el pedido no cambia', async () => {
+  it('#616: el ASISTENTE ya no puede corregir el precio: FORBIDDEN, no se crea nada y el pedido no cambia', async () => {
     const p = await crearPedido()
-    const r = await solicitar.execute({
+    const msg = await mensajeDe(solicitar.execute({
       pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2300, motivo: 'cliente reclama', actorId: asistenteId, actorRol: 'ASISTENTE',
-    })
-    expect(r.estado).toBe('PENDIENTE')
+    }))
+    expect(msg).toMatch(/^FORBIDDEN/)
+    expect(await testPrisma.pedidoCorreccionPrecio.count({ where: { pedidoId: p.id } })).toBe(0)
     expect(await estado(p.id)).toMatchObject({ total: 25000, itemPrecio: 2500, facTotal: 25000 })
+  })
+
+  it('#616: el ADMIN deja el rastro completo: producto, precio anterior y nuevo, quién, cuándo, motivo y efecto en el total', async () => {
+    const p = await crearPedido()
+    await solicitar.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2300, motivo: 'precio acordado por volumen', actorId: adminId, actorRol: 'ADMIN' })
+    const fila = await testPrisma.pedidoCorreccionPrecio.findFirstOrThrow({ where: { pedidoId: p.id } })
+    expect(fila).toMatchObject({
+      producto: 'PACA_AGUA', estado: 'APLICADA', motivo: 'precio acordado por volumen', solicitadoPorId: adminId, resueltoPorId: adminId,
+    })
+    expect(Number(fila.precioAnterior)).toBe(2500)
+    expect(Number(fila.precioNuevo)).toBe(2300)
+    expect(Number(fila.totalAntes)).toBe(25000)
+    expect(Number(fila.totalDespues)).toBe(23000)
+    expect(fila.solicitadoAt).toBeInstanceOf(Date)
   })
 
   it('el ASISTENTE no puede resolver; el ADMIN autoriza y se aplica', async () => {
     const p = await crearPedido()
-    const s = await solicitar.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2300, motivo: 'cliente reclama', actorId: asistenteId, actorRol: 'ASISTENTE' })
+    const s = await sembrarSolicitudPendiente(p.id, { precioNuevo: 2300, motivo: 'cliente reclama', solicitadoPorId: asistenteId })
     const prohibido = await mensajeDe(resolver.execute({ correccionId: s.id, resolucion: 'AUTORIZAR', actorId: asistenteId, actorRol: 'ASISTENTE' }))
     expect(prohibido).toMatch(/^FORBIDDEN/)
     expect(await estado(p.id)).toMatchObject({ total: 25000 })
@@ -185,7 +200,7 @@ describe('Corrección de precio (ADR-MONETARIO-002 §1)', () => {
 
   it('el ADMIN rechaza: nada cambia y la solicitud queda RECHAZADA', async () => {
     const p = await crearPedido()
-    const s = await solicitar.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2300, motivo: 'cliente reclama', actorId: asistenteId, actorRol: 'ASISTENTE' })
+    const s = await sembrarSolicitudPendiente(p.id, { precioNuevo: 2300, motivo: 'cliente reclama', solicitadoPorId: asistenteId })
     const r = await resolver.execute({ correccionId: s.id, resolucion: 'RECHAZAR', actorId: adminId, actorRol: 'ADMIN', nota: 'no procede' })
     expect(r.estado).toBe('RECHAZADA')
     expect(await estado(p.id)).toMatchObject({ total: 25000, itemPrecio: 2500 })
@@ -199,27 +214,27 @@ describe('Corrección de precio (ADR-MONETARIO-002 §1)', () => {
     expect(await estado(p.id)).toMatchObject({ total: 15000 })
   })
 
-  it('el ASISTENTE puede solicitar un precio raro, pero queda pendiente (solo un ADMIN lo aplica)', async () => {
-    const p = await crearPedido()
-    const r = await solicitar.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 1500, motivo: 'promo', actorId: asistenteId, actorRol: 'ASISTENTE' })
-    expect(r).toMatchObject({ estado: 'PENDIENTE', precioRaro: true })
-  })
 
   it('idempotente por offlineId; una sola pendiente por línea', async () => {
     const p = await crearPedido()
     const offlineId = uniqueId('cp')
-    const a = await solicitar.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2300, motivo: 'x y z', actorId: asistenteId, actorRol: 'ASISTENTE', offlineId })
-    const b = await solicitar.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2300, motivo: 'x y z', actorId: asistenteId, actorRol: 'ASISTENTE', offlineId })
+    const a = await solicitar.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2300, motivo: 'x y z', actorId: adminId, actorRol: 'ADMIN', offlineId })
+    const b = await solicitar.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2300, motivo: 'x y z', actorId: adminId, actorRol: 'ADMIN', offlineId })
     expect(b).toMatchObject({ id: a.id, deduped: true })
+    expect(await estado(p.id)).toMatchObject({ total: 23000 }) // el reintento no aplica dos veces
+
+    // Una solicitud PENDIENTE histórica de la línea sigue bloqueando otra corrección hasta que un ADMIN la resuelva.
+    const q = await crearPedido()
+    await sembrarSolicitudPendiente(q.id, { precioNuevo: 2300, motivo: 'reclamo', solicitadoPorId: asistenteId })
     const otra = await mensajeDe(
-      solicitar.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2200, motivo: 'otra', actorId: asistenteId, actorRol: 'ASISTENTE' }),
+      solicitar.execute({ pedidoId: q.id, producto: 'PACA_AGUA', precioNuevo: 2200, motivo: 'otra', actorId: adminId, actorRol: 'ADMIN' }),
     )
     expect(otra).toMatch(/^CORRECCION_PENDIENTE/)
   })
 
   it('solicitud obsoleta: si el precio de la línea cambió antes de autorizar, no se aplica', async () => {
     const p = await crearPedido()
-    const s = await solicitar.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2300, motivo: 'reclamo', actorId: asistenteId, actorRol: 'ASISTENTE' })
+    const s = await sembrarSolicitudPendiente(p.id, { precioNuevo: 2300, motivo: 'reclamo', solicitadoPorId: asistenteId })
     await testPrisma.pedidoItem.updateMany({ where: { pedidoId: p.id }, data: { precio: 2400, subtotal: 24000 } })
     const msg = await mensajeDe(resolver.execute({ correccionId: s.id, resolucion: 'AUTORIZAR', actorId: adminId, actorRol: 'ADMIN' }))
     expect(msg).toMatch(/^CORRECCION_OBSOLETA/)

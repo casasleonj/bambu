@@ -41,13 +41,71 @@ describe('CorreccionPrecioPanel', () => {
     await waitFor(() => expect(patches).toEqual(['/api/pedidos/correcciones-precio/c1']))
   })
 
-  it('ASISTENTE pide autorización y no ve Autorizar', async () => {
+  it('#616: ASISTENTE ve el aviso y el historial, sin formulario ni Autorizar', async () => {
     mockFetch([pendiente])
     render(<CorreccionPrecioPanel pedidoId="p1" lineas={lineas} userRole="ASISTENTE" corregible />)
     await screen.findByTestId('correccion-item')
+    expect(screen.getByTestId('correccion-solo-admin').textContent).toMatch(/Solo un administrador puede corregir el precio/)
+    expect(screen.queryByTestId('correccion-abrir')).toBeNull()
     expect(screen.queryByTestId('correccion-autorizar')).toBeNull()
+    expect(screen.queryByTestId('correccion-form')).toBeNull()
+  })
+
+  it('#616: ASISTENTE sin historial igual ve el aviso (y nada que enviar)', async () => {
+    mockFetch([])
+    render(<CorreccionPrecioPanel pedidoId="p1" lineas={lineas} userRole="ASISTENTE" corregible />)
+    expect(await screen.findByTestId('correccion-solo-admin')).toBeTruthy()
+    expect(screen.queryByTestId('correccion-abrir')).toBeNull()
+  })
+
+  it('#616: ADMIN pasa por una confirmación antes de aplicar; «Volver» no envía nada', async () => {
+    const posts: string[] = []
+    mockFetch([], (_u, init) => {
+      if (init?.method === 'POST') {
+        posts.push(String(init.body))
+        return new Response(JSON.stringify({ success: true, estado: 'APLICADA' }), { status: 201 })
+      }
+      return undefined
+    })
+    render(<CorreccionPrecioPanel pedidoId="p1" lineas={lineas} userRole="ADMIN" corregible />)
     fireEvent.click(screen.getByTestId('correccion-abrir'))
-    expect(screen.getByTestId('correccion-enviar').textContent).toBe('Pedir autorización')
+    fireEvent.change(screen.getByTestId('correccion-precio'), { target: { value: '2300' } })
+    fireEvent.change(screen.getByTestId('correccion-motivo'), { target: { value: 'precio acordado por volumen' } })
+    fireEvent.click(screen.getByTestId('correccion-enviar'))
+    const bloque = screen.getByTestId('correccion-confirmar-bloque')
+    expect(bloque.textContent).toMatch(/¿Aplicar la corrección\?/)
+    expect(bloque.textContent).toMatch(/baja/)
+    expect(bloque.textContent).toMatch(/no se puede borrar/)
+    expect(posts).toHaveLength(0) // todavía no se envió
+
+    fireEvent.click(screen.getByTestId('correccion-volver'))
+    expect(screen.queryByTestId('correccion-confirmar-bloque')).toBeNull()
+    expect(posts).toHaveLength(0)
+
+    fireEvent.click(screen.getByTestId('correccion-enviar'))
+    fireEvent.click(screen.getByTestId('correccion-confirmar'))
+    await waitFor(() => expect(posts).toHaveLength(1))
+    expect(JSON.parse(posts[0])).toMatchObject({ producto: 'PACA_AGUA', precioNuevo: 2300, motivo: 'precio acordado por volumen' })
+  })
+
+  it('#616: mientras se aplica muestra «Aplicando…»; si el servidor rechaza, avisa y se puede reintentar', async () => {
+    let resolver: (r: Response) => void = () => {}
+    mockFetch([])
+    const base = global.fetch as unknown as (u: RequestInfo | URL, i?: RequestInit) => Promise<Response>
+    global.fetch = vi.fn((u: RequestInfo | URL, i?: RequestInit) => (i?.method === 'POST'
+      ? new Promise<Response>((res) => { resolver = res })
+      : base(u, i))) as unknown as typeof fetch
+    render(<CorreccionPrecioPanel pedidoId="p1" lineas={lineas} userRole="ADMIN" corregible />)
+    fireEvent.click(screen.getByTestId('correccion-abrir'))
+    fireEvent.change(screen.getByTestId('correccion-precio'), { target: { value: '2300' } })
+    fireEvent.change(screen.getByTestId('correccion-motivo'), { target: { value: 'precio acordado' } })
+    fireEvent.click(screen.getByTestId('correccion-enviar'))
+    fireEvent.click(screen.getByTestId('correccion-confirmar'))
+    await waitFor(() => expect(screen.getByTestId('correccion-confirmar').textContent).toBe('Aplicando…'))
+    expect((screen.getByTestId('correccion-confirmar') as HTMLButtonElement).disabled).toBe(true)
+    resolver(new Response(JSON.stringify({ success: false, error: { message: 'Solo un administrador puede corregir el precio.' } }), { status: 403 }))
+    await waitFor(() => expect(screen.getByTestId('correccion-confirmar').textContent).toBe('Confirmar cambio'))
+    expect((screen.getByTestId('correccion-confirmar') as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('muestra el efecto en el total y avisa de un precio muy bajo', async () => {

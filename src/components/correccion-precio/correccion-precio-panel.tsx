@@ -47,17 +47,20 @@ const TEXTO: Record<Correccion['estado'], string> = { PENDIENTE: 'Pendiente', AP
 
 /**
  * Corrección de precio de una línea (ADR-MONETARIO-002 §1, ADR-CIERRE-004).
- * ADMIN y ASISTENTE la piden; la aplica un ADMIN (en el acto si la pide él).
- * Detrás de `NEXT_PUBLIC_CIERRE_V2`: quien la monta decide si la muestra.
+ * Solo el ADMIN corrige (#616), con motivo obligatorio, una confirmación y rastro; el ASISTENTE ve el historial y un aviso.
+ * Las solicitudes PENDIENTE anteriores las resuelve un ADMIN. Detrás de `NEXT_PUBLIC_CIERRE_V2`: quien la monta decide si la muestra.
  */
 export function CorreccionPrecioPanel({ pedidoId, lineas, userRole, corregible }: Props) {
   const esAdmin = userRole === 'ADMIN'
-  const puedePedir = corregible && (esAdmin || userRole === 'ASISTENTE')
+  const puedePedir = corregible && esAdmin
+  const esAsistente = userRole === 'ASISTENTE'
   const [filas, setFilas] = useState<Correccion[]>([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(false)
   const [version, setVersion] = useState(0)
   const [abierto, setAbierto] = useState(false)
+  // Paso de confirmación antes de aplicar: el cambio queda en el historial y no se puede borrar.
+  const [confirmando, setConfirmando] = useState(false)
   const [producto, setProducto] = useState(lineas[0]?.producto ?? '')
   const [precio, setPrecio] = useState('')
   const [motivo, setMotivo] = useState('')
@@ -116,6 +119,7 @@ export function CorreccionPrecioPanel({ pedidoId, lineas, userRole, corregible }
       setPrecio('')
       setMotivo('')
       setAbierto(false)
+      setConfirmando(false)
       setOfflineId(generateUUID())
       recargar()
     } catch {
@@ -145,7 +149,7 @@ export function CorreccionPrecioPanel({ pedidoId, lineas, userRole, corregible }
     }
   }
 
-  if (!puedePedir && !cargando && filas.length === 0) return null
+  if (!puedePedir && !esAsistente && !cargando && filas.length === 0) return null
 
   return (
     <div className="rounded-lg border bg-white p-3" data-testid="correccion-precio-panel">
@@ -162,6 +166,12 @@ export function CorreccionPrecioPanel({ pedidoId, lineas, userRole, corregible }
           </button>
         )}
       </div>
+
+      {esAsistente && (
+        <p className="mt-2 rounded-lg bg-blue-50 p-2 text-sm text-blue-900" data-testid="correccion-solo-admin">
+          <b>Solo un administrador puede corregir el precio.</b> Si hace falta, pídaselo con el motivo. Aquí puedes ver el historial.
+        </p>
+      )}
 
       {abierto && (
         <div className="mt-3 space-y-3" data-testid="correccion-form">
@@ -215,21 +225,44 @@ export function CorreccionPrecioPanel({ pedidoId, lineas, userRole, corregible }
               data-testid="correccion-motivo"
             />
           </label>
-          {!esAdmin && <p className="text-xs text-gray-500">Un administrador debe autorizarla antes de que cambie el total.</p>}
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setAbierto(false)} className="min-h-11 flex-1 rounded-lg border text-sm">
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={() => void enviar()}
-              disabled={!valido || enviando}
-              className="min-h-11 flex-1 rounded-lg bg-blue-600 text-sm font-medium text-white disabled:opacity-50"
-              data-testid="correccion-enviar"
-            >
-              {enviando ? 'Enviando…' : esAdmin ? 'Aplicar' : 'Pedir autorización'}
-            </button>
-          </div>
+          {confirmando && linea ? (
+            <div className="space-y-2 rounded-lg border-[1.5px] border-amber-400 bg-amber-50 p-3" role="alertdialog" aria-label="Confirmar corrección de precio" data-testid="correccion-confirmar-bloque">
+              <p className="text-sm font-semibold text-amber-900">¿Aplicar la corrección?</p>
+              <p className="text-sm text-amber-900">
+                {getProductoIconConfig(producto).label}: {formatCurrency(linea.precio)} → {formatCurrency(precioNum)}. El total {nuevoTotalDelta < 0 ? 'baja' : 'sube'} {formatCurrency(Math.abs(nuevoTotalDelta))}.
+                {' '}Esto queda en el historial con tu nombre y no se puede borrar.
+              </p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setConfirmando(false)} disabled={enviando} className="min-h-11 flex-1 rounded-lg border bg-white text-sm disabled:opacity-50" data-testid="correccion-volver">
+                  Volver
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void enviar()}
+                  disabled={!valido || enviando}
+                  className="min-h-11 flex-1 rounded-lg bg-blue-600 text-sm font-medium text-white disabled:opacity-50"
+                  data-testid="correccion-confirmar"
+                >
+                  {enviando ? 'Aplicando…' : 'Confirmar cambio'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button type="button" onClick={() => { setAbierto(false); setConfirmando(false) }} className="min-h-11 flex-1 rounded-lg border text-sm">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmando(true)}
+                disabled={!valido}
+                className="min-h-11 flex-1 rounded-lg bg-blue-600 text-sm font-medium text-white disabled:opacity-50"
+                data-testid="correccion-enviar"
+              >
+                Aplicar corrección
+              </button>
+            </div>
+          )}
         </div>
       )}
 
