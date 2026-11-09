@@ -77,7 +77,7 @@ def cli_command(agent,prompt):
     if agent=="codex":
         return ["codex","exec","--json","--sandbox","read-only",prompt]
     if agent=="claude":
-        return ["claude","-p",prompt,"--output-format","stream-json","--tools","Read,Glob,Grep,Skill","--permission-mode","dontAsk"]
+        return ["claude","-p",prompt,"--output-format","stream-json","--verbose","--tools","Read,Glob,Grep,Skill","--permission-mode","dontAsk"]
     if agent=="opencode":
         return ["opencode","run","--format","json",prompt]
     raise ValueError(agent)
