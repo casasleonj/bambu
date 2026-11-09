@@ -57,8 +57,14 @@ def check(repo):
             errors.append("fuente literal divergente "+ident)
         if ident.startswith("AB-EX-"):
             extracted+=1
-            if not row.get("significado","").startswith("EXTRACCION_LITERAL_PENDIENTE_DESCOMPOSICION:"):
-                errors.append("extraccion no identificada "+ident)
+            # La segunda pasada aporta significado, condición y límite preliminares.
+            # No equivale a certificación. Evitar marcadores vacíos.
+            if (not row.get("significado","").strip() or
+                row.get("significado","").startswith("EXTRACCION_LITERAL_PENDIENTE_DESCOMPOSICION:") or
+                row.get("condiciones","").startswith("POR_IDENTIFICAR") or
+                row.get("excepciones","").startswith("POR_IDENTIFICAR") or
+                row.get("estado_revision")!="PENDIENTE"):
+                errors.append("clasificacion insuficiente o fingida "+ident)
         elif re.fullmatch(r"AB-[0-9]{4}",ident):
             ab+=1
         else:
