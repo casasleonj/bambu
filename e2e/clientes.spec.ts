@@ -130,7 +130,8 @@ test.describe('Clientes UI', () => {
 
   test('vista lista muestra filtros y controles', async ({ page: _page }) => {
     await goto(p, '/clientes')
-    await expect(p.getByRole('button', { name: 'Con saldo' })).toBeVisible()
+    await expect(p.getByRole('button', { name: 'Con deuda' })).toBeVisible()
+    await expect(p.getByRole('button', { name: 'Con saldo a favor' })).toBeVisible()
     await expect(p.getByRole('button', { name: 'Con frecuencia' })).toBeVisible()
   })
 

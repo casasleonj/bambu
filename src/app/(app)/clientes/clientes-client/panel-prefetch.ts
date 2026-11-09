@@ -29,6 +29,8 @@ export interface HistorialPage {
   page: number
   pageSize: number
   hasMore: boolean
+  /** #696: el saldo a favor no se pudo leer; no es que no tenga movimientos. */
+  saldoFavorNoDisponible?: boolean
 }
 
 const PANEL_TTL_MS = 60_000
@@ -95,6 +97,7 @@ async function fetchAndCacheHistorial(clienteId: string): Promise<HistorialPage 
       page: data.page,
       pageSize: data.pageSize,
       hasMore: data.hasMore,
+      saldoFavorNoDisponible: data.saldoFavorNoDisponible,
     }
     setCacheEntry(historialCache, clienteId, page)
     return page

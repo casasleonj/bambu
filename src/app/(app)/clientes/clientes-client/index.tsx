@@ -27,6 +27,7 @@ import { SYNC_ITEM_DONE_EVENT } from '@/lib/db/sync'
 import { ClienteHistorial } from './cliente-historial'
 import { ClienteStats } from './cliente-stats'
 import { ClienteSaldoFavor } from './cliente-saldo-favor'
+import { saldoFavorDeFila } from '@/lib/saldo-favor-textos'
 import { NegocioForm } from '@/components/negocio-form'
 import { NegocioDetailModal, type NegocioDetail } from '@/components/negocio-detail-modal'
 import { calcularAlertasCliente } from '@/app/(app)/pedidos/pedidos-client/alertas-utils'
@@ -465,6 +466,7 @@ export default function ClientesClient({
   const [sortBy, setSortBy] = useState<'nombre' | 'createdAt'>('createdAt')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [filterSaldo, setFilterSaldo] = useState(false)
+  const [filterSaldoFavor, setFilterSaldoFavor] = useState(false)
   const [filterFrecuencia, setFilterFrecuencia] = useState(false)
   const [guiaTipo, setGuiaTipo] = useState<AlertaTipo | null>(null)
   const [guiaOpen, setGuiaOpen] = useState(false)
@@ -807,6 +809,7 @@ export default function ClientesClient({
   const clientesFiltrados = useMemo(() => {
     const filtrados = clientesSearchResult.filter((c) => {
       if (filterSaldo && !(c.saldoPendiente && c.saldoPendiente > 0)) return false
+      if (filterSaldoFavor && saldoFavorDeFila(c) <= 0) return false
       if (filterFrecuencia && !c.plantillaRecurrente?.activo) return false
       return true
     })
@@ -817,7 +820,7 @@ export default function ClientesClient({
       }
       return dir * a.nombre.localeCompare(b.nombre)
     })
-  }, [clientesSearchResult, filterSaldo, filterFrecuencia, sortBy, sortDir])
+  }, [clientesSearchResult, filterSaldo, filterSaldoFavor, filterFrecuencia, sortBy, sortDir])
 
   // Paginación client-side cuando la fuente es el cache.
   const page = Math.max(1, parseInt(searchParams?.get('page') || String(initialPage), 10))
@@ -1520,7 +1523,9 @@ export default function ClientesClient({
         loading={loading}
         filterSaldo={filterSaldo}
         filterFrecuencia={filterFrecuencia}
+        filterSaldoFavor={filterSaldoFavor}
         onFilterSaldoChange={setFilterSaldo}
+        onFilterSaldoFavorChange={setFilterSaldoFavor}
         onFilterFrecuenciaChange={setFilterFrecuencia}
       />
 

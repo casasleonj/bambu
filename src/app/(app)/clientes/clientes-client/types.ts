@@ -210,6 +210,7 @@ export type TimelineEventType =
   | 'NOTA_CREDITO'
   | 'AUDITORIA'
   | 'EMBARQUE'
+  | 'SALDO_FAVOR'
 
 export type TimelineFilter = 'TODOS' | TimelineEventType
 

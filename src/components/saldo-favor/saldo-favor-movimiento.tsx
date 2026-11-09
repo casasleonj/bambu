@@ -8,6 +8,7 @@ import type { ReactNode } from 'react'
 import { AyudaTermino } from '@/components/ui/ayuda-termino'
 import { formatCurrency } from '@/lib/utils'
 import type { MovimientoSaldoFavorCliente, PedidoDeMovimiento } from '@/lib/saldo-favor-cliente'
+import { textoRecuadroPedido, tituloMovimientoSaldoFavor } from '@/lib/saldo-favor-textos'
 
 const ROLES_ETIQUETA: Record<string, string> = {
   ADMIN: 'Administrador',
@@ -28,25 +29,6 @@ const fechaCorta = (iso: string) =>
   new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(iso))
 const fechaLarga = (iso: string) =>
   new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', dateStyle: 'full', timeStyle: 'short' }).format(new Date(iso))
-
-/** Qué pasó, en palabras sencillas y desde el punto de vista del cliente. */
-export function tituloMovimientoSaldoFavor(m: Pick<MovimientoSaldoFavorCliente, 'tipo' | 'origenTipo'>): string {
-  switch (m.tipo) {
-    case 'ENTRADA_COBRO':
-      return 'Entregó de más al pagar fiados'
-    case 'ACREDITACION':
-      return m.origenTipo === 'REDUCCION_COMERCIAL' ? 'Reducción comercial de un pedido' : 'Corrección de precio de un pedido'
-    case 'REAPLICACION':
-      return 'Volvió a un pedido porque su total subió'
-    case 'REVERSION_ANULACION':
-      return m.origenTipo === 'CANCELACION' ? 'Se restó al cancelar un pedido' : 'Se restó al anular un pedido'
-  }
-}
-
-/** Texto del recuadro de un pedido: una línea por dato. */
-export function textoRecuadroPedido(p: PedidoDeMovimiento): string {
-  return [`Pedido #${p.numero}`, p.factura ? `Factura ${p.factura}` : null, p.negocio ? `Negocio: ${p.negocio}` : null].filter(Boolean).join('\n')
-}
 
 function pedidosDe(m: MovimientoSaldoFavorCliente): PedidoDeMovimiento[] {
   if (m.pedido) return [m.pedido]

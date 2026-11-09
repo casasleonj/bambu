@@ -1,0 +1,5 @@
+# Saldo a favor del cliente (#696)
+
+Nota de la rebanada de lista e Historial (se pasará a AGENTS.md cuando termine la auditoría de instrucciones, que bloquea editarlo).
+
+- **Lista y Historial (PR A)**: el filtro «Con saldo» de la lista pasó a llamarse **«Con deuda»** y se añadió **«Con saldo a favor»** (`filtro-saldo-favor`, `saldoFavorDeFila` en `src/lib/saldo-favor-textos.ts`; filtra en el cliente sobre la lista completa, igual que los demás). El Historial del cliente suma el tipo `SALDO_FAVOR` (filtro «Saldo a favor»): `GET /api/clientes/[id]/historial` agrega los movimientos de `leerSaldoFavorCliente(prisma, id, 200, desde)` respetando el rango de meses, solo para ADMIN/ASISTENTE/CONTADOR; cada evento lleva `metadata.movimiento` y se pinta con `MovimientoSaldoFavor`. Si no se pudieron leer responde `saldoFavorNoDisponible: true` y la pantalla avisa (no los muestra como inexistentes). Pruebas: `historial-saldo-favor-696.test.ts` (Postgres real), `cliente-historial-saldo-favor.test.tsx`, `saldo-favor-textos.test.ts`.

@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { MovimientoSaldoFavor } from '@/components/saldo-favor/saldo-favor-movimiento'
+import type { MovimientoSaldoFavorCliente } from '@/lib/saldo-favor-cliente'
 import { loadClienteHistorial, peekClienteHistorial } from './panel-prefetch'
 import type { TimelineEvent, TimelineFilter } from './types'
 
@@ -10,6 +12,7 @@ const FILTROS: { key: TimelineFilter; label: string }[] = [
   { key: 'TODOS', label: 'Todo' },
   { key: 'PEDIDO', label: 'Pedidos' },
   { key: 'PAGO', label: 'Pagos' },
+  { key: 'SALDO_FAVOR', label: 'Saldo a favor' },
   { key: 'FACTURA', label: 'Facturas' },
   { key: 'ABONO', label: 'Abonos' },
   { key: 'CORRECCION_ABONO', label: 'Correcciones' },
@@ -25,6 +28,7 @@ const TIPO_CONFIG: Record<string, { color: string; bg: string; icon: string }> =
   FACTURA: { color: 'text-purple-600', bg: 'bg-purple-500', icon: '📄' },
   ABONO: { color: 'text-emerald-600', bg: 'bg-emerald-500', icon: '🏦' },
   CORRECCION_ABONO: { color: 'text-amber-700', bg: 'bg-amber-500', icon: '↩️' },
+  SALDO_FAVOR: { color: 'text-teal-700', bg: 'bg-teal-500', icon: '💚' },
   EMBARQUE: { color: 'text-sky-600', bg: 'bg-sky-500', icon: '🚚' },
   CASO: { color: 'text-red-600', bg: 'bg-red-500', icon: '🛡️' },
   NOTA_CREDITO: { color: 'text-orange-600', bg: 'bg-orange-500', icon: '📝' },
@@ -45,6 +49,7 @@ export function ClienteHistorial({ clienteId }: ClienteHistorialProps) {
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(() => peekClienteHistorial(clienteId)?.hasMore ?? false)
   const [error, setError] = useState('')
+  const [saldoFavorNoDisponible, setSaldoFavorNoDisponible] = useState(() => peekClienteHistorial(clienteId)?.saldoFavorNoDisponible ?? false)
 
   const fetchEvents = useCallback(async (nextPage = 1, append = false, signal?: AbortSignal) => {
     setLoading(true)
@@ -61,6 +66,7 @@ export function ClienteHistorial({ clienteId }: ClienteHistorialProps) {
         if (data) {
           setEvents(data.events)
           setHasMore(data.hasMore)
+          setSaldoFavorNoDisponible(data.saldoFavorNoDisponible ?? false)
           setPage(1)
         } else {
           setError('Error cargando historial')
@@ -73,6 +79,7 @@ export function ClienteHistorial({ clienteId }: ClienteHistorialProps) {
       if (data.success && !signal?.aborted) {
         setEvents(prev => append ? [...prev, ...data.events] : data.events)
         setHasMore(data.hasMore)
+        if (!append) setSaldoFavorNoDisponible(data.saldoFavorNoDisponible ?? false)
         setPage(nextPage)
       } else if (!signal?.aborted) {
         setError(data.error?.message || 'Error cargando historial')
@@ -135,6 +142,12 @@ export function ClienteHistorial({ clienteId }: ClienteHistorialProps) {
         </div>
       )}
 
+      {saldoFavorNoDisponible && (
+        <div data-testid="historial-saldo-favor-error" role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          No se pudieron leer los movimientos del saldo a favor. Que no aparezcan aquí no significa que no existan.
+        </div>
+      )}
+
       {/* Timeline */}
       {loading && events.length === 0 ? (
         <div className="flex justify-center py-12">
@@ -142,12 +155,14 @@ export function ClienteHistorial({ clienteId }: ClienteHistorialProps) {
         </div>
       ) : filtrados.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
-          <p className="font-medium">Sin eventos en el período seleccionado</p>
+          <p className="font-medium">{filtro === 'SALDO_FAVOR' ? 'Sin movimientos de saldo a favor en el período seleccionado' : 'Sin eventos en el período seleccionado'}</p>
           <p className="text-sm text-gray-400 mt-1">Intenta con otro filtro o rango de fechas</p>
         </div>
       ) : (
         <div className="space-y-0">
           {filtrados.map((evt) => {
+            const mov = evt.tipo === 'SALDO_FAVOR' ? (evt.metadata?.movimiento as MovimientoSaldoFavorCliente | undefined) : undefined
+            if (mov) return <MovimientoSaldoFavor key={evt.id} m={mov} />
             const cfg = TIPO_CONFIG[evt.tipo] || TIPO_CONFIG.AUDITORIA
             return (
               <div key={evt.id} className="flex gap-3 py-3 border-b last:border-b-0">

@@ -195,6 +195,14 @@ describe('ClienteTable — etiqueta «A favor» (#696)', () => {
     expect(screen.queryByTestId('chip-saldo-favor-movil')).not.toBeInTheDocument()
   })
 
+  it('el filtro «Con saldo a favor» se activa por separado de «Con deuda»', () => {
+    renderConFilas([fila('1500')])
+    expect(screen.getByRole('button', { name: /Con deuda/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Con saldo$/ })).not.toBeInTheDocument()
+    const boton = screen.getByTestId('filtro-saldo-favor')
+    expect(boton).toHaveAttribute('aria-pressed', 'false')
+  })
+
   it('solo los clientes con saldo la llevan', () => {
     renderConFilas([fila('1500', 'a'), fila(0, 'b')])
     expect(screen.getAllByTestId('chip-saldo-favor')).toHaveLength(1)
