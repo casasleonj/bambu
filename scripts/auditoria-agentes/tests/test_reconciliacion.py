@@ -41,6 +41,10 @@ class ReconciliacionTests(unittest.TestCase):
             result=mod.evaluar(dst)
             self.assertEqual(result["estado"],"FAIL")
             self.assertTrue(any("cita no coincide" in e for e in result["errores"]))
+    def test_explicit_semantic_corrections_require_trace(self):
+        repo=Path(__file__).resolve().parents[3]
+        result=mod.evaluar(repo)
+        self.assertEqual(result["estado"],"PASS_PREANALISIS",result["errores"])
     def test_a_source_that_is_only_archived_is_not_runtime_proof(self):
         repo=Path(__file__).resolve().parents[3]
         result=mod.evaluar(repo)

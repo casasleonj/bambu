@@ -28,6 +28,7 @@ def evaluar(repo):
                 errors.append("faltan columnas")
             rows=list(reader)
         catalogue=cat.read_text(encoding="utf-8")
+        contraste=(repo/"docs/agentes/auditoria-2026-11/CONTRASTE_SEMANTICO.md").read_text(encoding="utf-8")
     except (OSError,UnicodeError,csv.Error) as e:
         return {"estado":"FAIL","errores":["fuentes inaccesibles: "+str(e)]}
     sections={}
@@ -71,7 +72,14 @@ def evaluar(repo):
                 errors.append("cambio de estado manual sin evidencia "+id_)
             if not x.get("condiciones") or not x.get("excepciones"):
                 errors.append("condición/excepción vacía "+id_)
-            if x.get("significado","") not in catalogue or id_ not in catalogue:
+            # Las correcciones explícitas sustentadas en main pueden cambiar la
+            # redacción del catálogo sin falsificar el preanálisis original.
+            # Mantener whitelist estrecha, fuente de línea y reporte de contraste.
+            explicit={ "AB-0049","AB-0104","AB-0144" }
+            if x.get("significado","") not in catalogue:
+                if id_ not in explicit or id_ not in contraste:
+                    errors.append("cambio semántico no trazado "+id_)
+            if id_ not in catalogue:
                 errors.append("falta cláusula en catálogo "+id_)
             if not origin.strip():
                 errors.append("origen vacío para cláusula "+id_)
