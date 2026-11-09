@@ -4,13 +4,18 @@ on:
   pull_request:
     paths:
       - 'AGENTS.md'
+      - 'src/**/AGENTS.md'
+      - 'e2e/AGENTS.md'
+      - 'prisma/AGENTS.md'
+      - '.claude/rules/**'
       - 'CLAUDE.md'
       - 'opencode.json'
       - '.agents/skills/**'
       - '.claude/skills/**'
       - '.opencode/prompts/**'
       - 'scripts/auditoria-agentes/**'
-      - 'docs/agentes/auditoria-2026-11/**'
+      - 'docs/agentes/**'
+      - '.github/workflows/agent-guidance-audit.yml'
   workflow_dispatch:
 
 permissions:
@@ -29,6 +34,22 @@ jobs:
           python-version: '3.12'
       - name: Unit tests of verification gate
         run: python -m unittest discover -s scripts/auditoria-agentes/tests -v
+      - name: Verify modularization and exact original snapshot
+        run: python scripts/auditoria-agentes/check_modularizacion.py --repo . --salida /tmp/agent-modularization-report.json
+      - name: Verify 49 historic records indexed and linked
+        run: python scripts/auditoria-agentes/check_indice_historico.py --repo .
+      - name: Verify JL and Hallazgo skill routes (not runtime)
+        run: python scripts/auditoria-agentes/check_skills.py --repo .
+      - name: Verify scoped contracts and Claude path rules
+        run: python scripts/auditoria-agentes/check_scoped_rules.py --repo .
+      - name: Verify full original-line traceability without claiming semantic certification
+        run: python scripts/auditoria-agentes/check_reconciliacion.py --repo .
+      - name: Verify 530 candidate positions and preliminary semantic provenance
+        run: python scripts/auditoria-agentes/check_preanalisis.py --repo .
+      - name: Verify new main delta (691 and 696) not lost
+        run: python scripts/auditoria-agentes/check_delta_main.py --repo .
+      - name: Verify historical context residual positions
+        run: python scripts/auditoria-agentes/check_contexto_residual.py --repo .
       - name: Emit conservative audit report
         shell: bash
         run: |

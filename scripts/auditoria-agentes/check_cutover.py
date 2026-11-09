@@ -25,8 +25,18 @@ def evaluar(repo, matriz, evidencia):
     def exigir(id_, ok, razon):
         controles.append({"id": id_, "estado": "PASS" if bool(ok) else "FAIL", "razon": razon})
     root = repo / "AGENTS.md"
-    original = root.is_file() and blob_sha(root.read_bytes()) == ORIGINAL_BLOB
-    exigir("raiz-original-preservada", original, "Si cambió, exigir pruebas de equivalencia y activación")
+    original_en_raiz = root.is_file() and blob_sha(root.read_bytes()) == ORIGINAL_BLOB
+    segmentos = [
+        "00-entrada.md", "01-arquitectura-tecnica.md", "02-historico-incidencias.md",
+        "03-reglas-codigo.md", "04-protocolo-anterior.md", "05-flujo-entrega-anterior.md",
+    ]
+    carpeta = repo / "docs/agentes/fuente-original"
+    fuente_completa = all((carpeta / n).is_file() for n in segmentos)
+    original_archivado = fuente_completa and blob_sha(
+        b"".join((carpeta / n).read_bytes() for n in segmentos)
+    ) == ORIGINAL_BLOB
+    original = original_en_raiz or original_archivado
+    exigir("fuente-original-conservada", original, "La raíz antigua o los seis segmentos deben reconstruir SHA del AGENTS original")
     try:
         with matriz.open(newline="",encoding="utf-8") as fh:
             filas = list(csv.DictReader(fh))
@@ -46,6 +56,63 @@ def evaluar(repo, matriz, evidencia):
             "VERIFICADA_IDENTICA", "VERIFICADA_EQUIVALENTE", "CAMBIO_APROBADO")]
     exigir("equivalencia-semantica", bool(candidatos) and not sin_revisar,
            "Cada obligación requiere firma y evidencia; pendientes=" + str(len(sin_revisar)))
+    # Una fila no es una obligación. La matriz de 798 posiciones solo identifica
+    # dónde buscar cláusulas; una línea puede contener varias y viceversa.
+    atom_path = repo / "docs/agentes/auditoria-2026-11/obligaciones_atomicas.csv"
+    try:
+        with atom_path.open(newline="",encoding="utf-8") as fh:
+            atomos = list(csv.DictReader(fh))
+    except (OSError, UnicodeError):
+        atomos = []
+    ids_atomos=set()
+    cubiertas=set()
+    errores_atomicos=[]
+    validas={"VIGENTE","HISTORICO_NO_NORMATIVO","CAMBIO_APROBADO"}
+    for k,atomo in enumerate(atomos,1):
+        aid=atomo.get("id","").strip()
+        if not aid or aid in ids_atomos:
+            errores_atomicos.append("id ausente/duplicado registro "+str(k))
+        ids_atomos.add(aid)
+        estado_atomo=atomo.get("estado_revision","").strip()
+        clase_atomo=atomo.get("clasificacion","").strip()
+        requeridos=("clausula_original","significado","condiciones","excepciones",
+                    "criterio_verificacion","referencia_revisor")
+        # Una línea en blanco del original no contiene cláusula: solo se admite vacía
+        # como estructura histórica (nunca como regla vigente ni como cambio).
+        estructura_vacia=(not atomo.get("clausula_original","").strip()
+                          and clase_atomo=="HISTORICO_NO_NORMATIVO"
+                          and atomo.get("significado","").startswith("ESTRUCTURA:"))
+        if estado_atomo!="VERIFICADA" or clase_atomo not in validas or any(
+                not atomo.get(c,"").strip() for c in requeridos
+                if not (estructura_vacia and c=="clausula_original")):
+            errores_atomicos.append("registro incompleto "+str(k))
+        dest=atomo.get("destino_activo","").strip()
+        ruta=(repo/dest).resolve() if dest else None
+        dentro=bool(ruta and (ruta==repo.resolve() or repo.resolve() in ruta.parents))
+        if not dentro or not ruta.is_file():
+            errores_atomicos.append("destino no verificable "+str(k))
+        if clase_atomo in ("VIGENTE","CAMBIO_APROBADO") and dest.startswith("docs/agentes/fuente-original/"):
+            errores_atomicos.append("regla vigente solo en archivo historico "+str(k))
+        for span in atomo.get("lineas_origen","").split(";"):
+            span=span.strip()
+            if not span:
+                continue
+            lim=span.split("-")
+            if len(lim)>2 or not all(t.isdigit() for t in lim):
+                errores_atomicos.append("rango invalido "+str(k))
+                continue
+            inicio,fin=int(lim[0]),int(lim[-1])
+            if inicio<1 or fin>ORIGINAL_FILAS or fin<inicio:
+                errores_atomicos.append("rango fuera de fuente "+str(k))
+            else:
+                cubiertas.update(range(inicio,fin+1))
+    faltan_cubrir={int(f["linea_original"]) for f in candidatos if str(f.get("linea_original","")).isdigit()} - cubiertas
+    atomizacion_ok=bool(atomos) and not errores_atomicos and not faltan_cubrir
+    exigir("obligaciones-atomicas-con-evidencia",atomizacion_ok,
+           "Descomponer cláusulas, distinguir archivo historico vs norma activa, cubrir candidatos "
+           "y exigir validación humana; atomos="+str(len(atomos))+
+           ",sin_cobertura="+str(len(faltan_cubrir))+
+           ",errores="+str(len(errores_atomicos)))
     try:
         estado = json.loads(evidencia.read_text(encoding="utf-8"))
     except (OSError,ValueError):
@@ -53,11 +120,24 @@ def evaluar(repo, matriz, evidencia):
     exigir("decisiones-po", estado.get("decisiones_normativas")=="APROBADAS_Y_TRAZADAS"
         and bool(estado.get("referencias_aprobaciones")),
         "Issue #704 no se resuelve solo por emitir documentación")
+    def runtime_pass(x):
+        return bool(x.get("estado")=="PASS" and x.get("version")
+                    and x.get("traza") and x.get("baseline_sha") and x.get("candidato_sha"))
+    exenciones=[]
     for nombre in AGENTES:
         x=estado.get("runtime",{}).get(nombre,{})
-        exigir("runtime-"+nombre,x.get("estado")=="PASS" and x.get("version")
-               and x.get("traza") and x.get("baseline_sha") and x.get("candidato_sha"),
-               "Necesita ejecución real A/B con traza comprobable")
+        ok=runtime_pass(x)
+        razon="Necesita ejecución real A/B con traza comprobable"
+        # Exención explícita del PO (issue de seguimiento). Nunca es PASS de ejecución:
+        # solo vale para agentes distintos de Claude, exige referencia + issue y que
+        # Claude Code haya pasado su propia prueba A/B.
+        if (not ok and nombre!="claude" and x.get("estado")=="EXENTO_POR_PO"
+                and str(x.get("referencia_po","")).strip() and str(x.get("issue","")).strip()
+                and runtime_pass(estado.get("runtime",{}).get("claude",{}))):
+            ok=True
+            razon="EXENCIÓN DEL PO (no es evidencia de ejecución); seguimiento "+str(x["issue"])
+            exenciones.append({"agente":nombre,"issue":x["issue"],"referencia_po":x["referencia_po"]})
+        exigir("runtime-"+nombre,ok,razon)
     for inv in INVARIANTES:
         e=estado.get("invariantes",{}).get(inv,{})
         exigir("invariante-"+inv,e.get("estado")=="PASS" and e.get("evidencia"),
@@ -71,6 +151,10 @@ def evaluar(repo, matriz, evidencia):
       "original_intacto":bool(original), "filas":len(filas),
       "candidatos_obligacion":len(candidatos),
       "pendientes_semanticos":len(sin_revisar),
+      "nota_candidatos":"Son filas a analizar, NO obligaciones atómicas verificadas",
+      "exenciones_po":exenciones,
+      "atomos_revisados":len(atomos),
+      "filas_candidatas_sin_cobertura_atomica":len(faltan_cubrir),
       "checks":controles,
       "limite":"El verificador controla integridad FORMAL, no sustituye revisión semántica ni certifica trazas falsificadas."
     }

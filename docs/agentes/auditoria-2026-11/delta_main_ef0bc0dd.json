@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "source_commit": "ef0bc0dd0736e3acfd9d9d0bf64ffc5ff62fb44f",
+  "source_blob_sha": "65556a31471776cd0682478c862d47336c91033e",
+  "source_path": "AGENTS.md",
+  "scope": "Cambios añadidos a main tras baseline del snapshot 798 posiciones; #691 y #696",
+  "classification": "EVIDENCIA_HISTORICA_Y_CONTRATOS_PROVISIONALES",
+  "original_lines": [
+    {
+      "line": 621,
+      "text": "      - **`/api/cierre-dia` de solo lectura (#691)**: su `POST` (solo ADMIN, sin uso en la interfaz) insertaba un cierre crudo sin esta regla ni las demás del cierre y se eliminó. Un día se cierra únicamente con `POST /api/cierre`; el `GET` (historial) se mantiene. Prueba: `src/app/api/cierre-dia/__tests__/route.test.ts`, E2E `roles-permisos.spec.ts` (405)."
+    },
+    {
+      "line": 625,
+      "text": "   47. **El saldo a favor del cliente y de dónde viene cada movimiento (#696, rebanada 1: Cliente)**: maqueta aprobada por el PO el 2026-11-08 (nombre «Saldo a favor»; verde azulado para saldo a favor y rojo solo para fiado, siempre con la palabra escrita; origen leído de la auditoría, sin migración). Solo lectura: no cambia ninguna cifra de dinero."
+    },
+    {
+      "line": 626,
+      "text": "      - **Contrato**: `GET /api/clientes/[id]/saldo-favor` (ADMIN/ASISTENTE/CONTADOR) → `leerSaldoFavorCliente` (`src/lib/saldo-favor-cliente.ts`): `saldo` (= `Cliente.saldoFavor`) y `movimientos` (los 50 más recientes, `hayMas`) que unen `IngresoSaldoFavor` (#524) y `PedidoSaldoFavorMovimiento` (#533/#577). Para una entrada por cobro, pedido, factura y quién recibió el dinero salen de la auditoría `COBRO_FIADO_V2` (`Historial.datos`) validada con zod (`leerCobroDeAuditoria`): si no se puede leer, `cobro` es `null` y la pantalla dice «Sin dato»; solo se muestran pedidos que existan y sean de ESE cliente; la factura sale del pedido (si la auditoría no la trae no se inventa otra). `CONSUMIDOR_FINAL` no tiene saldo."
+    },
+    {
+      "line": 627,
+      "text": "      - **El saldo es una sola bolsa**: no se atribuye un uso a una entrada concreta. El uso del saldo en un pedido nuevo todavía NO se guarda (solo baja `Cliente.saldoFavor`); la pantalla lo dice. Registrarlo (migración aditiva, sin reconstruir lo anterior) es la rebanada 3 de #696."
+    },
+    {
+      "line": 628,
+      "text": "      - **Pantalla**: etiqueta «A favor $X» en la lista (`chip-saldo-favor`, también en la tarjeta móvil); en la pestaña Info del detalle, `ClienteSaldoFavor` con tarjeta de saldo y movimientos en tres niveles (línea corta, recuadro del pedido, «Ver detalle»). Un saldo que no se pudo leer dice que **no es cero** y ofrece Reintentar (`role=\"status\"`); cargando es un esqueleto. Cargador con caché 60 s en `panel-prefetch.ts` (`loadClienteSaldoFavor`), invalidado con los eventos realtime del panel."
+    },
+    {
+      "line": 629,
+      "text": "      - **`AyudaTermino`** (`src/components/ui/ayuda-termino.tsx`) acepta `disparador` (el texto «Pedido #N» en lugar del «?»): el clic lo deja fijo, otro clic lo cierra, se corre para caber en pantalla y **Escape cierra solo la ayuda** (no llega al panel de abajo, para todas las ayudas)."
+    },
+    {
+      "line": 630,
+      "text": "      - **Pendiente de #696**: rebanada 2 (Cierre, Dashboard y diálogo de cobro de fiados) y rebanada 3 (uso en pedidos nuevos, aviso en Nuevo pedido y detalle del pedido). Sin decidir: tarjeta «Saldo a favor de clientes» en el Dashboard y filtro «Con saldo a favor»."
+    },
+    {
+      "line": 631,
+      "text": "      - **Anti-patrón a evitar**: mostrar un saldo que no se pudo leer como cero; inventar el pedido, la factura o quién recibió el dinero cuando la auditoría no lo trae."
+    },
+    {
+      "line": 632,
+      "text": "      - Pruebas: `saldo-favor-cliente.test.ts`, `cliente-saldo-favor.test.tsx`, `cliente-table.test.tsx`, `panel-prefetch.test.ts`, `ayuda-termino.test.tsx`, integración `saldo-favor-cliente-696.test.ts` (Postgres real: cobro real con sobrante, correcciones, pedido de otro cliente, auditoría ilegible, roles), E2E `clientes-saldo-favor-696.spec.ts`."
+    }
+  ],
+  "status": "EXTRACCION_LITERAl_SIN_CERTIFICACION_DE_ACTIVACION"
+}

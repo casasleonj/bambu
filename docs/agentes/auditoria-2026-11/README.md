@@ -1,3 +1,5 @@
+> **ACTA HISTÓRICA PREVIA A LA REESTRUCTURACIÓN (#718).** Este documento refleja los gates/pendientes del análisis del 8 de noviembre **antes** de redactarse la solución de #704. No es una segunda política. La propuesta operativa aprobable está en [`AGENTS.md`](../../../AGENTS.md), [protocolo](../protocolo-investigacion.md) y [flujo de entrega](../flujo-entrega.md). La decisión #704 pasa a ser vigente solo al fusionar y verificar el PR correspondiente. El estado de las pruebas reales de agentes continúa sin certificarse.
+
 # Migración de instrucciones · Fase 0 (no operativa)
 
 **Issue:** #716 · **Política que requiere PO:** #704 · **Duplicación histórica:** #335.
@@ -47,3 +49,14 @@ La salida **BLOQUEADO** es correcta: significa que la migración completa sigue 
 - https://fis.uni-bamberg.de/entities/researchdata/fad7bdfe-c39e-41d9-9540-80b703a02ea2
 
 **Nota anti-sesgo:** existen estudios con resultados distintos sobre si AGENTS.md mejora eficiencia o éxito. Ninguna cifra externa sustituye un benchmark emparejado en Agua Bambú.
+
+
+## Estado de la revisión 2026-11-09 (actualización del PR #718)
+
+- [Dictamen semántico por autoridad](DICTAMEN_SEMANTICO_PR718.md): límites, hechos, decisiones posteriores y riesgos.
+- [Revisión literal por 798 posiciones](revision_fuente_798.csv): conserva el preanálisis íntegro anterior y sus contextos.
+- [Inventario de 556 entradas candidatas](obligaciones_atomicas.csv): sin certificación ni firma.
+- [Clasificación de las 202 posiciones adicionales](clasificacion_candidatas_202.csv) y [explicación](REVISION_202_CANDIDATAS.md).
+- [Contraste con main posterior](CONTRASTE_SEMANTICO.md): tres divergencias corregidas en catálogo, con SHA explícito.
+
+El nuevo inventario no habilita merge. **40 tests unitarios** y seis verificadores estructurales aprobados por ejecución independiente sobre la rama al corte `a12a1db`; la revisión humana y las pruebas conductuales permanecen sin ejecutar. Los documentos antiguos de este directorio se conservan para trazabilidad, no se reinterpretan como políticas vigentes.

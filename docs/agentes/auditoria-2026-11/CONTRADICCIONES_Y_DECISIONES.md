@@ -1,3 +1,5 @@
+> **ACTA HISTÓRICA PREVIA A LA REESTRUCTURACIÓN (#718).** Este documento refleja los gates/pendientes del análisis del 8 de noviembre **antes** de redactarse la solución de #704. No es una segunda política. La propuesta operativa aprobable está en [`AGENTS.md`](../../../AGENTS.md), [protocolo](../protocolo-investigacion.md) y [flujo de entrega](../flujo-entrega.md). La decisión #704 pasa a ser vigente solo al fusionar y verificar el PR correspondiente. El estado de las pruebas reales de agentes continúa sin certificarse.
+
 # Conciliación normativa de instrucciones · Agua Bambú · 2026-11-08
 
 > **PROPUESTA. No modifica AGENTS.md ni cambia políticas.** Baseline `main`: `50d3d69b18f4c9c4c5fa4ff14ca95045c3308c6c`. Blob de AGENTS: `4182d57064c7f89c2eea39e86d1e0b469179bb06`. Issue de la migración: #716.
