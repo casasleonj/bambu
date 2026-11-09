@@ -1,6 +1,9 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
+import { ROLES } from '@/lib/constants'
+import { leerSaldoFavorCliente } from '@/lib/saldo-favor-cliente'
+import { tituloMovimientoSaldoFavor } from '@/lib/saldo-favor-textos'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { getPaginationParams, getPrismaPagination } from '@/lib/pagination'
 import { formatCurrency } from '@/lib/utils'
@@ -20,6 +23,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const { id } = await params
+  // #696: el saldo a favor del cliente lo ven los mismos roles que su endpoint propio.
+  const veSaldoFavor = !(await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.CONTADOR], authResult) instanceof Response)
 
   const { searchParams } = new URL(request.url)
   const meses = searchParams.get('meses')
@@ -103,6 +108,28 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     ])
 
     const events: TimelineEvent[] = []
+
+    // #696: movimientos del saldo a favor (entradas por cobro, correcciones, anulaciones) con su origen.
+    // Si no se pueden leer se avisa (`saldoFavorNoDisponible`): no se muestran como si no hubiera.
+    let saldoFavorNoDisponible = false
+    if (veSaldoFavor) {
+      try {
+        const lectura = await leerSaldoFavorCliente(prisma, id, 200, desde)
+        for (const m of lectura?.movimientos ?? []) {
+          events.push({
+            id: `saldofavor-${m.id}`,
+            tipo: 'SALDO_FAVOR',
+            fecha: m.fecha,
+            titulo: tituloMovimientoSaldoFavor(m),
+            monto: m.signo * m.monto,
+            metadata: { movimiento: m },
+          })
+        }
+      } catch (error) {
+        saldoFavorNoDisponible = true
+        console.error('[API /clientes/[id]/historial] saldo a favor', error)
+      }
+    }
 
     // Pedidos
     for (const p of pedidos) {
@@ -275,6 +302,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       page: pagination.page || 1,
       pageSize: take,
       hasMore,
+      saldoFavorNoDisponible,
     })
   } catch (error) {
     console.error('[API /clientes/[id]/historial]', error)
