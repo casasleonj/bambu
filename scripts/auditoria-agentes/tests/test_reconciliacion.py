@@ -25,6 +25,7 @@ class ReconciliacionTests(unittest.TestCase):
             dst=Path(d)
             rel=[
                 "docs/agentes/auditoria-2026-11/revision_fuente_798.csv",
+                "docs/agentes/auditoria-2026-11/CONTRASTE_SEMANTICO.md",
                 "docs/agentes/contratos-operativos.md",
                 *[f"docs/agentes/fuente-original/{x}" for x in (
                     "00-entrada.md", "01-arquitectura-tecnica.md",
