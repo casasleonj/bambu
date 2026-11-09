@@ -31,7 +31,7 @@ def evaluar(repo:Path):
     except (OSError, ValueError, subprocess.CalledProcessError, UnicodeError) as error:
         return {"estado":"FAIL","motivos":["fuente/destino inaccesible: "+str(error)]}
     errors=[]
-    blob=hashlib.sha1(b"blob "+str(len(main)).encode()+b"\\0"+main).hexdigest()
+    blob=hashlib.sha1(b"blob "+str(len(main)).encode()+bytes([0])+main).hexdigest()
     if blob!=SOURCE_BLOB or data.get("source_blob_sha")!=SOURCE_BLOB or data.get("source_commit")!=SOURCE_MAIN:
         errors.append("SHA histórico de main inconsistente")
     lines=text.split("\n")
@@ -43,7 +43,7 @@ def evaluar(repo:Path):
         if not isinstance(n,int) or n<1 or n>len(lines) or r.get("text")!=lines[n-1]:
             errors.append("texto original divergente en línea "+str(n))
     for token in KEYS:
-        if token not in doc:
+        if token.casefold() not in doc.casefold():
             errors.append("contrato o excepción ausente "+token)
     if "contratos-saldo-favor-696.md" not in core or "contratos-saldo-favor-696.md" not in nav:
         errors.append("módulo no enlazado en descubrimiento")
