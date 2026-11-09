@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
-import { getConfig } from '@/lib/config'
+import { puedeConfirmarPagos } from '@/lib/confirmador-pagos'
 import { ConfirmarPagoSchema } from '@/lib/validators'
 import { formatZodError } from '@/lib/utils'
 import { withAdvisoryLock } from '@/lib/locks'
@@ -14,7 +14,7 @@ import { incrementMetric } from '@/lib/metrics'
 /**
  * POST /api/pagos/[id]/confirmar — ADR-PAGO-REPORTADO-CONFIRMADO-001 §3–§4.
  *
- * El usuario designado (`Config.USUARIO_CONFIRMA_PAGOS`) marca un `Pago`
+ * Quien tenga el permiso «Puede confirmar pagos» (`User.puedeConfirmarPagos`, #406) marca un `Pago`
  * `REPORTADO` como `CONFIRMADO` (el dinero entró) o `DISCREPANTE` (no entró /
  * entró distinto). `DISCREPANTE` NO revierte el Pago (P4) — abre un
  * `ResponsibilityCase PAGO_NO_CONFIRMADO` con la nota de investigación.
@@ -29,9 +29,8 @@ export async function POST(
   if (authResult instanceof Response) return authResult
   const userId = (authResult.user as { id?: string } | undefined)?.id
 
-  const confirmador = await getConfig('USUARIO_CONFIRMA_PAGOS')
-  if (!confirmador || confirmador !== userId) {
-    return apiError('Solo el usuario designado para confirmar pagos puede confirmarlos', 403)
+  if (!(await puedeConfirmarPagos(prisma, userId))) {
+    return apiError('Solo quien tiene el permiso «Puede confirmar pagos» puede confirmarlos', 403)
   }
 
   const { id: pagoId } = await params

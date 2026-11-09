@@ -246,6 +246,8 @@ model User {
   puedeAutorizarExcepcionCredito Boolean    @default(false)
   /// #451: permiso por usuario (no por rol) para autorizar una reducción comercial.
   puedeAutorizarReduccionComercial Boolean  @default(false)
+  /// #406: permiso por usuario (no por rol) para confirmar pagos digitales. El Repartidor no puede tenerlo.
+  puedeConfirmarPagos            Boolean    @default(false)
   createdAt                      DateTime   @default(now()) @db.Timestamptz()
   updatedAt                      DateTime   @updatedAt @db.Timestamptz()
 

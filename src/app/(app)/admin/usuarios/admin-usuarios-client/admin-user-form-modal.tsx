@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Modal } from '@/components/modal'
 import type { AdminUser } from './types'
 import { rolPuedeAutorizar, MENSAJES_AUTORIZADOR } from '@/lib/autorizador-credito'
+import { rolPuedeConfirmarPagos } from '@/lib/confirmador-roles'
 
 const ROL_OPTIONS = ['ADMIN', 'ASISTENTE', 'CONTADOR', 'REPARTIDOR', 'SELLADOR']
 const ROL_LABELS: Record<string, string> = {
@@ -34,6 +35,7 @@ export function AdminUserFormModal({
   const [activo, setActivo] = useState(true)
   const [puedeAutorizar, setPuedeAutorizar] = useState(false)
   const [puedeAutorizarReduccion, setPuedeAutorizarReduccion] = useState(false)
+  const [puedeConfirmar, setPuedeConfirmar] = useState(false)
   const [password, setPassword] = useState('')
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -55,6 +57,7 @@ export function AdminUserFormModal({
       setActivo(true)
       setPuedeAutorizar(false)
       setPuedeAutorizarReduccion(false)
+      setPuedeConfirmar(false)
       setPassword('')
     } else {
       setIsCreate(false)
@@ -65,6 +68,7 @@ export function AdminUserFormModal({
       setActivo(user.activo)
       setPuedeAutorizar(user.puedeAutorizarExcepcionCredito === true)
       setPuedeAutorizarReduccion(user.puedeAutorizarReduccionComercial === true)
+      setPuedeConfirmar(user.puedeConfirmarPagos === true)
       setPassword('')
     }
     setFormError('')
@@ -115,6 +119,10 @@ export function AdminUserFormModal({
         const reduccionFinal = rolPuedeAutorizar(rol) && puedeAutorizarReduccion
         if (reduccionFinal !== (user!.puedeAutorizarReduccionComercial === true) && rolPuedeAutorizar(rol)) {
           body.puedeAutorizarReduccionComercial = reduccionFinal
+        }
+        const confirmarFinal = rolPuedeConfirmarPagos(rol) && puedeConfirmar
+        if (confirmarFinal !== (user!.puedeConfirmarPagos === true) && rolPuedeConfirmarPagos(rol)) {
+          body.puedeConfirmarPagos = confirmarFinal
         }
         if (password) body.password = password
 
@@ -248,6 +256,32 @@ export function AdminUserFormModal({
             <p className="text-xs text-gray-500">
               Podrá aplicar o rechazar que un cliente ya no reciba parte de lo pedido (baja el total y emite una nota de crédito).
             </p>
+          </div>
+        )}
+        {!isCreate && (
+          <div data-testid="bloque-confirma-pagos" className="space-y-1">
+            <div className="flex items-center gap-2">
+              <input
+                id="user-confirma-pagos"
+                data-testid="check-confirma-pagos"
+                type="checkbox"
+                checked={rolPuedeConfirmarPagos(rol) && puedeConfirmar}
+                disabled={!rolPuedeConfirmarPagos(rol)}
+                onChange={(e) => setPuedeConfirmar(e.target.checked)}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+              />
+              <label htmlFor="user-confirma-pagos" className="text-sm font-medium text-gray-700">
+                Puede confirmar pagos
+              </label>
+            </div>
+            <p className="text-xs text-gray-500">
+              Verá «Pagos por confirmar» y podrá confirmar los pagos de Nequi, transferencia y Daviplata.
+            </p>
+            {!rolPuedeConfirmarPagos(rol) && (
+              <p data-testid="aviso-confirma-rol" className="text-xs text-amber-700">
+                Con este rol no puede confirmar pagos: confirmaría lo que él mismo cobra.
+              </p>
+            )}
           </div>
         )}
         {!isCreate && !rolPuedeAutorizar(rol) && user?.puedeAutorizarExcepcionCredito && (
