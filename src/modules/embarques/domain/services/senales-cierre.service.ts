@@ -13,7 +13,8 @@
  * - `CAMBIO_A_CLIENTE_SIN_PEDIDO`: hubo cambios a un cliente que no tiene pedido en la ruta.
  * - `CAMBIO_SIN_DESTINO`: hay cambios registrados sin cliente ni pedido.
  *
- * La de «pedido corregido a la baja» llega con la reducción comercial (#451).
+ * #712 (reducción comercial #451 y corrección de precio a la baja #326):
+ * - `PEDIDO_CORREGIDO_A_LA_BAJA`: después de que el embarque salió se bajó el total de algún pedido.
  */
 
 export type CodigoSenal =
@@ -21,6 +22,7 @@ export type CodigoSenal =
   | 'SOBRANTE_CAJA_SIN_NOTA'
   | 'CAMBIO_A_CLIENTE_SIN_PEDIDO'
   | 'CAMBIO_SIN_DESTINO'
+  | 'PEDIDO_CORREGIDO_A_LA_BAJA'
 
 export interface SenalCierre {
   codigo: CodigoSenal
@@ -45,6 +47,8 @@ export function calcularSenales(args: {
   umbralCaja: number
   /** #446: conteo de sustituciones por destino; ausente = cierre sin cambios derivados. */
   cambios?: { aClienteSinPedido: number; sinDestino: number }
+  /** #712: pedidos del embarque cuyo total bajó (reducción o precio) después de la salida. */
+  correccionesALaBaja?: { pedidos: number; monto: number }
 }): SenalCierre[] {
   const senales: SenalCierre[] = []
 
@@ -99,6 +103,17 @@ export function calcularSenales(args: {
       codigo: 'CAMBIO_SIN_DESTINO',
       mensaje:
         `${args.cambios.sinDestino} cambio(s) no dicen a quién se entregaron. Revisa el tab «Físico» y completa el destino.`,
+    })
+  }
+
+  // 4. Pedidos corregidos a la baja después de salir.
+  if (args.correccionesALaBaja && args.correccionesALaBaja.pedidos > 0) {
+    const { pedidos, monto } = args.correccionesALaBaja
+    senales.push({
+      codigo: 'PEDIDO_CORREGIDO_A_LA_BAJA',
+      mensaje:
+        `${pedidos} pedido(s) bajaron su total en $${monto.toLocaleString('es-CO')} después de que el embarque salió ` +
+        '(reducción comercial o corrección de precio). Revisa que el cobro y la mercancía cuadren con eso.',
     })
   }
 
