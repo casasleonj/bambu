@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client'
-import { execSync } from 'child_process'
+import { spawnSync } from 'child_process'
 
 // Playwright workers are separate OS processes; with workers>1, two
 // different describe blocks' beforeAll/beforeEach hooks can both call
@@ -17,6 +17,26 @@ import { execSync } from 'child_process'
 // each other.
 const LOCK_KEY = 847362951
 
+// Salida visible sin ruido (#322): clean.ts y el seed imprimen ~40 líneas cada
+// uno y antes se descartaban por completo (`stdio: 'ignore'`), así que ningún
+// log de CI mostraba si el reintento de lock_timeout de clean.ts se disparaba.
+// Se captura todo y solo se reimprime lo que importa (contención de locks,
+// tablas omitidas, conexiones terminadas, errores) más una línea-resumen con la
+// duración. Si el comando falla se imprime la salida COMPLETA antes de relanzar.
+const RELEVANTE = /Lock contention|Skipped |Terminated |terminateStaleConnections|error|Error|ERROR/
+
+function ejecutar(etiqueta: string, comando: string): void {
+  const r = spawnSync(comando, { shell: true, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 })
+  const salida = `${r.stdout ?? ''}${r.stderr ?? ''}`
+  if (r.status !== 0) {
+    process.stderr.write(salida)
+    throw new Error(`[reset] ${etiqueta} terminó con código ${r.status ?? `señal ${r.signal}`}`)
+  }
+  for (const linea of salida.split('\n')) {
+    if (RELEVANTE.test(linea)) console.log(`[reset] ${etiqueta}: ${linea.trim()}`)
+  }
+}
+
 const prisma = new PrismaClient({
   datasourceUrl: process.env.DIRECT_URL || process.env.DATABASE_URL,
 })
@@ -25,10 +45,13 @@ async function main() {
   const mode = process.argv[2] === 'full' ? 'full' : 'test'
   const seedScript = mode === 'full' ? 'prisma/seed.ts' : 'prisma/seed-test.ts'
 
+  const inicio = Date.now()
   await prisma.$executeRawUnsafe(`SELECT pg_advisory_lock(${LOCK_KEY})`)
+  const esperaLock = Date.now() - inicio
   try {
-    execSync('npx tsx prisma/clean.ts', { stdio: 'ignore' })
-    execSync(`npx tsx ${seedScript}`, { stdio: 'ignore' })
+    ejecutar('clean', 'npx tsx prisma/clean.ts')
+    ejecutar('seed', `npx tsx ${seedScript}`)
+    console.log(`[reset] ${mode}: ${Date.now() - inicio} ms (espera del lock: ${esperaLock} ms)`)
   } finally {
     await prisma.$executeRawUnsafe(`SELECT pg_advisory_unlock(${LOCK_KEY})`)
   }
