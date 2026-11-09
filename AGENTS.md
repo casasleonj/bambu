@@ -1,8 +1,8 @@
 # PROTOCOLO OBLIGATORIO
 
-ANTES de escribir cualquier codigo, DEBES ejecutar las 3 iteraciones del protocolo de investigacion.
+ANTES de escribir cualquier codigo, DEBES ejecutar las 3 iteraciones de investigacion y planificacion (Rondas 1 y 2) del protocolo.
 Lee el archivo `.opencode/prompts/protocolo.txt` para los detalles completos.
-NUNCA saltes directo a codigo. NUNCA implementes sin aprobacion tras cada Ronda 2.
+NUNCA saltes directo a codigo. La Ronda 3 (implementar y verificar) solo empieza tras la aprobacion explicita de la Ronda 2 de esa fase.
 
 **Aprobación de interfaz (instrucción del PO, 2026-10-27):** antes de implementar cualquier cambio de interfaz o experiencia de usuario, presentar una maqueta de escritorio y móvil, incluidos los estados relevantes de confirmación, carga y error, y esperar aprobación explícita del PO. Aprobar el trabajo del servidor no aprueba la maqueta. La implementación debe respetar la maqueta aprobada; los cambios visuales posteriores requieren revisión de su maqueta.
 
@@ -673,14 +673,18 @@ El backlog vive en **GitHub Issues** (índice en `docs/BACKLOG.md`). Toda tarea 
 
 ---
 
-# Protocolo de Investigación (3 iteraciones del ciclo completo)
+# Protocolo de Investigación (3 iteraciones de investigación + R3 por fase)
 
-Cada iteración ejecuta 3 rondas. El resultado de la Iteración N alimenta la Iteración N+1.
-Se ejecutan exactamente 3 iteraciones antes de presentar la solución final al usuario.
+El protocolo tiene dos etapas (aclaración del #704; antes «3 ciclos completos antes de código» chocaba con la Ronda 3, que ordena implementar):
+
+1. **Investigación y planificación — antes de cualquier código.** Se ejecutan exactamente 3 iteraciones de las Rondas 1 y 2. El resultado de la Iteración N alimenta la Iteración N+1. Al terminar la Iteración 3 se presenta la solución final (el plan) al usuario.
+2. **Implementación y verificación — Ronda 3, por fase.** Solo empieza cuando el usuario aprueba explícitamente la Ronda 2 **de esa fase** (ver «Flujo de Entrega»: una fase = una rama = un PR). Cada fase siguiente repite el paso de aprobación de su propia Ronda 2.
+
+Sin esa autorización no se escribe código ni se modifica nada: se entrega el plan y se registra el estado como bloqueado esperando decisión.
 
 **Objetivo del protocolo**: Eliminar sesgos, ambigüedades e invenciones mediante validación cruzada iterativa. Cada ronda reduce la probabilidad de error.
 
-## Iteración 1, 2, 3: Ciclo de 3 Rondas
+## Iteraciones 1, 2 y 3: Rondas 1 y 2
 
 ### Ronda 1: Descubrimiento en la web
 1. **Buscar en fuentes primarias**: docs oficiales del tool/lib (versión exacta en uso), GitHub repo, issues cerrados, PRs merged, CHANGELOG.
@@ -694,20 +698,20 @@ Se ejecutan exactamente 3 iteraciones antes de presentar la solución final al u
 3. **Armar plan**: lista de archivos a modificar, orden de dependencia (base → derivado), tests a escribir/ejecutar, criterios de éxito.
 4. **Revisar con usuario**: presentar plan antes de ejecutar. Esperar aprobación explícita.
 
-### Ronda 3: Verificación e Iteración
-1. **Implementar plan aprobado**.
+### Ronda 3: Verificación e Iteración (por fase, tras aprobación de su Ronda 2)
+1. **Implementar la fase aprobada**.
 2. **Verificar**: correr tests (`npm run test`), type check (`npx tsc --noEmit`), validar contra criterios de éxito definidos en el plan.
-3. **Si falla**: volver a Ronda 1 con el error/mensaje como nuevo input. No corregir a ciegas.
+3. **Si falla**: volver a Ronda 1 con el error/mensaje como nuevo input (investigación acotada a ese fallo; si cambia el alcance del plan, nueva aprobación). No corregir a ciegas.
 4. **Confirmar**: solo marcar como completo si hay evidencia (output de tests, log, screenshot). Si no hay evidencia → no afirmar que funciona.
 
 ## Reglas del Protocolo
-- Ejecutar el ciclo completo (R1→R2→R3) exactamente **3 veces**.
+- Ejecutar R1→R2 exactamente **3 veces** antes de escribir código; R3 se ejecuta **por fase** tras aprobar su R2.
 - La **Iteración 2** toma el resultado de la Iteración 1 como input para nuevo descubrimiento.
 - La **Iteración 3** toma el resultado de la Iteración 2 como input para refinamiento final.
 - Si no hay fuente confiable → declarar: **"NO VERIFICADO — testear antes de usar"**.
 - Si la solución es experimental → etiquetar: **"EXPERIMENTAL - HIGH RISK"**.
-- NUNCA saltar directo a código sin completar las 3 iteraciones.
-- NUNCA implementar sin aprobación del usuario tras cada Ronda 2.
+- NUNCA saltar directo a código sin completar las 3 iteraciones de R1+R2.
+- NUNCA implementar (Ronda 3) sin aprobación explícita del usuario de la Ronda 2 de esa fase. Una aprobación no se extiende a otra fase.
 
 ---
 
