@@ -14,7 +14,8 @@ on:
       - '.claude/skills/**'
       - '.opencode/prompts/**'
       - 'scripts/auditoria-agentes/**'
-      - 'docs/agentes/auditoria-2026-11/**'
+      - 'docs/agentes/**'
+      - '.github/workflows/agent-guidance-audit.yml'
   workflow_dispatch:
 
 permissions:

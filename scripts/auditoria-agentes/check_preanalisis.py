@@ -30,11 +30,21 @@ def check(repo):
             matrix=list(csv.DictReader(f))
         with (audit/"obligaciones_atomicas.csv").open(encoding="utf-8",newline="") as f:
             clauses=list(csv.DictReader(f))
+        with (audit/"clasificacion_candidatas_202.csv").open(encoding="utf-8",newline="") as f:
+            extra=list(csv.DictReader(f))
     except (OSError,UnicodeError,csv.Error) as e:
         return {"estado":"FAIL","errores":[str(e)]}
     if len(matrix)!=798 or len(lines)!=797:
         errors.append("cardinalidad fuente/matriz inesperada")
     candidates={int(row["linea_original"]) for row in matrix if row["clase"] in CANDIDATES}
+    index_extra={}
+    for x in extra:
+        ident=x.get("id","")
+        if ident in index_extra:
+            errors.append("id duplicado en clasificación 202 "+ident)
+        index_extra[ident]=x
+    if len(extra)!=202:
+        errors.append("se esperaban 202 candidatos de segunda revisión")
     seen=set()
     coverage=set()
     ab=0
@@ -57,6 +67,14 @@ def check(repo):
             errors.append("fuente literal divergente "+ident)
         if ident.startswith("AB-EX-"):
             extracted+=1
+            correlated=index_extra.get(ident)
+            if not correlated or (row.get("significado") !=
+                    correlated.get("tipo_preliminar","")+": "+correlated.get("significado_preliminar","")
+                    or row.get("condiciones")!=correlated.get("condicion")
+                    or row.get("excepciones")!=correlated.get("excepcion_o_limite")
+                    or row.get("destino_activo")!=correlated.get("modulo_sugerido")
+                    or row.get("clausula_original")!=correlated.get("linea_literal")):
+                errors.append("divergencia entre clasificaciones "+ident)
             # La segunda pasada aporta significado, condición y límite preliminares.
             # No equivale a certificación. Evitar marcadores vacíos.
             if (not row.get("significado","").strip() or
@@ -71,6 +89,8 @@ def check(repo):
             errors.append("id desconocido "+ident)
         if row.get("estado_revision")=="VERIFICADA" and row.get("referencia_revisor","").startswith("PENDIENTE"):
             errors.append("certificacion sin revisor "+ident)
+    if set(index_extra)!={x.get("id") for x in clauses if x.get("id","").startswith("AB-EX-")}:
+        errors.append("IDs de segunda revisión incompletos o sobrantes")
     missing=candidates-coverage
     if missing:
         errors.append("candidatos sin origen: "+str(sorted(missing)[:30]))

@@ -2,13 +2,13 @@
 
 **Estado: PREANÁLISIS Y EXTRACCIÓN COMPLETA, NO CERTIFICACIÓN.**
 
-Este registro cruza la fuente original con el catálogo previo `contratos-operativos.md` y los destinos modulares propuestos. `obligaciones_atomicas.csv` contiene **556 entradas**: 354 preanálisis conceptuales AB y 202 posiciones candidatas todavía sin descomposición. Se preservan las 530 posiciones candidatas originales (algunas se solapan porque una misma línea puede originar varias cláusulas). Las 798 posiciones del inventario fuente siguen disponibles. No confundir estas cantidades con obligaciones distintas verificadas.
+Este registro cruza la fuente original con el catálogo previo `contratos-operativos.md` y los destinos modulares propuestos. `obligaciones_atomicas.csv` contiene **556 entradas**: 354 preanálisis conceptuales AB y 202 posiciones adicionales con clasificación, significado, condiciones y excepciones de preanálisis (no firmadas). Se preservan las 530 posiciones candidatas originales (algunas se solapan porque una misma línea puede originar varias cláusulas). Las 798 posiciones del inventario fuente siguen disponibles. No confundir estas cantidades con obligaciones distintas verificadas.
 
 ## Método reproducible
 
 1. Recuperar las seis partes de `fuente-original/`, con hash del blob original controlado por `check_modularizacion.py`.
 2. Para cada una de las 354 cláusulas `AB-xxxx`, registrar **texto fuente literal**, significado preliminar, condición y excepción expresas del catálogo de preanálisis.
-3. Para cada una de las 202 líneas candidatas sin cláusula AB, conservar **texto fuente literal** y proponer módulo de consulta por rango de origen. No inventar interpretación: se marca `EXTRACCION_LITERAL_PENDIENTE_DESCOMPOSICION`.
+3. Para las 202 líneas candidatas sin cláusula AB, registrar origen y una clasificación preliminar separada en `clasificacion_candidatas_202.csv`; no tratarla como certificación ni omitir subdividir líneas compuestas.
 4. Revisar cada registro en su párrafo y sección completos. Distinguir decisión PO, regla de agente, dato técnico histórico, incidente resuelto, propuesta y obsoleto. Verificar Contexto Maestro y Planes Maestros autorizados antes de decidir vigencia. Comprobar código `main` para hechos técnicos.
 5. Para cláusulas compuestas, crear nuevas filas atómicas con rangos repetidos, sin borrar la cláusula fuente. Reescribir `destino_activo` solo después de confirmar **que el agente realmente recupera el contrato vigente**; la ruta actual en CSV es *candidata*, no prueba de activación.
 6. Tras cotejo y evidencia, un revisor autorizado puede clasificar `VIGENTE`, `HISTORICO_NO_NORMATIVO` o `CAMBIO_APROBADO`, y marcar `VERIFICADA`. Los valores actuales `POR_DETERMINAR` / `PENDIENTE` son deliberados.
