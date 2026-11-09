@@ -87,9 +87,8 @@ test.describe('F8 — recurrentes en el Hub (UI, NEXT_PUBLIC_PEDIDOS_V2)', () =>
     const page = await sharedLoginAs(browser, 'admin')
     const app = appMain(page)
     await page.goto(`${BASE}/pedidos?all=true`)
-    await app.getByRole('button', { name: 'Más filtros', exact: true }).click()
-    await app.getByLabel('Origen', { exact: true }).selectOption('RECURRENTE')
-    await app.getByRole('button', { name: 'Aplicar filtros', exact: true }).click()
+    await app.getByRole('button', { name: /^Filtros/ }).click()
+    await app.getByRole('button', { name: 'Pedido habitual', exact: true }).click()
     await expect(page).toHaveURL(/origen=RECURRENTE/)
   })
 

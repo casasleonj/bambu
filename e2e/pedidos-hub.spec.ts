@@ -64,18 +64,16 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await expect(app.getByTestId('consulta-filtros')).toBeVisible()
 
     const totalAntes = await app.locator('[data-testid^="operacion-row-"]').count()
-    await app.getByRole('button',{name:'Más filtros',exact:true}).click()
-    await app.getByLabel('Pago',{exact:true}).selectOption('fiado')
-    const consulta=page.waitForResponse(r=>r.url().includes('/api/pedidos/consulta')&&r.ok())
-    await app.getByRole('button',{name:'Aplicar filtros',exact:true}).click()
+    await app.getByRole('button',{name:/^Filtros/}).click()
+    const consulta=page.waitForResponse(r=>r.url().includes('/api/pedidos/consulta')&&r.url().includes('pago=fiado')&&r.ok())
+    await app.getByRole('button',{name:'Fiado · entregado con saldo',exact:true}).click()
     await consulta
     // el filtro reduce (o iguala) — nunca aumenta
     const totalDespues = await app.locator('[data-testid^="operacion-row-"]').count()
     expect(totalDespues).toBeLessThanOrEqual(totalAntes)
     // re-clic deselecciona
-    await app.getByLabel('Pago',{exact:true}).selectOption('todos')
-    const restaurada=page.waitForResponse(r=>r.url().includes('/api/pedidos/consulta')&&r.ok())
-    await app.getByRole('button',{name:'Aplicar filtros',exact:true}).click()
+    const restaurada=page.waitForResponse(r=>r.url().includes('/api/pedidos/consulta')&&r.url().includes('pago=todos')&&r.ok())
+    await app.getByRole('button',{name:'Fiado · entregado con saldo',exact:true}).click()
     await restaurada
     await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(totalAntes)
   })
