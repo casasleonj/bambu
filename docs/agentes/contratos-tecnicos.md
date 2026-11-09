@@ -25,6 +25,7 @@ Para contratos de dominio y excepciones extraídos del documento original consul
 - DDD y contratos compartidos: «DDD Module Structure».
 - Consumidor final y geografía: «Cliente canónico», «Coordenadas efectivas».
 - SSE: «Realtime Updates».
+- [Clasificación residual de 64 pasajes](auditoria-2026-11/REVISION_CONTEXTO_RESIDUAL.md): comandos históricos no ejecutables, tablas de módulos y tipos SSE; verificar consumidores contra main y no asumir publicación real.
 - Histórico de producción y comportamiento por fecha: [historial-y-trazabilidad.md](historial-y-trazabilidad.md).
 
 **Si la implementación y una nota antigua divergen, registrar BRECHA PLAN ↔ CÓDIGO o nota técnica obsoleta, según la autoridad de producto. No ajustar contratos de producto solo porque el código sea diferente.**
