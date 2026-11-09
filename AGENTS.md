@@ -631,13 +631,6 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
       - **Anti-patrón a evitar**: mostrar un saldo que no se pudo leer como cero; inventar el pedido, la factura o quién recibió el dinero cuando la auditoría no lo trae.
       - Pruebas: `saldo-favor-cliente.test.ts`, `cliente-saldo-favor.test.tsx`, `cliente-table.test.tsx`, `panel-prefetch.test.ts`, `ayuda-termino.test.tsx`, integración `saldo-favor-cliente-696.test.ts` (Postgres real: cobro real con sobrante, correcciones, pedido de otro cliente, auditoría ilegible, roles), E2E `clientes-saldo-favor-696.spec.ts`.
 
-   48. **Devolver el saldo a favor al cliente (#560, servidor)**: `POST /api/clientes/[id]/saldo-favor/devolver` (solo ADMIN, salida de dinero). Body `{ monto, metodo (EFECTIVO|TRANSFERENCIA|NEQUI|DAVIPLATA), motivo, offlineId }`.
-      - **Contrato**: monto ≤ `Cliente.saldoFavor` (409 `SALDO_INSUFICIENTE`), baja el saldo con condición (nunca negativo, aun con dos devoluciones simultáneas) bajo el lock `CARTERA` del cliente, registra una fila append-only en `DevolucionSaldoFavor` (CHECK monto > 0 y metodo ≠ BONO) y audita `DEVOLUCION_SALDO_FAVOR` (`src/lib/devolver-saldo-favor.ts`). Idempotente por `offlineId`. La venta anónima no tiene saldo (422).
-      - **Caja**: `resumirAbonosDelDia` la resta como ajuste de cobros del día de registro; solo el EFECTIVO resta de `cobroCarteraEfectivo` (y por tanto del efectivo esperado). No reabre cierres anteriores. Sale en la lista de correcciones del cierre.
-      - **Pendiente**: pantalla (requiere maqueta aprobada), movimiento «Devolución» en la lista de #696, paridad en el Dashboard (`cobros-periodo`) y regla del verificador de integridad.
-      - **Migración** `20261111_devolucion_saldo_favor` (aditiva, idempotente; aplicar en producción antes del merge).
-      - Pruebas: `integration/devolver-saldo-favor-560.test.ts`.
-
 ## Registro de tareas
 
 El backlog vive en **GitHub Issues** (índice en `docs/BACKLOG.md`). Toda tarea nueva —incluida la que surge en el chat— se registra como issue **antes** de empezar, y el PR que la resuelve la cierra con `Closes #N` (el PR debe apuntar a `main`). Los hallazgos y funcionalidades nuevos se registran con el skill `/hallazgo` o con los formularios de `.github/ISSUE_TEMPLATE/`; los pendientes en el código llevan su issue (`TODO(#123)`). No guardes pendientes en este archivo ni en notas de sesión. No es solo una convención: el workflow `Backlog` (`.github/workflows/backlog.yml`) falla el PR que no cita un issue y mantiene las etiquetas `estado:*` (ver `docs/BACKLOG.md`).
