@@ -44,3 +44,8 @@ El nuevo archivo permite auditar sin perder una línea candidata y hace visibles
 **Decisiones posteriores relevantes:** `docs/adr/ADR-MONETARIO-002.md`, `ADR-CIERRE-004.md`, `ADR-REDUCCION-COMERCIAL-001.md` de `main` recogen autorización de saldo a favor en sobrepago de corrección/reducción, nota de crédito para reducción y pendiente #713 para corrección de precio a la baja. Algunas secciones históricas de esos ADR contienen la redacción antigua de rechazo; la decisión posterior documentada tiene prioridad, pero no se modifica el ADR silenciosamente.
 
 **Límite explícito:** las filas no inspeccionadas en código conservan el estado `NO_VERIFICADO_MAIN` cuando esa comprobación sea pertinente. Las 556 entradas no están firmadas por revisor, y la evaluación de agentes A/B sigue pendiente.
+
+
+## Reconciliación del delta de main posterior al baseline
+
+El commit `ef0bc0dd0736e3acfd9d9d0bf64ffc5ff62fb44f` modifica el AGENTS histórico original con #691 y agrega el bloque #696 en L625–L632. El snapshot de 798 posiciones sigue siendo prueba del baseline, **no incorpora estas nuevas cláusulas**. Se conserva la fuente de esas 9 líneas en [delta](delta_main_ef0bc0dd.json) y se añaden contratos operativos en [saldo favor #696](../contratos-saldo-favor-696.md). Este delta no se cuenta entre las 530 posiciones candidatas previas, ni se marca como revisión firmada.
