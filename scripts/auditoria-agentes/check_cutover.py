@@ -77,8 +77,14 @@ def evaluar(repo, matriz, evidencia):
         clase_atomo=atomo.get("clasificacion","").strip()
         requeridos=("clausula_original","significado","condiciones","excepciones",
                     "criterio_verificacion","referencia_revisor")
+        # Una línea en blanco del original no contiene cláusula: solo se admite vacía
+        # como estructura histórica (nunca como regla vigente ni como cambio).
+        estructura_vacia=(not atomo.get("clausula_original","").strip()
+                          and clase_atomo=="HISTORICO_NO_NORMATIVO"
+                          and atomo.get("significado","").startswith("ESTRUCTURA:"))
         if estado_atomo!="VERIFICADA" or clase_atomo not in validas or any(
-                not atomo.get(c,"").strip() for c in requeridos):
+                not atomo.get(c,"").strip() for c in requeridos
+                if not (estructura_vacia and c=="clausula_original")):
             errores_atomicos.append("registro incompleto "+str(k))
         dest=atomo.get("destino_activo","").strip()
         ruta=(repo/dest).resolve() if dest else None

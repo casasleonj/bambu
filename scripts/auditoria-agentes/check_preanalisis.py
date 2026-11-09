@@ -81,7 +81,11 @@ def check(repo):
                 row.get("significado","").startswith("EXTRACCION_LITERAL_PENDIENTE_DESCOMPOSICION:") or
                 row.get("condiciones","").startswith("POR_IDENTIFICAR") or
                 row.get("excepciones","").startswith("POR_IDENTIFICAR") or
-                row.get("estado_revision")!="PENDIENTE"):
+                row.get("estado_revision") not in ("PENDIENTE","VERIFICADA") or
+                (row.get("estado_revision")=="VERIFICADA" and (
+                    row.get("clasificacion") not in ("VIGENTE","HISTORICO_NO_NORMATIVO","CAMBIO_APROBADO") or
+                    not row.get("criterio_verificacion","").strip() or
+                    row.get("criterio_verificacion","").startswith("PENDIENTE")))):
                 errors.append("clasificacion insuficiente o fingida "+ident)
         elif re.fullmatch(r"AB-[0-9]{4}",ident):
             ab+=1

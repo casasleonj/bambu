@@ -94,5 +94,25 @@ class CutoverTests(unittest.TestCase):
         checks,_=self._runtime(claude={"estado":"EXENTO_POR_PO","referencia_po":"x","issue":"#734"})
         self.assertEqual(checks["runtime-claude"],"FAIL")
 
+    def _atomos(self,filas):
+        d=self.repo/"docs/agentes/auditoria-2026-11";d.mkdir(parents=True)
+        cols=["id","lineas_origen","clausula_original","significado","clasificacion","condiciones","excepciones",
+              "destino_activo","criterio_verificacion","estado_revision","referencia_revisor"]
+        with (d/"obligaciones_atomicas.csv").open("w",encoding="utf-8",newline="") as fh:
+            w=csv.DictWriter(fh,fieldnames=cols);w.writeheader();w.writerows(filas)
+        (self.repo/"docs/x.md").write_text("x",encoding="utf-8")
+    def _fila(self,clase,clausula,significado):
+        return {"id":"AB-1","lineas_origen":"1","clausula_original":clausula,"significado":significado,"clasificacion":clase,
+                "condiciones":"c","excepciones":"e","destino_activo":"docs/x.md","criterio_verificacion":"k",
+                "estado_revision":"VERIFICADA","referencia_revisor":"r"}
+    def _estado_atomico(self):
+        return next(x for x in gate.evaluar(self.repo,self.matrix,self.ev)["checks"] if x["id"]=="obligaciones-atomicas-con-evidencia")["estado"]
+    def test_blank_source_line_allowed_only_as_historic_structure(self):
+        self._atomos([self._fila("HISTORICO_NO_NORMATIVO","","ESTRUCTURA: separador")])
+        self.assertEqual(self._estado_atomico(),"PASS")
+    def test_blank_clause_cannot_be_a_vigente_rule(self):
+        self._atomos([self._fila("VIGENTE","","ESTRUCTURA: separador")])
+        self.assertEqual(self._estado_atomico(),"FAIL")
+
 if __name__=="__main__":
     unittest.main()
