@@ -48,6 +48,8 @@ jobs:
         run: python scripts/auditoria-agentes/check_preanalisis.py --repo .
       - name: Verify new main delta (691 and 696) not lost
         run: python scripts/auditoria-agentes/check_delta_main.py --repo .
+      - name: Verify historical context residual positions
+        run: python scripts/auditoria-agentes/check_contexto_residual.py --repo .
       - name: Emit conservative audit report
         shell: bash
         run: |
