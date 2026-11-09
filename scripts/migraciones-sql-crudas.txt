@@ -32,3 +32,5 @@
 20261110_ingreso_saldo_favor
 # #701: search_clientes(text, int); solo la definición final (CREATE OR REPLACE, idempotente).
 20260729210000_fix_search_clientes_phone_negocio
+# #560: devolución del saldo a favor al cliente (CHECK).
+20261111_devolucion_saldo_favor
