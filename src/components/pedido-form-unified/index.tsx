@@ -121,6 +121,8 @@ export interface PedidoUnifiedData {
   promesaPagoFecha?: string
   /** #408: el usuario confirmó que esta venta es distinta de la que el aviso de venta repetida mostró. */
   ventaRepetidaConfirmada?: boolean
+  /** #426: guardar también la ubicación del pedido en la tienda/cliente. `reemplazar` solo si ya había otra y se eligió cambiarla. */
+  guardarUbicacion?: { reemplazar?: boolean }
 }
 
 // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: el toggle "entregar después" de la

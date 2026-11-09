@@ -75,13 +75,22 @@ export interface CrearPedidoPayload {
   promesaPagoFecha?: string
   /** #408: el usuario confirmó que esta venta es distinta de la que el aviso de venta repetida mostró. */
   ventaRepetidaConfirmada?: boolean
+  /** #426: guardar también la ubicación del pedido en la tienda/cliente. `reemplazar` solo si ya había otra y se eligió cambiarla. */
+  guardarUbicacion?: { reemplazar?: boolean }
 }
+
+/** #426: respuesta de POST /api/pedidos sobre guardar la ubicación (mismo contrato que el servidor). */
+export type ResultadoUbicacionGuardada =
+  | { resultado: 'GUARDADA' | 'REEMPLAZADA' | 'IGUAL' | 'CONSERVADA'; destino: 'NEGOCIO' | 'CLIENTE'; anterior: { lat: number; lng: number } | null }
+  | { resultado: 'SIN_UBICACION' | 'SIN_DESTINO' | 'ERROR' }
 
 export interface CrearPedidoResult {
   pedido: unknown
   clienteId: string
   /** el servidor ya tenía un pedido con esta clave y devolvió ese. */
   deduped: boolean
+  /** #426: qué pasó con «guardar también la ubicación» (efecto aparte: el pedido ya está guardado). */
+  ubicacionGuardada?: ResultadoUbicacionGuardada
 }
 
 export interface UseCrearPedidoOptions {
@@ -109,14 +118,14 @@ export function useCrearPedido(options?: UseCrearPedidoOptions) {
       // Bug original: este hook NO enviaba offlineId (C-2). Test regresión:
       // e2e/offline-first/crear-pedido-hook-dedup.spec.ts
       const offlineId = payload.offlineId ?? generateUUID()
-      const result = await fetchResilient<{ success: boolean; pedido: unknown; deduped?: boolean; error?: { message?: string } }>(
+      const result = await fetchResilient<{ success: boolean; pedido: unknown; deduped?: boolean; ubicacionGuardada?: ResultadoUbicacionGuardada; error?: { message?: string } }>(
         '/api/pedidos',
         { method: 'POST', body: { ...payload, offlineId }, localEndpoint: 'crear-pedido' }
       )
 
       if (result.status === 'ok') {
         const data = result.data
-        const ok: CrearPedidoResult = { pedido: data.pedido, clienteId: payload.clienteId, deduped: data.deduped === true }
+        const ok: CrearPedidoResult = { pedido: data.pedido, clienteId: payload.clienteId, deduped: data.deduped === true, ...(data.ubicacionGuardada ? { ubicacionGuardada: data.ubicacionGuardada } : {}) }
         setLastResult(ok)
         options?.onSuccess?.(ok)
         return ok
