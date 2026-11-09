@@ -76,13 +76,12 @@ describe('esPrecioRaro', () => {
 })
 
 describe('permisos', () => {
-  it('ADMIN aplica; ASISTENTE solo solicita', () => {
+  it('ADMIN aplica en el acto', () => {
     expect(decidirAplicacion('ADMIN')).toBe('APLICAR')
-    expect(decidirAplicacion('ASISTENTE')).toBe('SOLICITAR')
   })
-  it('solicitan ADMIN y ASISTENTE; no REPARTIDOR ni CONTADOR', () => {
+  it('#616: solo el ADMIN corrige; ni ASISTENTE, ni REPARTIDOR, ni CONTADOR', () => {
     expect(puedeSolicitarCorreccion('ADMIN')).toBe(true)
-    expect(puedeSolicitarCorreccion('ASISTENTE')).toBe(true)
+    expect(puedeSolicitarCorreccion('ASISTENTE')).toBe(false)
     expect(puedeSolicitarCorreccion('REPARTIDOR')).toBe(false)
     expect(puedeSolicitarCorreccion('CONTADOR')).toBe(false)
   })
