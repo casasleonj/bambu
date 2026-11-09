@@ -28,3 +28,22 @@ Job `CI gate (resumen)`, siempre se ejecuta (`if: always()`). Falla si `detect-c
 ## Reversión
 
 `ci-gate` es un job aparte: revertir su bloque no afecta al resto. El cron se restaura agregando de nuevo un bloque `schedule` en `on:`.
+
+
+## Actualización 2026-11-09 (#703): protección de `main` y orden migración → despliegue
+
+### Protección de `main` — pendiente de activar por el PO
+La sesión de Claude **no puede escribir** la protección (GitHub responde 403 «Write access … not permitted through this proxy»). Para activarla: GitHub → Settings → Branches → *Add branch ruleset / protection rule* sobre `main`, con:
+- **Require status checks to pass:** `Type check + Tests` y `E2E Hub (V2 ON)` (los dos corren siempre, también en PRs solo de documentación, y han sido fiables). **No** marcar los `E2E (n/8)` ni `Agent Instructions Audit` (este solo corre al tocar `AGENTS.md`: quedaría pendiente para siempre en otros PRs). `CI gate (resumen)` se puede sumar cuando el E2E se estabilice.
+- Sin exigir revisiones ni «Do not allow bypassing» (el PO puede seguir fusionando); bloquear *force pushes* y borrado de `main`.
+- Equivalente por línea de comandos: `gh api -X PUT repos/casasleonj/bambu/branches/main/protection` con `{"required_status_checks":{"strict":false,"contexts":["Type check + Tests","E2E Hub (V2 ON)"]},"enforce_admins":false,"required_pull_request_reviews":null,"restrictions":null,"allow_force_pushes":false,"allow_deletions":false}`.
+
+### Orden migración → despliegue — script listo, **sin activar**
+`scripts/vercel-ignore-build.mjs` (con 13 pruebas en `scripts/__tests__/vercel-ignore-build.test.ts`, incluida la comprobación de que fallan si la lógica se rompe) es un *Ignored Build Step* de Vercel (`ignoreCommand` de `vercel.json`; salida 1 = construir, 0 = cancelar, según la documentación de Vercel). En producción, si el commit toca `prisma/schema.prisma` o `prisma/migrations/**`, espera hasta 12 min a que `migrate-deploy.yml` termine en `success` **para ese mismo commit**; si falla, no aparece o se agota el tiempo, cancela el despliegue (el código nuevo no sale; se reintenta con *Redeploy*). Commits sin migración y vistas previas no cambian.
+
+**Por qué no está activado:** `migrate-deploy.yml` falla en TODAS sus ejecuciones recientes (15 seguidas, desde 2026-10-26) con `The token provided via the --token option is not valid` (secreto `VERCEL_TOKEN` inválido). Activar el `ignoreCommand` hoy cancelaría para siempre todo despliegue con migración. Antes de enchufarlo hay que:
+1. Que el PO genere un token nuevo (vercel.com/account/tokens, de una cuenta con acceso al equipo) y lo guarde como secreto `VERCEL_TOKEN` en GitHub.
+2. Verificar con seguridad que `prisma migrate deploy` contra producción es correcto: si las migraciones posteriores a julio se aplicaron a mano (MCP) y no figuran en `_prisma_migrations`, el workflow intentaría reaplicarlas. Comparar `_prisma_migrations` con `prisma/migrations/` (consulta de solo lectura) y, si difieren, registrar con `prisma migrate resolve --applied <nombre>`.
+3. Entonces agregar a `vercel.json`: `"ignoreCommand": "node scripts/vercel-ignore-build.mjs"` (opcionalmente `GITHUB_TOKEN` de solo lectura en Vercel para no depender del límite anónimo de la API de GitHub).
+
+Hasta entonces sigue vigente la regla manual de AGENTS.md (Flujo de Entrega, paso 7): aplicar la migración en producción **antes** de fusionar.
