@@ -12,6 +12,9 @@ import { useExcepcionCredito } from './use-excepcion-credito'
 import { PedidoProposal } from './pedido-proposal'
 import { PedidoReview } from './pedido-review'
 import { PedidoVentaRepetida } from './pedido-venta-repetida'
+import { WorkspaceGuardarUbicacion } from './workspace-guardar-ubicacion'
+import { useUbicacionGuardada, hayOtraUbicacion } from './use-ubicacion-guardada'
+import { aPuntoGeo } from '@/lib/geo/misma-ubicacion'
 import { PedidoCommitBar } from './pedido-commit-bar'
 import { WorkspaceEntrega } from './workspace-entrega'
 import { WorkspaceComprador } from './workspace-comprador'
@@ -213,6 +216,10 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
   const [otraVentaDe, setOtraVentaDe] = useState<string | null>(null)
   const otraVentaConfirmada = ventaRepetida != null && otraVentaDe === ventaRepetida.id
 
+  // #426: «Guardar también la ubicación» (apagada por defecto). La elección es de ESTE destino: si cambia el
+  // cliente o la tienda, vuelve a empezar.
+  const [ubicGuardar, setUbicGuardar] = useState<{ key: string; guardar: boolean; reemplazar: boolean | null }>({ key: '', guardar: false, reemplazar: null })
+
   const { tabla, configs, loading: pricingLoading, precioBaseFor } = useItemPricing()
   const { fiadoStatus, patron, patronLoading, loadPatron } = useClienteContext(state.draft.clienteId)
   const propuesta = usePedidoPropuesta()
@@ -392,10 +399,23 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
   const pagadoCompleto = (calc?.saldoProyectado ?? 1) <= 0
   // #425: «Cobrar» solo si hay dinero aplicado y el preview del servidor proyecta saldo cero.
   const cobrado = pagadoCompleto && (calc?.total ?? 0) > 0 && state.draft.pagos.some((p) => p.monto > 0)
+  // #426: la casilla solo existe al crear, a domicilio, con comprador real y un punto propio del pedido.
+  const puntoPedido = state.draft.canal === 'DOMICILIO' ? aPuntoGeo(state.draft.entregaLat, state.draft.entregaLng) : null
+  const ubicDestinoKey = `${state.draft.clienteId ?? ''}|${state.draft.negocioId ?? ''}`
+  const ofreceGuardarUbicacion = !modoEdicion && Boolean(clienteSeleccionado) && puntoPedido != null
+  const ubicEleccion = ubicGuardar.key === ubicDestinoKey ? ubicGuardar : { key: ubicDestinoKey, guardar: false, reemplazar: null }
+  const guardarUbic = ofreceGuardarUbicacion && ubicEleccion.guardar
+  const ubicacionDestino = useUbicacionGuardada(clienteSeleccionado?.id ?? null, state.draft.negocioId ?? null, guardarUbic)
+  const nombreTiendaUbic = state.draft.negocioId
+    ? (clienteSeleccionado?.negocios?.find((n) => n.id === state.draft.negocioId)?.nombre ?? 'seleccionada')
+    : null
+  // No se pisa en silencio: con otra ubicación ya guardada hay que elegir; mientras se revisa, se espera.
+  const faltaElegirUbicacion = guardarUbic && (ubicacionDestino.estado === 'cargando' || (hayOtraUbicacion(ubicacionDestino, puntoPedido) && ubicEleccion.reemplazar === null))
   const commitEnabled = canCommit(state, accionCommit)
     && (state.phase === 'PREVIEW_READY' || (sinConexion && state.phase === 'DRAFTING'))
     && !faltaCompradorParaDespues
     && (!ventaRepetida || otraVentaConfirmada)
+    && !faltaElegirUbicacion
   // B-20: sin preview del servidor, el cobro "completo" usa un total estimado con la tabla ya cargada.
   const totalEstimado = sinConexion && !calc
     ? estimarTotalOffline(state.draft.items, state.draft.canal, tabla, configs)
@@ -404,6 +424,8 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
     ? 'Para entregar después hay que identificar al comprador.'
     : ventaRepetida && !otraVentaConfirmada
       ? 'Marca «Es otra venta distinta» para continuar.'
+      : faltaElegirUbicacion
+        ? (ubicacionDestino.estado === 'cargando' ? 'Revisando la ubicación guardada…' : 'Elige qué hacer con la ubicación que ya estaba guardada.')
       : state.preview && !state.preview.allowedActions.includes(accionCommit)
       ? (state.preview.warnings[0]?.message ?? `El backend no permite ${modoEdicion ? 'guardar' : 'crear'} este pedido.`)
       : null
@@ -487,6 +509,7 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
       entregado: state.draft.entregado,
       excepcionId: state.draft.excepcionId,
       ...(ventaRepetida && otraVentaConfirmada ? { ventaRepetidaConfirmada: true } : {}),
+      ...(guardarUbic ? { guardarUbicacion: ubicEleccion.reemplazar === true ? { reemplazar: true } : {} } : {}),
       ...(ventaEnRuta ? { vendidoPorId, promesaPagoFecha: pideFechaRuta ? promesaPagoFecha : undefined } : {}),
       clienteNuevo: clienteNuevo ? { ...clienteNuevo, direccion: clienteNuevo.direccion ?? '' } : undefined,
       actualizarCliente,
@@ -657,6 +680,19 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
           guardarEnCliente={state.draft.guardarDireccionEnCliente ?? false}
           onGuardarEnClienteChange={(v) => dispatch({ type: 'SET_GUARDAR_DIRECCION_EN_CLIENTE', value: v })}
           onVolverAGuardada={handleVolverAGuardada}
+        />
+      )}
+
+      {ofreceGuardarUbicacion && puntoPedido && (
+        <WorkspaceGuardarUbicacion
+          nueva={puntoPedido}
+          nombreTienda={nombreTiendaUbic}
+          ubicacion={ubicacionDestino}
+          guardar={ubicEleccion.guardar}
+          onGuardarChange={(v) => setUbicGuardar({ key: ubicDestinoKey, guardar: v, reemplazar: null })}
+          reemplazar={ubicEleccion.reemplazar}
+          onReemplazarChange={(v) => setUbicGuardar({ key: ubicDestinoKey, guardar: true, reemplazar: v })}
+          disabled={state.phase === 'COMMITTING' || state.phase === 'COMMITTED'}
         />
       )}
 

@@ -1176,6 +1176,66 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
       await ventana('0')
     }
   })
+
+  // #426: «Guardar también la ubicación» guarda el punto del pedido en el cliente; si ya había otra no se pisa
+  // en silencio (hay que elegir) y lo reemplazado queda en el historial. Se mira la base de datos.
+  test('#426: guardar también la ubicación — se guarda, no pisa en silencio y reemplazar queda en el historial', async ({ browser }) => {
+    test.setTimeout(120_000) // tres pedidos seguidos con su revisión de ubicación
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    const nombre = `Ubic426 ${Date.now()}`
+    const { cliente } = await createCliente(page, { nombre })
+    await page.goto(`${BASE}/pedidos`)
+
+    const crearPedido = async (link: string, elegir?: 'reemplazar' | 'dejar') => {
+      await expect(page.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 20000 }) // un aviso anterior no tapa el «+»
+      await app.getByTestId('fab-main').click()
+      await page.getByTestId('fab-pedido-envio').click()
+      await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
+      await page.getByTestId('cliente-search-input').fill(nombre)
+      await page.getByTestId('cliente-search-result').first().click()
+      await page.getByTestId('workspace-inc-PACA_AGUA').click()
+      const cambiar = page.getByTestId('workspace-entrega-cambiar')
+      await expect(cambiar.or(page.getByTestId('workspace-entrega-link'))).toBeVisible({ timeout: 10000 })
+      if (await cambiar.isVisible()) await cambiar.click()
+      await page.getByTestId('workspace-entrega-link').fill(link)
+      await expect(page.getByTestId('guardar-ubicacion-casilla')).not.toBeChecked() // apagada por defecto
+      await page.getByTestId('guardar-ubicacion-casilla').check()
+      if (elegir) {
+        await expect(page.getByTestId('guardar-ubicacion-otra')).toBeVisible({ timeout: 10000 })
+        await expect(page.getByTestId('workspace-commit')).toBeDisabled() // no se guarda sin elegir
+        await page.getByTestId(`guardar-ubicacion-${elegir}`).click()
+      }
+      await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+      await page.getByTestId('workspace-commit').click()
+      await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+      await page.mouse.move(5, 5) // Sonner se pausa con el cursor encima: así el aviso se va solo
+    }
+    const coords = async () => {
+      const c = await prisma.cliente.findUniqueOrThrow({ where: { id: cliente.id } })
+      return { lat: c.lat == null ? null : Number(c.lat), lng: c.lng == null ? null : Number(c.lng) }
+    }
+    const eventos = async () => (await prisma.historial.findMany({ where: { entidad: 'Cliente', registroId: cliente.id } }))
+      .filter((h) => h.datos.includes('UBICACION_GUARDADA_DESDE_PEDIDO'))
+
+    // 1) sin ubicación previa: se guarda.
+    await crearPedido('https://www.google.com/maps?q=8.7479,-75.8814')
+    await expect(page.getByText('La ubicación quedó guardada en el cliente para los próximos pedidos.')).toBeVisible({ timeout: 10000 })
+    expect((await coords()).lat).toBeCloseTo(8.7479, 4)
+    expect((await coords()).lng).toBeCloseTo(-75.8814, 4)
+    expect((await eventos()).some((h) => h.datos.includes('"GUARDADA"'))).toBe(true)
+
+    // 2) ya hay otra: elegir «Dejar la que ya tenía» no cambia nada.
+    await crearPedido('https://www.google.com/maps?q=8.7455,-75.8830', 'dejar')
+    expect((await coords()).lat).toBeCloseTo(8.7479, 4)
+
+    // 3) «Reemplazarla por la nueva» cambia el punto y queda anotado con lo anterior.
+    await crearPedido('https://www.google.com/maps?q=8.7455,-75.8830', 'reemplazar')
+    expect((await coords()).lat).toBeCloseTo(8.7455, 4)
+    expect((await coords()).lng).toBeCloseTo(-75.883, 4)
+    const reemplazo = (await eventos()).find((h) => h.datos.includes('"REEMPLAZADA"'))
+    expect(reemplazo?.datos).toContain('8.7479')
+  })
 })
 
 test.describe('flag OFF: la UI de tabs sigue funcionando', () => {
