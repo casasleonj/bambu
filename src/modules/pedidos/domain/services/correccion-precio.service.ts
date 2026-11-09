@@ -11,7 +11,7 @@
  *   (`PRECIO_GENERARIA_SOBREPAGO`): `chk_pedido_montopagado_le_total` y la regla
  *   `totalPagado = Σ Pago + Σ Abono` no permiten bajar el total sin reversar pagos.
  * - «Precio raro» (< $2.000 en pacas, < $7.500 en botellón): se marca y lo aplica solo un ADMIN.
- * - El ASISTENTE solicita; el ADMIN aplica.
+ * - Solo el ADMIN corrige y aplica (#616); el ASISTENTE ve el historial.
  */
 
 export const PRECIO_RARO_MINIMO: Readonly<Record<string, number>> = {
@@ -74,12 +74,15 @@ export function calcularCorreccion(input: CorreccionInput): CorreccionResultado 
 
 export type RolCorreccion = 'ADMIN' | 'ASISTENTE' | string
 
-/** Quién puede registrar una corrección (ADMIN y ASISTENTE). */
+/**
+ * Quién puede corregir un precio: solo el ADMIN (decisión del PO 2026-11-08, #616). El ASISTENTE ya no solicita:
+ * ve el historial. Las solicitudes PENDIENTE que dejó antes de este cambio las sigue resolviendo un ADMIN.
+ */
 export function puedeSolicitarCorreccion(rol: RolCorreccion): boolean {
-  return rol === 'ADMIN' || rol === 'ASISTENTE'
+  return rol === 'ADMIN'
 }
 
-/** Solo un ADMIN aplica; el ASISTENTE deja una solicitud pendiente. */
+/** Un ADMIN aplica en el acto. (`SOLICITAR` quedó solo para filas históricas: nadie más puede registrar una corrección.) */
 export function decidirAplicacion(rol: RolCorreccion): 'APLICAR' | 'SOLICITAR' {
   return rol === 'ADMIN' ? 'APLICAR' : 'SOLICITAR'
 }
