@@ -323,6 +323,7 @@ model User {
 
   // F4 (Cumplimiento — reprogramación de remanente)
   obligacionesReprogramadas ObligacionPendienteReprogramacion[]
+  pagoFechaCorrecciones PagoFechaCorreccion[] @relation("PagoFechaCorreccionAutor")
 }
 
 // ====================
@@ -1238,11 +1239,37 @@ model Pago {
   embarqueId String?
   embarque   Embarque? @relation("PagoEmbarque", fields: [embarqueId], references: [id], onDelete: SetNull)
 
+  /// #617: correcciones de la fecha efectiva (append-only; `createdAt` nunca cambia).
+  correccionesFecha PagoFechaCorreccion[]
+
   @@index([pedidoId])
   @@index([offlineId])
   @@index([confirmacion])
   @@index([embarqueId])
   @@index([regularizacionId])
+}
+
+/// #617 — Corrección administrativa de la fecha EFECTIVA de un pago (cuándo se cobró de verdad).
+/// Append-only: cada fila guarda la fecha efectiva anterior y la nueva, quién la corrigió, cuándo y por qué.
+/// Nunca toca `Pago.createdAt` (la fecha de REGISTRO, que concilia la caja): corregir la fecha efectiva
+/// cambia lo que muestran el pedido, el cliente y la factura, no mueve dinero entre cierres.
+model PagoFechaCorreccion {
+  id             String   @id @default(cuid())
+  pagoId         String
+  pago           Pago     @relation(fields: [pagoId], references: [id], onDelete: Restrict)
+  /// Fecha efectiva antes de corregir (`ocurridoAt ?? createdAt`).
+  fechaAnterior  DateTime @db.Timestamptz()
+  /// Fecha efectiva después de corregir (`ocurridoAt ?? createdAt`).
+  fechaNueva     DateTime @db.Timestamptz()
+  motivo         String
+  corregidoPorId String
+  corregidoPor   User     @relation("PagoFechaCorreccionAutor", fields: [corregidoPorId], references: [id], onDelete: Restrict)
+  corregidoAt    DateTime @default(now()) @db.Timestamptz()
+  /// Clave idempotente del borrador: un reintento no duplica la corrección.
+  offlineId      String?  @unique
+
+  @@index([pagoId])
+  @@index([corregidoPorId])
 }
 
 /// #402 — Regularización histórica de pagos (plan de integridad v1.2 §5.D).
