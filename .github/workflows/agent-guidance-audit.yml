@@ -43,6 +43,8 @@ jobs:
         run: python scripts/auditoria-agentes/check_scoped_rules.py --repo .
       - name: Verify full original-line traceability without claiming semantic certification
         run: python scripts/auditoria-agentes/check_reconciliacion.py --repo .
+      - name: Verify 530 candidate positions and preliminary semantic provenance
+        run: python scripts/auditoria-agentes/check_preanalisis.py --repo .
       - name: Emit conservative audit report
         shell: bash
         run: |
