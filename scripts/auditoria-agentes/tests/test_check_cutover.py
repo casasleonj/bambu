@@ -65,5 +65,34 @@ class CutoverTests(unittest.TestCase):
         self.assertEqual(source["estado"],"PASS")
         self.assertEqual(result["estado"],"BLOQUEADO")
 
+    def _runtime(self,**cambios):
+        import json
+        ok={"estado":"PASS","version":"1","traza":"t.jsonl","baseline_sha":"a","candidato_sha":"b"}
+        ev={"runtime":{"claude":dict(ok),"codex":{"estado":"EXENTO_POR_PO","referencia_po":"chat PO","issue":"#734"},
+                       "opencode":{"estado":"EXENTO_POR_PO","referencia_po":"chat PO","issue":"#734"}}}
+        for k,v in cambios.items():
+            ev["runtime"][k]=v
+        self.ev.write_text(json.dumps(ev),encoding="utf-8")
+        r=gate.evaluar(self.repo,self.matrix,self.ev)
+        return {x["id"]:x["estado"] for x in r["checks"]},r
+
+    def test_po_waiver_accepted_for_codex_and_opencode_only_with_claude_pass(self):
+        checks,r=self._runtime()
+        self.assertEqual((checks["runtime-claude"],checks["runtime-codex"],checks["runtime-opencode"]),("PASS","PASS","PASS"))
+        self.assertEqual(len(r["exenciones_po"]),2)
+        self.assertEqual(r["estado"],"BLOQUEADO")  # el resto de controles sigue exigiéndose
+
+    def test_po_waiver_rejected_without_reference_issue_or_claude_pass(self):
+        checks,_=self._runtime(codex={"estado":"EXENTO_POR_PO","issue":"#734"})
+        self.assertEqual(checks["runtime-codex"],"FAIL")
+        checks,_=self._runtime(opencode={"estado":"EXENTO_POR_PO","referencia_po":"x"})
+        self.assertEqual(checks["runtime-opencode"],"FAIL")
+        checks,_=self._runtime(claude={"estado":"NO_EJECUTADO"})
+        self.assertEqual(checks["runtime-codex"],"FAIL")
+
+    def test_claude_cannot_be_waived(self):
+        checks,_=self._runtime(claude={"estado":"EXENTO_POR_PO","referencia_po":"x","issue":"#734"})
+        self.assertEqual(checks["runtime-claude"],"FAIL")
+
 if __name__=="__main__":
     unittest.main()

@@ -114,11 +114,24 @@ def evaluar(repo, matriz, evidencia):
     exigir("decisiones-po", estado.get("decisiones_normativas")=="APROBADAS_Y_TRAZADAS"
         and bool(estado.get("referencias_aprobaciones")),
         "Issue #704 no se resuelve solo por emitir documentación")
+    def runtime_pass(x):
+        return bool(x.get("estado")=="PASS" and x.get("version")
+                    and x.get("traza") and x.get("baseline_sha") and x.get("candidato_sha"))
+    exenciones=[]
     for nombre in AGENTES:
         x=estado.get("runtime",{}).get(nombre,{})
-        exigir("runtime-"+nombre,x.get("estado")=="PASS" and x.get("version")
-               and x.get("traza") and x.get("baseline_sha") and x.get("candidato_sha"),
-               "Necesita ejecución real A/B con traza comprobable")
+        ok=runtime_pass(x)
+        razon="Necesita ejecución real A/B con traza comprobable"
+        # Exención explícita del PO (issue de seguimiento). Nunca es PASS de ejecución:
+        # solo vale para agentes distintos de Claude, exige referencia + issue y que
+        # Claude Code haya pasado su propia prueba A/B.
+        if (not ok and nombre!="claude" and x.get("estado")=="EXENTO_POR_PO"
+                and str(x.get("referencia_po","")).strip() and str(x.get("issue","")).strip()
+                and runtime_pass(estado.get("runtime",{}).get("claude",{}))):
+            ok=True
+            razon="EXENCIÓN DEL PO (no es evidencia de ejecución); seguimiento "+str(x["issue"])
+            exenciones.append({"agente":nombre,"issue":x["issue"],"referencia_po":x["referencia_po"]})
+        exigir("runtime-"+nombre,ok,razon)
     for inv in INVARIANTES:
         e=estado.get("invariantes",{}).get(inv,{})
         exigir("invariante-"+inv,e.get("estado")=="PASS" and e.get("evidencia"),
@@ -133,6 +146,7 @@ def evaluar(repo, matriz, evidencia):
       "candidatos_obligacion":len(candidatos),
       "pendientes_semanticos":len(sin_revisar),
       "nota_candidatos":"Son filas a analizar, NO obligaciones atómicas verificadas",
+      "exenciones_po":exenciones,
       "atomos_revisados":len(atomos),
       "filas_candidatas_sin_cobertura_atomica":len(faltan_cubrir),
       "checks":controles,
