@@ -483,6 +483,7 @@ model Cliente {
   facturas Factura[]
   abonos   Abono[]
   ingresosSaldoFavor IngresoSaldoFavor[]
+  devolucionesSaldoFavor DevolucionSaldoFavor[]
   casos    Caso[]    @relation("CasoCliente")
 
   // FASE 3 (obligaciones)
@@ -3236,6 +3237,27 @@ model IngresoSaldoFavor {
   @@index([createdAt])
 }
 
+
+/// #560 — Devolución al cliente de su saldo a favor (egreso). Append-only. Solo el EFECTIVO sale de la caja del
+/// cierre de la fecha de registro; los demás medios quedan registrados sin tocar la caja física.
+model DevolucionSaldoFavor {
+  id              String     @id @default(cuid())
+  clienteId       String
+  cliente         Cliente    @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  /// EFECTIVO, TRANSFERENCIA, NEQUI o DAVIPLATA (BONO nunca; CHECK en la migración).
+  metodo          MetodoPago
+  /// Siempre > 0 (CHECK en la migración).
+  monto           Decimal    @db.Decimal(10, 2)
+  motivo          String
+  /// Referencia idempotente: el reintento no devuelve dos veces.
+  offlineId       String     @unique
+  /// Quién autorizó y entregó (solo ADMIN).
+  autorizadoPorId String
+  createdAt       DateTime   @default(now()) @db.Timestamptz()
+
+  @@index([clienteId])
+  @@index([createdAt])
+}
 
 /// Hechos de entrega #656. Asignado se conserva solo por compatibilidad; se proyecta al leer.
 model EntregaExigible {
