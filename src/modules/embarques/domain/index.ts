@@ -14,7 +14,6 @@ export { CapacidadInfo, type CapacidadNivel, type CapacidadInfoData } from './va
 export { Embarque, type EmbarqueProps } from './entities/Embarque'
 export { EmbarqueProducto, type EmbarqueProductoProps } from './entities/EmbarqueProducto'
 export { GastoEmbarque, type GastoEmbarqueProps } from './entities/GastoEmbarque'
-export { VentaLibre, type VentaLibreProps } from './entities/VentaLibre'
 
 // Domain Services
 export { EmbarqueTransitionsService, type TransitionResult } from './services/embarque-transitions.service'
@@ -43,7 +42,6 @@ export {
 export { type IEmbarqueRepository, type EmbarqueFilter } from './repositories/IEmbarqueRepository'
 export { type IEmbarqueProductoRepository } from './repositories/IEmbarqueProductoRepository'
 export { type IGastoEmbarqueRepository } from './repositories/IGastoEmbarqueRepository'
-export { type IVentaLibreRepository } from './repositories/IVentaLibreRepository'
 export { type IPedidoEmbarqueRepository, type PedidoEmbarqueData } from './repositories/IPedidoEmbarqueRepository'
 export { type ITrabajadorEmbarqueRepository, type TrabajadorEmbarqueData } from './repositories/ITrabajadorEmbarqueRepository'
 export { type IStockEmbarqueRepository } from './repositories/IStockEmbarqueRepository'
