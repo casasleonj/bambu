@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Valida integridad y trazabilidad de la revisión semántica PRELIMINAR.
+"""Valida integridad y trazabilidad del inventario de 798 posiciones PRELIMINAR.
 
 No sustituye certificación semántica ni activación conductual de agentes.
 """
@@ -18,7 +18,7 @@ PARTS = ((1,16,"00-entrada.md"),(17,347,"01-arquitectura-tecnica.md"),
 
 def evaluar(repo):
     repo = repo.resolve()
-    matrix = repo / "docs/agentes/auditoria-2026-11/obligaciones_atomicas.csv"
+    matrix = repo / "docs/agentes/auditoria-2026-11/revision_fuente_798.csv"
     cat = repo / "docs/agentes/contratos-operativos.md"
     errors=[]
     try:

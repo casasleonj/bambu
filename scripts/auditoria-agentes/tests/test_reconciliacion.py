@@ -24,7 +24,7 @@ class ReconciliacionTests(unittest.TestCase):
             src=Path(__file__).resolve().parents[3]
             dst=Path(d)
             rel=[
-                "docs/agentes/auditoria-2026-11/obligaciones_atomicas.csv",
+                "docs/agentes/auditoria-2026-11/revision_fuente_798.csv",
                 "docs/agentes/contratos-operativos.md",
                 *[f"docs/agentes/fuente-original/{x}" for x in (
                     "00-entrada.md", "01-arquitectura-tecnica.md",
