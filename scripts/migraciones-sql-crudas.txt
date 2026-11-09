@@ -30,6 +30,8 @@
 20261027_abono_procedencia_pago
 # #524: ingreso del sobrante de un cobro de fiados (CHECK).
 20261110_ingreso_saldo_favor
+# #617: corrección de la fecha efectiva de un pago (CHECK).
+20261111_pago_fecha_correccion
 # #701: search_clientes(text, int); solo la definición final (CREATE OR REPLACE, idempotente).
 20260729210000_fix_search_clientes_phone_negocio
 # #560: devolución del saldo a favor al cliente (CHECK).

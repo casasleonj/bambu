@@ -1,6 +1,8 @@
 'use client'
 
 import { CorreccionPrecioPanel } from '@/components/correccion-precio/correccion-precio-panel'
+import { CorregirFechaPago } from '@/components/pagos/corregir-fecha-pago'
+import { cobroAnteriorAlPedido, puedeCorregirFechaPago } from '@/lib/pago-fecha-correccion'
 import { ReduccionComercialPanel } from '@/components/reduccion-comercial/reduccion-comercial-panel'
 import { SaldoFavorHistorial } from '@/components/saldo-favor/saldo-favor-historial'
 import { cierreV2Enabled } from '@/lib/flags'
@@ -11,7 +13,7 @@ import { formatCurrency } from '@/lib/utils'
 import { importesEntregaPedido } from '@/lib/valor-entregado-pedido'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
-import type { Pedido } from '../pedidos-client/types'
+import type { Pedido, PagoDetalle } from '../pedidos-client/types'
 import {
   accionesDetalle,
   lineaDeTiempo,
@@ -103,7 +105,18 @@ export function PedidoDetalle({
   const busy = updatingId === pedido.id
   const pasos = lineaDeTiempo(pedido)
   const items = itemsDe(pedido)
-  const pagos = pedido.pagosDetalle ?? []
+  // #617: tras corregir la fecha de un cobro se vuelven a leer los pagos de este pedido.
+  const [pagosLeidos, setPagosLeidos] = useState<{ id: string; pagos: PagoDetalle[] } | null>(null)
+  const pagos = (pagosLeidos?.id === pedido.id ? pagosLeidos.pagos : pedido.pagosDetalle) ?? []
+  const recargarPagos = async () => {
+    try {
+      const res = await fetch(`/api/pedidos/${pedido.id}`, { credentials: 'include' })
+      if (!res.ok) return
+      const d = (await res.json()) as { pedido?: { pagosDetalle?: PagoDetalle[] }; data?: { pedido?: { pagosDetalle?: PagoDetalle[] } } }
+      const nuevos = d.pedido?.pagosDetalle ?? d.data?.pedido?.pagosDetalle
+      if (nuevos) setPagosLeidos({ id: pedido.id, pagos: nuevos })
+    } catch { /* se verá al recargar la pantalla */ }
+  }
   const direccion = [pedido.zonaCli, pedido.barrioCli].filter(Boolean).join(' · ')
   const n2 = pedido.pendienteN2
   const vinculados = pedido.pedidosVinculados ?? []
@@ -313,10 +326,22 @@ export function PedidoDetalle({
               ) : (
                 <ul className="space-y-2">
                   {pagos.map((pg) => (
-                    <li key={pg.id} data-testid="detalle-pago" className="flex justify-between items-center text-sm">
+                    <li key={pg.id} data-testid="detalle-pago" className="flex flex-wrap justify-between items-center text-sm">
                       <div>
                         <span className="font-medium text-gray-700">{METODO_LABEL[pg.metodo] ?? pg.metodo}</span>
-                        <span className="text-gray-400 text-xs ml-2">{fmtFecha(pg.fecha)} {fmtHora(pg.fecha)}</span>
+                        {pg.ocurridoAt ? (
+                          <span className="text-gray-400 text-xs ml-2" data-testid="detalle-pago-fechas">
+                            Se cobró {fmtFecha(pg.ocurridoAt)} · registrado {fmtFecha(pg.fecha)} {fmtHora(pg.fecha)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-xs ml-2">{fmtFecha(pg.fecha)} {fmtHora(pg.fecha)}</span>
+                        )}
+                        {/* #617: un cobro anterior a la creación del pedido puede ser un anticipo real: aviso, no bloqueo. */}
+                        {(pedido.createdAt ?? pedido.fecha) && cobroAnteriorAlPedido(new Date(pg.ocurridoAt ?? pg.fecha), new Date(pedido.createdAt ?? pedido.fecha)) && (
+                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800" data-testid="detalle-pago-anterior-pedido">
+                            Fecha anterior a la creación del pedido
+                          </span>
+                        )}
                         {/* #517: en un pedido anulado o cancelado el pago ya no se confirma. */}
                         {pg.confirmacion && pg.confirmacion !== 'CONFIRMADO' && !pedidoCerrado && (
                           <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${pg.confirmacion === 'DISCREPANTE' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -325,6 +350,20 @@ export function PedidoDetalle({
                         )}
                       </div>
                       <span className="font-medium text-green-600">{formatCurrency(pg.monto)}</span>
+                      {puedeCorregirFechaPago(userRole) && !pg.regularizado && !pedidoCerrado && (
+                        <div className="basis-full">
+                          <CorregirFechaPago pagoId={pg.id} fechaEfectiva={pg.ocurridoAt ?? pg.fecha} fechaRegistro={pg.fecha} onCorregida={() => void recargarPagos()} />
+                        </div>
+                      )}
+                      {(pg.correccionesFecha?.length ?? 0) > 0 && (
+                        <ul className="basis-full mt-1 space-y-1" data-testid="detalle-pago-correcciones">
+                          {pg.correccionesFecha?.map((c) => (
+                            <li key={c.id} className="rounded-lg border bg-gray-50 px-2 py-1 text-xs text-gray-600">
+                              <b>Corrección de fecha:</b> {fmtFecha(c.fechaAnterior)} → {fmtFecha(c.fechaNueva)} · {c.corregidoPor} · {fmtFecha(c.corregidoAt)} {fmtHora(c.corregidoAt)} · «{c.motivo}»
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </li>
                   ))}
                 </ul>
