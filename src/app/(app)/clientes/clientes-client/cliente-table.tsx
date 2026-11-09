@@ -49,6 +49,12 @@ interface ClienteTableProps {
   onFilterFrecuenciaChange?: (val: boolean) => void
 }
 
+/** #696: saldo a favor de la fila (Decimal serializado). 0 si no tiene o el dato no es un número válido. */
+function saldoFavorDe(cliente: { saldoFavor?: number | string | null }): number {
+  const n = Number(cliente.saldoFavor ?? 0)
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
 export const ClienteTable = React.memo(function ClienteTable({
   clientes,
   total,
@@ -544,6 +550,7 @@ export const ClienteTable = React.memo(function ClienteTable({
               return (
                 <div
                   key={cliente.id}
+                  data-testid={`cliente-row-${cliente.id}`}
                   className={`grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 p-4 bg-white border border-gray-200 rounded-lg shadow-sm cursor-pointer transition group relative hover:border-gray-300 hover:shadow-md ${
                     selectedClienteId === cliente.id
                       ? 'border-l-4 border-blue-500 border-blue-500 bg-blue-50'
@@ -691,6 +698,11 @@ export const ClienteTable = React.memo(function ClienteTable({
                           Saldo: {formatCurrency(cliente.saldoPendiente)}
                         </span>
                       )}
+                      {saldoFavorDe(cliente) > 0 && (
+                        <span data-testid="chip-saldo-favor-movil" className="px-1.5 py-0.5 bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-semibold rounded">
+                          A favor: {formatCurrency(saldoFavorDe(cliente))}
+                        </span>
+                      )}
                       {cliente.plantillaRecurrente?.activo && (
                         <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-medium rounded inline-flex items-center gap-0.5">
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -748,7 +760,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                   </div>
 
                   {/* Balance */}
-                  <div className="md:col-span-2 text-right">
+                  <div className="md:col-span-2 flex flex-col items-end gap-0.5 text-right">
                     {cliente.saldoPendiente && cliente.saldoPendiente > 0 ? (
                       <Tooltip content={`Este cliente debe ${formatCurrency(cliente.saldoPendiente)}`} position="top">
                         <span className="inline-flex items-center gap-1 text-red-600 font-bold">
@@ -760,6 +772,13 @@ export const ClienteTable = React.memo(function ClienteTable({
                       </Tooltip>
                     ) : (
                       <span className="text-green-600 text-sm font-medium">Al día</span>
+                    )}
+                    {saldoFavorDe(cliente) > 0 && (
+                      <Tooltip content={`Tiene ${formatCurrency(saldoFavorDe(cliente))} a favor: dinero suyo que se descuenta de su próximo pedido.`} position="top">
+                        <span data-testid="chip-saldo-favor" className="inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800">
+                          A favor {formatCurrency(saldoFavorDe(cliente))}
+                        </span>
+                      </Tooltip>
                     )}
                   </div>
 

@@ -11,7 +11,7 @@ La comisión se calcula sola; el **pago** es un toque deliberado, porque es dine
 | Tabla de pagos | `PagoComisionRepartidor` (migración `20261027_pago_comision_repartidor`) |
 | Ver el día | `GET /api/nomina/dia?fecha=` (ADMIN/CONTADOR) |
 | Pagar | `POST /api/nomina/dia/pagar` (ADMIN/CONTADOR) |
-| Cierre de caja | `POST /api/cierre` y `POST /api/cierre-dia` calculan `comisiones` en el servidor |
+| Cierre de caja | `POST /api/cierre` calcula `comisiones` en el servidor (`/api/cierre-dia` ya no cierra días: #691) |
 | Nómina del período | `POST /api/nomina` descuenta lo pagado (`Nomina.comisionPagadaCaja`) |
 | Verificador | regla V16 (`src/lib/integridad/reglas.ts`) |
 

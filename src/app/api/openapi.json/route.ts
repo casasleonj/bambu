@@ -225,7 +225,6 @@ const spec = {
     },
     '/api/cierre-dia': {
       get: { tags: ['Finanzas'], summary: 'Historial de cierres (últimos 30)', parameters: [{ name: 'fecha', in: 'query', schema: { type: 'string', format: 'date' } }], responses: { '200': { description: 'Cierres' } } },
-      post: { tags: ['Finanzas'], summary: 'Registrar cierre manual (ADMIN)', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/CierreDiaCreate' } } } }, responses: { '201': { description: 'Cierre manual creado' } } },
     },
     '/api/facturas': {
       get: {
@@ -414,7 +413,6 @@ const spec = {
       VentaLibre: { type: 'object', required: ['descripcion', 'monto'], properties: { descripcion: { type: 'string' }, monto: { type: 'number' }, metodo: { type: 'string' } } },
 
       CierreCreate: { type: 'object', required: ['baseDia'], properties: { baseDia: { type: 'number' }, comisiones: { type: 'number' }, salarios: { type: 'number' }, stockIniAgua: { type: 'integer' }, prodAgua: { type: 'integer' }, stockFinAgua: { type: 'integer' }, stockIniHielo: { type: 'integer' }, prodHielo: { type: 'integer' }, stockFinHielo: { type: 'integer' } } },
-      CierreDiaCreate: { type: 'object', properties: { fecha: { type: 'string', format: 'date-time' }, numPedidos: { type: 'integer' }, totalVentas: { type: 'number' }, cobrado: { type: 'number' }, fiado: { type: 'number' }, efectivo: { type: 'number' }, transferencia: { type: 'number' }, nequi: { type: 'number' }, daviplata: { type: 'number' }, baseDia: { type: 'number' }, comisiones: { type: 'number' }, gastos: { type: 'number' }, stockIniAgua: { type: 'integer' }, stockFinAgua: { type: 'integer' }, stockIniHielo: { type: 'integer' }, stockFinHielo: { type: 'integer' }, netoCaja: { type: 'number' } } },
 
       FacturaCreate: { type: 'object', required: ['pedidoId'], properties: { pedidoId: { type: 'string' }, subtotal: { type: 'number' }, total: { type: 'number' }, saldo: { type: 'number' }, obs: { type: 'string' } } },
       AbonoCreate: { type: 'object', required: ['facturaId', 'monto', 'metodo'], properties: { facturaId: { type: 'string' }, monto: { type: 'number', minimum: 1 }, metodo: { type: 'string', enum: ['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO'] }, obs: { type: 'string' } } },

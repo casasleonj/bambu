@@ -178,6 +178,9 @@ async function main() {
     { clave: 'empresa_nit', valor: '900.123.456-7' },
     { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT', valor: '2' },
     { clave: 'METODOS_REQUIEREN_CONFIRMACION', valor: 'NEQUI,TRANSFERENCIA,DAVIPLATA' },
+    // #408: el aviso de venta repetida va apagado en la base de pruebas: muchas pruebas cargan la misma venta
+    // seguida. La prueba del aviso lo enciende por su cuenta (POST /api/config) y lo vuelve a apagar.
+    { clave: 'VENTA_REPETIDA_VENTANA_SEG', valor: '0' },
   ]
   for (const cfg of configs) {
     await prisma.config.upsert({ where: { clave: cfg.clave }, update: {}, create: cfg })

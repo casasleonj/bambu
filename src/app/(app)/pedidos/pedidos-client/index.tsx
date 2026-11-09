@@ -58,6 +58,7 @@ import { capturarGpsSilencioso } from '@/lib/gps-silencioso'
 import { resolverEntrega } from '@/lib/entrega-quien'
 import { isWithinDeliveryRadius } from '@/lib/gps'
 import { loadClienteDetail } from '@/lib/cliente-detail-cache'
+import { avisarUbicacionGuardada } from '@/lib/geo/aviso-ubicacion-guardada'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
 import type { PedidoInicial, PedidoUnifiedData } from '@/components/pedido-form-unified'
@@ -1179,6 +1180,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
         } else {
           toast.success(msg)
         }
+        avisarUbicacionGuardada(result.ubicacionGuardada)
         return true
       }
     } catch (error) {

@@ -15,7 +15,7 @@ En el cierre, «Cambios» era un número que el asistente tecleaba por producto,
 2. **El número tecleado no manda.** Si el cliente V2 envía `cambiosDesdeSustituciones: true`, el servidor compara lo tecleado con la suma y, si no coinciden (incluido `0` con sustituciones registradas), rechaza con `409 CAMBIOS_NO_COINCIDEN`. No corrige en silencio: un número que no cuadra es justo la señal que interesa.
 3. **Destino del cambio.** `Sustitucion.clienteId` (opcional) permite atribuir un cambio a un cliente que no tiene pedido en la ruta. El registro con solo cliente exige motivo.
 4. **Señales, no bloqueos.** El cierre avisa («Para revisar») de `CAMBIO_A_CLIENTE_SIN_PEDIDO` y de `CAMBIO_SIN_DESTINO` (sustituciones anteriores sin cliente ni pedido).
-5. **Sin flag → sin cambios.** El cierre V1 no envía la bandera y conserva el comportamiento anterior. La UI V2 (`NEXT_PUBLIC_CIERRE_V2`) muestra «Cambios» de solo lectura con la lista de sustituciones y un acceso a «Registrar cambio»; el modal de sustitución exige pedido o cliente solo con el flag ON.
+5. **Sin flag → sin cambios.** El cierre V1 no envía la bandera y conserva el comportamiento anterior. La UI V2 (`NEXT_PUBLIC_CIERRE_V2`) muestra «Cambios» de solo lectura con la lista de sustituciones y un acceso a «Registrar cambio»; el modal de sustitución exige pedido o cliente solo con el flag ON (el flag `NEXT_PUBLIC_CIERRE_V2` está activo en producción desde el 2026-11-01, ver #447).
 6. **Sin migración de datos.** Los cambios que antes se tecleaban sin evidencia no se convierten en sustituciones.
 
 ## Implementación

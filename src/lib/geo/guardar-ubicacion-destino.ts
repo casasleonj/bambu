@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { logAudit } from '@/lib/audit'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
+import { mismaUbicacion, aPuntoGeo } from '@/lib/geo/misma-ubicacion'
 
 /**
  * #426 — guardar la ubicación (link o GPS) de un pedido como ubicación del destino para los próximos pedidos.
@@ -18,16 +19,8 @@ export type ResultadoGuardarUbicacion =
   | { resultado: 'GUARDADA' | 'REEMPLAZADA' | 'IGUAL' | 'CONSERVADA'; destino: 'NEGOCIO' | 'CLIENTE'; anterior: { lat: number; lng: number } | null }
   | { resultado: 'SIN_UBICACION' | 'SIN_DESTINO' }
 
-/** ~5 m: por debajo de esto dos puntos se consideran el mismo. */
-const TOLERANCIA_GRADOS = 0.00005
-
-const igual = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) =>
-  Math.abs(a.lat - b.lat) <= TOLERANCIA_GRADOS && Math.abs(a.lng - b.lng) <= TOLERANCIA_GRADOS
-
-const aPunto = (lat: unknown, lng: unknown): { lat: number; lng: number } | null =>
-  lat == null || lng == null || !Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))
-    ? null
-    : { lat: Number(lat), lng: Number(lng) }
+const igual = mismaUbicacion
+const aPunto = aPuntoGeo
 
 export async function guardarUbicacionDestino(args: {
   clienteId: string

@@ -13,6 +13,8 @@ export const VENTA_REPETIDA_VENTANA_SEG_DEFAULT = 60
 export const VENTA_REPETIDA_CONFIG_KEY = 'VENTA_REPETIDA_VENTANA_SEG'
 
 export interface VentaRepetida {
+  /** Id del pedido ya guardado: la pantalla ofrece abrirlo. */
+  id: string
   numero: number
   haceSegundos: number
 }
@@ -51,12 +53,12 @@ export async function buscarVentaRepetida(
     },
     orderBy: { createdAt: 'desc' },
     take: 10,
-    select: { numero: true, createdAt: true, items: { select: { producto: true, cantPedido: true } } },
+    select: { id: true, numero: true, createdAt: true, items: { select: { producto: true, cantPedido: true } } },
   })
   const buscada = firma(q.items)
   for (const c of candidatas) {
     if (firma(c.items.map((i) => ({ producto: i.producto, cantidad: i.cantPedido }))) === buscada) {
-      return { numero: c.numero, haceSegundos: Math.max(0, Math.round((ahora.getTime() - c.createdAt.getTime()) / 1000)) }
+      return { id: c.id, numero: c.numero, haceSegundos: Math.max(0, Math.round((ahora.getTime() - c.createdAt.getTime()) / 1000)) }
     }
   }
   return null

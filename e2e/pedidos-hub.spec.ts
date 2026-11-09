@@ -1124,6 +1124,118 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     const items = detalle.pedido.items as Array<{ producto: string; cantPedido: number }>
     expect(items.find((i) => i.producto === 'PACA_AGUA')?.cantPedido).toBe(4)
   })
+
+  // #408: la misma venta cargada dos veces seguidas avisa (no bloquea); marcar «Es otra venta distinta» la deja
+  // guardar y queda anotado en el historial de la segunda venta. Se mira la base de datos, no solo la pantalla.
+  test('#408: venta repetida — aviso con casilla, se guardan las dos y la confirmación queda en el historial', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    await page.goto(`${BASE}/pedidos`)
+    const desde = new Date()
+    // cantidad distinta en cada intento: un reintento seguido no debe chocar con la venta del anterior
+    const pacas = 8 + Math.floor(Math.random() * 20)
+    const ventana = (valor: string) => apiPost(page, '/api/config', { clave: 'VENTA_REPETIDA_VENTANA_SEG', valor })
+    expect((await ventana('60')).ok()).toBe(true) // por defecto el aviso va apagado en la base de pruebas
+    try {
+    const cargarVenta = async () => {
+      await app.getByTestId('fab-main').click()
+      await page.getByTestId('fab-venta-rapida').click()
+      await expect(page.getByTestId('workspace-venta-rapida')).toBeVisible()
+      for (let i = 0; i < pacas; i++) await page.getByTestId('workspace-inc-PACA_AGUA').click()
+      await page.getByTestId('dinero-pagar-completo-EFECTIVO').click()
+      await expect(page.getByTestId('dinero-saldo')).toHaveText('Pagado', { timeout: 10000 })
+    }
+
+    await cargarVenta()
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    await expect(page.getByTestId('venta-repetida')).toHaveCount(0) // la primera no es repetida
+    await page.getByTestId('workspace-commit').click()
+    await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+
+    await cargarVenta()
+    const aviso = page.getByTestId('venta-repetida')
+    await expect(aviso).toBeVisible({ timeout: 10000 })
+    await expect(aviso).toContainText('Parece una venta repetida')
+    await expect(page.getByTestId('workspace-commit')).toBeDisabled()
+    await page.getByTestId('venta-repetida-confirmar').check()
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    const creado = page.waitForResponse((r) => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST')
+    await page.getByTestId('workspace-commit').click()
+    expect((await creado).status()).toBeLessThan(300)
+    await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+
+    const ventas = await prisma.pedido.findMany({
+      where: { clienteId: 'CONSUMIDOR_FINAL', createdAt: { gte: desde }, items: { some: { producto: 'PACA_AGUA', cantPedido: pacas } } },
+      orderBy: { createdAt: 'asc' },
+    })
+    expect(ventas).toHaveLength(2)
+    const hist = await prisma.historial.findMany({ where: { entidad: 'Pedido', registroId: ventas[1].id } })
+    expect(hist.some((h) => h.datos.includes('VENTA_REPETIDA_CONFIRMADA'))).toBe(true)
+    expect(await prisma.historial.count({ where: { registroId: ventas[0].id, datos: { contains: 'VENTA_REPETIDA_CONFIRMADA' } } })).toBe(0)
+    } finally {
+      await ventana('0')
+    }
+  })
+
+  // #426: «Guardar también la ubicación» guarda el punto del pedido en el cliente; si ya había otra no se pisa
+  // en silencio (hay que elegir) y lo reemplazado queda en el historial. Se mira la base de datos.
+  test('#426: guardar también la ubicación — se guarda, no pisa en silencio y reemplazar queda en el historial', async ({ browser }) => {
+    test.setTimeout(120_000) // tres pedidos seguidos con su revisión de ubicación
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    const nombre = `Ubic426 ${Date.now()}`
+    const { cliente } = await createCliente(page, { nombre })
+    await page.goto(`${BASE}/pedidos`)
+
+    const crearPedido = async (link: string, elegir?: 'reemplazar' | 'dejar') => {
+      await expect(page.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 20000 }) // un aviso anterior no tapa el «+»
+      await app.getByTestId('fab-main').click()
+      await page.getByTestId('fab-pedido-envio').click()
+      await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
+      await page.getByTestId('cliente-search-input').fill(nombre)
+      await page.getByTestId('cliente-search-result').first().click()
+      await page.getByTestId('workspace-inc-PACA_AGUA').click()
+      const cambiar = page.getByTestId('workspace-entrega-cambiar')
+      await expect(cambiar.or(page.getByTestId('workspace-entrega-link'))).toBeVisible({ timeout: 10000 })
+      if (await cambiar.isVisible()) await cambiar.click()
+      await page.getByTestId('workspace-entrega-link').fill(link)
+      await expect(page.getByTestId('guardar-ubicacion-casilla')).not.toBeChecked() // apagada por defecto
+      await page.getByTestId('guardar-ubicacion-casilla').check()
+      if (elegir) {
+        await expect(page.getByTestId('guardar-ubicacion-otra')).toBeVisible({ timeout: 10000 })
+        await expect(page.getByTestId('workspace-commit')).toBeDisabled() // no se guarda sin elegir
+        await page.getByTestId(`guardar-ubicacion-${elegir}`).click()
+      }
+      await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+      await page.getByTestId('workspace-commit').click()
+      await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+      await page.mouse.move(5, 5) // Sonner se pausa con el cursor encima: así el aviso se va solo
+    }
+    const coords = async () => {
+      const c = await prisma.cliente.findUniqueOrThrow({ where: { id: cliente.id } })
+      return { lat: c.lat == null ? null : Number(c.lat), lng: c.lng == null ? null : Number(c.lng) }
+    }
+    const eventos = async () => (await prisma.historial.findMany({ where: { entidad: 'Cliente', registroId: cliente.id } }))
+      .filter((h) => h.datos.includes('UBICACION_GUARDADA_DESDE_PEDIDO'))
+
+    // 1) sin ubicación previa: se guarda.
+    await crearPedido('https://www.google.com/maps?q=8.7479,-75.8814')
+    await expect(page.getByText('La ubicación quedó guardada en el cliente para los próximos pedidos.')).toBeVisible({ timeout: 10000 })
+    expect((await coords()).lat).toBeCloseTo(8.7479, 4)
+    expect((await coords()).lng).toBeCloseTo(-75.8814, 4)
+    expect((await eventos()).some((h) => h.datos.includes('"GUARDADA"'))).toBe(true)
+
+    // 2) ya hay otra: elegir «Dejar la que ya tenía» no cambia nada.
+    await crearPedido('https://www.google.com/maps?q=8.7455,-75.8830', 'dejar')
+    expect((await coords()).lat).toBeCloseTo(8.7479, 4)
+
+    // 3) «Reemplazarla por la nueva» cambia el punto y queda anotado con lo anterior.
+    await crearPedido('https://www.google.com/maps?q=8.7455,-75.8830', 'reemplazar')
+    expect((await coords()).lat).toBeCloseTo(8.7455, 4)
+    expect((await coords()).lng).toBeCloseTo(-75.883, 4)
+    const reemplazo = (await eventos()).find((h) => h.datos.includes('"REEMPLAZADA"'))
+    expect(reemplazo?.datos).toContain('8.7479')
+  })
 })
 
 test.describe('flag OFF: la UI de tabs sigue funcionando', () => {

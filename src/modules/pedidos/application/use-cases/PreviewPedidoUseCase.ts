@@ -50,7 +50,7 @@ export interface PreviewPedidoDeps {
    * #408: busca una venta igual (cliente, productos, total) registrada hace pocos segundos. Opcional para no
    * romper fixtures parciales; sin él, el preview simplemente no avisa.
    */
-  buscarVentaRepetida?: (q: { clienteId: string; items: Array<{ producto: string; cantidad: number }>; total: number; offlineId?: string }) => Promise<{ numero: number; haceSegundos: number } | null>
+  buscarVentaRepetida?: (q: { clienteId: string; items: Array<{ producto: string; cantidad: number }>; total: number; offlineId?: string }) => Promise<{ id: string; numero: number; haceSegundos: number } | null>
 }
 
 /** Id sintético de un cliente nuevo que aún no existe (solo vive en el preview, nunca se persiste). */
