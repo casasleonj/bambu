@@ -68,6 +68,15 @@ describe("#763 — clasificación histórica de entregas", () => {
     expect(r?.cantidadesAlCorte[0].cantidad).toBe(3);
     expect(r?.hitos).toHaveLength(3);
   });
+  it("E09: filtrar un repartidor no suma las cantidades de otro, pero conserva el estado global del pedido", () => {
+    const primero = evento("de-a", "2026-11-10T15:00:00Z", 3);
+    const segundo = evento("de-b", "2026-11-10T17:00:00Z", 3);
+    const r = proyectarEntregaHistorial(pedido, [primero, segundo], martes, new Set(["de-a"]));
+    expect(r?.cantidadesDelRango).toEqual([{ producto: "PACA_AGUA", cantidad: 3 }]);
+    expect(r?.cantidadesAlCorte).toEqual([{ producto: "PACA_AGUA", cantidad: 6 }]);
+    expect(r?.estadoAlCorte).toBe("COMPLETADO_TRAS_PARCIAL");
+    expect(proyectarEntregaHistorial(pedido, [primero, segundo], martes, new Set(["no-matches"]))).toBeNull();
+  });
   it("E20/E21: historial sin cantidades verificables no inventa completitud", () => {
     const r = proyectarEntregaHistorial(pedido, [
       { id: "inc", fecha: new Date("2026-11-09T15:00:00Z"), cantidades: null, incompleto: true },
