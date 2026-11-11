@@ -493,7 +493,7 @@ export async function consultarPedidos(
         saldo = dec(sumas?._sum.saldo),
         fiado = [...(exigiblesConjunto?.values() ?? [])].reduce((s, monto) => s + centavos(monto), 0) / 100;
       const consultaDestacadas = f.fechaBase === "pedido" && !f.all
-        ? await listarEntregasDestacadas(tx, whereConsultaPedidos({ ...f, fechaBase: "entrega" }), rango)
+        ? await listarEntregasDestacadas(tx, whereConsultaPedidos({ ...f, fechaBase: "entrega", foco: f.foco === "entregaParcial" ? "" : f.foco }), rango, f.repartidorId, f.foco === "entregaParcial")
         : null;
       const [{ ahora }] = await tx.$queryRaw<
         Array<{ ahora: Date }>
