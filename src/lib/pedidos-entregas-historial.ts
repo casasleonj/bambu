@@ -74,6 +74,7 @@ export function proyectarEntregaHistorial(
   pedido: PedidoParaHistorial,
   hechos: HechoEntregaHistorico[],
   rango: { desde: Date; hasta: Date },
+  idsEventosVisibles?: ReadonlySet<string>,
 ): EntregaDestacada | null {
   const vistos = new Set<string>();
   const eventos = hechos
@@ -83,7 +84,10 @@ export function proyectarEntregaHistorial(
       return Number.isFinite(e.fecha.getTime());
     })
     .sort((a, b) => a.fecha.getTime() - b.fecha.getTime() || a.id.localeCompare(b.id));
-  const enRango = eventos.filter((e) => e.fecha >= rango.desde && e.fecha < rango.hasta);
+  const enRango = eventos.filter((e) =>
+    e.fecha >= rango.desde && e.fecha < rango.hasta &&
+    (!idsEventosVisibles || idsEventosVisibles.has(e.id)),
+  );
   if (!enRango.length) return null;
   const pedidas = new Map<string, number>();
   agregar(pedidas, pedido.solicitadas);
@@ -104,7 +108,10 @@ export function proyectarEntregaHistorial(
   for (const e of eventos) {
     const dia = diaEntregaBogota(e.fecha);
     const cantidad = e.cantidades ?? [];
-    if (e.fecha >= rango.desde && e.fecha < rango.hasta) agregar(cantidadDelRango, cantidad);
+    if (e.fecha >= rango.desde && e.fecha < rango.hasta &&
+        (!idsEventosVisibles || idsEventosVisibles.has(e.id))) {
+      agregar(cantidadDelRango, cantidad);
+    }
     if (e.fecha < rango.hasta) agregar(cantidadAlCorte, cantidad);
     const hito = agrupados.get(dia) ?? {
       fecha: dia, cantidades: [], completado: false, porConciliar: false,
