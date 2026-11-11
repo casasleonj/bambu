@@ -108,15 +108,15 @@ describe('#669 — comisión de parciales sin embarque (Postgres y handlers real
   it('si ya se pagaron 203, paga solo las 3 nuevas y un replay no crea un segundo egreso', async () => {
     const r = await repartidor()
     await legado(r.id, 203)
-    const primero = await pagar(req('/api/nomina/dia/pagar', { trabajadorId: r.id, fecha: HOY, offlineId: key(), montoEsperado: 203 * TARIFA }))
+    const primero = await pagar(req('/api/nomina/dia/pagar', { fechaPagoReal: HOY, trabajadorId: r.id, fecha: HOY, offlineId: key(), montoEsperado: 203 * TARIFA }))
     expect(primero.status, JSON.stringify(await primero.clone().json())).toBe(201)
     const p = await pedido(5)
     await entrega(p.id, r.id, 3)
     expect((await fila(r.id)).pendiente).toBe(3 * TARIFA)
-    const viejo = await pagar(req('/api/nomina/dia/pagar', { trabajadorId: r.id, fecha: HOY, offlineId: key(), montoEsperado: 0 }))
+    const viejo = await pagar(req('/api/nomina/dia/pagar', { fechaPagoReal: HOY, trabajadorId: r.id, fecha: HOY, offlineId: key(), montoEsperado: 0 }))
     expect(viejo.status).toBe(409)
     expect((await viejo.json()).error.code).toBe('MONTO_CAMBIO')
-    const body = { trabajadorId: r.id, fecha: HOY, offlineId: key(), montoEsperado: 3 * TARIFA }
+    const body = { trabajadorId: r.id, fecha: HOY, fechaPagoReal: HOY, offlineId: key(), montoEsperado: 3 * TARIFA }
     expect((await pagar(req('/api/nomina/dia/pagar', body))).status).toBe(201)
     const replay = await pagar(req('/api/nomina/dia/pagar', body))
     expect(replay.status).toBe(200)
@@ -190,7 +190,7 @@ describe('#669 — comisión de parciales sin embarque (Postgres y handlers real
       const d = await fila(r.id)
       expect(d.entregasAgua).toBe(0)
       expect(d.revisiones.length).toBeGreaterThan(0)
-      const pago = await pagar(req('/api/nomina/dia/pagar', { trabajadorId: r.id, fecha: HOY, offlineId: key() }))
+      const pago = await pagar(req('/api/nomina/dia/pagar', { fechaPagoReal: HOY, trabajadorId: r.id, fecha: HOY, offlineId: key() }))
       expect(pago.status).toBe(409)
       expect((await pago.json()).error.code).toBe('COMISION_POR_CONCILIAR')
       const n = await nomina(req('/api/nomina', { trabajadorId: r.id, fechaInicio: HOY, fechaFin: HOY, tipoCalculo: 'AUTO' }))
@@ -208,7 +208,7 @@ describe('#669 — comisión de parciales sin embarque (Postgres y handlers real
     expect((await fila(a.id)).revisiones.length).toBeGreaterThan(0)
     const b = await repartidor(), propio = await pedido(4)
     await entrega(propio.id, b.id, 2)
-    const pago = await pagar(req('/api/nomina/dia/pagar', { trabajadorId: b.id, fecha: HOY, offlineId: key(), montoEsperado: 2 * TARIFA }))
+    const pago = await pagar(req('/api/nomina/dia/pagar', { fechaPagoReal: HOY, trabajadorId: b.id, fecha: HOY, offlineId: key(), montoEsperado: 2 * TARIFA }))
     expect(pago.status).toBe(201)
   })
 

@@ -60,7 +60,7 @@ async function entrega(repartidorId: string, agua: number) {
 }
 
 const pagar = (trabajadorId: string, extra: Record<string, unknown> = {}) =>
-  pagarComision(json('/api/nomina/dia/pagar', { trabajadorId, fecha: HOY, offlineId: unico() + '-x', ...extra }))
+  pagarComision(json('/api/nomina/dia/pagar', { fechaPagoReal: HOY, trabajadorId, fecha: HOY, offlineId: unico() + '-x', ...extra }))
 const filas = (trabajadorId: string) => testPrisma.pagoComisionRepartidor.findMany({ where: { trabajadorId }, orderBy: { createdAt: 'asc' } })
 const sumar = (l: { monto: unknown }[]) => l.reduce((s, p) => s + Number(p.monto), 0)
 
@@ -145,7 +145,7 @@ describe('#499 — pago de la comisión del repartidor (Postgres real)', () => {
     como('REPARTIDOR')
     expect((await pagar(r3)).status).toBe(403)
     como('CONTADOR')
-    const futura = await pagarComision(json('/api/nomina/dia/pagar', { trabajadorId: r3, fecha: '2999-01-01', offlineId: unico() + '-x' }))
+    const futura = await pagarComision(json('/api/nomina/dia/pagar', { fechaPagoReal: HOY, trabajadorId: r3, fecha: '2999-01-01', offlineId: unico() + '-x' }))
     expect(futura.status).toBe(422)
     expect((await pagar(r3)).status).toBe(201)
   })
@@ -168,16 +168,25 @@ describe('#499 — pago de la comisión del repartidor (Postgres real)', () => {
     expect(reporte.comisionesAuto.sellador).toBe(0)
   })
 
-  it('V16 no marca nada mientras todo cuadra, y marca un pago hecho después del cierre', async () => {
+  it('V16 conserva detección del legado posterior al cierre; el nuevo registro rechaza el día cerrado', async () => {
     const reglaV16 = REGLAS.filter((r) => r.id === 'V16')
     const limpio = await verificarIntegridad(testPrisma, { reglas: reglaV16 })
     expect(limpio.reglas[0].cantidad).toBe(0)
 
     await entrega(r2, 2)
-    expect((await pagar(r2)).status).toBe(201)
+    const rechazado = await pagar(r2)
+    expect(rechazado.status).toBe(409)
+    expect((await rechazado.json()).error.code).toBe('DIA_CERRADO')
+    // Inyección sintética de una irregularidad antigua: el verificador no debe ocultarla
+    // aunque el nuevo writer ya impida crearla. No se debilita la comparación financiera.
+    await testPrisma.pagoComisionRepartidor.create({ data: {
+      trabajadorId: r2, fecha: new Date(`${HOY}T00:00:00-05:00`), monto: 2 * TARIFA, offlineId: unico(),
+    } })
     const sucio = await verificarIntegridad(testPrisma, { reglas: reglaV16 })
     expect(sucio.reglas[0].cantidad).toBe(1)
     expect((sucio.reglas[0].hallazgos[0].detalle as { caso: string }).caso).toBe('cierre')
+    // Los casos siguientes prueban nómina/cobro en caja abierta, no reapertura de este cierre sintético.
+    await testPrisma.cierreDia.deleteMany({})
   })
 
   it('la nómina del período descuenta lo ya pagado de la caja y no toca el salario', async () => {

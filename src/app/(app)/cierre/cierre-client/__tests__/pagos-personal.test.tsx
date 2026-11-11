@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { PagosPersonal, resumenPagosPersonal } from '../pagos-personal'
 import type { CierreData } from '../types'
+import { todayStringBogota } from '@/lib/dates'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 const fetchMock = vi.fn()
@@ -43,6 +44,36 @@ describe('resumenPagosPersonal', () => {
 })
 
 describe('PagosPersonal', () => {
+  const pagoCaja = { id: 'pago-ficticio', trabajadorId: 'c1', nombre: 'Trabajador sintético', monto: 3300,
+    metodo: 'EFECTIVO', fechaTrabajo: '2026-11-03', fechaPagoReal: '2026-11-04', registradoAt: '2026-11-05T13:00:00.000Z' }
+
+  it('#673 muestra el desembolso de otro día de trabajo sin inventar producción ni comisiones generadas hoy', () => {
+    montar(datos({ comisionesAuto: { total: 3300, pagadoRepartidores: 3300, repartidores: [], selladores: [], pagosCaja: [pagoCaja], pagosSinFechaVerificada: 0 }, sueldosQueTocan: [] }))
+    expect(screen.getByTestId('comisiones-fechas-caja')).toHaveTextContent(/3\.300 en efectivo/)
+    expect(screen.getByText(/Día real del pago:/)).toHaveTextContent(/4 de nov de 2026/)
+    expect(screen.getByText(/Trabajo del/)).toHaveTextContent(/3 de nov de 2026/)
+    expect(screen.queryByTestId('pagos-personal-del-dia')).toBeNull()
+    expect(screen.queryByTestId('pagos-personal-vacio')).toBeNull()
+  })
+
+  it('#673 presenta legado sin fecha verificada y el medio digital no resta efectivo', () => {
+    montar(datos({ comisionesAuto: { total: 0, pagadoRepartidores: 0, repartidores: [], selladores: [], pagosCaja: [{ ...pagoCaja, metodo: 'NEQUI', fechaPagoReal: null }], pagosSinFechaVerificada: 1 }, sueldosQueTocan: [] }))
+    expect(screen.getByRole('status')).toHaveTextContent('1 pago(s) con fecha real sin verificar')
+    expect(screen.getByText('Día real del pago: sin verificar.')).toBeInTheDocument()
+    expect(screen.getByText('No se descuenta del efectivo.')).toBeInTheDocument()
+    expect(screen.getByTestId('comisiones-fechas-caja')).toHaveTextContent(/0 en efectivo/)
+  })
+
+  it('#673 conserva el monto original cerrado y distingue la consulta actual aun sin pagos restantes', () => {
+    montar(datos({ comisionesAuto: undefined, sueldosQueTocan: [], conciliacionComisiones: {
+      original: 3300, actual: 0, diferencia: -3300, pagosCaja: [], sinFechaVerificada: 0,
+    } }), { diaCerrado: true })
+    expect(screen.getByText('Cierre histórico conservado')).toBeInTheDocument()
+    expect(screen.getByText(/Comisiones guardadas/)).toHaveTextContent(/3\.300.*0/)
+    expect(screen.getByText(/Esta consulta no reemplaza/)).toBeInTheDocument()
+    expect(screen.queryByTestId('pagos-personal-vacio')).toBeNull()
+  })
+
   it('muestra el resumen y una tarjeta por persona con su rol y su estado', () => {
     montar(datos())
     expect(screen.getByTestId('pagos-personal-del-dia')).toHaveTextContent(/\$\s*985\.000/)
@@ -84,7 +115,7 @@ describe('PagosPersonal', () => {
   })
 
   it('pagar sigue usando el mismo endpoint, la confirmación y el monto esperado', async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) })
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ pago: { monto: 35000, metodo: 'EFECTIVO', fechaPagoReal: todayStringBogota() } }) })
     const { onPagado } = montar(datos({ sueldosQueTocan: [] }))
     fireEvent.click(screen.getByTestId('pagar-comision-c1'))
     expect(fetchMock).not.toHaveBeenCalled()

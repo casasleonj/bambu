@@ -38,6 +38,8 @@ async function contarOperacionesPorDia(tx: Prisma.TransactionClient, desde: Date
       UNION ALL SELECT "fecha" FROM "DescuentoRepartidor" WHERE "fecha" >= ${desde} AND "fecha" < ${hasta}
       UNION ALL SELECT "fecha" FROM "NotaCredito" WHERE "fecha" >= ${desde} AND "fecha" < ${hasta}
       UNION ALL SELECT "fecha" FROM "Factura" WHERE "fecha" >= ${desde} AND "fecha" < ${hasta}
+      UNION ALL SELECT COALESCE("fechaPagoReal", "createdAt") FROM "PagoComisionRepartidor"
+        WHERE COALESCE("fechaPagoReal", "createdAt") >= ${desde} AND COALESCE("fechaPagoReal", "createdAt") < ${hasta}
     ) t
     GROUP BY 1`
   return new Map(filas.map((f) => [f.dia, Number(f.n)]))

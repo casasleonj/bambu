@@ -172,6 +172,8 @@ export interface CierreData {
 
   // #499: comisiones del día calculadas por el servidor (repartidores con lo pagado y lo pendiente + sellador)
   comisionesAuto?: {
+    pagosCaja?: import('@/lib/comision-pagada').PagoComisionCaja[]
+    pagosSinFechaVerificada?: number
     sellador: number
     /** #645: comisión de cada sellador del día con lo pagado y lo pendiente */
     selladores?: { trabajadorId: string; nombre: string; total: number; pagado: number; pendiente: number; detalle: { producto: string; unidades: number; comision: number }[] }[]
@@ -187,6 +189,14 @@ export interface CierreData {
   netoCaja: number
   baseDia?: number
   comisiones?: number
+  /** Consulta actual separada: las cifras originales del cierre guardado se conservan. */
+  conciliacionComisiones?: {
+    original: number
+    actual: number
+    diferencia: number
+    pagosCaja: import('@/lib/comision-pagada').PagoComisionCaja[]
+    sinFechaVerificada: number
+  }
   salarios?: number
 
   // Fecha

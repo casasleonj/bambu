@@ -2,6 +2,7 @@
 // confirmado y queda en la base de datos. Cada prueba mira la BASE (no solo la pantalla).
 import { test, expect, apiPost, createCliente, sharedLoginAs, goto, resetTestDatabase } from './fixtures'
 import { PrismaClient } from '@prisma/client'
+import { startOfDayBogota, todayStringBogota } from '@/lib/dates'
 
 const prisma = new PrismaClient()
 const TARIFA = 400
@@ -93,7 +94,7 @@ test.describe('Comisión del repartidor en el cierre (#499)', () => {
 
     // La ASISTENTE no paga comisiones: la API lo rechaza (el servidor decide, no la pantalla).
     const asistente = await sharedLoginAs(browser, 'asistente')
-    const res = await apiPost(asistente, '/api/nomina/dia/pagar', {
+    const res = await apiPost(asistente, '/api/nomina/dia/pagar', { fechaPagoReal: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }),
       trabajadorId: r.id, fecha: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }), offlineId: `a-${Date.now()}-xxxx`,
     })
     expect(res.status()).toBe(403)
@@ -106,7 +107,7 @@ test.describe('Comisión del repartidor en el cierre (#499)', () => {
       create: { clave: 'GESTION_ADMIN_SIN_EMBARQUE', valor: 'true' }, update: { valor: 'true' } })
     const r = await repartidorConEntrega(page, `Parciales E2E ${Date.now()}`, 203)
     const fecha = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-    const previo = await apiPost(page, '/api/nomina/dia/pagar', { trabajadorId: r.id, fecha,
+    const previo = await apiPost(page, '/api/nomina/dia/pagar', { fechaPagoReal: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }), trabajadorId: r.id, fecha,
       offlineId: `cp669-previo-${Date.now()}`, montoEsperado: 203 * TARIFA })
     expect(previo.status()).toBe(201)
 
@@ -235,7 +236,7 @@ test.describe('Comisión del repartidor en el cierre (#499)', () => {
     await fila.getByText('Ver entregas y cálculo').click()
     await expect(fila).toContainText('sin identidad verificable')
     await expect(fila.getByRole('link', { name: 'Revisar embarque' })).toHaveAttribute('href', `/embarques/${e.id}`)
-    const res = await apiPost(page, '/api/nomina/dia/pagar', { trabajadorId: r.id, fecha: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }), offlineId: `no-pagar-${Date.now()}` })
+    const res = await apiPost(page, '/api/nomina/dia/pagar', { fechaPagoReal: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }), trabajadorId: r.id, fecha: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }), offlineId: `no-pagar-${Date.now()}` })
     expect(res.status()).toBe(409)
     expect(await prisma.pagoComisionRepartidor.count({ where: { trabajadorId: r.id } })).toBe(0)
     await fila.screenshot({ path: test.info().outputPath('comision-conciliacion.png') })
@@ -272,7 +273,7 @@ test.describe('Medio de pago de la comisión (#305)', () => {
     await elegir(nequi.id, 'NEQUI')
     await expect(filaNequi.getByTestId(`pagar-comision-${nequi.id}`)).toContainText('por Nequi')
     await filaNequi.getByTestId(`pagar-comision-${nequi.id}`).click()
-    await expect(page.getByText(/no se resta de la caja del día/)).toBeVisible()
+    await expect(page.getByText('No se descuenta del efectivo de la caja', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Sí, ya le pagué' }).click()
     await expect(filaNequi.getByTestId('comision-pagado')).toContainText('800', { timeout: 20000 })
 
@@ -292,5 +293,121 @@ test.describe('Medio de pago de la comisión (#305)', () => {
     const pagoEfectivo = await prisma.pagoComisionRepartidor.findMany({ where: { trabajadorId: efectivo.id } })
     expect(pagoEfectivo[0].metodo).toBe('EFECTIVO')
     await expect.poll(async () => Number((await debeHaber.textContent())?.replace(/\D/g, '')), { timeout: 20000 }).toBe(Number(antes) - 3 * TARIFA)
+  })
+})
+
+test.describe('Fecha real y reintentos de comisiones (#673)', () => {
+  const hoy = todayStringBogota()
+  const ayer = new Date(startOfDayBogota(hoy).getTime() - 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+
+  test.beforeEach(async () => {
+    resetTestDatabase()
+    await prisma.config.upsert({ where: { clave: `BASE_DIA_${ayer}` }, update: { valor: '100000' }, create: { clave: `BASE_DIA_${ayer}`, valor: '100000' } })
+  })
+  test.afterAll(async () => { await prisma.$disconnect() })
+
+  async function trabajoAyer(page: PaginaAdmin) {
+    const t = await prisma.trabajador.create({ data: { nombre: 'Sellador fechas sintético', rol: 'SELLADOR', tipoPago: 'COMISION' } })
+    await prisma.produccion.create({ data: {
+      trabajadorId: t.id, fecha: startOfDayBogota(ayer), turno: 'MANANA', comSellTotal: 3300,
+      items: { create: { producto: 'PACA_AGUA', conteoA: 10, conteoB: 10, producido: 10, comSellador: 3300 } },
+    } })
+    await goto(page, `/cierre?fecha=${ayer}`)
+    const fila = page.getByTestId(`comision-${t.id}`)
+    await expect(fila.getByTestId('comision-pendiente')).toContainText('3.300', { timeout: 30000 })
+    await fila.getByTestId(`pagar-comision-${t.id}`).click()
+    return { t, fila }
+  }
+
+  test('registrar hoy el efectivo entregado ayer conserva las tres fechas y solo resta la caja de ayer', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const { t, fila } = await trabajoAyer(page)
+    await page.getByTestId('comision-fecha-pago').fill(ayer)
+    const modal = page.getByRole('dialog', { name: 'Registrar pago de comisión' })
+    await expect(modal).toContainText('Se cuenta el día en que entregaste los billetes y monedas.')
+    await modal.screenshot({ path: test.info().outputPath('comision-fecha-confirmacion.png') })
+    await page.getByRole('button', { name: 'Sí, ya le pagué' }).click()
+    await expect(fila.getByTestId('comision-pagado')).toContainText('3.300')
+    const p = await prisma.pagoComisionRepartidor.findFirstOrThrow({ where: { trabajadorId: t.id } })
+    expect(p.fecha).toEqual(startOfDayBogota(ayer))
+    expect(p.fechaPagoReal).toEqual(startOfDayBogota(ayer))
+    expect(p.createdAt.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })).toBe(hoy)
+    await expect(page.getByTestId('efectivo-debe-haber')).toContainText('96.700')
+    const consultaHoy = await page.request.get(`/api/cierre?fecha=${hoy}`)
+    expect(consultaHoy.ok()).toBe(true)
+    expect((await consultaHoy.json()).cierre.comisionesAuto.total).toBe(0)
+    const fechas = page.getByTestId('comisiones-fechas-caja')
+    await fechas.locator('summary').click()
+    await expect(fechas).toContainText('Día real del pago:')
+    await expect(fechas).toContainText('Registrado el')
+    const ancho = await page.evaluate(() => ({ ventana: innerWidth, contenido: document.documentElement.scrollWidth }))
+    expect(ancho.contenido).toBeLessThanOrEqual(ancho.ventana + 1)
+    await fechas.screenshot({ path: test.info().outputPath('comision-fechas-tarjetas.png') })
+    await page.reload()
+    await expect(page.getByTestId('efectivo-debe-haber')).toContainText('96.700', { timeout: 30000 })
+    expect(await prisma.pagoComisionRepartidor.count({ where: { trabajadorId: t.id } })).toBe(1)
+  })
+
+  test('si se pierde la respuesta después de guardar, comprobar el mismo pago no lo duplica', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const { t, fila } = await trabajoAyer(page)
+    const solicitudes: Array<Record<string, unknown>> = []
+    await page.route('**/api/nomina/dia/pagar', async route => {
+      solicitudes.push(route.request().postDataJSON() as Record<string, unknown>)
+      if (solicitudes.length === 1) {
+        const respuesta = await route.fetch()
+        expect(respuesta.status()).toBe(201)
+        await route.abort('failed') // El servidor ya confirmó: solo se pierde la respuesta al navegador.
+      } else await route.continue()
+    })
+    await page.getByTestId('comision-fecha-pago').fill(ayer)
+    await page.getByRole('button', { name: 'Sí, ya le pagué' }).click()
+    await expect(page.getByRole('alert')).toContainText('no sabemos si se guardó')
+    await expect(page.getByTestId('comision-fecha-pago')).toBeDisabled()
+    const original = await prisma.pagoComisionRepartidor.findFirstOrThrow({ where: { trabajadorId: t.id } })
+    await page.getByRole('dialog').screenshot({ path: test.info().outputPath('comision-respuesta-perdida.png') })
+    await page.getByRole('button', { name: 'Comprobar el mismo pago' }).click()
+    await expect(fila.getByTestId('comision-pagado')).toContainText('3.300')
+    expect(solicitudes).toHaveLength(2)
+    expect(solicitudes[1]).toEqual(solicitudes[0])
+    const pagos = await prisma.pagoComisionRepartidor.findMany({ where: { trabajadorId: t.id } })
+    expect(pagos).toHaveLength(1)
+    expect(pagos[0]).toEqual(original)
+    await expect(page.getByTestId('efectivo-debe-haber')).toContainText('96.700')
+  })
+
+  test('un cierre ocurrido mientras se consulta se explica sin guardar otro pago ni modificar el histórico', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const { t } = await trabajoAyer(page)
+    await page.getByTestId('comision-fecha-pago').fill(ayer)
+    const cierre = await prisma.cierreDia.create({ data: { fecha: startOfDayBogota(ayer), comisiones: 0, reporte: { _version: '2.2', evidencia: 'conservar' } } })
+    await page.getByRole('button', { name: 'Sí, ya le pagué' }).click()
+    await expect(page.getByRole('alert')).toContainText('Ese día ya está cerrado')
+    expect(await prisma.pagoComisionRepartidor.count({ where: { trabajadorId: t.id } })).toBe(0)
+    expect(await prisma.cierreDia.findUniqueOrThrow({ where: { id: cierre.id } })).toEqual(cierre)
+  })
+
+  test('la vista cerrada y el reporte muestran la conciliación aparte del snapshot original', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const { t } = await trabajoAyer(page)
+    await page.getByRole('button', { name: 'Cancelar', exact: true }).click()
+    // Simula únicamente en la base aislada una conciliación verificada posterior al cierre.
+    const cierre = await prisma.cierreDia.create({ data: { fecha: startOfDayBogota(ayer), baseDia: 100000, comisiones: 0,
+      reporte: { _version: '2.2', efectivoEsperado: 100000, comisionesAuto: { pagadoRepartidores: 0, total: 0, repartidores: [], selladores: [] } },
+    } })
+    await prisma.pagoComisionRepartidor.create({ data: { trabajadorId: t.id, fecha: startOfDayBogota(ayer),
+      fechaPagoReal: startOfDayBogota(ayer), monto: 3300, concepto: 'PRODUCCION', offlineId: `historia-${Date.now()}` } })
+    await page.reload()
+    const fechas = page.getByTestId('comisiones-fechas-caja')
+    await fechas.locator('summary').click()
+    await expect(fechas).toContainText('Cierre histórico conservado')
+    await expect(fechas).toContainText('Diferencia por conciliar:')
+    await expect(fechas).toContainText('3.300')
+    await goto(page, `/cierre/reporte?fecha=${ayer}`)
+    const impresion = page.getByTestId('comisiones-fechas-caja')
+    await expect(impresion).toHaveAttribute('open', '')
+    await expect(impresion).toContainText('Esta consulta no reemplaza el reporte original')
+    await impresion.screenshot({ path: test.info().outputPath('comisiones-historico-reporte.png') })
+    expect(await prisma.cierreDia.findUniqueOrThrow({ where: { id: cierre.id } })).toEqual(cierre)
   })
 })

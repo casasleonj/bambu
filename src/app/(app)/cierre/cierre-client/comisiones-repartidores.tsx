@@ -5,8 +5,9 @@ import { toast } from 'sonner'
 import { ComisionRepartidorDetalle } from '@/components/comision-repartidor-detalle'
 import type { ComisionRepartidor } from '@/lib/comision-repartidor-calculo'
 import { Button } from '@/components/ui/button'
-import { useConfirm } from '@/components/confirm-modal'
 import { formatCurrency } from '@/lib/utils'
+import { todayStringBogota } from '@/lib/dates'
+import { ConfirmarPagoComision } from './confirmar-pago-comision'
 import type { CierreData } from './types'
 
 type Repartidor = NonNullable<CierreData['comisionesAuto']>['repartidores'][number]
@@ -21,13 +22,38 @@ export const MEDIOS_COMISION: { valor: MedioComision; etiqueta: string }[] = [
 ]
 const etiquetaMedio = (m: MedioComision) => MEDIOS_COMISION.find((x) => x.valor === m)?.etiqueta ?? m
 
+interface IntentoComision {
+  trabajadorId: string
+  fecha: string
+  fechaPagoReal: string
+  montoEsperado: number
+  metodo: MedioComision
+  concepto: 'PRODUCCION' | 'REPARTO'
+  offlineId: string
+}
+
+function respuestaPago(valor: unknown): { monto: number; metodo: MedioComision; fechaPagoReal: string | null } | null {
+  if (!valor || typeof valor !== 'object' || !('pago' in valor)) return null
+  const p = valor.pago
+  if (!p || typeof p !== 'object' || !('monto' in p) || typeof p.monto !== 'number' || !Number.isFinite(p.monto) || p.monto <= 0 || !('metodo' in p)
+    || !MEDIOS_COMISION.some(m => m.valor === p.metodo) || !('fechaPagoReal' in p)
+    || (p.fechaPagoReal !== null && typeof p.fechaPagoReal !== 'string')) return null
+  return { monto: p.monto, metodo: p.metodo as MedioComision, fechaPagoReal: p.fechaPagoReal }
+}
+
+function mensajeError(valor: unknown): string | null {
+  if (!valor || typeof valor !== 'object' || !('error' in valor)) return null
+  const e = valor.error
+  return e && typeof e === 'object' && 'message' in e && typeof e.message === 'string' ? e.message : null
+}
+
 /** Quiénes se muestran: los que tienen comisión, algo pagado o algo por conciliar ese día. */
 export const visiblesDeComision = (lista: Repartidor[]): Repartidor[] =>
   lista.filter((r) => r.total > 0 || r.pagado > 0 || (r.revisiones?.length ?? 0) > 0)
 
 /**
  * Comisión de cada repartidor en el día (#499). La cifra la calcula el servidor; aquí solo se
- * ve y, con un toque, se marca pagada (sale de la caja de hoy). El cierre resta lo pagado.
+ * ve y se confirma el día real del pago. El cierre resta el efectivo atribuido a su día.
  * Lo pendiente al cerrar no bloquea: se paga con la nómina.
  */
 export function ComisionesRepartidores({
@@ -49,49 +75,67 @@ export function ComisionesRepartidores({
   /** #646: «Pagos al personal» muestra un solo aviso para todos los bloques; suelto cada bloque muestra el suyo. */
   mostrarAviso?: boolean
 }) {
-  const { confirm, modal } = useConfirm()
   const [pagando, setPagando] = useState<string | null>(null)
+  const [revision, setRevision] = useState<{ r: Repartidor; medio: MedioComision; fechaInicial: string; fechaTrabajo: string; concepto: IntentoComision['concepto']; incierto: boolean } | null>(null)
+  const [errorPago, setErrorPago] = useState<string | null>(null)
   const [medios, setMedios] = useState<Record<string, MedioComision>>({})
   const medioDe = (id: string): MedioComision => medios[id] ?? 'EFECTIVO'
   // Un mismo toque reintentado (por una falla de red) reusa la clave y no paga dos veces.
-  const claves = useRef(new Map<string, string>())
+  const claves = useRef(new Map<string, IntentoComision>())
+  const conceptoActual: IntentoComision['concepto'] = tipo === 'sellador' ? 'PRODUCCION' : 'REPARTO'
+  const llaveDe = (id: string, trabajo = fecha, concepto = conceptoActual) => `${id}|${trabajo}|${concepto}`
 
   const visibles = visiblesDeComision(repartidores)
   if (visibles.length === 0) {
     return <p className="text-sm text-muted-foreground" data-testid="comisiones-vacio">Sin comisión de repartidores este día.</p>
   }
 
-  const pagar = async (r: Repartidor) => {
+  const pagar = (r: Repartidor) => {
     if (r.revisiones?.length) return
-    const medio = medioDe(r.trabajadorId)
-    const enEfectivo = medio === 'EFECTIVO'
-    const ok = await confirm({
-      message: `¿Le pagaste ${formatCurrency(r.pendiente)} a ${r.nombre}${enEfectivo ? '' : ` por ${etiquetaMedio(medio)}`}?`,
-      description: `${tipo === 'sellador' ? 'Es su comisión por lo producido hoy (pacas de agua, pacas de hielo y botellones llenados).' : 'Es su comisión por las entregas del día.'} ${enEfectivo ? 'Este dinero sale de la caja.' : 'Este pago no se resta de la caja del día.'} Confírmalo solo si ya se lo diste: queda anotado con tu nombre y la hora.`,
-      confirmLabel: 'Sí, ya le pagué',
-    })
-    if (!ok) return
-    const llave = `${r.trabajadorId}|${fecha}|${r.pendiente}|${medio}`
-    const offlineId = claves.current.get(llave) ?? `cp-${crypto.randomUUID()}`
-    claves.current.set(llave, offlineId)
+    const intento = claves.current.get(llaveDe(r.trabajadorId))
+    setErrorPago(null)
+    setRevision({ r: intento ? { ...r, pendiente: intento.montoEsperado } : r,
+      medio: intento?.metodo ?? medioDe(r.trabajadorId), fechaInicial: intento?.fechaPagoReal ?? todayStringBogota(),
+      fechaTrabajo: fecha, concepto: conceptoActual, incierto: !!intento })
+  }
+
+  const confirmarPago = async (fechaPagoReal: string) => {
+    if (!revision || pagando) return
+    const { r, medio, fechaTrabajo, concepto } = revision
+    const llave = llaveDe(r.trabajadorId, fechaTrabajo, concepto)
+    const intento = claves.current.get(llave) ?? { trabajadorId: r.trabajadorId, fecha: fechaTrabajo, fechaPagoReal,
+      offlineId: `cp-${crypto.randomUUID()}`, montoEsperado: r.pendiente, metodo: medio,
+      concepto }
+    claves.current.set(llave, intento)
+    setRevision(actual => actual ? { ...actual, incierto: true } : null)
     setPagando(r.trabajadorId)
+    setErrorPago(null)
     try {
       const res = await fetch('/api/nomina/dia/pagar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trabajadorId: r.trabajadorId, fecha, offlineId, montoEsperado: r.pendiente, metodo: medio, concepto: tipo === 'sellador' ? 'PRODUCCION' : 'REPARTO' }),
+        body: JSON.stringify(intento),
       })
+      const cuerpo: unknown = await res.json().catch(() => null)
       if (res.ok) {
+        const pago = respuestaPago(cuerpo)
+        if (!pago || pago.monto !== intento.montoEsperado || pago.metodo !== intento.metodo || pago.fechaPagoReal !== intento.fechaPagoReal) {
+          setErrorPago('No pudimos comprobar el resultado. Reintenta el mismo pago para consultarlo sin duplicarlo.')
+          return
+        }
         claves.current.delete(llave)
-        toast.success(enEfectivo ? `Pagado ${formatCurrency(r.pendiente)} a ${r.nombre}` : `Pagado por ${etiquetaMedio(medio)}: ${formatCurrency(r.pendiente)} a ${r.nombre}. No se resta de la caja del día.`)
+        setRevision(null)
+        toast.success(`Pago registrado: ${formatCurrency(pago.monto)} a ${r.nombre} por ${etiquetaMedio(pago.metodo)}.`)
       } else {
-        const cuerpo = await res.json().catch(() => null)
-        toast.error(cuerpo?.error?.message ?? 'No se pudo registrar el pago')
-        if (res.status !== 500) claves.current.delete(llave)
+        setErrorPago(mensajeError(cuerpo) ?? 'No pudimos comprobar el resultado. Reintenta el mismo pago.')
+        if (res.status < 500) {
+          claves.current.delete(llave)
+          setRevision(actual => actual ? { ...actual, incierto: false } : null)
+        }
       }
       onPagado()
     } catch {
-      toast.error('Sin conexión: el pago no se registró. Vuelve a intentarlo.')
+      setErrorPago('Sin respuesta de la conexión: no sabemos si se guardó. Reintenta el mismo pago; no se vuelve a descontar.')
     } finally {
       setPagando(null)
     }
@@ -166,7 +210,7 @@ export function ComisionesRepartidores({
                     {pagando === r.trabajadorId ? 'Pagando…' : `Pagar ${formatCurrency(r.pendiente)}${medioDe(r.trabajadorId) === 'EFECTIVO' ? '' : ` por ${etiquetaMedio(medioDe(r.trabajadorId))}`}`}
                   </Button>
                   <span className="text-[11px] text-slate-500" data-testid={`comision-aviso-medio-${r.trabajadorId}`}>
-                    {medioDe(r.trabajadorId) === 'EFECTIVO' ? 'Sale de la caja de hoy (efectivo)' : 'Solo el efectivo se resta de la caja del día'}
+                    {medioDe(r.trabajadorId) === 'EFECTIVO' ? 'Confirmarás de qué día salió el efectivo' : 'Solo el efectivo se resta de la caja del día'}
                   </span>
                 </div>
               </div>
@@ -179,7 +223,10 @@ export function ComisionesRepartidores({
           {avisoPendiente(diaCerrado, puedePagar)}
         </p>
       )}
-      {modal}
+      {revision && <ConfirmarPagoComision nombre={revision.r.nombre} monto={revision.r.pendiente} fechaTrabajo={revision.fechaTrabajo} porProduccion={revision.concepto === 'PRODUCCION'}
+        medio={etiquetaMedio(revision.medio)} fechaInicial={revision.fechaInicial} ocupado={!!pagando}
+        incierto={!pagando && revision.incierto} error={errorPago}
+        onClose={() => setRevision(null)} onConfirmar={confirmarPago} />}
     </div>
   )
 }
