@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client'
 import { isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
+import { logAudit } from '@/lib/audit'
 
 /**
  * #772 — misma autoridad para gastar BONO en pagar-fiado y abonos independientes.
@@ -49,3 +50,71 @@ export const idConsumoBonoAbono = (abonoId: string): string => `bono-abono:${abo
 
 /** Evidencia propia de nuevos movimientos; los Abonos BONO históricos no se presumen debitados. */
 export const OPERACION_CONSUMO_BONO = 'CONSUMO_BONO_SALDO_FAVOR'
+
+type LectorBono = Pick<Prisma.TransactionClient, 'historial'>
+
+/** Comprueba el débito previo de crédito sin atribuirlo a Abonos BONO legados. */
+export async function verificarConsumoBonoAbono(
+  tx: LectorBono,
+  abono: { id: string; clienteId: string; metodoPago: string; monto: unknown },
+): Promise<boolean> {
+  if (abono.metodoPago !== 'BONO') return false
+  const registro = await tx.historial.findUnique({
+    where: { id: idConsumoBonoAbono(abono.id) },
+    select: { entidad: true, registroId: true, datos: true },
+  })
+  if (!registro) return false // histórico: no prueba descuento real
+  let raw: unknown
+  try { raw = JSON.parse(registro.datos) as unknown } catch { throw new Error('BONO_AUDITORIA_INVALIDA') }
+  if (!raw || typeof raw !== 'object') throw new Error('BONO_AUDITORIA_INVALIDA')
+  const datos = raw as Record<string, unknown>
+  if (registro.entidad !== 'Abono' || registro.registroId !== abono.id ||
+    datos.operacion !== OPERACION_CONSUMO_BONO || datos.clienteId !== abono.clienteId ||
+    datos.metodo !== 'BONO' || Number(datos.monto) !== Number(abono.monto)) {
+    throw new Error('BONO_AUDITORIA_INVALIDA')
+  }
+  return true
+}
+
+/**
+ * #772: al anular/cancelar, retornar al cliente el BONO que se consumió en
+ * esa deuda y aún no fue restituido por una CorreccionAbono.
+ *
+ * Se invoca DESPUÉS de revertir el crédito generado por el propio pedido
+ * (#533/#577), para no extinguir el BONO devuelto por la cancelación.
+ * El caller serializa las anulaciones y verifica el estado terminal.
+ */
+export async function restituirBonoPedidoAnulado(
+  tx: Pick<Prisma.TransactionClient, 'abono' | 'historial' | 'cliente'>,
+  pedidoId: string,
+  clienteId: string,
+): Promise<number> {
+  const abonos = await tx.abono.findMany({
+    where: { pedidoId, clienteId, metodoPago: 'BONO' },
+    select: {
+      id: true, clienteId: true, monto: true, metodoPago: true,
+      correcciones: { select: { montoRevertido: true } },
+    },
+  })
+  let centavos = 0
+  for (const a of abonos) {
+    if (!(await verificarConsumoBonoAbono(tx, a))) continue
+    const total = Math.round(Number(a.monto) * 100)
+    const revertido = a.correcciones.reduce((suma, c) => suma + Math.round(Number(c.montoRevertido) * 100), 0)
+    if (!Number.isSafeInteger(total) || !Number.isSafeInteger(revertido) ||
+      revertido < 0 || revertido > total) throw new Error('BONO_CORRECCION_INVALIDA')
+    centavos += total - revertido
+  }
+  if (!centavos) return 0
+  if (!Number.isSafeInteger(centavos)) throw new Error('BONO_MONTO_INVALIDO')
+  const monto = centavos / 100
+  await tx.cliente.update({
+    where: { id: clienteId },
+    data: { saldoFavor: { increment: monto } },
+  })
+  await logAudit({
+    id: `bono-pedido-anulado:${pedidoId}`, entidad: 'Pedido', registroId: pedidoId,
+    accion: 'UPDATE', datos: { operacion: 'RESTITUCION_BONO_ANULACION', clienteId, monto },
+  }, tx)
+  return monto
+}
