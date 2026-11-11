@@ -43,3 +43,9 @@ export async function consumirBonoDeSaldoFavor(
     )
   }
 }
+
+/** ID estable para vincular un BONO debitado con su Abono y futuras correcciones. */
+export const idConsumoBonoAbono = (abonoId: string): string => `bono-abono:${abonoId}`
+
+/** Evidencia propia de nuevos movimientos; los Abonos BONO históricos no se presumen debitados. */
+export const OPERACION_CONSUMO_BONO = 'CONSUMO_BONO_SALDO_FAVOR'
