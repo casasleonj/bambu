@@ -25,9 +25,10 @@ export async function listarEntregasDestacadas(
     return { destacadas: [], destacadasTotal: 0, rangoAmplio: true };
   }
   const hechosRango = await leerEntregasConsulta(tx, { rango });
-  const ids = [...new Set(hechosRango
-    .filter((e) => !repartidores.length || (!!e.repartidorId && repartidores.includes(e.repartidorId)))
-    .map((e) => e.pedidoId))];
+  const eventosVisibles = hechosRango.filter((e) =>
+    !repartidores.length || (!!e.repartidorId && repartidores.includes(e.repartidorId)));
+  const idsVisibles = new Set(eventosVisibles.map((e) => e.id));
+  const ids = [...new Set(eventosVisibles.map((e) => e.pedidoId))];
   if (!ids.length) return { destacadas: [], destacadasTotal: 0, rangoAmplio: false };
   const pedidos = await tx.pedido.findMany({
     where: {
@@ -96,6 +97,7 @@ export async function listarEntregasDestacadas(
       },
       hechosPorPedido.get(p.id) ?? [],
       rango,
+      repartidores.length ? idsVisibles : undefined,
     );
     // Las completas creadas y entregadas el mismo día siguen únicamente
     // en la lista normal. Las parciales y las de días anteriores se destacan.
