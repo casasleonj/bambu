@@ -187,7 +187,7 @@ describe('#673 — fecha real de desembolso de comisiones', () => {
         }),
       }))
       expect(res.status).toBe(201)
-      expect(await db.$queryRawUnsafe<Array<{ last_value: bigint }>>('SELECT last_value FROM test_retry_cierre_673')).toEqual([{ last_value: 2n }])
+      expect(await db.$queryRawUnsafe<Array<{ intentos: number }>>('SELECT last_value::int AS intentos FROM test_retry_cierre_673')).toEqual([{ intentos: 2 }])
       expect(await db.cierreDia.count({ where: { fecha: dia(-1) } })).toBe(1)
     } finally {
       await db.$executeRawUnsafe('DROP TRIGGER test_retry_cierre_673 ON "CierreDia"')
