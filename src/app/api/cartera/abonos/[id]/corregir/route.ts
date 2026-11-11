@@ -12,7 +12,7 @@ import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { prisma } from '@/lib/prisma'
-import { idConsumoBonoAbono, OPERACION_CONSUMO_BONO } from '@/lib/bono-saldo-favor'
+import { verificarConsumoBonoAbono } from '@/lib/bono-saldo-favor'
 
 /**
  * POST /api/cartera/abonos/[id]/corregir — ADR-CORRECCION-MONETARIA-001.
@@ -101,25 +101,8 @@ export async function POST(
       // #772: la corrección de un BONO real devuelve crédito ya consumido.
       // Un Abono BONO legado sin marcador NO prueba que alguna vez descontó
       // saldo a favor: devolverle crédito fabricaría un saldo inexistente.
-      let creditoBonoRestituible = 0
-      if (abono.metodoPago === 'BONO') {
-        const prueba = await tx.historial.findUnique({
-          where: { id: idConsumoBonoAbono(abono.id) },
-          select: { entidad: true, registroId: true, datos: true },
-        })
-        if (prueba) {
-          let datos: unknown
-          try { datos = JSON.parse(prueba.datos) } catch { throw new Error('BONO_AUDITORIA_INVALIDA') }
-          if (!datos || typeof datos !== 'object') throw new Error('BONO_AUDITORIA_INVALIDA')
-          const evidencia = datos as Record<string, unknown>
-          if (prueba.entidad !== 'Abono' || prueba.registroId !== abono.id ||
-            evidencia.operacion !== OPERACION_CONSUMO_BONO || evidencia.clienteId !== abono.clienteId ||
-            evidencia.metodo !== 'BONO' || Number(evidencia.monto) !== montoAbono) {
-            throw new Error('BONO_AUDITORIA_INVALIDA')
-          }
-          creditoBonoRestituible = revertir
-        }
-      }
+      const creditoBonoRestituible =
+        (await verificarConsumoBonoAbono(tx, abono)) ? revertir : 0
 
       // Número COR-NNNNN — serializado por SECUENCIA:correccionAbono para no
       // colisionar entre correcciones de clientes distintos (MAX+1).
