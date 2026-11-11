@@ -32,12 +32,16 @@ beforeEach(() => {
 })
 
 describe('cierre: ventas y caja mantienen sus fuentes', () => {
-  it('suma los cinco métodos sin confundirlos con lo pagado en pedidos de esa fecha', async () => {
+  it('suma cuatro medios de dinero nuevo y conserva BONO como crédito aplicado', async () => {
     const { cierre } = await construirResumenCierre(tx, '2026-03-10')
     expect(cierre).toMatchObject({ efectivo: 123.1, transferencia: 234.2, nequi: 345.3, daviplata: 456.4, bono: 567, cobrado: 120, totalVentas: 500, fiado: 380 })
-    expect(cierre.cobroVentasHoy).toBeCloseTo(1726, 2)
+    // El BONO de 567 se conserva en el detalle, pero no entró dinero de nuevo.
+    expect(cierre.cobroVentasHoy).toBeCloseTo(1159, 2)
+    expect(cierre.cobroDigitalHoy).toBeCloseTo(1035.9, 2)
     // #631: el desglose explica la misma cifra (todo es venta de hoy) y cuadra.
-    expect(cierre.desgloseCobros.total).toBeCloseTo(1726, 2)
+    expect(cierre.desgloseCobros.total).toBeCloseTo(1159, 2)
+    expect(cierre.desgloseCobros.digital).toBeCloseTo(1035.9, 2)
+    expect(cierre.desgloseCobros.ventasHoy.porMetodo).toEqual({ TRANSFERENCIA: 234.2, NEQUI: 345.3, DAVIPLATA: 456.4 })
     expect(cierre.desgloseCobros.cuadra).toBe(true)
   })
   it('consulta los cobros por registro en Bogotá con límite exclusivo del día siguiente', async () => {
