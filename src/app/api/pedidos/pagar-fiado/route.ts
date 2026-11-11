@@ -24,6 +24,15 @@ import { EntregaOficinaError, ESTADO_HTTP_OFICINA } from '@/modules/pedidos/doma
 import { idResultadoFiado, huellaCobroFiado, prepararCobroFiado, leerResultadoFiado, errorCobroPedido } from '@/lib/fiados-cobro-server'
 import type { AplicacionFiado, ResultadoCobroFiado } from '@/lib/fiados-cobro'
 
+/** #772: un BONO sin respaldo o no aplicable nunca puede pagar deuda ni generar crédito.
+ * La excepción hace ROLLBACK del lock CARTERA, incluso si había cobros previos
+ * en la misma solicitud. No retornar una Response después de escrituras.
+ */
+class BonoSinDeudaError extends Error {
+  readonly code = 'BONO_SIN_DEUDA'
+  constructor() { super('El BONO excede la deuda aplicable. Reduce el BONO o ajusta los medios de pago.') }
+}
+
 /** #515: revisión y resultados originales, independientes de la fecha de Pedidos. */
 export async function GET(request: NextRequest) {
   const auth = await requireRole(['ADMIN', 'ASISTENTE', 'CONTADOR'])
@@ -128,6 +137,27 @@ export async function POST(request: NextRequest) {
         'La deuda cambió desde que la revisaste. Actualiza el reparto antes de registrar el pago.', 409, { code: 'DEUDA_CAMBIO' })
       if (!preparacion.pedidos.length) return apiError('El cliente no tiene deudas pendientes de pedidos entregados', 400, { code: 'SIN_DEUDA' })
 
+      // #772: BONO es saldo a favor ya recibido, no un nuevo pago.
+      // Consumirlo ANTES de escribir Pago/Abono evita acreditar dinero inexistente.
+      // updateMany es atómico: ninguna transacción puede gastar más de lo disponible.
+      const bonoSolicitadoCentavos = pagos.reduce(
+        (suma, pago) => suma + (pago.metodo === 'BONO' ? Math.round(pago.monto * 100) : 0), 0,
+      )
+      if (bonoSolicitadoCentavos > 0) {
+        if (isConsumidorFinalCanonical(clienteId)) {
+          return apiError('Las ventas sin cliente no admiten saldo a favor.', 422, { code: 'BONO_SIN_CLIENTE' })
+        }
+        const consumido = await tx.cliente.updateMany({
+          where: { id: clienteId, saldoFavor: { gte: bonoSolicitadoCentavos / 100 } },
+          data: { saldoFavor: { decrement: bonoSolicitadoCentavos / 100 } },
+        })
+        if (consumido.count !== 1) {
+          return apiError('No hay saldo a favor suficiente para usar ese BONO.', 409, {
+            code: 'SALDO_FAVOR_INSUFICIENTE',
+          })
+        }
+      }
+
       const fondos = pagos.map(p => ({ ...p, restante: Math.round(p.monto * 100), aplicado: 0 }))
       const pagosAplicados: AplicacionFiado[] = []
       const culminados: Array<{ pedidoId: string; numero: number }> = []
@@ -167,6 +197,12 @@ export async function POST(request: NextRequest) {
           if (shouldFireCulminado(pedido.estadoEntrega ?? 'ENTREGADO', calcularEstadoPago(pedido.total, pagado / 100, pedido.estadoEntrega ?? 'ENTREGADO'))) culminados.push({ pedidoId: pedido.id, numero: pedido.numero })
         }
         if (fondos.every(f => f.restante <= 0)) break
+      }
+      // #772: si parte del BONO quedó sin aplicar (otro medio cubrió primero
+      // toda la deuda), no debe transformarse en crédito ni desaparecer.
+      // Lanzar, no retornar: revertir TODOS los pagos y el descuento de saldo.
+      if (fondos.some(f => f.metodo === 'BONO' && f.restante > 0)) {
+        throw new BonoSinDeudaError()
       }
       // D.6 se conserva: el sobrante se acredita a saldo a favor. #524: ese dinero SÍ entró a la caja
       // (en su medio de pago), así que se registra como ingreso propio, por medio, para que el cierre
@@ -210,6 +246,7 @@ export async function POST(request: NextRequest) {
     }
     return apiSuccess({ ...resultado, mensaje: resultado.deduped ? 'Pago ya registrado; se conserva el resultado original.' : 'Pago registrado.' })
   } catch (error) {
+    if (error instanceof BonoSinDeudaError) return apiError(error.message, 422, { code: error.code })
     if (error instanceof EntregaOficinaError) return apiError(error.message, ESTADO_HTTP_OFICINA[error.codigo], { code: error.codigo })
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') return apiError(
       'La referencia de cobro ya existe. Consulta su estado antes de continuar.', 409, { code: 'REFERENCIA_COBRO_DISTINTA' })
