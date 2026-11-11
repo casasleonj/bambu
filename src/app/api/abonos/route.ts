@@ -12,6 +12,7 @@ import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { registrarReceivableEntry, detectarDivergencia, registrarDivergencia } from '@/lib/receivable-entry'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
+import { BonoSaldoFavorError, consumirBonoDeSaldoFavor } from '@/lib/bono-saldo-favor'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-2): Only ADMIN/CONTADOR can read abonos
@@ -98,6 +99,13 @@ export async function POST(request: NextRequest) {
       const exigibles = await leerExigibles(tx, { id: factura.pedidoId })
       if ((exigibles.get(factura.pedidoId) ?? 0) < monto) {
         throw new Error('PEDIDO_NO_ENTREGADO')
+      }
+
+      // #772: el Abono independiente en BONO también consume crédito REAL.
+      // El dedup por offlineId ocurrió antes bajo CARTERA; si falla la
+      // creación del Abono/Pedido, se revierte este descuento con la tx.
+      if (metodoPago === 'BONO') {
+        await consumirBonoDeSaldoFavor(tx, clienteId, monto)
       }
 
       // Calcular siguiente número
@@ -208,6 +216,7 @@ export async function POST(request: NextRequest) {
       result.deduped ? 200 : 201,
     )
   } catch (error) {
+    if (error instanceof BonoSaldoFavorError) return apiError(error.message, error.status, { code: error.code })
     if (error instanceof Error && error.message === 'OFFLINE_ID_REUSADO') {
       return apiError('Esta clave de reintento ya corresponde a otro abono.', 409)
     }
