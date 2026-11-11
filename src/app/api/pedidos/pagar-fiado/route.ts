@@ -22,6 +22,7 @@ import { nominaQueCubre } from '@/lib/nomina-cobertura'
 import { todayStringBogota } from '@/lib/dates'
 import { EntregaOficinaError, ESTADO_HTTP_OFICINA } from '@/modules/pedidos/domain/services/entrega-oficina.errors'
 import { idResultadoFiado, huellaCobroFiado, prepararCobroFiado, leerResultadoFiado, errorCobroPedido } from '@/lib/fiados-cobro-server'
+import { BonoSaldoFavorError, consumirBonoDeSaldoFavor } from '@/lib/bono-saldo-favor'
 import type { AplicacionFiado, ResultadoCobroFiado } from '@/lib/fiados-cobro'
 
 /** #772: un BONO sin respaldo o no aplicable nunca puede pagar deuda ni generar crédito.
@@ -144,18 +145,7 @@ export async function POST(request: NextRequest) {
         (suma, pago) => suma + (pago.metodo === 'BONO' ? Math.round(pago.monto * 100) : 0), 0,
       )
       if (bonoSolicitadoCentavos > 0) {
-        if (isConsumidorFinalCanonical(clienteId)) {
-          return apiError('Las ventas sin cliente no admiten saldo a favor.', 422, { code: 'BONO_SIN_CLIENTE' })
-        }
-        const consumido = await tx.cliente.updateMany({
-          where: { id: clienteId, saldoFavor: { gte: bonoSolicitadoCentavos / 100 } },
-          data: { saldoFavor: { decrement: bonoSolicitadoCentavos / 100 } },
-        })
-        if (consumido.count !== 1) {
-          return apiError('No hay saldo a favor suficiente para usar ese BONO.', 409, {
-            code: 'SALDO_FAVOR_INSUFICIENTE',
-          })
-        }
+        await consumirBonoDeSaldoFavor(tx, clienteId, bonoSolicitadoCentavos / 100)
       }
 
       const fondos = pagos.map(p => ({ ...p, restante: Math.round(p.monto * 100), aplicado: 0 }))
@@ -247,6 +237,7 @@ export async function POST(request: NextRequest) {
     return apiSuccess({ ...resultado, mensaje: resultado.deduped ? 'Pago ya registrado; se conserva el resultado original.' : 'Pago registrado.' })
   } catch (error) {
     if (error instanceof BonoSinDeudaError) return apiError(error.message, 422, { code: error.code })
+    if (error instanceof BonoSaldoFavorError) return apiError(error.message, error.status, { code: error.code })
     if (error instanceof EntregaOficinaError) return apiError(error.message, ESTADO_HTTP_OFICINA[error.codigo], { code: error.codigo })
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') return apiError(
       'La referencia de cobro ya existe. Consulta su estado antes de continuar.', 409, { code: 'REFERENCIA_COBRO_DISTINTA' })
