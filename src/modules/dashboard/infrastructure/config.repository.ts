@@ -6,6 +6,7 @@
 
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/shared/infrastructure'
+import { leerBaseDelDia } from '@/lib/base-caja-dia'
 
 export interface CierreData {
   stockFinAgua: number | null
@@ -26,18 +27,10 @@ export class PrismaConfigRepository implements ConfigRepository {
     > = prisma,
   ) {}
   async getBaseDia(todayKey: string): Promise<number> {
-    const [todayConfig, globalConfig] = await Promise.all([
-      this.db.config.findUnique({ where: { clave: todayKey } }),
-      this.db.config.findUnique({ where: { clave: 'BASE_DIA' } }),
-    ])
-
-    const raw = todayConfig
-      ? parseFloat(todayConfig.valor)
-      : globalConfig
-        ? parseFloat(globalConfig.valor)
-        : 0
-
-    return isNaN(raw) ? 0 : raw
+    // #748/#688: no heredar BASE_DIA global ni la base de ayer.
+    // La autoridad de la fecha es el mismo lector que usa el Cierre.
+    const fecha = todayKey.replace(/^BASE_DIA_/, '')
+    return (await leerBaseDelDia(this.db, fecha))?.valor ?? 0
   }
 
   async getStockConfigs(): Promise<Record<string, string>> {
