@@ -5,7 +5,7 @@ import type { Prisma } from '@prisma/client'
 import { construirResumenCierre } from '@/lib/cierre-resumen'
 
 vi.mock('@/lib/comision-pagada', () => ({ comisionesDelCierre: vi.fn(async () => ({ sellador: 0, pagadoRepartidores: 0, total: 0, repartidores: [] })) }))
-vi.mock('@/lib/cobro-cartera', () => ({ resumirAbonosDelDia: vi.fn(async () => ({ total: 0, abonosIndependientes: 0, ajustesDeCobros: 0 })) }))
+vi.mock('@/lib/cobro-cartera', () => ({ resumirAbonosDelDia: vi.fn(async () => ({ total: 0, totalEfectivo: 0, abonosIndependientes: 0, ajustesDeCobros: 0 })) }))
 vi.mock('@/lib/sueldos-pendientes', () => ({ sueldosPendientesAl: vi.fn(async () => []) }))
 const pedido = { fecha: new Date('2026-03-10T17:00:00Z') } // #631: la fecha del pedido separa ventas de hoy y fiados anteriores
 const pagos = [
