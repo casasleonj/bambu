@@ -105,6 +105,17 @@ describe('#752 — detector de jornadas financieras (Postgres)', () => {
     })
   })
 
+  it('un Abono etiquetado espejo pero inconsistente NO se descarta sin conciliar', async () => {
+    await verificarUnicoMovimiento('2042-03-10', async (fecha) => {
+      const pago = await testPrisma.pago.create({
+        data: { pedidoId, monto: 3000, metodo: 'EFECTIVO', createdAt: dia('2042-03-09') },
+      })
+      await testPrisma.abono.create({
+        data: { numero: 'ABO-TEST-752-4', facturaId, clienteId, pedidoId, monto: 2000, metodoPago: 'EFECTIVO', origenCobro: 'ESPEJO_PAGO', pagoOrigenId: pago.id, fecha },
+      })
+    })
+  })
+
   it('un Abono espejo del Pago no duplica la cantidad de hechos del día', async () => {
     await verificarUnicoMovimiento('2042-01-10', async (createdAt) => {
       const pago = await testPrisma.pago.create({
