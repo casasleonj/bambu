@@ -7,6 +7,7 @@ import { getAnonymousClientDisplayName } from "./cliente-canonical";
 import { pickCoords } from "./geo/pedido-coords";
 import { pickDireccionTexto } from "./geo/pedido-direccion";
 import { tipoDesdeCanal } from "./pedido-canal";
+import { listarEntregasDestacadas } from "./pedidos-entregas-destacadas";
 import { PedidoMapper } from "@/modules/pedidos/infrastructure/mappers/PedidoMapper";
 import { PedidoDTOMapper } from "@/modules/pedidos/application/dto/PedidoDTOMapper";
 import {
@@ -491,6 +492,9 @@ export async function consultarPedidos(
         pagado = dec(sumas?._sum.totalPagado),
         saldo = dec(sumas?._sum.saldo),
         fiado = [...(exigiblesConjunto?.values() ?? [])].reduce((s, monto) => s + centavos(monto), 0) / 100;
+      const consultaDestacadas = f.fechaBase === "pedido" && !f.all
+        ? await listarEntregasDestacadas(tx, whereConsultaPedidos({ ...f, fechaBase: "entrega" }), rango)
+        : null;
       const [{ ahora }] = await tx.$queryRaw<
         Array<{ ahora: Date }>
       >`SELECT transaction_timestamp() AS ahora`;
@@ -502,6 +506,11 @@ export async function consultarPedidos(
         pageSize: f.pageSize,
         leidoAt: ahora.toISOString(),
         repartidores,
+        ...(consultaDestacadas ? {
+          destacadas: consultaDestacadas.destacadas,
+          destacadasTotal: consultaDestacadas.destacadasTotal,
+          destacadasRangoAmplio: consultaDestacadas.rangoAmplio,
+        } : {}),
         resumen: f.resumen
           ? {
               importe,
