@@ -3,7 +3,7 @@
 import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { randomUUID } from 'crypto'
-import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
+import { testPrisma, resetAndSeed, disconnect, getAdminUser, registrarBaseDia } from './setup'
 import { startOfDayInBogota } from '@/lib/date-helpers'
 import { getTodayString } from '@/lib/dates'
 import { leerCobrosPeriodo } from '@/lib/cobros-periodo'
@@ -18,7 +18,7 @@ vi.mock('@/lib/realtime', () => ({ publishRealtimeEvent: vi.fn().mockResolvedVal
 vi.mock('@/lib/notifications/notify-event', () => ({ notifyEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn().mockResolvedValue(undefined) }))
 
-import { GET as cierreGet } from '@/app/api/cierre/route'
+import { GET as cierreGet, POST as cerrar } from '@/app/api/cierre/route'
 
 const unico = () => randomUUID().slice(0, 8)
 const hoy = getTodayString()
@@ -132,4 +132,25 @@ describe('#745 — Cierre de caja no vuelve a cobrar crédito BONO', () => {
     const cobros = await leerCobrosPeriodo(testPrisma, inicio, fin)
     expect(cobros.creditoAplicado).toBeGreaterThanOrEqual(2000)
   })
+  it('al cerrar el día, el snapshot guarda BONO informativo sin sumarlo al netoCaja', async () => {
+    // La misma fuente de previsualización debe escribir el cierre; jamás
+    // ajustar un cierre pasado para hacer cuadrar la prueba.
+    const previo = await cierre()
+    const baseDia = await registrarBaseDia(hoy, 50000)
+    const respuesta = await cerrar(new NextRequest('http://localhost/api/cierre', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        fecha: hoy, baseDia, salarios: 0, stockIniAgua: 0, prodAgua: 0, stockFinAgua: 0,
+        stockIniHielo: 0, prodHielo: 0, stockFinHielo: 0,
+      }),
+    }))
+    expect(respuesta.status, JSON.stringify(await respuesta.clone().json())).toBe(201)
+    const registrado = await testPrisma.cierreDia.findUniqueOrThrow({ where: { fecha: inicio } })
+    expect(Number(registrado.bono)).toBe(previo.bono)
+    const esperado = baseDia + previo.cobroVentasHoy + previo.cobroCartera
+      - previo.totalGastos - previo.comisionesAuto.total
+    expect(Number(registrado.netoCaja)).toBeCloseTo(esperado, 2)
+    expect((await cierre()).netoCaja).toBeCloseTo(esperado, 2)
+  })
+
 })
