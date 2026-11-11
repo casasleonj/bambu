@@ -22,7 +22,7 @@ import { nominaQueCubre } from '@/lib/nomina-cobertura'
 import { todayStringBogota } from '@/lib/dates'
 import { EntregaOficinaError, ESTADO_HTTP_OFICINA } from '@/modules/pedidos/domain/services/entrega-oficina.errors'
 import { idResultadoFiado, huellaCobroFiado, prepararCobroFiado, leerResultadoFiado, errorCobroPedido } from '@/lib/fiados-cobro-server'
-import { BonoSaldoFavorError, consumirBonoDeSaldoFavor } from '@/lib/bono-saldo-favor'
+import { BonoSaldoFavorError, consumirBonoDeSaldoFavor, idConsumoBonoAbono, OPERACION_CONSUMO_BONO } from '@/lib/bono-saldo-favor'
 import type { AplicacionFiado, ResultadoCobroFiado } from '@/lib/fiados-cobro'
 
 /** #772: un BONO sin respaldo o no aplicable nunca puede pagar deuda ni generar crédito.
@@ -176,9 +176,17 @@ export async function POST(request: NextRequest) {
             await tx.factura.update({ where: { id: factura.id }, data: {
               estado: Number(factura.saldo) <= 0 ? 'PAGADA' : Number(factura.montoPagado) > 0 ? 'PARCIAL' : 'EMITIDA' } })
             const numero = await getNextNumero(tx, { model: 'abono', field: 'numero' })
-            await tx.abono.create({ data: { numero: `ABO-${numero.toString().padStart(5, '0')}`,
+            const abono = await tx.abono.create({ data: { numero: `ABO-${numero.toString().padStart(5, '0')}`,
               facturaId: factura.id, clienteId, pedidoId: pedido.id, monto: montoAplicar,
               metodoPago: fondo.metodo, origenCobro: 'ESPEJO_PAGO', pagoOrigenId: pago.id } })
+            if (fondo.metodo === 'BONO') {
+              await logAudit({
+                id: idConsumoBonoAbono(abono.id), entidad: 'Abono', registroId: abono.id,
+                accion: 'CREATE', usuarioId: auth.user?.id,
+                datos: { operacion: OPERACION_CONSUMO_BONO, clienteId,
+                  monto: montoAplicar, metodo: 'BONO', pagoOrigenId: pago.id },
+              }, tx)
+            }
           }
         }
         if (aplicado > 0) {
