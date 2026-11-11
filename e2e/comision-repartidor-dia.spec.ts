@@ -1,6 +1,6 @@
 // @tests #499 — comisión del repartidor por día: se ve en el cierre de caja, se paga con un toque
 // confirmado y queda en la base de datos. Cada prueba mira la BASE (no solo la pantalla).
-import { test, expect, apiPost, createCliente, sharedLoginAs, goto, resetTestDatabase } from './fixtures'
+import { test, expect, apiPost, createCliente, sharedLoginAs, goto, resetTestDatabase, applyCachedRoleAuth, skipBaseCaja } from './fixtures'
 import { PrismaClient } from '@prisma/client'
 import { startOfDayBogota, todayStringBogota } from '@/lib/dates'
 
@@ -300,9 +300,13 @@ test.describe('Fecha real y reintentos de comisiones (#673)', () => {
   const hoy = todayStringBogota()
   const ayer = new Date(startOfDayBogota(hoy).getTime() - 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 
-  test.beforeEach(async () => {
+  test.beforeEach(async ({ page }) => {
     resetTestDatabase()
     await prisma.config.upsert({ where: { clave: `BASE_DIA_${ayer}` }, update: { valor: '100000' }, create: { clave: `BASE_DIA_${ayer}`, valor: '100000' } })
+    // Página y contexto del runner: aislamiento/cierre automáticos y viewport real del proyecto.
+    // No abrir otro dashboard ni esperar su networkidle para probar el formulario del cierre.
+    await skipBaseCaja(page)
+    await applyCachedRoleAuth(page, 'admin')
   })
   test.afterAll(async () => { await prisma.$disconnect() })
 
@@ -319,8 +323,7 @@ test.describe('Fecha real y reintentos de comisiones (#673)', () => {
     return { t, fila }
   }
 
-  test('registrar hoy el efectivo entregado ayer conserva las tres fechas y solo resta la caja de ayer', async ({ browser }) => {
-    const page = await sharedLoginAs(browser, 'admin')
+  test('registrar hoy el efectivo entregado ayer conserva las tres fechas y solo resta la caja de ayer', async ({ page }) => {
     const { t, fila } = await trabajoAyer(page)
     await page.getByTestId('comision-fecha-pago').fill(ayer)
     const modal = page.getByRole('dialog', { name: 'Registrar pago de comisión' })
@@ -348,8 +351,7 @@ test.describe('Fecha real y reintentos de comisiones (#673)', () => {
     expect(await prisma.pagoComisionRepartidor.count({ where: { trabajadorId: t.id } })).toBe(1)
   })
 
-  test('si se pierde la respuesta después de guardar, comprobar el mismo pago no lo duplica', async ({ browser }) => {
-    const page = await sharedLoginAs(browser, 'admin')
+  test('si se pierde la respuesta después de guardar, comprobar el mismo pago no lo duplica', async ({ page }) => {
     const { t, fila } = await trabajoAyer(page)
     const solicitudes: Array<Record<string, unknown>> = []
     await page.route('**/api/nomina/dia/pagar', async route => {
@@ -376,8 +378,7 @@ test.describe('Fecha real y reintentos de comisiones (#673)', () => {
     await expect(page.getByTestId('efectivo-debe-haber')).toContainText('96.700')
   })
 
-  test('un cierre ocurrido mientras se consulta se explica sin guardar otro pago ni modificar el histórico', async ({ browser }) => {
-    const page = await sharedLoginAs(browser, 'admin')
+  test('un cierre ocurrido mientras se consulta se explica sin guardar otro pago ni modificar el histórico', async ({ page }) => {
     const { t } = await trabajoAyer(page)
     await page.getByTestId('comision-fecha-pago').fill(ayer)
     const cierre = await prisma.cierreDia.create({ data: { fecha: startOfDayBogota(ayer), comisiones: 0, reporte: { _version: '2.2', evidencia: 'conservar' } } })
@@ -387,8 +388,7 @@ test.describe('Fecha real y reintentos de comisiones (#673)', () => {
     expect(await prisma.cierreDia.findUniqueOrThrow({ where: { id: cierre.id } })).toEqual(cierre)
   })
 
-  test('la vista cerrada y el reporte muestran la conciliación aparte del snapshot original', async ({ browser }) => {
-    const page = await sharedLoginAs(browser, 'admin')
+  test('la vista cerrada y el reporte muestran la conciliación aparte del snapshot original', async ({ page }) => {
     const { t } = await trabajoAyer(page)
     await page.getByRole('button', { name: 'Cancelar', exact: true }).click()
     // Simula únicamente en la base aislada una conciliación verificada posterior al cierre.
