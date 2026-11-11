@@ -18,12 +18,16 @@ export async function listarEntregasDestacadas(
   tx: Prisma.TransactionClient,
   whereSinFechaPedido: Prisma.PedidoWhereInput,
   rango: { desde: Date; hasta: Date },
+  repartidores: string[] = [],
+  clasificarParcialHistorica = false,
 ): Promise<{ destacadas: EntregaDestacada[]; destacadasTotal: number; rangoAmplio: boolean }> {
   if (+rango.hasta - +rango.desde > MAX_RANGO_MS) {
     return { destacadas: [], destacadasTotal: 0, rangoAmplio: true };
   }
   const hechosRango = await leerEntregasConsulta(tx, { rango });
-  const ids = [...new Set(hechosRango.map((e) => e.pedidoId))];
+  const ids = [...new Set(hechosRango
+    .filter((e) => !repartidores.length || (!!e.repartidorId && repartidores.includes(e.repartidorId)))
+    .map((e) => e.pedidoId))];
   if (!ids.length) return { destacadas: [], destacadasTotal: 0, rangoAmplio: false };
   const pedidos = await tx.pedido.findMany({
     where: {
@@ -49,14 +53,20 @@ export async function listarEntregasDestacadas(
   });
   if (!pedidos.length) return { destacadas: [], destacadasTotal: 0, rangoAmplio: false };
   const pedidosIds = pedidos.map((p) => p.id);
-  const [historial, ajustes] = await Promise.all([
+  const [historial, ajustes, reducciones] = await Promise.all([
     leerEntregasConsulta(tx, { ids: pedidosIds }),
     tx.pedidoCantidadAjuste.findMany({
       where: { pedidoId: { in: pedidosIds }, createdAt: { gte: rango.hasta } },
       select: { pedidoId: true },
     }),
+    tx.pedidoReduccionComercial.findMany({
+      where: { pedidoId: { in: pedidosIds }, estado: "APLICADA" },
+      select: { pedidoId: true },
+    }),
   ]);
-  const ajustados = new Set(ajustes.map((a) => a.pedidoId));
+  // Una reducción comercial no demuestra una entrega física; nunca inventar
+  // la fecha de completitud solo porque bajó la obligación original.
+  const ajustados = new Set([...ajustes, ...reducciones].map((a) => a.pedidoId));
   const hechosPorPedido = new Map<string, typeof historial>();
   const ultimoEnRango = new Map<string, number>();
   for (const e of historial) {
@@ -90,6 +100,7 @@ export async function listarEntregasDestacadas(
     // Las completas creadas y entregadas el mismo día siguen únicamente
     // en la lista normal. Las parciales y las de días anteriores se destacan.
     if (!vista || (!vista.pedidoAnterior && vista.estadoAlCorte === "COMPLETADO")) return [];
+    if (clasificarParcialHistorica && vista.estadoAlCorte !== "PARCIAL") return [];
     return [vista];
   });
   vistas.sort((a, b) =>
