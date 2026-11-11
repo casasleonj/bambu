@@ -34,9 +34,21 @@ async function contarOperacionesPorDia(tx: Prisma.TransactionClient, desde: Date
     FROM (
       SELECT "fecha" AS d FROM "Pedido" WHERE "fecha" >= ${desde} AND "fecha" < ${hasta}
       UNION ALL SELECT "createdAt" FROM "Pago" WHERE "createdAt" >= ${desde} AND "createdAt" < ${hasta} AND "regularizacionId" IS NULL
-      -- Los Abono ESPEJO_PAGO son la proyección de un Pago, no otra entrada.
-      -- Los legados sin procedencia se conservan: requieren conciliación, no inferencia.
-      UNION ALL SELECT "fecha" FROM "Abono" WHERE "fecha" >= ${desde} AND "fecha" < ${hasta} AND "origenCobro" IS DISTINCT FROM 'ESPEJO_PAGO'
+      -- Solo el espejo probado (mismo Pago/pedido/medio/monto) es duplicado.
+      -- Si la etiqueta de espejo carece de identidad válida, obligar a conciliarlo.
+      UNION ALL SELECT a."fecha" FROM "Abono" a
+        WHERE a."fecha" >= ${desde} AND a."fecha" < ${hasta}
+          AND NOT (
+            a."origenCobro" = 'ESPEJO_PAGO'
+            AND EXISTS (
+              SELECT 1 FROM "Pago" pg
+              JOIN "Factura" fa ON fa.id = a."facturaId"
+              WHERE pg.id = a."pagoOrigenId"
+                AND pg."pedidoId" = COALESCE(a."pedidoId", fa."pedidoId")
+                AND pg.metodo::text = a."metodoPago"
+                AND pg.monto = a.monto
+            )
+          )
       UNION ALL SELECT "createdAt" FROM "CorreccionAbono" WHERE "createdAt" >= ${desde} AND "createdAt" < ${hasta}
       UNION ALL SELECT "createdAt" FROM "IngresoSaldoFavor" WHERE "createdAt" >= ${desde} AND "createdAt" < ${hasta}
       UNION ALL SELECT "createdAt" FROM "DevolucionSaldoFavor" WHERE "createdAt" >= ${desde} AND "createdAt" < ${hasta}
