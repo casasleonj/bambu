@@ -1,6 +1,7 @@
 import { getTodayString, parseDateParam } from "./dates";
 import { normalizeCanalFilter } from "./pedido-canal";
 import type { CobrosPeriodo } from "./cobros-periodo";
+import type { EntregaDestacada } from "./pedidos-entregas-historial";
 import type { Pedido } from "@/app/(app)/pedidos/pedidos-client/types";
 
 export interface ProductoConsulta {
@@ -29,6 +30,10 @@ export interface ResultadoConsultaPedidos {
   leidoAt: string;
   resumen: ResumenConsultaPedidos | null;
   repartidores: Array<{ id: string; nombre: string; activo: boolean }>;
+  /** Actividad física destacada, independiente del listado por fecha del pedido. */
+  destacadas?: EntregaDestacada[];
+  destacadasTotal?: number;
+  destacadasRangoAmplio?: boolean;
 }
 
 export type FechaConsulta = "pedido" | "creacion" | "entrega" | "cobro";
