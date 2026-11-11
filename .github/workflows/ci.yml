@@ -246,7 +246,12 @@ jobs:
   integration:
     name: Integration tests (non-blocking)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # #766: corrida PR #769 (43067262416) ejecutó 153/153 archivos y
+    # 1118/1118 tests en 816 s, pero el job expiró durante la salida/cierre
+    # porque el setup+suite excedió los 15 min del trabajo completo.
+    # 25 min aportan margen sin dividir, reducir ni omitir cobertura;
+    # no demoran ninguna corrida que termine antes y el job sigue informativo.
+    timeout-minutes: 25
     # No bloquea merges todavía -- es la primera vez que este suite corre
     # en CI (antes solo se ejecutaba localmente contra Postgres real, si
     # el desarrollador lo hacía). Igual que Lint cuando se introdujo:
