@@ -26,8 +26,10 @@ export function ConfirmarPagoComision({ nombre, monto, fechaTrabajo, porProducci
   const valida = !!fecha && parseDateParam(fecha, '') === fecha && fecha <= todayStringBogota()
   const efectivo = medio === 'Efectivo'
   return (
-    <Modal open onClose={() => { if (!ocupado) onClose() }} title="Registrar pago de comisión" className="max-w-lg" data-testid="confirmar-pago-comision">
+    <Modal open onClose={() => { if (!ocupado) onClose() }} title="Registrar pago de comisión"
+      overlayClassName="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/50 p-4 md:items-center" data-testid="confirmar-pago-comision">
       <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (valida && !ocupado) void onConfirmar(fecha) }}>
+        <h3 className="text-lg font-bold text-slate-900">Registrar pago de comisión</h3>
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
           <p className="font-bold text-slate-800">{nombre} · {formatCurrency(monto)}</p>
           <p className="mt-1 text-sm text-slate-600">Por el trabajo del {mostrarDia(fechaTrabajo)}.</p>

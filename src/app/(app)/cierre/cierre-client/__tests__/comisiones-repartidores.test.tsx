@@ -109,12 +109,23 @@ describe('ComisionesRepartidores', () => {
   })
 
   it('una respuesta 409 (la comisión cambió) muestra el mensaje y refresca la pantalla', async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: { message: 'La comisión cambió mientras mirabas la pantalla. Revisa el valor nuevo' } }) })
+    fetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: { code: 'MONTO_CAMBIO', message: 'La comisión cambió mientras mirabas la pantalla. Revisa el valor nuevo' } }) })
     const { onPagado } = montar()
     fireEvent.click(screen.getByTestId('pagar-comision-g1'))
     fireEvent.click(await screen.findByRole('button', { name: /Sí, ya le pagué|Comprobar el mismo pago/ }))
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('cambió'))
     expect(onPagado).toHaveBeenCalled()
+  })
+
+  it('#673 conserva visible el motivo del rechazo por caja cerrada hasta que la persona vuelve', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: { code: 'DIA_CERRADO', message: 'Ese día ya está cerrado. El pago requiere conciliación.' } }) })
+    const { onPagado } = montar()
+    fireEvent.click(screen.getByTestId('pagar-comision-g1'))
+    fireEvent.click(screen.getByRole('button', { name: 'Sí, ya le pagué' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('requiere conciliación'))
+    expect(onPagado).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+    expect(onPagado).toHaveBeenCalledOnce()
   })
 
   it('sin respuesta conserva resultado incierto y no afirma que el dinero no se registró', async () => {

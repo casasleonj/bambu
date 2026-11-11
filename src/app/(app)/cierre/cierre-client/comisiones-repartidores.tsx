@@ -41,10 +41,13 @@ function respuestaPago(valor: unknown): { monto: number; metodo: MedioComision; 
   return { monto: p.monto, metodo: p.metodo as MedioComision, fechaPagoReal: p.fechaPagoReal }
 }
 
-function mensajeError(valor: unknown): string | null {
-  if (!valor || typeof valor !== 'object' || !('error' in valor)) return null
+function respuestaError(valor: unknown): { mensaje: string | null; codigo: string | null } {
+  const vacio = { mensaje: null, codigo: null }
+  if (!valor || typeof valor !== 'object' || !('error' in valor)) return vacio
   const e = valor.error
-  return e && typeof e === 'object' && 'message' in e && typeof e.message === 'string' ? e.message : null
+  if (!e || typeof e !== 'object') return vacio
+  return { mensaje: 'message' in e && typeof e.message === 'string' ? e.message : null,
+    codigo: 'code' in e && typeof e.code === 'string' ? e.code : null }
 }
 
 /** Quiénes se muestran: los que tienen comisión, algo pagado o algo por conciliar ese día. */
@@ -126,14 +129,18 @@ export function ComisionesRepartidores({
         claves.current.delete(llave)
         setRevision(null)
         toast.success(`Pago registrado: ${formatCurrency(pago.monto)} a ${r.nombre} por ${etiquetaMedio(pago.metodo)}.`)
+        onPagado()
       } else {
-        setErrorPago(mensajeError(cuerpo) ?? 'No pudimos comprobar el resultado. Reintenta el mismo pago.')
+        const error = respuestaError(cuerpo)
+        setErrorPago(error.mensaje ?? 'No pudimos comprobar el resultado. Reintenta el mismo pago.')
         if (res.status < 500) {
           claves.current.delete(llave)
           setRevision(actual => actual ? { ...actual, incierto: false } : null)
         }
+        // Una actualización a «cerrado» desmontaría el formulario y borraría su explicación.
+        // Un pendiente cambiado sí necesita refrescar sus cifras, como antes.
+        if (error.codigo === 'MONTO_CAMBIO') onPagado()
       }
-      onPagado()
     } catch {
       setErrorPago('Sin respuesta de la conexión: no sabemos si se guardó. Reintenta el mismo pago; no se vuelve a descontar.')
     } finally {
@@ -226,7 +233,7 @@ export function ComisionesRepartidores({
       {revision && <ConfirmarPagoComision nombre={revision.r.nombre} monto={revision.r.pendiente} fechaTrabajo={revision.fechaTrabajo} porProduccion={revision.concepto === 'PRODUCCION'}
         medio={etiquetaMedio(revision.medio)} fechaInicial={revision.fechaInicial} ocupado={!!pagando}
         incierto={!pagando && revision.incierto} error={errorPago}
-        onClose={() => setRevision(null)} onConfirmar={confirmarPago} />}
+        onClose={() => { setRevision(null); if (errorPago) onPagado() }} onConfirmar={confirmarPago} />}
     </div>
   )
 }
