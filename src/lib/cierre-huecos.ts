@@ -39,7 +39,7 @@ async function contarOperacionesPorDia(tx: Prisma.TransactionClient, desde: Date
       UNION ALL SELECT a."fecha" FROM "Abono" a
         WHERE a."fecha" >= ${desde} AND a."fecha" < ${hasta}
           AND NOT (
-            a."origenCobro" = 'ESPEJO_PAGO'
+            a."origenCobro" IS NOT DISTINCT FROM 'ESPEJO_PAGO'
             AND EXISTS (
               SELECT 1 FROM "Pago" pg
               JOIN "Factura" fa ON fa.id = a."facturaId"
