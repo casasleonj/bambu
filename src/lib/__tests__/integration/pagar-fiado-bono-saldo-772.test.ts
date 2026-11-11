@@ -14,6 +14,8 @@ vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn().mockResolvedValue(undefin
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { POST as pagarFiado } from '@/app/api/pedidos/pagar-fiado/route'
 import { POST as crearAbono } from '@/app/api/abonos/route'
+import { POST as corregirAbono } from '@/app/api/cartera/abonos/[id]/corregir/route'
+import { idConsumoBonoAbono } from '@/lib/bono-saldo-favor'
 import { crearPedidoUseCase } from '@/modules/pedidos'
 import { leerCobrosPeriodo } from '@/lib/cobros-periodo'
 import { startOfDayInBogota } from '@/lib/date-helpers'
@@ -195,6 +197,83 @@ describe('#772 — solo el saldo a favor disponible respalda BONO', () => {
     expect(resultados.filter(r => r.status === 409)).toHaveLength(1)
     expect(await credito(f.clienteId)).toBe(0)
     expect(Number((await testPrisma.pedido.findUniqueOrThrow({ where: { id: f.pedidoId } })).totalPagado)).toBe(1000)
+  })
+
+  it('BONO independiente: corrección parcial y reintento restituyen solo crédito realmente gastado', async () => {
+    const f = await fiado()
+    await fijarCredito(f.clienteId, 5000)
+    const abonar = await crearAbono(new NextRequest('http://localhost/api/abonos', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ facturaId: f.facturaId, clienteId: f.clienteId, pedidoId: f.pedidoId,
+        monto: 1500, metodoPago: 'BONO', offlineId: unique() }),
+    }))
+    expect(abonar.status).toBe(201)
+    const respuesta = await abonar.json()
+    const abonoId: string = respuesta.abono.id
+    expect(await credito(f.clienteId)).toBe(3500)
+    expect(await testPrisma.historial.findUnique({ where: { id: idConsumoBonoAbono(abonoId) } })).not.toBeNull()
+
+    const off = unique()
+    const corregir = (monto: number, ref = off) => corregirAbono(
+      new NextRequest('http://localhost/api/cartera/abonos/' + abonoId + '/corregir', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tipo: 'MONTO', montoRevertido: monto, motivo: 'Corrección sintética', correccionOfflineId: ref }),
+      }),
+      { params: Promise.resolve({ id: abonoId }) },
+    )
+    expect((await corregir(500)).status).toBe(201)
+    expect(await credito(f.clienteId)).toBe(4000)
+    const replay = await corregir(500)
+    expect(replay.status).toBe(200)
+    expect((await replay.json()).deduped).toBe(true)
+    expect(await credito(f.clienteId)).toBe(4000)
+    expect((await corregir(1000, unique())).status).toBe(201)
+    expect(await credito(f.clienteId)).toBe(5000)
+    expect(Number((await testPrisma.factura.findUniqueOrThrow({ where: { id: f.facturaId } })).montoPagado)).toBe(0)
+  })
+
+  it('BONO en pagar-fiado con Abono espejo también restituye el crédito al corregirse', async () => {
+    const f = await fiado()
+    await fijarCredito(f.clienteId, 3000)
+    expect((await pagarFiado(req(f.clienteId, [{ metodo: 'BONO', monto: 2000 }]))).status).toBe(200)
+    expect(await credito(f.clienteId)).toBe(1000)
+    const abono = await testPrisma.abono.findFirstOrThrow({ where: { pedidoId: f.pedidoId, metodoPago: 'BONO' } })
+    expect(await testPrisma.historial.findUnique({ where: { id: idConsumoBonoAbono(abono.id) } })).not.toBeNull()
+    const res = await corregirAbono(new NextRequest('http://localhost/api/cartera/abonos/' + abono.id + '/corregir', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tipo: 'MONTO', montoRevertido: 2000, motivo: 'Corrección BONO espejo', correccionOfflineId: unique() }),
+    }), { params: Promise.resolve({ id: abono.id }) })
+    expect(res.status).toBe(201)
+    expect(await credito(f.clienteId)).toBe(3000)
+    const saldoPedido = Number((await testPrisma.pedido.findUniqueOrThrow({ where: { id: f.pedidoId } })).saldo)
+    expect(saldoPedido).toBe(f.deuda)
+    const desde = startOfDayInBogota(todayStringBogota())
+    const cobros = await leerCobrosPeriodo(testPrisma, desde, new Date(desde.getTime() + 86_400_000))
+    const pago = (await pagosDel(f.pedidoId))[0]
+    expect(cobros.movimientos.find(m => m.id === pago?.id)?.neto).toBe(0)
+  })
+
+  it('BONO histórico sin marcador no recibe crédito nuevo al corregirlo', async () => {
+    const f = await fiado()
+    // Simula el escritor legado sin descuento de saldo: no hay evidencia de consumo.
+    const legacy = await testPrisma.abono.create({
+      data: { numero: 'ABO-LEGADO-' + unique().slice(0, 8), facturaId: f.facturaId,
+        clienteId: f.clienteId, pedidoId: f.pedidoId, monto: 1000,
+        metodoPago: 'BONO', origenCobro: 'INDEPENDIENTE' },
+    })
+    await testPrisma.pedido.update({
+      where: { id: f.pedidoId }, data: { totalPagado: 1000, saldo: f.deuda - 1000, estadoPago: 'PARCIAL' },
+    })
+    await testPrisma.factura.update({
+      where: { id: f.facturaId }, data: { montoPagado: 1000, saldo: f.deuda - 1000, estado: 'PARCIAL' },
+    })
+    expect(await testPrisma.historial.findUnique({ where: { id: idConsumoBonoAbono(legacy.id) } })).toBeNull()
+    const res = await corregirAbono(new NextRequest('http://localhost/api/cartera/abonos/' + legacy.id + '/corregir', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tipo: 'MONTO', montoRevertido: 1000, motivo: 'Legado no debitado', correccionOfflineId: unique() }),
+    }), { params: Promise.resolve({ id: legacy.id }) })
+    expect(res.status).toBe(201)
+    expect(await credito(f.clienteId)).toBe(0)
   })
 
   it('dos solicitudes simultáneas distintas no pueden consumir crédito dos veces', async () => {
