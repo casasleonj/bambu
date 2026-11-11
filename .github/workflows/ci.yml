@@ -673,6 +673,7 @@ jobs:
           e2e/pedidos-g11.spec.ts
           e2e/pedidos-peek-riesgo.spec.ts
           e2e/parciales-proyecciones-656.spec.ts
+          e2e/pedidos-entregas-historicas-763.spec.ts
 
       - name: Dump Postgres/Redis container logs and resource usage
         if: always()

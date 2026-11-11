@@ -13,6 +13,7 @@ import {
 } from "@/lib/pedidos-consulta";
 import { PedidoHub, type PedidoHubCounts } from "./index";
 import { FiltrosConsulta } from "./filtros-consulta";
+import { EntregasDestacadas } from "./entregas-destacadas";
 import { ResumenConsulta } from "./resumen-consulta";
 import { RecurrentesDelDia } from "./recurrentes-del-dia";
 import type { AccionKey, Pedido } from "./types";
@@ -176,6 +177,16 @@ export function ConsultaPedidosHub(props: Props) {
               Conservamos la lectura anterior y sus filtros hasta obtener una
               respuesta completa.
             </p>
+          )}
+          {datos && filtrosLeidos?.fechaBase === "pedido" && !filtrosLeidos.all && (
+            <EntregasDestacadas
+              entregas={datos.destacadas ?? []}
+              total={datos.destacadasTotal ?? 0}
+              rangoAmplio={!!datos.destacadasRangoAmplio}
+              hasta={filtrosLeidos.hasta}
+              onVerPedido={props.onVerPedido}
+              onVerTodas={() => aplicar({ ...filtrosLeidos, fechaBase: "entrega", resumen: true, page: 1 })}
+            />
           )}
           {datos?.resumen && filtrosLeidos && (
             <ResumenConsulta resumen={datos.resumen} filtros={filtrosLeidos} />
