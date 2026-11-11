@@ -316,8 +316,40 @@ jobs:
         # antes estaba copiada a mano en los jobs integration, e2e y e2e-hub.
         run: bash scripts/aplicar-migraciones-sql-crudas.sh
 
+      # #766: registrar duración real y recursos sin alterar fixtures, tests ni gates.
+      # El resumen se emite incluso cuando Vitest falla; el exit code original se conserva.
       - name: Run integration tests
-        run: npm run test:integration
+        shell: bash
+        run: |
+          started_at=$(date +%s)
+          echo "Integration suite started (epoch): $started_at"
+          set +e
+          npm run test:integration
+          result=$?
+          set -e
+          finished_at=$(date +%s)
+          echo "Integration suite duration: $((finished_at - started_at)) seconds"
+          echo "Integration suite exit code: $result"
+          exit "$result"
+
+      - name: Integration runner diagnostics (#766)
+        if: always()
+        shell: bash
+        run: |
+          echo "::group::Runner memory and disk"
+          free -h || true
+          df -h . || true
+          echo "::endgroup::"
+          echo "::group::Docker container state and resources"
+          docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' || true
+          docker stats --no-stream || true
+          echo "::endgroup::"
+          echo "::group::PostgreSQL recent logs"
+          docker logs --tail 80 postgres 2>&1 || true
+          echo "::endgroup::"
+          echo "::group::Redis recent logs"
+          docker logs --tail 40 redis 2>&1 || true
+          echo "::endgroup::"
 
   e2e:
     name: E2E (${{ matrix.shard }}/${{ strategy.job-total }})
