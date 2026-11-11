@@ -105,13 +105,12 @@ describe('#752 — detector de jornadas financieras (Postgres)', () => {
     })
   })
 
-  it('un Abono legado sin origen explícito requiere conciliación aunque tenga vínculo de Pago', async () => {
+  it('un Abono legado sin origen ni vínculo de Pago exige conciliación', async () => {
+    // El CHECK chk_abono_procedencia prohíbe origen NULL con pagoOrigenId:
+    // ese registro no puede crearse ni tomarse como un caso válido del sistema.
     await verificarUnicoMovimiento('2042-05-10', async (fecha) => {
-      const pago = await testPrisma.pago.create({
-        data: { pedidoId, monto: 3000, metodo: 'EFECTIVO', createdAt: dia('2042-05-09') },
-      })
       await testPrisma.abono.create({
-        data: { numero: 'ABO-TEST-752-5', facturaId, clienteId, pedidoId, monto: 3000, metodoPago: 'EFECTIVO', origenCobro: null, pagoOrigenId: pago.id, fecha },
+        data: { numero: 'ABO-TEST-752-5', facturaId, clienteId, pedidoId, monto: 3000, metodoPago: 'EFECTIVO', origenCobro: null, fecha },
       })
     })
   })
