@@ -25,9 +25,20 @@ const fecha = (dia: string) =>
   new Intl.DateTimeFormat("es-CO", {
     timeZone: "America/Bogota", day: "numeric", month: "short", year: "numeric",
   }).format(new Date(dia + "T12:00:00-05:00"));
+const nombres: Record<string, [string, string]> = {
+  PACA_AGUA: ["paca de agua", "pacas de agua"],
+  PACA_HIELO: ["paca de hielo", "pacas de hielo"],
+  BOTELLON: ["botellón", "botellones"],
+  BOLSA_AGUA: ["bolsa de agua", "bolsas de agua"],
+  BOLSA_HIELO: ["bolsa de hielo", "bolsas de hielo"],
+};
 function cantidades(xs: CantidadEntrega[]) {
   if (!xs.length) return "Cantidad por verificar";
-  return xs.map((x) => String(x.cantidad) + " " + getProductoIconConfig(x.producto).label.toLowerCase()).join(" · ");
+  return xs.map((x) => {
+    const nombre = nombres[x.producto]?.[x.cantidad === 1 ? 0 : 1]
+      ?? getProductoIconConfig(x.producto).label.toLowerCase();
+    return String(x.cantidad) + " " + nombre;
+  }).join(" · ");
 }
 function Hito({
   hito,
