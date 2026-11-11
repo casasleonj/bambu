@@ -16,6 +16,12 @@ import { POST as pagarFiado } from '@/app/api/pedidos/pagar-fiado/route'
 import { POST as crearAbono } from '@/app/api/abonos/route'
 import { POST as corregirAbono } from '@/app/api/cartera/abonos/[id]/corregir/route'
 import { idConsumoBonoAbono } from '@/lib/bono-saldo-favor'
+import { AnularPedidoUseCase } from '@/modules/pedidos/application/use-cases/AnularPedidoUseCase'
+import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
+import { PrismaFacturaRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaFacturaRepository'
+import { PrismaNotaCreditoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaNotaCreditoRepository'
+import { PrismaTransactionManager } from '@/modules/pedidos/infrastructure/transactions/PrismaTransactionManager'
+
 import { crearPedidoUseCase } from '@/modules/pedidos'
 import { leerCobrosPeriodo } from '@/lib/cobros-periodo'
 import { startOfDayInBogota } from '@/lib/date-helpers'
@@ -274,6 +280,54 @@ describe('#772 — solo el saldo a favor disponible respalda BONO', () => {
     }), { params: Promise.resolve({ id: legacy.id }) })
     expect(res.status).toBe(201)
     expect(await credito(f.clienteId)).toBe(0)
+  })
+
+  it('al ANULAR un fiado pagado con BONO devuelve crédito real una vez, sin borrar el Pago', async () => {
+    const f = await fiado()
+    await fijarCredito(f.clienteId, 5000)
+    expect((await pagarFiado(req(f.clienteId, [{ metodo: 'BONO', monto: 2000 }]))).status).toBe(200)
+    expect(await credito(f.clienteId)).toBe(3000)
+    const servicio = new AnularPedidoUseCase(
+      new PrismaPedidoRepository(), new PrismaFacturaRepository(),
+      new PrismaNotaCreditoRepository(), new PrismaTransactionManager(),
+    )
+    const offlineId = unique()
+    const primero = await servicio.execute({ pedidoId: f.pedidoId, motivo: 'Pedido cancelado, restaurar crédito', offlineId, actorId: adminId })
+    expect(primero.saldoFavorBonoRestituido).toBe(2000)
+    expect(await credito(f.clienteId)).toBe(5000)
+    const segundo = await servicio.execute({ pedidoId: f.pedidoId, motivo: 'Reintento', offlineId, actorId: adminId })
+    expect(segundo.deduped).toBe(true)
+    expect(await credito(f.clienteId)).toBe(5000)
+    expect(await pagosDel(f.pedidoId)).toHaveLength(1)
+  })
+
+  it('ANULAR después de corregir parte del BONO solo restituye el saldo neto no corregido', async () => {
+    const f = await fiado()
+    await fijarCredito(f.clienteId, 5000)
+    const res = await crearAbono(new NextRequest('http://localhost/api/abonos', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ facturaId: f.facturaId, clienteId: f.clienteId, pedidoId: f.pedidoId,
+        monto: 1500, metodoPago: 'BONO', offlineId: unique() }),
+    }))
+    expect(res.status).toBe(201)
+    const { abono } = await res.json()
+    expect(await credito(f.clienteId)).toBe(3500)
+    const corr = await corregirAbono(new NextRequest('http://localhost/api/cartera/abonos/' + abono.id + '/corregir', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tipo: 'MONTO', montoRevertido: 500,
+        motivo: 'Corrección parcial del bono', correccionOfflineId: unique() }),
+    }), { params: Promise.resolve({ id: abono.id }) })
+    expect(corr.status).toBe(201)
+    expect(await credito(f.clienteId)).toBe(4000)
+
+    const servicio = new AnularPedidoUseCase(
+      new PrismaPedidoRepository(), new PrismaFacturaRepository(),
+      new PrismaNotaCreditoRepository(), new PrismaTransactionManager(),
+    )
+    const anulado = await servicio.execute({ pedidoId: f.pedidoId, motivo: 'Cancelar saldo restante', offlineId: unique(), actorId: adminId })
+    expect(anulado.saldoFavorBonoRestituido).toBe(1000)
+    expect(await credito(f.clienteId)).toBe(5000)
+    expect(await testPrisma.correccionAbono.count({ where: { abonoId: abono.id } })).toBe(1)
   })
 
   it('dos solicitudes simultáneas distintas no pueden consumir crédito dos veces', async () => {
