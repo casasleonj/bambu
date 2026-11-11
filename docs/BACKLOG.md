@@ -32,7 +32,7 @@ Para que el check bloquee el merge hay que marcarlo como *required* en Settings 
 
 Siempre en el momento en que aparece, aunque no se vaya a hacer ahora. Registrar no es implementar.
 
-- **Desde el agente**: el skill `/hallazgo <descripción>` está disponible en `.agents/skills/hallazgo/` (agentes compatibles con Agent Skills) y `.claude/skills/hallazgo/` (Claude Code), con contenido sincronizado. Busca duplicados, protege datos privados, asigna prioridad y estado y crea o vincula el issue. Un hallazgo descubierto por el agente también se registra.
+- **Desde el agente**: el skill `/hallazgo <descripción>` está disponible en `.agents/skills/hallazgo/` (agentes compatibles con Agent Skills) y `.claude/skills/hallazgo/` (Claude Code), con contenido sincronizado. Busca duplicados, protege datos privados y clasifica el pendiente. En bugs de interfaz/UX, **exige intentar navegación real y segura** con Playwright, agent-browser o equivalente antes de declarar `REPRODUCIDO`; si no es posible, registra `NO VERIFICADO` sin inventar pruebas. Crea o vincula el issue sin implementar. Un hallazgo descubierto por el agente también se registra.
 - **Desde GitHub**: New issue → formulario *Hallazgo* o *Funcionalidad* (`.github/ISSUE_TEMPLATE/`). La prioridad elegida en el formulario se convierte en etiqueta `P0/P1/P2`.
 - **En el código**: un pendiente se escribe `TODO(#123)` con su issue. Sin número, el CI rechaza el PR.
 - Prioridades: `P0` dinero, integridad o antifraude · `P1` afecta la operación diaria · `P2` el resto. Sin prioridad = `sin-priorizar` (visible, nunca perdido).
