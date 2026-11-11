@@ -32,7 +32,7 @@ describe("#763 — tarjeta de entrega con histórico al corte", () => {
     );
     const tarjeta = screen.getByTestId("entrega-historica-901");
     expect(tarjeta).toHaveTextContent("Parcial en la fecha");
-    expect(tarjeta).toHaveTextContent("3 paca agua");
+    expect(tarjeta).toHaveTextContent("3 pacas de agua");
     expect(tarjeta).toHaveTextContent("Completado posteriormente:");
     expect(tarjeta).toHaveTextContent("11 nov");
     expect(screen.getAllByText(/nov/).length).toBeGreaterThan(1);
@@ -50,8 +50,8 @@ describe("#763 — tarjeta de entrega con histórico al corte", () => {
     );
     const tarjeta = screen.getByTestId("entrega-historica-901");
     expect(tarjeta).toHaveTextContent("Completado tras parcial");
-    expect(tarjeta).toHaveTextContent("3 paca agua");
-    expect(tarjeta).toHaveTextContent("6 paca agua");
+    expect(tarjeta).toHaveTextContent("3 pacas de agua");
+    expect(tarjeta).toHaveTextContent("6 pacas de agua");
     expect(tarjeta).not.toHaveTextContent("Completado posteriormente");
   });
   it("rangos demasiado amplios indican limitación sin inventar resultados", () => {
