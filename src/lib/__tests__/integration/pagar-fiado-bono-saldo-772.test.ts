@@ -13,6 +13,7 @@ vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn().mockResolvedValue(undefin
 
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { POST as pagarFiado } from '@/app/api/pedidos/pagar-fiado/route'
+import { POST as crearAbono } from '@/app/api/abonos/route'
 import { crearPedidoUseCase } from '@/modules/pedidos'
 import { leerCobrosPeriodo } from '@/lib/cobros-periodo'
 import { startOfDayInBogota } from '@/lib/date-helpers'
@@ -30,7 +31,7 @@ const req = (clienteId: string, pagos: { metodo: string; monto: number }[], offl
       : { clienteId, pagos, offlineId, versionDeuda: '0'.repeat(64) }),
   })
 
-async function fiado(): Promise<{ clienteId: string; pedidoId: string; deuda: number }> {
+async function fiado(): Promise<{ clienteId: string; pedidoId: string; facturaId: string; deuda: number }> {
   contador += 1
   const cliente = await testPrisma.cliente.create({
     data: { nombre: 'Cliente sintético BONO 772', telefono: `35${String(contador).padStart(8, '0')}`,
@@ -44,7 +45,8 @@ async function fiado(): Promise<{ clienteId: string; pedidoId: string; deuda: nu
     where: { id: pedido.id }, data: { estadoEntrega: 'ENTREGADO', estado: 'ENTREGADO', cPacaAguaEnt: 10 },
   })
   const fila = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
-  return { clienteId: cliente.id, pedidoId: pedido.id, deuda: Number(fila.saldo) }
+  const factura = await testPrisma.factura.findFirstOrThrow({ where: { pedidoId: pedido.id } })
+  return { clienteId: cliente.id, pedidoId: pedido.id, facturaId: factura.id, deuda: Number(fila.saldo) }
 }
 const fijarCredito = async (clienteId: string, valor: number) =>
   testPrisma.cliente.update({ where: { id: clienteId }, data: { saldoFavor: valor } })
@@ -144,6 +146,55 @@ describe('#772 — solo el saldo a favor disponible respalda BONO', () => {
     expect(await credito(f.clienteId)).toBe(2000)
     expect((await pagosDel(f.pedidoId)).map(p=>p.metodo).sort()).toEqual(['BONO', 'EFECTIVO'])
     expect(await testPrisma.ingresoSaldoFavor.count({ where: { clienteId: f.clienteId } })).toBe(0)
+  })
+
+  it('POST /api/abonos rechaza BONO sin saldo y no cambia la factura', async () => {
+    const f = await fiado()
+    const res = await crearAbono(new NextRequest('http://localhost/api/abonos', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ facturaId: f.facturaId, clienteId: f.clienteId, pedidoId: f.pedidoId,
+        monto: 1000, metodoPago: 'BONO', offlineId: unique() }),
+    }))
+    expect(res.status).toBe(409)
+    expect((await res.json()).error.code).toBe('SALDO_FAVOR_INSUFICIENTE')
+    expect(await testPrisma.abono.count({ where: { pedidoId: f.pedidoId } })).toBe(0)
+    expect(Number((await testPrisma.factura.findUniqueOrThrow({ where: { id: f.facturaId } })).saldo)).toBe(f.deuda)
+  })
+
+  it('POST /api/abonos descuenta BONO una sola vez, incluso con reintento', async () => {
+    const f = await fiado()
+    await fijarCredito(f.clienteId, 5000)
+    const offlineId = unique()
+    const abonar = () => crearAbono(new NextRequest('http://localhost/api/abonos', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ facturaId: f.facturaId, clienteId: f.clienteId, pedidoId: f.pedidoId,
+        monto: 1500, metodoPago: 'BONO', offlineId }),
+    }))
+    expect((await abonar()).status).toBe(201)
+    const segundo = await abonar()
+    expect(segundo.status).toBe(200)
+    expect((await segundo.json()).deduped).toBe(true)
+    expect(await credito(f.clienteId)).toBe(3500)
+    expect(await testPrisma.abono.count({ where: { pedidoId: f.pedidoId } })).toBe(1)
+    expect(await testPrisma.ingresoSaldoFavor.count({ where: { clienteId: f.clienteId } })).toBe(0)
+    expect(Number((await testPrisma.factura.findUniqueOrThrow({ where: { id: f.facturaId } })).saldo)).toBe(f.deuda - 1500)
+  })
+
+  it('pagar-fiado y POST /api/abonos compiten por el mismo crédito, sin duplicarlo', async () => {
+    const f = await fiado()
+    await fijarCredito(f.clienteId, 1000)
+    const resultados = await Promise.all([
+      pagarFiado(req(f.clienteId, [{ metodo: 'BONO', monto: 1000 }])),
+      crearAbono(new NextRequest('http://localhost/api/abonos', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ facturaId: f.facturaId, clienteId: f.clienteId, pedidoId: f.pedidoId,
+          monto: 1000, metodoPago: 'BONO', offlineId: unique() }),
+      })),
+    ])
+    expect(resultados.filter(r => r.status === 200 || r.status === 201)).toHaveLength(1)
+    expect(resultados.filter(r => r.status === 409)).toHaveLength(1)
+    expect(await credito(f.clienteId)).toBe(0)
+    expect(Number((await testPrisma.pedido.findUniqueOrThrow({ where: { id: f.pedidoId } })).totalPagado)).toBe(1000)
   })
 
   it('dos solicitudes simultáneas distintas no pueden consumir crédito dos veces', async () => {
