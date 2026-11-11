@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { fechaGastoValida } from '@/lib/fecha-gasto'
 import { validarPlanPago } from '@/lib/sueldos-fijos'
 import { importeFiadoSchema, metodoFiadoSchema, sumarCobroFiado } from './fiados-cobro'
 import { normalizarTelefono } from "./telefono";
@@ -636,7 +637,7 @@ export const GastoCreateSchema = z.object({
   monto: z.coerce.number().positive(),
   responsable: z.string().max(100).optional(),
   notas: z.string().max(500).optional(),
-  fecha: z.string().optional(),
+  fecha: z.string().refine(fechaGastoValida, 'Fecha inválida: use YYYY-MM-DD o ISO con zona horaria').optional(),
   embarqueId: z.string().optional(),
 });
 
