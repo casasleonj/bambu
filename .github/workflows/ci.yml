@@ -246,7 +246,9 @@ jobs:
   integration:
     name: Integration tests (non-blocking)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    #766: Vitest terminó exit 0 en 813s, pero el job de 15m fue cancelado durante cleanup.
+    # Margen para instalación, preparación de DB y diagnóstico final, sin omitir cobertura.
+    timeout-minutes: 20
     # No bloquea merges todavía -- es la primera vez que este suite corre
     # en CI (antes solo se ejecutaba localmente contra Postgres real, si
     # el desarrollador lo hacía). Igual que Lint cuando se introdujo:
