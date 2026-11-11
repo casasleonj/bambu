@@ -45,12 +45,12 @@ async function prepararPedido(
   const pedido = await testPrisma.pedido.create({
     data: { clienteId: cliente.id, canal: 'PUNTO', total, totalPagado: pagado,
       saldo: total - pagado, estado: 'ENTREGADO', estadoEntrega: 'ENTREGADO',
-      estadoPago: pagado === total ? 'PAGADO' : 'PARCIAL' },
+      estadoPago: pagado === total ? 'PAGADO' : pagado === 0 ? 'PENDIENTE' : 'PARCIAL' },
   })
   const factura = await testPrisma.factura.create({
     data: { numero: 'FAC-BONO-' + unico(), clienteId: cliente.id, pedidoId: pedido.id,
       subtotal: total, total, montoPagado: pagado, saldo: total - pagado,
-      estado: pagado === total ? 'PAGADA' : 'PARCIAL' },
+      estado: pagado === total ? 'PAGADA' : pagado === 0 ? 'EMITIDA' : 'PARCIAL' },
   })
   const escritos = []
   for (const p of pagos) {
