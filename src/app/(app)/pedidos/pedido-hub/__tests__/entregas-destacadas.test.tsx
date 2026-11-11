@@ -34,7 +34,7 @@ describe("#763 — tarjeta de entrega con histórico al corte", () => {
     expect(tarjeta).toHaveTextContent("Parcial en la fecha");
     expect(tarjeta).toHaveTextContent("3 pacas de agua");
     expect(tarjeta).toHaveTextContent("Completado posteriormente:");
-    expect(tarjeta).toHaveTextContent("11 nov");
+    expect(tarjeta).toHaveTextContent("11 de nov");
     expect(screen.getAllByText(/nov/).length).toBeGreaterThan(1);
     fireEvent.click(screen.getByRole("button", { name: "Ver pedido 901" }));
     expect(onVerPedido).toHaveBeenCalledWith("p763");
