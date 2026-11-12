@@ -124,7 +124,7 @@ describe('tolerancia a erratas (#384)', () => {
       await testPrisma.negocio.delete({ where: { id: negocio.id } })
     }
   })
-}
+})
 
 describe('forma del resultado', () => {
   it('trae lo que la lista y el hook necesitan (contactos, negocios, saldo, clienteId)', async () => {
