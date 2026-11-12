@@ -103,8 +103,11 @@ export function evaluarBusqueda(
     if (!id) continue
     const valor = normalizar(id).replace(/^#/, '')
     if (valor === qIdent) return { puntuacion: 60000, tipo: 'identificador' }
-    if (qIdent.length >= 2 && valor.startsWith(qIdent))
+    if (!q.startsWith('#') && qIdent.length >= 2 && valor.startsWith(qIdent))
       return { puntuacion: 55000, tipo: 'identificador' }
+    // Conservar búsqueda por fragmento de username sin adivinar letras/dígitos.
+    if (!q.startsWith('#') && qIdent.length >= 2 && valor.includes(qIdent))
+      return { puntuacion: 51000, tipo: 'identificador' }
   }
 
   // El teléfono se compara únicamente por sus dígitos, incluyendo variantes +57.
@@ -120,7 +123,8 @@ export function evaluarBusqueda(
           return { puntuacion: 50000, tipo: 'identificador' }
       }
     }
-    return null
+    // Sin coincidencia telefónica, aún puede tratarse de texto numérico
+    // legítimo (p. ej. "20 de Marzo"). Nunca aproximar esos dígitos.
   }
 
   const campos = registro.textos.map((campo) => normalizar(campo ?? ''))
