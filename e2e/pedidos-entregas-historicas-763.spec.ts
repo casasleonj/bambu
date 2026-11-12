@@ -107,5 +107,38 @@ test.describe("#763 — Pedidos y entregas efectivas de otros días", () => {
         document.documentElement.scrollWidth <= innerWidth + 1,
       )).toBe(true);
     });
+
+    test(nombre + ": una venta rápida inmediata no aparece como parcial o anterior", async ({ page }) => {
+      await page.setViewportSize(viewport);
+      const admin = await db.user.findUniqueOrThrow({ where: { username: "admin" } });
+      const cliente = await db.cliente.create({
+        data: { nombre: "Rápida 786 " + randomUUID().slice(0, 8), telefono: randomUUID() },
+      });
+      const fecha = fechaDe(hoyBogota(), "07:36:08");
+      // Operación inmediata sin UPDATE de entrega: condición real de la regresión.
+      const venta = await db.pedido.create({
+        data: {
+          clienteId: cliente.id, createdById: admin.id,
+          canal: "DOMICILIO", origen: "VENTA_RAPIDA",
+          fecha, entregadoAt: fecha,
+          estado: "ENTREGADO", estadoEntrega: "ENTREGADO",
+          estadoPago: "PENDIENTE", total: 10000, totalPagado: 0, saldo: 10000,
+          items: { create: {
+            producto: "PACA_AGUA", cantPedido: 4, cantEntrega: 4,
+            precio: 2500, subtotal: 10000,
+          } },
+        },
+      });
+      await loginAs(page, "admin");
+      await goto(page, "/pedidos?clienteId=" + cliente.id);
+      const app = appMain(page);
+      // Una venta inmediata queda en Pedidos de hoy, no duplica el panel.
+      await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(1);
+      await expect(app.getByTestId("entrega-historica-" + venta.numero)).toHaveCount(0);
+      await expect(app.getByTestId("entregas-historicas-763")).toHaveCount(0);
+      expect(await page.evaluate(() =>
+        document.documentElement.scrollWidth <= innerWidth + 1,
+      )).toBe(true);
+    });
   }
 });

@@ -156,3 +156,59 @@ export function proyectarEntregaHistorial(
     pedidoAnterior: anterior,
   };
 }
+/**
+ * #786: una venta rápida cerrada inmediatamente ya figura en el listado
+ * ordinario. Su marcador histórico sintético (sin desglose físico) no es
+ * por sí solo una entrega parcial ni una actividad de días anteriores.
+ * Esta excepción SOLO decide la inclusión en el panel complementario:
+ * no modifica el lector global ni afirma un hecho físico inexistente.
+ */
+export function esVentaRapidaCompletaDelDiaSinHitos(
+  pedido: {
+    origen: string;
+    estadoEntrega: string;
+    fecha: Date;
+    entregadoAt: Date | null;
+    solicitadas: CantidadEntrega[];
+    entregadas: CantidadEntrega[];
+    tieneAjuste: boolean;
+  },
+  hechos: ReadonlyArray<{ id: string; fuente: string; incompleto?: boolean }>,
+  vista: EntregaDestacada,
+): boolean {
+  if (
+    vista.pedidoAnterior ||
+    vista.estadoAlCorte !== "POR_CONCILIAR" ||
+    pedido.origen !== "VENTA_RAPIDA" ||
+    pedido.estadoEntrega !== "ENTREGADO" ||
+    !pedido.entregadoAt ||
+    pedido.tieneAjuste ||
+    diaEntregaBogota(pedido.fecha) !== diaEntregaBogota(pedido.entregadoAt)
+  ) return false;
+
+  // Si hay auditoría, movimiento, evento legacy o más de un hecho, conservar
+  // la alerta: no se puede deducir la trayectoria desde el estado final.
+  if (
+    hechos.length !== 1 ||
+    hechos[0].id !== `historico:${vista.pedidoId}` ||
+    hechos[0].fuente !== "HISTORICO" ||
+    !hechos[0].incompleto
+  ) return false;
+
+  const solicitadas = new Map<string, number>();
+  const entregadas = new Map<string, number>();
+  for (const linea of pedido.solicitadas) {
+    if (!linea.producto || !Number.isSafeInteger(linea.cantidad) || linea.cantidad <= 0)
+      return false;
+    solicitadas.set(linea.producto, (solicitadas.get(linea.producto) ?? 0) + linea.cantidad);
+  }
+  if (!solicitadas.size) return false;
+  for (const linea of pedido.entregadas) {
+    if (!linea.producto || !Number.isSafeInteger(linea.cantidad) || linea.cantidad < 0)
+      return false;
+    entregadas.set(linea.producto, (entregadas.get(linea.producto) ?? 0) + linea.cantidad);
+  }
+  return solicitadas.size === entregadas.size &&
+    [...solicitadas].every(([producto, cantidad]) =>
+      Number.isSafeInteger(cantidad) && entregadas.get(producto) === cantidad);
+}
