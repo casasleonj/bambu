@@ -346,7 +346,7 @@ async function fetchSearchRaw({
   // faltan las demás palabras de la consulta.
   // Para códigos/números/símbolos mantener la semántica literal previa:
   // 'relleno1' NO es 'relleno2', '50%_516' NO es '50X516'.
-  const habilitarDifuso = /^[\\p{L}\\p{M}\\s]+$/u.test(search) &&
+  const habilitarDifuso = /^[\p{L}\p{M}\s]+$/u.test(search) &&
     palabras.some((p) => p.length >= 4)
   const puntuados = filas.map((c) => {
     const score = scoreCliente(c as unknown as ClienteSearchable, search)
