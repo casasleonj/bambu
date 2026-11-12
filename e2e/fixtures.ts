@@ -570,9 +570,15 @@ export async function openFabPedidoEnvio(page: Page) {
  * `chromium-mobile` projects.
  */
 export async function openSidebarIfMobile(page: Page) {
-  const hamburger = page.getByRole('button', { name: /abrir men[uú]/i })
-  if (await hamburger.isVisible({ timeout: 1000 }).catch(() => false)) {
-    await hamburger.click()
+  // #779: SSR empieza como móvil incluso en PC. Esperar el control que
+  // corresponde al viewport evita pulsar un botón que cambia al hidratar.
+  const desktop = await page.evaluate(() => window.matchMedia('(min-width: 768px)').matches)
+  const toggle = page.getByRole('button', {
+    name: desktop ? 'Colapsar/expandir menú' : 'Abrir menú', exact: true,
+  })
+  await expect(toggle).toBeVisible()
+  if (!desktop) {
+    await toggle.click()
   }
 }
 

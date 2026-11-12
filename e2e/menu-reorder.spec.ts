@@ -1,5 +1,5 @@
 import type { Page, Locator } from '@playwright/test'
-import { test, expect, loginAs, BASE } from './fixtures'
+import { test, expect, loginAs, BASE, openSidebarIfMobile } from './fixtures'
 
 async function dragHandleAbove(page: Page, sourceHandle: Locator, targetHandle: Locator) {
   const sourceBox = await sourceHandle.boundingBox()
@@ -24,12 +24,6 @@ async function dragHandleAbove(page: Page, sourceHandle: Locator, targetHandle: 
 /** Handle de arrastre del link del menú con ese href. */
 function handleDe(page: Page, href: string): Locator {
   return page.locator(`a[href="${href}"] [data-testid="drag-handle"]`).filter({ visible: true }).first()
-}
-
-/** En móvil el sidebar es un drawer: se abre con el botón de la cabecera (en escritorio ya está visible). */
-async function abrirMenuSiEsMovil(page: Page) {
-  const hamburger = page.getByRole('button', { name: /abrir menú/i })
-  if (await hamburger.isVisible().catch(() => false)) await hamburger.click()
 }
 
 /**
@@ -61,7 +55,7 @@ test.describe('Menú reorganizable', () => {
     await page.goto(`${BASE}/dashboard`)
 
     // Entrar en modo edición via el botón de opciones del sidebar.
-    await abrirMenuSiEsMovil(page)
+    await openSidebarIfMobile(page)
     const optionsBtn = page.getByTestId('sidebar-menu-options')
     await expect(optionsBtn).toBeVisible()
     await optionsBtn.click()
@@ -110,10 +104,7 @@ test.describe('Menú reorganizable', () => {
     // Refrescar y, si estamos en mobile, abrir el drawer con el hamburger.
     await page.reload()
     await page.waitForLoadState('domcontentloaded')
-    const hamburger = page.getByRole('button', { name: /abrir menú/i })
-    if (await hamburger.isVisible().catch(() => false)) {
-      await hamburger.click()
-    }
+    await openSidebarIfMobile(page)
     await expect(nav).toBeVisible()
     texts = await nav.locator('a').allTextContents()
     productosIdx = texts.findIndex((t) => t.includes('Productos'))
@@ -126,7 +117,7 @@ test.describe('Menú reorganizable', () => {
     await page.goto(`${BASE}/dashboard`)
 
     // Entrar en modo edición y mover Productos arriba de Clientes.
-    await abrirMenuSiEsMovil(page)
+    await openSidebarIfMobile(page)
     await page.getByTestId('sidebar-menu-options').click()
     await page.getByRole('menuitem', { name: 'Personalizar menú' }).click()
     await expect(page.getByTestId('sidebar-menu-done')).toBeVisible({ timeout: 10000 })
