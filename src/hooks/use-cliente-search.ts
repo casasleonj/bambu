@@ -25,14 +25,25 @@ import type { Cliente } from '@/components/pedido-form-unified/types'
 function camposClientePedido(cliente: Cliente): RegistroBuscable {
   const contactos = cliente.contactos ?? []
   const negocios = cliente.negocios ?? []
+  // Peso de los campos: nombre/apellido > negocio/ubicación > notas.
+  // Sin esto, un token en notas empataba con otro en el nombre (#789).
+  const textos = [
+    cliente.nombre, cliente.apellido,
+    ...negocios.map((n) => n.nombre),
+    ...contactos.map((c) => c.nombre),
+    cliente.barrio, cliente.direccion, cliente.notas, cliente.fuente,
+    ...contactos.map((c) => c.relacion),
+    ...negocios.flatMap((n) => [n.tipoNegocio, n.barrio, n.direccion, n.referencia]),
+  ]
   return {
-    textos: [
-      cliente.nombre, cliente.apellido,
-      ...negocios.map((n) => n.nombre),
-      ...contactos.map((c) => c.nombre),
-      cliente.barrio, cliente.direccion, cliente.notas, cliente.fuente,
-      ...contactos.map((c) => c.relacion),
-      ...negocios.flatMap((n) => [n.tipoNegocio, n.barrio, n.direccion, n.referencia]),
+    textos,
+    pesosTexto: [
+      3, 3,
+      ...negocios.map(() => 2),
+      ...contactos.map(() => 1),
+      2, 2, 1, 1,
+      ...contactos.map(() => 1),
+      ...negocios.flatMap(() => [2, 2, 2, 2]),
     ],
     telefonos: [cliente.telefono, ...contactos.map((c) => c.telefono)],
   }
