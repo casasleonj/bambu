@@ -1105,7 +1105,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     const pedidoId: string = (creadoBody.data?.pedido ?? creadoBody.pedido).id
 
     await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
-    await page.getByRole('button', { name: /Editar/ }).click()
+    await page.getByTestId('detalle-accion-editar').click()
     await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
     await expect(page.getByTestId('workspace-canal-fijo')).toBeVisible()
     await expect(page.getByTestId('workspace-cant-PACA_AGUA')).toHaveValue('3')
