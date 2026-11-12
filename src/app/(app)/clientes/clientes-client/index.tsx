@@ -20,6 +20,7 @@ import { PRODUCTOS_PRECIO } from './types'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { ClienteTable } from './cliente-table'
 import { ClienteForm } from './cliente-form'
+import { buscarDifuso, evaluarBusqueda, type RegistroBuscable } from '@/lib/busqueda-fuzzy'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { fetchWithTimeout, FetchTimeoutError } from '@/lib/fetch-timeout'
 import { offlineDb } from '@/lib/db/offline'
@@ -159,54 +160,31 @@ function warmClienteDetail(id: string) {
  * /api/clientes para que, una vez cargado el cache completo, la búsqueda
  * sea instantánea (<10ms) sin round-trip al servidor por cada tecla.
  */
-function clienteMatchesSearch(cliente: Cliente, term: string): boolean {
-  const t = term.toLowerCase().trim()
-  if (!t) return true
-  const termTelefono = normalizarTelefono(t)
-
-  const camposCliente = [
+function camposBusquedaCliente(cliente: Cliente): RegistroBuscable {
+  const contactos = cliente.contactos ?? []
+  const negocios = cliente.negocios ?? []
+  const textos = [
     cliente.nombre,
     cliente.apellido,
-    cliente.telefono,
-    cliente.direccion,
+    ...negocios.map((n) => n.nombre),
+    ...contactos.map((c) => c.nombre),
     cliente.barrio,
-    cliente.notas,
+    cliente.direccion,
     cliente.referencia,
+    cliente.notas,
+    ...contactos.map((c) => c.relacion),
+    ...negocios.flatMap((n) => [n.tipoNegocio, n.barrio, n.direccion, n.referencia]),
   ]
-  if (camposCliente.some((f) => f?.toLowerCase().includes(t))) return true
-  if (
-    termTelefono &&
-    normalizarTelefono(cliente.telefono || '').includes(termTelefono)
-  )
-    return true
+  return {
+    textos,
+    pesosTexto: textos.map((_, i) => i < 2 ? 3 : i < 2 + negocios.length ? 2 : 1),
+    telefonos: [cliente.telefono, ...contactos.map((c) => c.telefono)],
+  }
+}
 
-  if (
-    cliente.contactos?.some((c) => {
-      const tel = normalizarTelefono(c.telefono || '')
-      return (
-        c.nombre?.toLowerCase().includes(t) ||
-        (termTelefono && tel.includes(termTelefono)) ||
-        c.relacion?.toLowerCase().includes(t)
-      )
-    })
-  )
-    return true
-
-  if (
-    cliente.negocios?.some((n) => {
-      const camposNegocio = [
-        n.nombre,
-        n.direccion,
-        n.barrio,
-        n.tipoNegocio,
-        n.referencia,
-      ]
-      return camposNegocio.some((f) => f?.toLowerCase().includes(t))
-    })
-  )
-    return true
-
-  return false
+/** Misma búsqueda canónica que los demás listados y el selector de comprador. */
+function clienteMatchesSearch(cliente: Cliente, term: string): boolean {
+  return evaluarBusqueda(camposBusquedaCliente(cliente), term) !== null
 }
 
 /**
@@ -273,6 +251,7 @@ export default function ClientesClient({
   // Cache client-side: lista completa para búsqueda instantánea sin round-trip.
   const [allClientes, setAllClientes] = useState<Cliente[]>([])
   const [allClientesLoading, setAllClientesLoading] = useState(false)
+  const [busquedaServidor, setBusquedaServidor] = useState<{ term: string; filas: Cliente[]; fallo: boolean } | null>(null)
 
   // Clientes creados offline (2G/3G rural) que siguen encolados en
   // IndexedDB esperando sync. Sin esto, el usuario cierra el modal, no ve
@@ -687,6 +666,37 @@ export default function ClientesClient({
     }
   }, [getCurrentListParams, clientes.length])
 
+  // Si aún no está el catálogo completo en caché, no buscar solo entre
+  // los primeros resultados de la página. Consultar el backend (sin truncar a
+  // la página local), con debounce y cancelación de respuestas obsoletas.
+  useEffect(() => {
+    const term = searchInput.trim()
+    if (cacheActive || term.length < 2) return
+    const controller = new AbortController()
+    const t = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams(window.location.search)
+        params.set('search', term)
+        params.set('all', 'true')
+        params.delete('page')
+        const res = await fetch('/api/clientes?' + params.toString(), {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!res.ok) throw new Error('No se pudo buscar clientes')
+        const data = await res.json() as { success?: boolean; data?: Cliente[]; clientes?: Cliente[] }
+        if (!controller.signal.aborted) {
+          setBusquedaServidor({ term, filas: data.data ?? data.clientes ?? [], fallo: false })
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setBusquedaServidor({ term, filas: [], fallo: true })
+        }
+      }
+    }, 300)
+    return () => { clearTimeout(t); controller.abort() }
+  }, [searchInput, cacheActive, filtrosKey])
+
   // Función de refresco: cuando el cache completo está disponible, lo refresca;
   // en modo fallback (pre-cache / truncado) usa fetchClientes paginado.
   const cacheActive = useMemo(
@@ -790,13 +800,15 @@ export default function ClientesClient({
   const clientesSearchResult = useMemo(() => {
     const term = searchInput.trim()
     if (term) {
-      const source = allClientes.length > 0 ? allClientes : clientes
-      return source.filter((c) => clienteMatchesSearch(c, term))
+      const remoto = busquedaServidor?.term === term && !busquedaServidor.fallo
+        ? busquedaServidor.filas : null
+      const source = cacheActive ? allClientes : remoto ?? (allClientes.length > 0 ? allClientes : clientes)
+      return buscarDifuso(source, term, camposBusquedaCliente, (c) => c.id ?? c.clienteId)
     }
     // Termino vacío: cache completo como fuente de verdad si está disponible.
     if (cacheActive) return allClientes
     return clientes
-  }, [searchInput, allClientes, clientes, cacheActive])
+  }, [searchInput, allClientes, clientes, cacheActive, busquedaServidor])
 
   // Filtros client-side: saldo/frecuencia y ordenamiento sobre el resultado
   // de búsqueda (cache o RSC). Se aplican ANTES de paginar para que "Con
@@ -813,6 +825,9 @@ export default function ClientesClient({
       if (filterFrecuencia && !c.plantillaRecurrente?.activo) return false
       return true
     })
+    // En búsqueda activa, preservar ranking de coincidencia (no reemplazarlo
+    // por la ordenación general por fecha/nombre).
+    if (searchInput.trim()) return filtrados
     return [...filtrados].sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1
       if (sortBy === 'createdAt') {
@@ -820,7 +835,7 @@ export default function ClientesClient({
       }
       return dir * a.nombre.localeCompare(b.nombre)
     })
-  }, [clientesSearchResult, filterSaldo, filterSaldoFavor, filterFrecuencia, sortBy, sortDir])
+   }, [clientesSearchResult, filterSaldo, filterSaldoFavor, filterFrecuencia, sortBy, sortDir, searchInput])
 
   // Paginación client-side cuando la fuente es el cache.
   const page = Math.max(1, parseInt(searchParams?.get('page') || String(initialPage), 10))
