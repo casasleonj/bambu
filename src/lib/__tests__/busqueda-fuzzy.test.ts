@@ -57,6 +57,9 @@ describe('busqueda-fuzzy: identificadores seguros', () => {
 
   it('no admite fuzzy de tokens con números ni consulta vacía', () => {
     expect(evaluarBusqueda({ textos: ['A1B234'] }, 'A1B235')).toBeNull()
+    expect(evaluarBusqueda({ textos: ['20 de Marzo'] }, '20')?.tipo).toBe('exacta')
+    expect(evaluarBusqueda({ textos: ['Nombre'], identificadores: ['superadmin'] }, 'admin')?.tipo).toBe('identificador')
+    expect(evaluarBusqueda({ textos: ['Nombre'], identificadores: ['10420'] }, '#1042')).toBeNull()
     expect(evaluarBusqueda({ textos: ['José'] }, ' ')).toBeNull()
   })
 })
