@@ -1,5 +1,6 @@
 // @tests api/cliente, api/pedido
-import { test, expect } from '@playwright/test'
+import { test, expect, type Request } from '@playwright/test'
+import { waitForAuthenticatedShell } from './fixtures'
 
 const BASE_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
@@ -23,8 +24,8 @@ test.describe('Flujo completo de usuario', () => {
     await page.waitForURL(/.*dashboard/, { timeout: 30000 })
     await expect(page.locator('body')).toContainText('Dashboard', { timeout: 10000 })
 
-    // Esperar a que todas las requests del dashboard terminen
-    await page.waitForLoadState('networkidle', { timeout: 10000 })
+    // SSE permanece abierto; esperar la pantalla autenticada.
+    await waitForAuthenticatedShell(page)
 
     // 2. Clientes
     await page.goto(`${BASE_URL}/clientes`)
@@ -58,6 +59,30 @@ test.describe('Flujo completo de usuario', () => {
     const consoleErrors: string[] = []
     const pageErrors: string[] = []
     const respuestas404: string[] = []
+    // Esperar las cargas finitas antes de abandonar cada pantalla evita
+    // cancelar sus fetches al navegar. SSE es persistente y no forma parte
+    // de esta espera. No se filtra ningún error adicional de consola.
+    const pendientes = new Set<Request>()
+    let actividad = Date.now()
+    page.on('request', req => {
+      if (req.resourceType() === 'eventsource' || new URL(req.url()).pathname === '/api/realtime') return
+      pendientes.add(req)
+      actividad = Date.now()
+    })
+    const terminar = (req: Request) => {
+      if (pendientes.delete(req)) actividad = Date.now()
+    }
+    page.on('requestfinished', terminar)
+    page.on('requestfailed', terminar)
+    page.on('framenavigated', frame => {
+      if (frame === page.mainFrame()) actividad = Date.now()
+    })
+    const esperarCarga = async () => {
+      await waitForAuthenticatedShell(page)
+      await expect.poll(() => pendientes.size === 0 && Date.now() - actividad >= 500, {
+        timeout: 15000, message: 'Las cargas finitas de la pantalla deben terminar sin esperar SSE',
+      }).toBe(true)
+    }
 
     // El navegador registra cada 404 como «Failed to load resource» sin la URL.
     // Hay un 404 esperado: la app consulta `/api/config?clave=BASE_DIA_<fecha>` y
@@ -83,13 +108,13 @@ test.describe('Flujo completo de usuario', () => {
     await page.fill('input[type="password"]', 'admin123')
     await page.click('button:has-text("Ingresar")')
     await page.waitForURL(/.*dashboard/, { timeout: 30000 })
-    await page.waitForLoadState('networkidle', { timeout: 15000 })
+    await esperarCarga()
 
     // Navegar por páginas clave
     const pages = ['/pedidos', '/clientes', '/facturas', '/cierre', '/productos']
     for (const path of pages) {
       await page.goto(`${BASE_URL}${path}`)
-      await page.waitForLoadState('networkidle', { timeout: 10000 })
+      await esperarCarga()
     }
 
     expect(respuestas404.filter((u) => !u.startsWith('/api/config?clave=BASE_DIA_'))).toEqual([])

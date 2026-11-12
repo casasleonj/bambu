@@ -140,7 +140,7 @@ test.describe('Proveedores', () => {
     }
 
     await page.reload()
-    await page.waitForLoadState('networkidle')
+    await expect(page.getByRole('heading', { name: 'Proveedores', exact: true })).toBeVisible()
     await page.waitForTimeout(500)
 
     const bodyText = await page.locator('body').innerText()

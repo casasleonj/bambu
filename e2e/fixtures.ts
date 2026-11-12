@@ -281,12 +281,22 @@ const USERNAME_TO_ROLE: Record<string, Role> = {
 /** #779: SSE sano mantiene conexiones abiertas. Playwright desaconseja
  * networkidle como señal de preparación; comprobar el shell autenticado.
  * Cada spec conserva sus propias aserciones de datos y acciones. */
-async function waitForAuthenticatedShell(page: Page) {
+export async function waitForAuthenticatedShell(page: Page) {
   await expect(page.getByTestId('user-menu')).toBeVisible()
   await expect(appMain(page)).toBeVisible()
 }
 
+async function prepareLogin(page: Page) {
+  // #779: desmontar la sesión anterior antes de cambiar cookies. Sus
+  // respuestas Auth.js pendientes no deben restaurar el usuario anterior.
+  if (page.url() !== 'about:blank') {
+    await page.goto(`${BASE}/api/health`, { waitUntil: 'domcontentloaded', timeout: LOGIN_TIMEOUT })
+  }
+  await page.context().clearCookies()
+}
+
 export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
+  await prepareLogin(page)
   await skipBaseCaja(page)
 
   const role = USERNAME_TO_ROLE[user]
@@ -354,6 +364,7 @@ export async function sharedPageLogin(browser: { newPage: () => Promise<Page> },
 }
 
 export async function loginAs(page: Page, role: Role) {
+  await prepareLogin(page)
   // El banner PWA "Instalar aplicación" (fixed bottom-0, z-40) queda TAPADO por
   // modales (`?openCliente=`) y barras inferiores (/cierre) de mayor z-index, y
   // `dismissInstallBanner` esperaba 30 s a poder pulsar su "X" (#397, #417).

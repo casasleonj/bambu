@@ -264,7 +264,6 @@ test('fallo de actualización y desconexión conservan cifras y hora de lectura,
   await normal()
   await loginAs(page, 'admin')
   await goto(page, '/dashboard')
-  const momento = await appMain(page).locator('time').getAttribute('datetime')
   await page.route('**/api/dashboard', (route) =>
     route.fulfill({
       status: 503,
@@ -272,9 +271,20 @@ test('fallo de actualización y desconexión conservan cifras y hora de lectura,
       body: JSON.stringify({ success: false }),
     }),
   )
-  await appMain(page)
-    .getByRole('button', { name: 'Actualizar dashboard', exact: true })
-    .click()
+  const actualizar = appMain(page).getByRole('button', { name: 'Actualizar dashboard', exact: true })
+  await expect(actualizar).toBeEnabled()
+  // #779: una consulta inicial legítima puede terminar entre dos comandos
+  // de Playwright. Guardar la lectura visible al comenzar el clic real,
+  // antes de que React aborte la consulta anterior y ejecute el reintento.
+  await actualizar.evaluate(button => {
+    button.addEventListener('click', () => {
+      button.setAttribute('data-lectura-al-actualizar',
+        document.querySelector('main time')?.getAttribute('datetime') ?? '')
+    }, { capture: true, once: true })
+  })
+  await actualizar.click()
+  const momento = await actualizar.getAttribute('data-lectura-al-actualizar')
+  expect(momento).toBeTruthy()
   await expect(appMain(page).getByRole('alert')).toContainText('Conservamos')
   await expect(card(page, 'Efectivo Cobrado')).toContainText('60.000')
   expect(await appMain(page).locator('time').getAttribute('datetime')).toBe(
