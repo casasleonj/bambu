@@ -57,7 +57,10 @@ export async function GET(request: NextRequest) {
     })
 
     return apiSuccess({
-      clientes: coincidencias.slice(0, MAX_RESULTADOS).map(({ negocios: _negocios, ...cliente }) => cliente),
+      clientes: coincidencias.slice(0, MAX_RESULTADOS).map((c) => ({
+        id: c.id, nombre: c.nombre, apellido: c.apellido,
+        telefono: c.telefono, direccion: c.direccion,
+      })),
       facturas: facturas.map((f) => ({
         id: f.id,
         numero: f.numero,
