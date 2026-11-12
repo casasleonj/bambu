@@ -12,7 +12,7 @@ import { RealtimeContext } from '@/components/realtime-provider'
  * without re-registering on every render.
  */
 export function useReconnectHandler(callback: () => void) {
-  const ctx = useContext(RealtimeContext)
+  const registerReconnectHandler = useContext(RealtimeContext)?.registerReconnectHandler
   const id = useId()
   const callbackRef = useRef(callback)
 
@@ -21,9 +21,9 @@ export function useReconnectHandler(callback: () => void) {
   }, [callback])
 
   useEffect(() => {
-    if (!ctx) return undefined
-    return ctx.registerReconnectHandler(id, () => {
+    if (!registerReconnectHandler) return undefined
+    return registerReconnectHandler(id, () => {
       callbackRef.current()
     })
-  }, [ctx, id])
+  }, [registerReconnectHandler, id])
 }

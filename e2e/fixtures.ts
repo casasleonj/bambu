@@ -278,7 +278,25 @@ const USERNAME_TO_ROLE: Record<string, Role> = {
   repartidor: 'repartidor',
 }
 
+/** #779: SSE sano mantiene conexiones abiertas. Playwright desaconseja
+ * networkidle como señal de preparación; comprobar el shell autenticado.
+ * Cada spec conserva sus propias aserciones de datos y acciones. */
+export async function waitForAuthenticatedShell(page: Page) {
+  await expect(page.getByTestId('user-menu')).toBeVisible()
+  await expect(appMain(page)).toBeVisible()
+}
+
+async function prepareLogin(page: Page) {
+  // #779: desmontar la sesión anterior antes de cambiar cookies. Sus
+  // respuestas Auth.js pendientes no deben restaurar el usuario anterior.
+  if (page.url() !== 'about:blank') {
+    await page.goto(`${BASE}/api/health`, { waitUntil: 'domcontentloaded', timeout: LOGIN_TIMEOUT })
+  }
+  await page.context().clearCookies()
+}
+
 export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
+  await prepareLogin(page)
   await skipBaseCaja(page)
 
   const role = USERNAME_TO_ROLE[user]
@@ -294,7 +312,7 @@ export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
 
   // Navigate to dashboard to establish session cookie in the browser context.
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
-  await page.waitForLoadState('networkidle')
+  await waitForAuthenticatedShell(page)
 
   await handleBaseCaja(page)
 }
@@ -340,12 +358,13 @@ export async function sharedPageLogin(browser: { newPage: () => Promise<Page> },
     await csrfLogin(page, user, pass)
   }
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
-  await page.waitForLoadState('networkidle')
+  await waitForAuthenticatedShell(page)
   await handleBaseCaja(page)
   return page
 }
 
 export async function loginAs(page: Page, role: Role) {
+  await prepareLogin(page)
   // El banner PWA "Instalar aplicación" (fixed bottom-0, z-40) queda TAPADO por
   // modales (`?openCliente=`) y barras inferiores (/cierre) de mayor z-index, y
   // `dismissInstallBanner` esperaba 30 s a poder pulsar su "X" (#397, #417).
@@ -354,7 +373,7 @@ export async function loginAs(page: Page, role: Role) {
   await skipBaseCaja(page)
   await applyCachedRoleAuth(page, role)
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
-  await page.waitForLoadState('networkidle')
+  await waitForAuthenticatedShell(page)
   await handleBaseCaja(page)
 }
 
@@ -377,7 +396,7 @@ export async function sharedLoginAs(browser: { newPage: () => Promise<Page> }, r
   await skipBaseCaja(page)
   await applyCachedRoleAuth(page, role)
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
-  await page.waitForLoadState('networkidle')
+  await waitForAuthenticatedShell(page)
   await handleBaseCaja(page)
   return page
 }
@@ -551,9 +570,15 @@ export async function openFabPedidoEnvio(page: Page) {
  * `chromium-mobile` projects.
  */
 export async function openSidebarIfMobile(page: Page) {
-  const hamburger = page.getByRole('button', { name: /abrir men[uú]/i })
-  if (await hamburger.isVisible({ timeout: 1000 }).catch(() => false)) {
-    await hamburger.click()
+  // #779: SSR empieza como móvil incluso en PC. Esperar el control que
+  // corresponde al viewport evita pulsar un botón que cambia al hidratar.
+  const desktop = await page.evaluate(() => window.matchMedia('(min-width: 768px)').matches)
+  const toggle = page.getByRole('button', {
+    name: desktop ? 'Colapsar/expandir menú' : 'Abrir menú', exact: true,
+  })
+  await expect(toggle).toBeVisible()
+  if (!desktop) {
+    await toggle.click()
   }
 }
 

@@ -16,6 +16,7 @@ import { FiltrosConsulta } from "./filtros-consulta";
 import { EntregasDestacadas } from "./entregas-destacadas";
 import { ResumenConsulta } from "./resumen-consulta";
 import { RecurrentesDelDia } from "./recurrentes-del-dia";
+import { fechaLecturaConsulta } from "./fecha-consulta";
 import type { AccionKey, Pedido } from "./types";
 
 interface Props {
@@ -296,11 +297,7 @@ export function ConsultaPedidosHub(props: Props) {
             {datos && (
               <p className="mt-3 text-xs text-slate-500">
                 Lectura del{" "}
-                {new Intl.DateTimeFormat("es-CO", {
-                  timeZone: "America/Bogota",
-                  dateStyle: "short",
-                  timeStyle: "medium",
-                }).format(new Date(datos.leidoAt))}
+                {fechaLecturaConsulta(datos.leidoAt)}
                 .
                 {!isOnline
                   ? " Sin conexión; conserva las cifras de esta lectura."
