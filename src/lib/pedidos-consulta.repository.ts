@@ -136,7 +136,12 @@ async function resolverCoincidenciasPedidos(
   search: string,
 ): Promise<CoincidenciasBusquedaPedidos> {
   const palabras = palabrasDeBusqueda(search);
-  if (!palabras.length || search.startsWith("#") || search.length < 2)
+  // La resolución aproximada solo aplica a nombres escritos con letras.
+  // % y _ son datos literales, NO comodines ni tokens fuzzy. Los números
+  // de pedido/factura y códigos con dígitos siguen la ruta exacta (Prisma).
+  // Evita que "50%_516" también encuentre "50X516" (#789).
+  const soloNombre = /^[\p{L}\p{M}\s]+$/u.test(search);
+  if (!palabras.length || !soloNombre || search.length < 2)
     return { clientes: [], negocios: [] };
 
   const acentos = "áàäâãéèëêíìïîóòöôõúùüûñçÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ";
