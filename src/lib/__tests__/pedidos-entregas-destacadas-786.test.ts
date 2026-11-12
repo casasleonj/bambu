@@ -27,7 +27,7 @@ const crearPedido = () => ({
   id: "prueba-786",
   numero: 987,
   fecha: fechaPedido,
-  origen: "VENTA_RAPIDA" as const,
+  origen: "VENTA_RAPIDA" as "VENTA_RAPIDA" | "PEDIDO",
   estadoEntrega: "ENTREGADO" as const,
   entregadoAt: fechaPedido,
   cliente: { nombre: "Prueba", apellido: null },
