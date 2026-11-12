@@ -278,14 +278,15 @@ async function fetchSearchRaw({
   const palabras = palabrasDeBusqueda(search)
   const algunaPalabra = Prisma.join(palabras.map(condicionPalabra), ' OR ')
 
-  // 1) Candidatos: coincidencia por palabra en cualquier campo, o parecido por trigramas.
+  // 1) Candidatos: coincidencia por palabra o similitud de TRIGRAMAS.
+  // pg_trgm es direccional: CONSULTA <% TEXTO LARGO, no al revés (#789).
   const candidatos = await prisma.$queryRaw<Array<{ id: string; sim: number; difuso: boolean }>>`
     SELECT c.id,
       (
-        c.nombre <% ${search}
-        OR COALESCE(c.apellido, '') <% ${search}
-        OR COALESCE(c.barrio, '') <% ${search}
-        OR COALESCE(c.direccion, '') <% ${search}
+        ${search} <% c.nombre
+        OR ${search} <% COALESCE(c.apellido, '')
+        OR ${search} <% COALESCE(c.barrio, '')
+        OR ${search} <% COALESCE(c.direccion, '')
       ) AS difuso,
       GREATEST(
         word_similarity(${search}, c.nombre),
@@ -299,10 +300,10 @@ async function fetchSearchRaw({
       ${filtrosNegocioRaw}
       AND (
         ${algunaPalabra}
-        OR c.nombre <% ${search}
-        OR COALESCE(c.apellido, '') <% ${search}
-        OR COALESCE(c.barrio, '') <% ${search}
-        OR COALESCE(c.direccion, '') <% ${search}
+        OR ${search} <% c.nombre
+        OR ${search} <% COALESCE(c.apellido, '')
+        OR ${search} <% COALESCE(c.barrio, '')
+        OR ${search} <% COALESCE(c.direccion, '')
       )
     ORDER BY sim DESC, c.nombre ASC
     LIMIT ${MAX_CANDIDATOS_BUSQUEDA}
