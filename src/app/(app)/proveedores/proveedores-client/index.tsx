@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { buscarDifuso } from "@/lib/busqueda-fuzzy";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/confirm-modal";
 import { Button } from "@/components/ui/button";
@@ -116,20 +117,16 @@ export default function ProveedoresClient({ initialProveedores }: ProveedoresCli
     setSelectedProveedor(null);
   }
 
-  const filtered = proveedores.filter((p) => {
-    const term = search.toLowerCase();
-    return (
-      p.nombre.toLowerCase().includes(term) ||
-      p.telefono?.toLowerCase().includes(term) ||
-      p.email?.toLowerCase().includes(term) ||
-      p.tipoProducto?.toLowerCase().includes(term) ||
-      p.direccion?.toLowerCase().includes(term)
-    );
-  }).sort((a, b) => {
-    const dir = sortDir === "asc" ? 1 : -1;
-    return dir * a.nombre.localeCompare(b.nombre);
-  });
-
+  const filtered = search.trim()
+    ? buscarDifuso(proveedores, search, (p) => ({
+        textos: [p.nombre, p.tipoProducto, p.email, p.direccion],
+        pesosTexto: [3, 2, 1, 1],
+        telefonos: [p.telefono],
+      }), (p) => p.id)
+    : [...proveedores].sort((a, b) => {
+        const dir = sortDir === "asc" ? 1 : -1;
+        return dir * a.nombre.localeCompare(b.nombre);
+      });
   const totalActivos = proveedores.length;
   const tiposUnicos = new Set(proveedores.map((p) => p.tipoProducto).filter(Boolean)).size;
 
