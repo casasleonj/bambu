@@ -277,6 +277,16 @@ async function fetchSearchRaw({
 
   const palabras = palabrasDeBusqueda(search)
   const algunaPalabra = Prisma.join(palabras.map(condicionPalabra), ' OR ')
+  const fuzzyNegocios = Prisma.sql`EXISTS (
+    SELECT 1 FROM "Negocio" n
+    WHERE n."clienteId" = c.id AND n.activo = true
+      AND ${search} <% n.nombre
+  )`
+  const fuzzyContactos = Prisma.sql`EXISTS (
+    SELECT 1 FROM "ContactoCliente" cc
+    WHERE cc."clienteId" = c.id
+      AND ${search} <% cc.nombre
+  )`
 
   // 1) Candidatos: coincidencia por palabra o similitud de TRIGRAMAS.
   // pg_trgm es direccional: CONSULTA <% TEXTO LARGO, no al revés (#789).
@@ -287,12 +297,22 @@ async function fetchSearchRaw({
         OR ${search} <% COALESCE(c.apellido, '')
         OR ${search} <% COALESCE(c.barrio, '')
         OR ${search} <% COALESCE(c.direccion, '')
+        OR ${fuzzyNegocios}
+        OR ${fuzzyContactos}
       ) AS difuso,
       GREATEST(
         word_similarity(${search}, c.nombre),
         word_similarity(${search}, COALESCE(c.apellido, '')),
         word_similarity(${search}, COALESCE(c.barrio, '')),
-        word_similarity(${search}, COALESCE(c.direccion, ''))
+        word_similarity(${search}, COALESCE(c.direccion, '')),
+        COALESCE((
+          SELECT MAX(word_similarity(${search}, n.nombre)) FROM "Negocio" n
+          WHERE n."clienteId" = c.id AND n.activo = true
+        ), 0),
+        COALESCE((
+          SELECT MAX(word_similarity(${search}, cc.nombre)) FROM "ContactoCliente" cc
+          WHERE cc."clienteId" = c.id
+        ), 0)
       )::float AS sim
     FROM "Cliente" c
     WHERE c.activo = true
@@ -304,6 +324,8 @@ async function fetchSearchRaw({
         OR ${search} <% COALESCE(c.apellido, '')
         OR ${search} <% COALESCE(c.barrio, '')
         OR ${search} <% COALESCE(c.direccion, '')
+        OR ${fuzzyNegocios}
+        OR ${fuzzyContactos}
       )
     ORDER BY sim DESC, c.nombre ASC
     LIMIT ${MAX_CANDIDATOS_BUSQUEDA}
@@ -329,11 +351,10 @@ async function fetchSearchRaw({
       score: scoreCliente(c as unknown as ClienteSearchable, search),
       orden: ordenSql.get(c.id) ?? 0,
     }))
-  // Los difusos (erratas) solo se muestran si no hay coincidencia exacta: con exactas
-  // son ruido (p. ej. un homónimo de otro negocio al buscar "panaderia juan").
-  const hayExactas = puntuados.some(({ score }) => score > 0)
+  // Conservar sugerencias difusas aun si hay coincidencias exactas:
+  // el ranking pone las exactas delante y la UI exige selección explícita.
   const finales = puntuados.filter(({ c, score }) =>
-    score > 0 || (!hayExactas && difusoPorId.get(c.id) === true))
+    score > 0 || difusoPorId.get(c.id) === true)
   const total = finales.length
   finales.sort((a, b) => {
     if ((a.score > 0) !== (b.score > 0)) return a.score > 0 ? -1 : 1
