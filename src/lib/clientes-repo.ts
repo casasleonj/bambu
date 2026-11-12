@@ -15,6 +15,7 @@ import { getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 import { extraerDigitos } from '@/lib/telefono'
 import { scoreCliente, esPalabraTelefono, type ClienteSearchable } from '@/lib/cliente-search'
+import { evaluarBusqueda } from '@/lib/busqueda-fuzzy'
 
 export type ClienteListParams = {
   page?: number
@@ -332,7 +333,6 @@ async function fetchSearchRaw({
   `
 
   const simPorId = new Map(candidatos.map((r) => [r.id, r.sim]))
-  const difusoPorId = new Map(candidatos.map((r) => [r.id, r.difuso]))
   const ordenSql = new Map(candidatos.map((r, i) => [r.id, i]))
 
   // 2) Datos completos de los candidatos (misma forma que la lista sin búsqueda).
@@ -341,20 +341,35 @@ async function fetchSearchRaw({
     include: INCLUDE_LISTA,
   })
 
-  // 3) Relevancia: primero lo que `scoreCliente` reconoce (mayor puntaje primero);
-  //    después lo que solo coincide por parecido (erratas), en el orden de similitud
-  //    del SQL. Un candidato que ni `scoreCliente` reconoce ni es parecido se descarta:
-  //    solo coincidía en una de varias palabras.
-  const puntuados = filas
-    .map((c) => ({
-      c,
-      score: scoreCliente(c as unknown as ClienteSearchable, search),
-      orden: ordenSql.get(c.id) ?? 0,
-    }))
-  // Conservar sugerencias difusas aun si hay coincidencias exactas:
-  // el ranking pone las exactas delante y la UI exige selección explícita.
-  const finales = puntuados.filter(({ c, score }) =>
-    score > 0 || difusoPorId.get(c.id) === true)
+  // El operador de trigramas solo descubre CANDIDATOS. No decide si son
+  // resultados válidos: una palabra parecida en el nombre no basta cuando
+  // faltan las demás palabras de la consulta.
+  // Para códigos/números/símbolos mantener la semántica literal previa:
+  // 'relleno1' NO es 'relleno2', '50%_516' NO es '50X516'.
+  const habilitarDifuso = /^[\\p{L}\\p{M}\\s]+$/u.test(search) &&
+    palabras.some((p) => p.length >= 4)
+  const puntuados = filas.map((c) => {
+    const score = scoreCliente(c as unknown as ClienteSearchable, search)
+    const negocios = c.negocios
+    const contactos = c.contactos
+    const coincidencia = habilitarDifuso
+      ? evaluarBusqueda({
+          textos: [
+            c.nombre, c.apellido, c.barrio, c.direccion, c.notas, c.fuente,
+            ...negocios.flatMap((n) => [n.nombre, n.tipoNegocio, n.barrio, n.direccion, n.referencia]),
+            ...contactos.flatMap((ct) => [ct.nombre, ct.relacion]),
+          ],
+          telefonos: [c.telefono, ...contactos.map((ct) => ct.telefono)],
+        }, search)
+      : null
+    return { c, score, aproximada: coincidencia?.tipo === 'aproximada',
+      orden: ordenSql.get(c.id) ?? 0 }
+  })
+  // No aceptar la bandera SQL "difuso" por sí sola: provoca falsos
+  // positivos y resultados que cambian de cliente por erratas numéricas.
+  // Conservar aproximadas válidas junto a exactas, pero siempre al final.
+  const finales = puntuados.filter(({ score, aproximada }) =>
+    score > 0 || (habilitarDifuso && aproximada))
   const total = finales.length
   finales.sort((a, b) => {
     if ((a.score > 0) !== (b.score > 0)) return a.score > 0 ? -1 : 1
