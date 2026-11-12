@@ -237,14 +237,17 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     // La fila de ESTE test (PENDIENTE → tiene acción destacada); `.first()`
     // podría caer en un pedido viejo ya cerrado sin acción.
     await app.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCli }).first().click()
-    await expect(page.getByTestId('peek-desktop')).toBeVisible()
+    // #779: el mismo contrato G4 se prueba en ambos proyectos. En móvil
+    // el detalle es la hoja, no el panel lateral exclusivo de escritorio.
+    const peek = page.getByTestId((page.viewportSize()?.width ?? 1280) < 1024 ? 'peek-mobile' : 'peek-desktop')
+    await expect(peek).toBeVisible()
     expect(page.url()).toBe(urlAntes) // G4: no navegó
 
     await expect(page.getByTestId('peek-accion-destacada')).toBeVisible()
     await page.keyboard.press('ArrowDown')
-    await expect(page.getByTestId('peek-desktop')).toBeVisible() // sigue abierto en otra operación
+    await expect(peek).toBeVisible() // sigue abierto en otra operación
     await page.keyboard.press('Escape')
-    await expect(page.getByTestId('peek-desktop')).toHaveCount(0)
+    await expect(peek).toHaveCount(0)
   })
 
   test('command menu: ⌘/Ctrl+K abre; "Abrir planificación de hoy" navega, no ejecuta', async ({ browser }) => {
@@ -1252,4 +1255,5 @@ test.describe('flag OFF: la UI de tabs sigue funcionando', () => {
 
 // La misma suite CI Hub incluye los recorridos de consulta aprobados.
 import './pedidos-consulta-516.casos'
+import './pedidos-realtime-779.casos'
 import './pedidos-consulta-resumen-537.casos'

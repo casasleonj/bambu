@@ -1,5 +1,16 @@
 const ZONA = "America/Bogota";
 
+/** Misma lectura en SSR y navegador aunque sus ICU usen espacios distintos. */
+export function fechaLecturaConsulta(valor: string): string {
+  return new Intl.DateTimeFormat("es-CO", {
+    timeZone: ZONA,
+    dateStyle: "short",
+    timeStyle: "medium",
+  })
+    .format(new Date(valor))
+    .replace(/[\u00a0\u202f]/g, " ");
+}
+
 function partes(fecha: Date, opts: Intl.DateTimeFormatOptions) {
   const r: Record<string, string> = {};
   for (const p of new Intl.DateTimeFormat("es-CO", {

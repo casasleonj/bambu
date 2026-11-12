@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
-import { RealtimeProvider } from '@/components/realtime-provider'
+import { createElement, type ComponentProps, type ReactNode } from 'react'
+import { RealtimeContext, RealtimeProvider } from '@/components/realtime-provider'
 import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
 
 const instances: MockEventSource[] = []
@@ -93,4 +94,36 @@ describe('useReconnectHandler', () => {
     await new Promise((r) => setTimeout(r, 100))
     expect(callback).not.toHaveBeenCalled()
   })
+})
+
+it('#779 — los cambios de conexión no re-registran ni pierden el handler actual', () => {
+  type Context = NonNullable<ComponentProps<typeof RealtimeContext.Provider>['value']>
+  let status: Context['status'] = 'connecting'
+  let reconnect: () => void = () => {}
+  const unregister = vi.fn()
+  const registerReconnectHandler = vi.fn((_id: string, cb: () => void) => {
+    reconnect = cb
+    return unregister
+  })
+  const subscribe = vi.fn(() => vi.fn())
+  function Wrapper({ children }: { children: ReactNode }) {
+    return createElement(RealtimeContext.Provider, {
+      value: { status, disabled: false, subscribe, registerReconnectHandler },
+    }, children)
+  }
+  const first = vi.fn(), latest = vi.fn()
+  const h = renderHook(({ cb }) => useReconnectHandler(cb), {
+    wrapper: Wrapper, initialProps: { cb: first },
+  })
+  for (const next of ['open', 'closed', 'polling', 'paused', 'open'] as const) {
+    status = next
+    h.rerender({ cb: latest })
+  }
+  expect(registerReconnectHandler).toHaveBeenCalledTimes(1)
+  expect(unregister).not.toHaveBeenCalled()
+  act(() => reconnect())
+  expect(latest).toHaveBeenCalledTimes(1)
+  expect(first).not.toHaveBeenCalled()
+  h.unmount()
+  expect(unregister).toHaveBeenCalledTimes(1)
 })

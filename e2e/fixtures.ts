@@ -278,6 +278,14 @@ const USERNAME_TO_ROLE: Record<string, Role> = {
   repartidor: 'repartidor',
 }
 
+/** #779: SSE sano mantiene conexiones abiertas. Playwright desaconseja
+ * networkidle como señal de preparación; comprobar el shell autenticado.
+ * Cada spec conserva sus propias aserciones de datos y acciones. */
+async function waitForAuthenticatedShell(page: Page) {
+  await expect(page.getByTestId('user-menu')).toBeVisible()
+  await expect(appMain(page)).toBeVisible()
+}
+
 export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
   await skipBaseCaja(page)
 
@@ -294,7 +302,7 @@ export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
 
   // Navigate to dashboard to establish session cookie in the browser context.
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
-  await page.waitForLoadState('networkidle')
+  await waitForAuthenticatedShell(page)
 
   await handleBaseCaja(page)
 }
@@ -340,7 +348,7 @@ export async function sharedPageLogin(browser: { newPage: () => Promise<Page> },
     await csrfLogin(page, user, pass)
   }
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
-  await page.waitForLoadState('networkidle')
+  await waitForAuthenticatedShell(page)
   await handleBaseCaja(page)
   return page
 }
@@ -354,7 +362,7 @@ export async function loginAs(page: Page, role: Role) {
   await skipBaseCaja(page)
   await applyCachedRoleAuth(page, role)
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
-  await page.waitForLoadState('networkidle')
+  await waitForAuthenticatedShell(page)
   await handleBaseCaja(page)
 }
 
@@ -377,7 +385,7 @@ export async function sharedLoginAs(browser: { newPage: () => Promise<Page> }, r
   await skipBaseCaja(page)
   await applyCachedRoleAuth(page, role)
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
-  await page.waitForLoadState('networkidle')
+  await waitForAuthenticatedShell(page)
   await handleBaseCaja(page)
   return page
 }
