@@ -16,6 +16,11 @@ import type { Pedido, Cliente } from './types'
 export function diasFiadoDesde(fecha: Date): number {
   return Math.floor((Date.now() - fecha.getTime()) / 86400000)
 }
+/** Suma exacta (en centavos) de las filas que se ven: mismas filas, mismos filtros (#613). */
+export function resumenFiados(rows: Array<{ deuda: number; pedidos: unknown[] }>) {
+  const centavos = rows.reduce((s, r) => s + Math.round(r.deuda * 100), 0)
+  return { total: centavos / 100, clientes: rows.length, pedidos: rows.reduce((s, r) => s + r.pedidos.length, 0) }
+}
 interface FiadoRow {
   clienteId: string; nombreCli: string; apellidoCli?: string | null; telefonoCli: string
   negocioId?: string | null; nombreNegocioCli?: string | null; pedidos: Pedido[]; deuda: number; antigua: Date
@@ -134,6 +139,17 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
       <label className="text-xs font-medium text-gray-600">Antigüedad<select value={dias} onChange={e => setDias(e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border p-2 text-sm"><option value="todos">Todos los días</option><option value="0-7">0–7 días</option><option value="8-30">8–30 días</option><option value="30+">Más de 30 días</option></select></label>
       {hayFiltros && <button className="min-h-11 text-sm text-blue-700 underline" onClick={limpiar}>Limpiar filtros</button>}
     </div>
+    {!(loading && !pedidos.length) && !(error && !pedidos.length) && (() => {
+      const r = resumenFiados(filtrados)
+      const etiquetaPeriodo = PERIODOS.find(p => p.key === periodo)?.label ?? ''
+      return <div className={`rounded-xl border border-red-200 bg-red-50 p-4 ${refetching ? 'opacity-60' : ''}`} data-testid="fiados-total" aria-busy={Boolean(refetching)}>
+        <p className="text-xs font-medium text-red-800">Deuda pendiente{hayFiltros ? ' (según los filtros)' : ''}</p>
+        <p className="text-2xl font-bold text-red-700"><MoneyDisplay value={r.total} userRole={userRole} /> <span className="text-sm font-normal text-red-800">· {r.clientes} cliente{r.clientes === 1 ? '' : 's'} · {r.pedidos} pedido{r.pedidos === 1 ? '' : 's'}</span></p>
+        <p className="mt-1 text-xs text-red-800">{periodo === 'todos'
+          ? 'Pedidos entregados de todas las fechas con saldo pendiente hoy.'
+          : `Pedidos entregados del período «${etiquetaPeriodo}» con saldo pendiente hoy.`} No incluye lo aún no entregado.</p>
+      </div>
+    })()}
     {loading && !pedidos.length ? <p role="status" className="rounded-xl border bg-white p-8 text-center">Cargando fiados…</p>
       : error && !pedidos.length ? null : filtrados.length === 0 ? <div className="rounded-xl border bg-white p-8 text-center">
         <h3 className="font-semibold">{hayFiltros ? 'Sin resultados con estos filtros' : 'No hay deuda pendiente de pedidos entregados'}</h3>

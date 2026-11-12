@@ -251,7 +251,7 @@ export async function consultarPedidos(
               { pedidosEntregados: { some: {} } },
             ],
           },
-          select: { id: true, nombre: true, activo: true },
+          select: { id: true, nombre: true, activo: true, usaMoto: true },
           orderBy: [{ nombre: "asc" }, { id: "asc" }],
         }),
         f.resumen
