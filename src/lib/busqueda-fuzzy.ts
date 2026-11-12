@@ -131,7 +131,7 @@ export function evaluarBusqueda(
   const exacta = campos.findIndex((c) => c.length > 0 && c === q)
   if (exacta >= 0) {
     const peso = registro.pesosTexto?.[exacta] ?? 1
-    return { puntuacion: 40000 + Math.min(peso, 10), tipo: 'exacta' }
+    return { puntuacion: 48000 + Math.min(peso, 10), tipo: 'exacta' }
   }
 
   const tokens = q.split(/[^\p{L}\p{N}]+/u).filter(Boolean)
@@ -158,7 +158,7 @@ export function evaluarBusqueda(
     if (PRIORIDAD[mejor.tipo] < PRIORIDAD[peorTipo]) peorTipo = mejor.tipo
   }
 
-  return { puntuacion: PRIORIDAD[peorTipo] * 10000 + puntos, tipo: peorTipo }
+  return { puntuacion: PRIORIDAD[peorTipo] * 10000 + Math.min(puntos, 7000), tipo: peorTipo }
 }
 
 export function buscarDifuso<T>(
