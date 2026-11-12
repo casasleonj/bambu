@@ -20,6 +20,16 @@ describe('busqueda-fuzzy: coincidencias textuales', () => {
     expect(evaluarBusqueda(r('Panadería'), 'xyz') ).toBeNull()
   })
 
+  it('prioriza la frase exacta sobre las mismas palabras dispersas', () => {
+    const candidatos = [
+      { id: 'disperso', textos: ['Punto', 'Frío'] },
+      { id: 'exacto', textos: ['Punto Frío'] },
+    ]
+    const resultado = buscarDifuso(candidatos, 'punto frio',
+      (c) => ({ textos: c.textos }), (c) => c.id)
+    expect(resultado.map((c) => c.id)).toEqual(['exacto', 'disperso'])
+  })
+
   it('exige que todas las palabras coincidan, aunque en distintos campos', () => {
     expect(evaluarBusqueda(r('Juan', 'Pérez'), 'juan rodriguez')).toBeNull()
     expect(evaluarBusqueda({ textos: ['Juan', 'Panadería'] }, 'panaderia juan')).not.toBeNull()
