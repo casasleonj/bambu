@@ -34,8 +34,11 @@ describe("#779 — lectura idéntica entre ICU de servidor y navegador", () => {
     (espacio) => {
       // Variantes reales permitidas por Intl: el CDP mostró U+0020 en
       // el HTML y U+00A0 en el texto que React esperaba en Chromium.
-      const format = vi.spyOn(Intl.DateTimeFormat.prototype, "format", "get")
-        .mockReturnValue(() => `11/11/26, 10:16:38 p.${espacio}m.`);
+      const formatter = new Intl.DateTimeFormat("es-CO");
+      Object.defineProperty(formatter, "format", {
+        value: () => `11/11/26, 10:16:38 p.${espacio}m.`,
+      });
+      const format = vi.spyOn(Intl, "DateTimeFormat").mockReturnValue(formatter);
       try {
         expect(fechaLecturaConsulta("2026-11-12T03:16:38Z"))
           .toBe("11/11/26, 10:16:38 p. m.");
