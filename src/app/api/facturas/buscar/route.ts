@@ -1,20 +1,19 @@
 import { NextRequest } from 'next/server'
-import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { meetsMinSearchLength } from '@/lib/cliente-search'
+import { buscarDifuso } from '@/lib/busqueda-fuzzy'
 
 const MAX_RESULTADOS = 8
 
 /**
- * Búsqueda de la pantalla de Facturas: clientes que tienen facturas y facturas
- * por número o por nombre de cliente, sobre TODA la base y no sobre la página
- * que la lista tenga cargada.
+ * Busca sobre todos los clientes que tienen facturas, antes de elegir los
+ * primeros ocho. Nunca se limita a los clientes de la página actual.
+ * Los números de factura son literales (sin tolerancia a errores de dígitos).
  */
 export async function GET(request: NextRequest) {
-  // #556: la lectura también es del ASISTENTE.
   const authResult = await requireRole(['ADMIN', 'CONTADOR', 'ASISTENTE'])
   if (authResult instanceof Response) return authResult
 
@@ -24,45 +23,41 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const palabras = q.split(/\s+/).filter(Boolean).slice(0, 5)
-    const dePalabra = (palabra: string): Prisma.ClienteWhereInput => ({
-      OR: [
-        { nombre: { contains: palabra, mode: 'insensitive' } },
-        { apellido: { contains: palabra, mode: 'insensitive' } },
-        { telefono: { contains: palabra } },
-      ],
+    // No descartar clientes inactivos con historial de facturas. La selección
+    // respeta el mismo permiso de lectura que la búsqueda anterior.
+    const universo = await prisma.cliente.findMany({
+      where: { facturas: { some: {} } },
+      select: {
+        id: true, nombre: true, apellido: true, telefono: true, direccion: true,
+        negocios: { select: { nombre: true }, where: { activo: true } },
+      },
     })
-    const clienteWhere: Prisma.ClienteWhereInput = {
-      AND: [...palabras.map(dePalabra), { facturas: { some: {} } }],
-    }
+    const coincidencias = buscarDifuso(universo, q, (c) => ({
+      textos: [c.nombre, c.apellido, c.direccion, ...c.negocios.map((n) => n.nombre)],
+      pesosTexto: [3, 3, 1, ...c.negocios.map(() => 2)],
+      telefonos: [c.telefono],
+    }), (c) => c.id)
 
-    const [clientes, facturas] = await Promise.all([
-      prisma.cliente.findMany({
-        where: clienteWhere,
-        orderBy: [{ nombre: 'asc' }, { apellido: 'asc' }],
-        take: MAX_RESULTADOS,
-        select: { id: true, nombre: true, apellido: true, telefono: true, direccion: true },
-      }),
-      prisma.factura.findMany({
-        where: {
-          OR: [
-            { numero: { contains: q, mode: 'insensitive' } },
-            { cliente: { AND: palabras.map(dePalabra) } },
-          ],
-        },
-        orderBy: { fecha: 'desc' },
-        take: MAX_RESULTADOS,
-        select: {
-          id: true,
-          numero: true,
-          fecha: true,
-          cliente: { select: { nombre: true, apellido: true } },
-        },
-      }),
-    ])
+    const numero = q.replace(/^#/, '')
+    const facturas = await prisma.factura.findMany({
+      where: {
+        OR: [
+          { numero: { contains: numero, mode: 'insensitive' } },
+          { clienteId: { in: coincidencias.map((c) => c.id) } },
+        ],
+      },
+      orderBy: { fecha: 'desc' },
+      take: MAX_RESULTADOS,
+      select: {
+        id: true,
+        numero: true,
+        fecha: true,
+        cliente: { select: { nombre: true, apellido: true } },
+      },
+    })
 
     return apiSuccess({
-      clientes,
+      clientes: coincidencias.slice(0, MAX_RESULTADOS).map(({ negocios: _negocios, ...cliente }) => cliente),
       facturas: facturas.map((f) => ({
         id: f.id,
         numero: f.numero,
