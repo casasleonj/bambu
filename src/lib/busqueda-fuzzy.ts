@@ -123,7 +123,7 @@ export function evaluarBusqueda(
     return null
   }
 
-  const campos = registro.textos.map(normalizar)
+  const campos = registro.textos.map((campo) => normalizar(campo ?? ''))
   const exacta = campos.findIndex((c) => c.length > 0 && c === q)
   if (exacta >= 0) {
     const peso = registro.pesosTexto?.[exacta] ?? 1
