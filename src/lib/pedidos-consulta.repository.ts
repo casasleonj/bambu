@@ -142,7 +142,7 @@ async function resolverCoincidenciasPedidos(
   const acentos = "áàäâãéèëêíìïîóòöôõúùüûñçÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ";
   const reemplazos = "aaaaaeeeeiiiiooooouuuuncaaaaaeeeeiiiiooooouuuunc";
   const condicionNegocio = Prisma.join(palabras.map((p) =>
-    Prisma.sql`lower(translate(n.nombre, ${acentos}, ${reemplazos})) LIKE ${"%" + p.replace(/[\\%_]/g, "\\const centavos = (v: unknown) => {") + "%"}`),
+    Prisma.sql`lower(translate(n.nombre, ${acentos}, ${reemplazos})) LIKE ${"%" + p.replace(/[\\%_]/g, "\\$&") + "%"}`),
     " AND ");
   const [c, n] = await Promise.all([
     tx.$queryRaw<Array<{ id: string }>>`
