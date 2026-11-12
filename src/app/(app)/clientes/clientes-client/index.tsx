@@ -251,7 +251,7 @@ export default function ClientesClient({
   // Cache client-side: lista completa para búsqueda instantánea sin round-trip.
   const [allClientes, setAllClientes] = useState<Cliente[]>([])
   const [allClientesLoading, setAllClientesLoading] = useState(false)
-  const [busquedaServidor, setBusquedaServidor] = useState<{ term: string; filas: Cliente[]; fallo: boolean } | null>(null)
+  const [busquedaServidor, setBusquedaServidor] = useState<{ term: string; scope: string; filas: Cliente[]; fallo: boolean } | null>(null)
 
   // Clientes creados offline (2G/3G rural) que siguen encolados en
   // IndexedDB esperando sync. Sin esto, el usuario cierra el modal, no ve
@@ -666,6 +666,12 @@ export default function ClientesClient({
     }
   }, [getCurrentListParams, clientes.length])
 
+  // Función de refresco: cuando el cache completo está disponible, lo refresca;
+  // en modo fallback (pre-cache / truncado) usa fetchClientes paginado.
+  const cacheActive = useMemo(
+    () => allClientes.length > 0 && allClientes.length >= total,
+    [allClientes.length, total],
+  )
   // Si aún no está el catálogo completo en caché, no buscar solo entre
   // los primeros resultados de la página. Consultar el backend (sin truncar a
   // la página local), con debounce y cancelación de respuestas obsoletas.
@@ -686,23 +692,17 @@ export default function ClientesClient({
         if (!res.ok) throw new Error('No se pudo buscar clientes')
         const data = await res.json() as { success?: boolean; data?: Cliente[]; clientes?: Cliente[] }
         if (!controller.signal.aborted) {
-          setBusquedaServidor({ term, filas: data.data ?? data.clientes ?? [], fallo: false })
+          setBusquedaServidor({ term, scope: filtrosKey, filas: data.data ?? data.clientes ?? [], fallo: false })
         }
       } catch {
         if (!controller.signal.aborted) {
-          setBusquedaServidor({ term, filas: [], fallo: true })
+          setBusquedaServidor({ term, scope: filtrosKey, filas: [], fallo: true })
         }
       }
     }, 300)
     return () => { clearTimeout(t); controller.abort() }
   }, [searchInput, cacheActive, filtrosKey])
 
-  // Función de refresco: cuando el cache completo está disponible, lo refresca;
-  // en modo fallback (pre-cache / truncado) usa fetchClientes paginado.
-  const cacheActive = useMemo(
-    () => allClientes.length > 0 && allClientes.length >= total,
-    [allClientes.length, total],
-  )
   const refreshList = useCallback(async () => {
     if (cacheActive) {
       await loadAllClientes()
@@ -800,7 +800,7 @@ export default function ClientesClient({
   const clientesSearchResult = useMemo(() => {
     const term = searchInput.trim()
     if (term) {
-      const remoto = busquedaServidor?.term === term && !busquedaServidor.fallo
+      const remoto = busquedaServidor?.term === term && busquedaServidor.scope === filtrosKey && !busquedaServidor.fallo
         ? busquedaServidor.filas : null
       const source = cacheActive ? allClientes : remoto ?? (allClientes.length > 0 ? allClientes : clientes)
       return buscarDifuso(source, term, camposBusquedaCliente, (c) => c.id ?? c.clienteId)
@@ -808,7 +808,7 @@ export default function ClientesClient({
     // Termino vacío: cache completo como fuente de verdad si está disponible.
     if (cacheActive) return allClientes
     return clientes
-  }, [searchInput, allClientes, clientes, cacheActive, busquedaServidor])
+  }, [searchInput, allClientes, clientes, cacheActive, busquedaServidor, filtrosKey])
 
   // Filtros client-side: saldo/frecuencia y ordenamiento sobre el resultado
   // de búsqueda (cache o RSC). Se aplican ANTES de paginar para que "Con
