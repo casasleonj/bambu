@@ -167,6 +167,22 @@ describe("#516 — consulta completa en PostgreSQL", () => {
       ).pedidos.some((x) => x.id === p.id),
     ).toBe(true);
   });
+  it("#789: busca sin tildes y por negocio, antes de paginar y sin abrir el universo temporal", async () => {
+    const { p, c, n } = await crear({ nombre: "Máximo", negocio: true });
+    await testPrisma.cliente.update({ where: { id: c.id }, data: { apellido: "Pérez" } });
+    await testPrisma.negocio.update({ where: { id: n!.id }, data: { nombre: "Punti Frío" } });
+    const sinTilde = await consultarPedidos(filtros("search=maximo"), "ADMIN", testPrisma);
+    expect(sinTilde.pedidos.map((x) => x.id)).toContain(p.id);
+    const variasPalabras = await consultarPedidos(filtros("search=perez%20maximo"), "ADMIN", testPrisma);
+    expect(variasPalabras.pedidos.map((x) => x.id)).toContain(p.id);
+    const prefijo = await consultarPedidos(filtros("search=pun"), "ADMIN", testPrisma);
+    expect(prefijo.pedidos.map((x) => x.id)).toContain(p.id);
+    const numero = await consultarPedidos(filtros(`search=%23${p.numero}`), "ADMIN", testPrisma);
+    expect(numero.pedidos.map((x) => x.id)).toEqual([p.id]);
+    const fueraDeFecha = leerFiltrosConsulta(new URLSearchParams("desde=2026-10-27&hasta=2026-10-27&search=maximo"));
+    const historico = await consultarPedidos(fueraDeFecha, "ADMIN", testPrisma);
+    expect(historico.pedidos.map((x) => x.id)).not.toContain(p.id);
+  });
   it("un pedido parcial en dos horarios y dos repartidores no atribuye el acumulado al último ni duplica el pedido", async () => {
     const { p } = await crear(),
       r1 = await testPrisma.trabajador.create({
