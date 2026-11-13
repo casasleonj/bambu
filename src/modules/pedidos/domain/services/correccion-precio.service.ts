@@ -1,3 +1,4 @@
+import { UnitPrice } from '@/shared/domain/unit-price'
 /**
  * Corrección de precio de una línea del pedido (ADR-MONETARIO-002 §1, ADR-CIERRE-004).
  *
@@ -20,7 +21,6 @@ export const PRECIO_RARO_MINIMO: Readonly<Record<string, number>> = {
   BOTELLON: 7500,
 }
 
-const redondear = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100
 const aCentavos = (n: number): number => Math.round((n + Number.EPSILON) * 100)
 const deCentavos = (c: number): number => c / 100
 
@@ -52,13 +52,13 @@ export function calcularCorreccion(input: CorreccionInput): CorreccionResultado 
   if (!Number.isFinite(precioNuevo) || precioNuevo <= 0) {
     throw new Error('PRECIO_INVALIDO: el precio nuevo debe ser un número mayor que 0.')
   }
-  if (redondear(precioNuevo) === redondear(precioAnterior)) {
+  if (precioNuevo === precioAnterior) {
     throw new Error('PRECIO_SIN_CAMBIO: el precio nuevo es igual al actual.')
   }
   if (!Number.isInteger(cantidad) || cantidad <= 0) {
     throw new Error('LINEA_SIN_CANTIDAD: la línea no tiene cantidad pedida.')
   }
-  const deltaC = (aCentavos(precioNuevo) - aCentavos(precioAnterior)) * cantidad
+  const deltaC = UnitPrice.fromDecimal(precioNuevo).total(cantidad).cents - UnitPrice.fromDecimal(precioAnterior).total(cantidad).cents
   const totalNuevoC = aCentavos(total) + deltaC
   const pagadoC = aCentavos(totalPagado)
   const excedenteC = Math.max(0, pagadoC - totalNuevoC)
