@@ -1,4 +1,5 @@
 export { Money, DateRange, PRODUCT_LABELS } from './value-objects'
+export { UnitPrice, UNIT_PRICE_DECIMALS, MAX_UNIT_PRICE, importeLinea, importeLineaCentavos } from './unit-price'
 export type { ProductCode } from './value-objects'
 export { calcularSaldo } from './calcular-saldo'
 export type { CalcularSaldoOptions, CalcularSaldoContext, CalcularSaldoCallbacks } from './calcular-saldo'

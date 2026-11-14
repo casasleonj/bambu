@@ -20,7 +20,7 @@
  * dentro de la transacción del lock `PEDIDO:{id}`.
  */
 
-import { Money } from '@/shared/domain'
+import { Money, UnitPrice } from '@/shared/domain'
 import { logAudit } from '@/lib/audit'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
 import { EstadoEntregaVO } from '../../domain/value-objects/EstadoEntrega'
@@ -201,12 +201,12 @@ export class ActualizarPedidoUseCase {
 
           const nuevosItems = solicitados.map((i) => {
             const r = resueltoPorProducto.get(i.producto)
-            if (r) return new PedidoItem(r.producto, r.cantidad, Money.fromDecimal(r.precio), r.origen, 0)
+            if (r) return new PedidoItem(r.producto, r.cantidad, UnitPrice.fromDecimal(r.precio), r.origen, 0)
             const previo = previoPorProducto.get(i.producto)!
             return new PedidoItem(previo.producto, previo.cantPedido, previo.precio, previo.precioOrigen, 0)
           })
 
-          const nuevoTotal = nuevosItems.reduce((sum, i) => sum + i.subtotalPedido.toDecimal(), 0)
+          const nuevoTotal = nuevosItems.reduce((sum, i) => sum + i.subtotalPedido.cents, 0) / 100
           const lineasAntes = snapshotLineas(pedido.items)
           const lineasDespues = snapshotLineas(nuevosItems)
           if (JSON.stringify(lineasAntes) !== JSON.stringify(lineasDespues)) {

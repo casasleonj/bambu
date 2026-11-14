@@ -20,6 +20,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect, apiPost, apiGet, apiPut, apiPatch, createCliente, createTrabajador, createEmbarque, BASE, sharedLoginAs, appMain } from './fixtures'
 import { PrismaClient } from '@prisma/client'
+import { comprobarPrecioDecimal, comprobarPrecioOffline } from './precio-decimal-795.casos'
 
 const prisma = new PrismaClient()
 
@@ -27,6 +28,16 @@ const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
 
 test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
   test.skip(!HUB_ON, 'requiere NEXT_PUBLIC_PEDIDOS_V2=true + webServer fresco')
+
+  test('#795 · venta en ruta cobra $138.000 por 63 unidades y conserva precio preciso', async ({browser}) => {
+    const page = await sharedLoginAs(browser,'admin')
+    await comprobarPrecioDecimal(page,'ruta')
+  })
+
+  test('#795 · sin conexión conserva precio y total; sincronizar dos veces crea un solo pedido', async ({browser}) => {
+    const page = await sharedLoginAs(browser,'admin')
+    await comprobarPrecioOffline(page)
+  })
 
   test('shell: filtros visibles y acceso independiente a Fiados/Alertas (#515)', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')

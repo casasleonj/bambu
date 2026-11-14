@@ -1,3 +1,4 @@
+import { importeLinea, sumarPreciosUnitarios } from '@/shared/domain/unit-price'
 /**
  * Pricing Algorithm Domain Service.
  *
@@ -112,7 +113,7 @@ export function resolverPreciosPedido(ctx: PricingContext): ItemPedidoResuelto[]
     if (canal === 'DOMICILIO' && precio > 0 && origen === 'base') {
       const prodConfig = productosByCode[item.codigo]
       if (prodConfig?.aplicaDomicilio) {
-        precio += prodConfig.sobreCostoDomicilio
+        precio = sumarPreciosUnitarios(precio, prodConfig.sobreCostoDomicilio)
       }
     }
 
@@ -120,7 +121,7 @@ export function resolverPreciosPedido(ctx: PricingContext): ItemPedidoResuelto[]
       producto: item.codigo,
       precio,
       cantidad: item.cantidad,
-      subtotal: precio * item.cantidad,
+      subtotal: importeLinea(precio, item.cantidad),
       origen,
     })
   }
@@ -178,7 +179,7 @@ export function resolverPrecioUnitario(
   }
 
   if (canal === 'DOMICILIO' && precio > 0 && origen === 'base' && productoConfig?.aplicaDomicilio) {
-    precio += productoConfig.sobreCostoDomicilio
+    precio = sumarPreciosUnitarios(precio, productoConfig.sobreCostoDomicilio)
   }
 
   return { precio, origen }

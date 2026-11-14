@@ -266,7 +266,9 @@ export class EntregarPedidoUseCase {
         lineas: entregasClampeadas.map(e => ({
           producto: e.producto,
           cantidad: e.cantidadAEntregar,
-          precioCents: pedido.items.find(i => i.producto === e.producto)?.precio.cents ?? 0,
+          precioCents: pedido.items.find(i => i.producto === e.producto)?.precio.total(1).cents ?? 0,
+          precioUnitario: pedido.items.find(i => i.producto === e.producto)?.precio.toDecimal(),
+          cantidadPrevia: e.cantEntregaActual,
         })),
         pedido: {
           total: updated.total.cents / 100,
