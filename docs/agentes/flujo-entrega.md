@@ -57,6 +57,13 @@ Comando: `/qa <issues o rutas> [entorno]`.
 ### 6. CI / REVIEW
 - esperar y revisar todos los checks: Typecheck · Lint · Unit · Integration · E2E · build/deploy checks cuando correspondan
 - **bloqueantes verdes:** Typecheck + Unit + Integration
+- **Gate por tipo de cambio (#778).** `detect-changes` (`scripts/ci/clasificar-cambios.mjs`) decide si corresponde correr la suite E2E del ERP. La regla es **fail-closed**: la carga de la prueba la tiene el diff, no el revisor.
+  - `e2e_required=false` **solo** cuando todo el diff es declarativo: `docs/**`, `AGENTS.md`, o Markdown dentro de `.agents/skills/<n>/` y `.claude/skills/<n>/`. En ese caso se omiten los 8 shards **y** el Hub, y siguen corriendo auditoría de skills, typecheck, unit e integración.
+  - Todo lo demás exige E2E completo: cualquier archivo ejecutable o de configuración dentro de una skill (`scripts/**`, `*.py`, `*.ts`, `*.sh`, `package.json`, lockfiles), `.github/**`, código de producto, ruta desconocida, symlink, cambio de modo, rename entre clases distintas, o diff vacío/ilegible.
+  - **Un rename no es documentación.** Se compara con `git diff --raw -z`, que trae los dos extremos y los modos; `--name-only` reportaba solo el destino y dejaba pasar `git mv src/x.ts docs/x.md`.
+  - **Nunca se marca `skip` en un spec existente ni se debilita una aserción para conseguir verde.** Omitir el E2E no es rebajar un test: es no ejecutar una suite que el cambio no puede afectar.
+  - El `ci-gate` solo acepta un job `skipped` si `e2e_required=false` lo justifica; un omitido sin esa condición es fallo explícito.
+  - **Limitación conocida:** el E2E tampoco valida el comportamiento de un agente. Una skill declarativa pasa la auditoría de rutas, no demuestra que el agente se comporte bien. Eso es `QA AGENTE PENDIENTE`, y no se declara aprobado por un check estático.
 - **Regla de baseline E2E** (`Known Issues #20` — el job E2E está crónicamente rojo por infra):
   - baseline = qué specs E2E fallan en `main` ANTES del PR (`gh run list --branch main --workflow CI -L 1` → el run)
   - un fallo que ya está en el baseline **no** es regresión del PR — pero **tampoco** justifica ignorar fallos nuevos
