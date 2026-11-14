@@ -113,7 +113,38 @@ Errores que la comunidad reporta al compactar mal, y que aquí se evitan:
 - Reutilizar la evidencia ya recogida en el issue o el PR en vez de volver a
   investigarla.
 
-## 7. Lo que no se puede confirmar
+## 7. Modelo y esfuerzo para QA (Claude)
+
+La documentación de Anthropic y su propia guía de Claude Academy coinciden: **el
+nivel por defecto del modelo es el que corresponde a la mayoría de tareas**; el
+effort es una palanca manual para compensar, no un «más es mejor». Subirlo siempre
+cuesta más y a veces empeora (overthinking).
+
+| Trabajo de QA | Escalón | Motivo |
+|---|---|---|
+| Recorrer una pantalla, comprobar textos, clics, estados | barato + effort bajo | la verificación es mecánica; lo que decide es el snapshot |
+| Recorrido completo por rol con persistencia y adversariales | medio + medium (por defecto) | es el caso «feature work con alcance claro» |
+| Bug con casos límite ocultos, cálculos de dinero, permisos | alto + effort alto | aquí el esfuerzo se paga: reproduce, prueba, verifica |
+| Auditoría de seguridad, revisión de parsers o sanitizadores | el más alto, **consultando al PO** | pocas veces, mucho valor |
+| `max` / `ultracode` / modelo tope | **consultar al PO**, siempre | retorno decreciente documentado |
+
+- En Claude Code se fija por sesión con `--effort low|medium|high|xhigh|max` o con
+  `/effort`. `max` no se persiste en settings: es intencional, para que no quede
+  encendido por olvido.
+- El QA **no necesita el modelo más caro**: necesita navegador real, snapshot
+  releído tras cada acción y una captura inspeccionada. Un modelo caro sin
+  navegador produce un informe peor que un modelo medio con navegador.
+- No usar `max` para recorrer una pantalla. Si el QA descubre un fallo sutil, se
+  sube **para diagnosticar ese fallo**, no para todo el recorrido.
+- Fuentes: guía de Anthropic «Choosing a Claude model and effort level in Claude
+  Code» y «Choosing the right effort level» de Claude Academy (consultadas
+  2026-11-14). Coinciden en que el default del modelo es la elección correcta para
+  la mayoría de tareas y que el effort alto rinde sobre todo en depuración
+  compleja, seguridad y código con casos límite. La comunidad reporta el mismo
+  patrón (plan caro / ejecución barata), pero sin mediciones reproducibles: no se
+  cita como prueba.
+
+## 8. Lo que no se puede confirmar
 
 - Un porcentaje de ahorro universal entre niveles de effort.
 - Una cadencia de compactación «óptima» por número de turnos.

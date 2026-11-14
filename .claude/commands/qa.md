@@ -31,6 +31,13 @@ Procedimiento:
    Si el paso imprescindible escribe y no hay entorno aislado, el estado es
    `NO EJECUTADO`, no un falso PASÓ.
 
+6. **Escalón de modelo.** Usar el escalón que corresponda al trabajo
+   (`docs/agentes/presupuesto-y-contexto.md` §7): el **por defecto** para un
+   recorrido completo por rol; **effort bajo** para comprobar pantallas ya
+   conocidas; effort alto **solo** si aparecen casos límite ocultos, dinero o
+   permisos. `max`/tope de gama se consulta al PO. Un modelo caro sin navegador
+   produce peor informe que un modelo medio con navegador.
+
 Cierra con el bloque `### QA en navegador` del skill, por issue: estado
 PASÓ/FALLÓ/NO EJECUTADO/NO APLICA, build/SHA, entorno, herramienta y versión, rol,
 viewports, recorridos j/N, esperado vs observado, incidencia y evidencia.
