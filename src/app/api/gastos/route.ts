@@ -11,6 +11,9 @@ import { logger } from '@/lib/logger'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
+import { parseFechaGasto } from '@/lib/fecha-gasto'
+import { dayInBogota, startOfDayInBogota } from '@/lib/date-helpers'
+import { acquireAdvisoryLockTx } from '@/lib/locks'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-4): Only ADMIN/CONTADOR can read gastos
@@ -83,16 +86,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const gasto = await prisma.gasto.create({
-      data: {
-        categoria,
-        descripcion,
-        monto,
-        responsable,
-        notas,
-        fecha: fecha ? new Date(fecha) : new Date(),
-      },
+    // Fecha efectiva validada: YYYY-MM-DD pertenece a Bogotá, no a UTC.
+    const fechaEfectiva = fecha ? parseFechaGasto(fecha) : new Date()
+    if (!fechaEfectiva) return apiError('Fecha de gasto inválida', 400)
+    const diaContable = startOfDayInBogota(dayInBogota(fechaEfectiva))
+
+    // Mismo lock que POST /api/cierre: ninguna creación de gasto puede cruzarse
+    // con el snapshot de un día ya cerrado. No reescribir cierres históricos.
+    const gasto = await prisma.$transaction(async (tx) => {
+      await acquireAdvisoryLockTx(tx, 'CIERRE', diaContable.toISOString())
+      const cerrado = await tx.cierreDia.findUnique({ where: { fecha: diaContable }, select: { id: true } })
+      if (cerrado) return null
+      return tx.gasto.create({
+        data: { categoria, descripcion, monto, responsable, notas, fecha: fechaEfectiva },
+      })
     })
+    if (!gasto) {
+      return apiError('Este día ya tiene cierre. Se requiere un ajuste contable autorizado.', 409, {
+        code: 'GASTO_DIA_CERRADO',
+      })
+    }
 
     logAudit({
       entidad: 'Gasto',

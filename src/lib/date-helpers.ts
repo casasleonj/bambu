@@ -38,8 +38,10 @@ export function dayInBogota(instante: Date): string {
  */
 export function dateRangeForDay(fechaStr: string): { gte: Date; lt: Date } {
   const start = startOfDayInBogota(fechaStr)
-  const end = endOfDayInBogota(fechaStr)
-  return { gte: start, lt: end }
+  // #746: [inicio de hoy, inicio de mañana). El fin inclusivo de 23:59:59.999
+  // no sirve con lt: excluiría el último milisegundo del día en Bogotá.
+  const nextStart = new Date(start.getTime() + 86_400_000)
+  return { gte: start, lt: nextStart }
 }
 
 /**
