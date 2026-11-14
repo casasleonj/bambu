@@ -12,6 +12,7 @@
 - [`contratos-tecnicos.md`](contratos-tecnicos.md) dirige a las decisiones técnicas documentadas, versión y verificación con `main`.
 - [`indice-historico-49.md`](indice-historico-49.md) indexa 49 registros históricos con sus anclas (los números 13, 43 y 45 se repiten).
 - [`historial-y-trazabilidad.md`](historial-y-trazabilidad.md) dirige a 49 bloques de incidentes y contratos históricos, sin declarar automáticamente obsoleto o vigente ninguno.
+- [`reparto-fases-y-modelos.md`](reparto-fases-y-modelos.md) fija qué CLI y modelo usa cada fase, cómo se pasan los artefactos entre agentes y dónde viven las decisiones compartidas. **Propuesta operativa**: no sustituye `AGENTS.md` ni el protocolo.
 - [`auditoria-2026-11/`](auditoria-2026-11/README.md) contiene matriz, evidencia, limitaciones de pruebas por agente y gate, no es documento normativo.
 
 ## Skills existentes
