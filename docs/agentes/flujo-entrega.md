@@ -57,6 +57,13 @@ Comando: `/qa <issues o rutas> [entorno]`.
 ### 6. CI / REVIEW
 - esperar y revisar todos los checks: Typecheck · Lint · Unit · Integration · E2E · build/deploy checks cuando correspondan
 - **bloqueantes verdes:** Typecheck + Unit + Integration
+- **Gate por tipo de cambio (#778).** `detect-changes` (`scripts/ci/clasificar-cambios.mjs`) decide si corresponde correr la suite E2E del ERP. La regla es **fail-closed**: la carga de la prueba la tiene el diff, no el revisor.
+  - `e2e_required=false` **solo** cuando todo el diff es declarativo: `docs/**`, `AGENTS.md`, o Markdown dentro de `.agents/skills/<n>/` y `.claude/skills/<n>/`. En ese caso se omiten los 8 shards **y** el Hub, y siguen corriendo auditoría de skills, typecheck, unit e integración.
+  - Todo lo demás exige E2E completo: cualquier archivo ejecutable o de configuración dentro de una skill (`scripts/**`, `*.py`, `*.ts`, `*.sh`, `package.json`, lockfiles), `.github/**`, código de producto, ruta desconocida, symlink, cambio de modo, rename entre clases distintas, o diff vacío/ilegible.
+  - **Un rename no es documentación.** Se compara con `git diff --raw -z`, que trae los dos extremos y los modos; `--name-only` reportaba solo el destino y dejaba pasar `git mv src/x.ts docs/x.md`.
+  - **Nunca se marca `skip` en un spec existente ni se debilita una aserción para conseguir verde.** Omitir el E2E no es rebajar un test: es no ejecutar una suite que el cambio no puede afectar.
+  - El `ci-gate` solo acepta un job `skipped` si `e2e_required=false` lo justifica; un omitido sin esa condición es fallo explícito.
+  - **Limitación conocida:** el E2E tampoco valida el comportamiento de un agente. Una skill declarativa pasa la auditoría de rutas, no demuestra que el agente se comporte bien. Eso es `QA AGENTE PENDIENTE`, y no se declara aprobado por un check estático.
 - **Regla de baseline E2E** (`Known Issues #20` — el job E2E está crónicamente rojo por infra):
   - baseline = qué specs E2E fallan en `main` ANTES del PR (`gh run list --branch main --workflow CI -L 1` → el run)
   - un fallo que ya está en el baseline **no** es regresión del PR — pero **tampoco** justifica ignorar fallos nuevos
@@ -67,6 +74,18 @@ Comando: `/qa <issues o rutas> [entorno]`.
 ### 7. CORRECCIONES
 - si CI / review / QA detectan un problema atribuible al cambio: corregir → validar localmente → actualizar el PR → volver a 5
 - no avanzar al merge mientras existan fallos atribuibles al cambio
+
+### Evidencia de ejecución, no de intención
+
+Un «verde» no es un hecho verificable: es un autoinforme. La medición externa lo confirma — 75,8 % de los fallos de agentes de código se reportaron como éxito (Advani, 2026, 1.879 trayectorias), y entre revisiones incompletas el 80,4 % afirmó cobertura completa u omitió el hueco (OverclaimBench, 2026). Delegar a subagentes sube la cobertura pero **no** la honestidad: 50,3 % de las revisiones delegadas e incompletas siguió sobreafirmando. Los LLM-as-judge no lo detectan (AUROC 0,54–0,65, donde 0,5 es azar).
+
+Reglas operativas, para agentes y para quien revise su trabajo:
+
+- **Un resultado de prueba se reporta con su comando, su salida y su código de salida.** «Los tests pasan» no es evidencia; `32/32 · node --test · exit 0` sí. Sin salida pegada, el estado es `NO PROBADO`.
+- **El verde caduca al tocar el árbol.** Cualquier edición posterior invalida un chequeo previo: hay que repetirlo antes de declarar nada. Declarar limpio un typecheck corrido antes del último parche es una afirmación falsa, aunque el comando fuera real.
+- **El resumen de un subagente es un autoinforme, no un hecho.** Exigir un identificador verificable (URL, SHA, ruta absoluta, número de PR) y comprobarlo antes de darlo por bueno.
+- **Contrastar el `git diff` real con lo que se dice haber tocado.** Es la comprobación de cobertura: si el archivo no está en el diff, el cambio no existe por mucho que el informe lo describa.
+- **Un fallo encontrado por otro (CI, revisor, usuario) obliga a corregir la causa y repetir toda la validación afectada**, no solo el punto señalado.
 
 ### 8. MERGE
 - **aprobación requerida** (usuario/PO) + CI del paso 6 resuelto + QA satisfactorio cuando corresponda
