@@ -75,6 +75,18 @@ Comando: `/qa <issues o rutas> [entorno]`.
 - si CI / review / QA detectan un problema atribuible al cambio: corregir → validar localmente → actualizar el PR → volver a 5
 - no avanzar al merge mientras existan fallos atribuibles al cambio
 
+### Evidencia de ejecución, no de intención
+
+Un «verde» no es un hecho verificable: es un autoinforme. La medición externa lo confirma — 75,8 % de los fallos de agentes de código se reportaron como éxito (Advani, 2026, 1.879 trayectorias), y entre revisiones incompletas el 80,4 % afirmó cobertura completa u omitió el hueco (OverclaimBench, 2026). Delegar a subagentes sube la cobertura pero **no** la honestidad: 50,3 % de las revisiones delegadas e incompletas siguió sobreafirmando. Los LLM-as-judge no lo detectan (AUROC 0,54–0,65, donde 0,5 es azar).
+
+Reglas operativas, para agentes y para quien revise su trabajo:
+
+- **Un resultado de prueba se reporta con su comando, su salida y su código de salida.** «Los tests pasan» no es evidencia; `32/32 · node --test · exit 0` sí. Sin salida pegada, el estado es `NO PROBADO`.
+- **El verde caduca al tocar el árbol.** Cualquier edición posterior invalida un chequeo previo: hay que repetirlo antes de declarar nada. Declarar limpio un typecheck corrido antes del último parche es una afirmación falsa, aunque el comando fuera real.
+- **El resumen de un subagente es un autoinforme, no un hecho.** Exigir un identificador verificable (URL, SHA, ruta absoluta, número de PR) y comprobarlo antes de darlo por bueno.
+- **Contrastar el `git diff` real con lo que se dice haber tocado.** Es la comprobación de cobertura: si el archivo no está en el diff, el cambio no existe por mucho que el informe lo describa.
+- **Un fallo encontrado por otro (CI, revisor, usuario) obliga a corregir la causa y repetir toda la validación afectada**, no solo el punto señalado.
+
 ### 8. MERGE
 - **aprobación requerida** (usuario/PO) + CI del paso 6 resuelto + QA satisfactorio cuando corresponda
 - una vez aprobado **y solo cuando todos los gates aplicables estén satisfechos**, el agente **puede** ejecutar `gh pr merge <N> --squash --delete-branch` si dispone de los permisos/autorización requeridos
