@@ -1,3 +1,10 @@
+---
+name: spec-driven-development
+description: "Crea y mantiene specs en .claude/specs/ como soporte de implementación: alcance, contratos de API y decisiones técnicas. Úsalo para consultar o sincronizar la spec de una funcionalidad antes de implementarla. No es fuente de autoridad comercial ni reemplaza Contexto Maestro, Planes Maestros aprobados ni decisiones del PO."
+metadata:
+  version: "1.1.0"
+---
+
 # Spec-Driven Development
 
 Specs live in `.claude/specs/`. They are the source of truth for architectural decisions, API contracts, and implementation scope. Implementation and specs must stay in sync — neither leads exclusively.
