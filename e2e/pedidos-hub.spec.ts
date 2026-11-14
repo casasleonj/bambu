@@ -121,6 +121,11 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await page.goto(`${BASE}/pedidos`)
 
     async function abrirWorkspace() {
+      // #783 / G9: el aviso de éxito del pedido anterior tapa el FAB y Sonner se pausa
+      // mientras el puntero está encima, así que el clic reintenta hasta agotar el test.
+      // #426 ya resuelve esto igual: esperar a que no quede ningún aviso antes de pulsar.
+      await page.mouse.move(5, 5) // fuera del aviso: así Sonner no se pausa y se va solo
+      await expect(page.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 20000 })
       await app.getByTestId('fab-main').click()
       await page.getByTestId('fab-pedido-envio').click()
       await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
