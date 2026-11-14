@@ -77,22 +77,42 @@ código, no producir una propuesta original.
 
 ## Modelo y esfuerzo: no se quema presupuesto
 
-Decisión por defecto, contrastada contra documentación oficial y comunidad:
+**Regla dura: nunca se arranca en un modelo caro.** Todo empieza en el escalón más
+barato que pueda hacer el trabajo, y se sube solo cuando hay una señal concreta.
 
-| Trabajo | Modelo / effort | Motivo |
+| Trabajo | Escalón | Motivo |
 |---|---|---|
-| Extraer, ordenar y resumir fuentes | modelo barato + effort alto | el volumen es alto, el juicio bajo |
+| Extraer, ordenar, resumir fuentes, clasificar | más barato disponible, effort alto | volumen alto, juicio bajo |
 | Comparar alternativas, refutar, redactar conclusión | `gpt-6.1-sol` + `medium` | equilibrio documentado |
 | Fuentes contradictorias, adversariales finos, diseño entrelazado | `sol` + `high` | sube solo con señal |
-| `xhigh` / `max` | excepcional, con motivo escrito | coste alto, retorno decreciente |
+| `xhigh` / `max` / modelo tope de gama | **requiere preguntar al PO** | coste alto, retorno decreciente |
 
-- Por defecto **no** se usa el nivel máximo. Si se sube, se justifica en la misma
-  respuesta.
-- Codex permite fijarlo por invocación: `-c model_reasoning_effort="medium"`.
-  Comprobar el encabezado `model:` / `reasoning effort:` que imprime cada run.
-- El coste real depende del contexto y de las herramientas, no solo del effort:
-  cachear el contexto y no repetir la misma investigación ahorra más que bajar un
-  nivel.
+**Señales que justifican subir** (una basta, y se dice cuál):
+
+1. Dos intentos en el escalón actual no convergen o se contradicen.
+2. La respuesta ignora una restricción que ya estaba en el prompt.
+3. Hay que razonar sobre varias invariantes entrelazadas (dinero, roles, offline).
+4. El fallo es sutil y no se reproduce con la evidencia disponible.
+
+**Antes de gastar en el escalón caro, se pregunta al PO con opciones y coste:**
+
+```
+Esto no converge en <modelo/effort actual>. Opciones:
+ A) Seguir barato, más iteraciones — coste bajo, puede no resolver.
+ B) Subir a <modelo>+<effort> solo para esta pregunta — coste alto, una vez.
+ C) Partir el problema en preguntas más pequeñas en el modelo barato — coste bajo,
+    más tiempo.
+Recomiendo C; si falla, B.
+```
+
+Esperar la respuesta. No decidir por cuenta propia un gasto alto, y no usar el
+modelo caro «por si acaso» ni para todo el flujo.
+
+- Se fija por invocación: `-c model_reasoning_effort="medium"`; comprobar el
+  encabezado `model:` / `reasoning effort:` que imprime cada run.
+- Cachear el contexto y no repetir la misma investigación ahorra más que bajar un
+  nivel: el coste real depende del contexto y las herramientas, no solo del effort.
+- El ahorro se mide, no se promete: si no hay medición, se dice `sin medir`.
 
 ## Documentación al día cuando se toca código
 

@@ -56,6 +56,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **E2E baseline:** comparar fallos de PR contra `main` por caso/firma; flakiness y fallos previos no justifican regresiones nuevas. No declarar seguro el merge simplemente porque un flag esté OFF o un test haya sido omitido.
 - **Migraciones** que afecten despliegues inmediatos: plan de compatibilidad aditiva/idempotente y verificación previa en producción **solo con autorización**, antes del merge si así lo exige el flujo existente; no suponer que `git revert` revierte tablas/datos.
 - El merge a `main` puede desplegar producción. No mergear ni desplegar con aprobación requerida, CI/review o QA aplicables pendientes; un check verde no sustituye validación real. Preservar respuesta a incidentes y reversibilidad.
+- **Presupuesto de modelos y contexto:** se arranca en el escalón más barato y se sube solo con señal (dos intentos sin converger, restricción ignorada, invariantes entrelazadas, fallo sutil). `xhigh`/`max` o modelo tope de gama **se consulta al PO con opciones y coste antes de usarlo**. Antes de una tarea larga se compacta con instrucción de qué preservar; al cambiar de issue se corta con `/new`. Detalle: [presupuesto-y-contexto.md](docs/agentes/presupuesto-y-contexto.md).
 
 ## 7. Consulta progresiva y cierre verificable
 

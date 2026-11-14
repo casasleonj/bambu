@@ -110,8 +110,12 @@ Cómo comprobarlo en 1 minuto
 
 Reglas:
 
-- **El link es el preview del PR**, no `localhost`: el PO no tiene el repo. Si el
-  preview no existe, decirlo y no inventar una URL.
+- **El link debe abrirse desde cualquier navegador, no solo en el equipo del PO.**
+  Se usa el preview público de Vercel del PR (`https://<proyecto>-git-<rama>-<hash>-<scope>.vercel.app`),
+  no `localhost` ni una IP de la LAN. Si Vercel tiene deployment protection activa
+  y el PO no puede entrar sin login de Vercel, decirlo explícitamente y dar la
+  alternativa (añadirlo como viewer, o un túnel). No inventar una URL: si no
+  existe preview, el estado es `NO EJECUTADO` y no hay aprobación posible.
 - Nada de nombres de archivo, tablas, endpoints ni hashes. Si el PO pide detalle
   técnico, entonces sí.
 - Un ejemplo cotidiano con números o nombres reconocibles del negocio (pedido,
