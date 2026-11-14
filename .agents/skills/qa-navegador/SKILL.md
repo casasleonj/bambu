@@ -79,6 +79,46 @@ Reglas de uso:
 - No publicar capturas sin revisarlas antes: pueden contener nombres de clientes,
   teléfonos, direcciones o importes reales.
 
+## Entrega al PO antes del merge: link + qué mirar
+
+El QA del agente no es la aprobación. Antes de pedir el merge hay que entregar al
+PO un **link navegable** donde esté la solución completa, y decirle en lenguaje
+llano qué buscar. Sin eso, el PO no puede aprobar: no sabe qué mirar.
+
+Formato del mensaje de entrega (breve, sin jerga):
+
+```
+🔗 Pruébalo aquí: <URL del preview del PR>
+
+Qué cambió
+- <en qué pantalla> ahora <qué hace distinto> (antes: <qué pasaba>)
+
+Qué se arregló
+- <el error que ya no ocurre, en palabras de quien usa la app>
+
+Qué se agregó
+- <cosa nueva y dónde está>
+
+Qué NO cambió
+- <lo que se preserva, para que no lo busque o tema que se perdió>
+
+Cómo comprobarlo en 1 minuto
+1. Entra con <rol>.
+2. <acción concreta>.
+3. Deberías ver <resultado observable>.
+```
+
+Reglas:
+
+- **El link es el preview del PR**, no `localhost`: el PO no tiene el repo. Si el
+  preview no existe, decirlo y no inventar una URL.
+- Nada de nombres de archivo, tablas, endpoints ni hashes. Si el PO pide detalle
+  técnico, entonces sí.
+- Un ejemplo cotidiano con números o nombres reconocibles del negocio (pedido,
+  fiado, cierre) vale más que tres párrafos de explicación.
+- Nunca decir «ya funciona» si el estado del QA es `FALLÓ` o `NO EJECUTADO`.
+- El link se acompaña del estado real del QA, no lo sustituye.
+
 ## Salida obligatoria (bloque por issue)
 
 ```md

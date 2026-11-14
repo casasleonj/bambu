@@ -47,6 +47,95 @@ codex exec --sandbox read-only --skip-git-repo-check "<pregunta>"
 - Con prompts largos, pasar el material por archivo o por `git diff` en el propio
   prompt; no pegar credenciales ni datos de clientes.
 
+## Qué es investigar aquí (no es inventar)
+
+Casi nada es nuevo. Antes de proponer, averiguar **cómo se resolvió ya el mismo
+problema**:
+
+1. **Precedente de la comunidad** — cómo lo hacen proyectos mantenidos, issues
+   cerrados, foros y blogs técnicos con datos.
+2. **Precedente de empresas grandes y de industria** — el patrón que sobrevivió a
+   escala, no el tutorial.
+3. **Comparación explícita**: similitudes con nuestro caso, diferencias que
+   importan, y qué parte es transferible.
+4. **Adaptar, no copiar**: tomar la idea y ajustarla a nuestras invariantes
+   (dinero, multi-rol, offline, auditoría). Copiar sin adaptar es un riesgo
+   sistémico, no una solución.
+
+El objetivo es reforzar la idea con evidencia ajena o descartarla antes de escribir
+código, no producir una propuesta original.
+
+## Fuentes: verificables y confirmadas
+
+- Toda afirmación de una investigación lleva **fuente con URL y fecha de consulta**.
+- Distinguir siempre: **documentación oficial** de la versión instalada vs.
+  **consenso de comunidad** vs. **opinión de un blog** vs. **lo que no se pudo
+  confirmar**. Una respuesta de otro LLM no es prueba (`AGENTS.md` §1.4).
+- Si una fuente no se pudo abrir o no existe la versión citada, decirlo: eso es
+  `NO VERIFICADO`, no una fuente.
+- Prohibido inventar benchmarks, porcentajes de ahorro, versiones o límites.
+
+## Modelo y esfuerzo: no se quema presupuesto
+
+Decisión por defecto, contrastada contra documentación oficial y comunidad:
+
+| Trabajo | Modelo / effort | Motivo |
+|---|---|---|
+| Extraer, ordenar y resumir fuentes | modelo barato + effort alto | el volumen es alto, el juicio bajo |
+| Comparar alternativas, refutar, redactar conclusión | `gpt-6.1-sol` + `medium` | equilibrio documentado |
+| Fuentes contradictorias, adversariales finos, diseño entrelazado | `sol` + `high` | sube solo con señal |
+| `xhigh` / `max` | excepcional, con motivo escrito | coste alto, retorno decreciente |
+
+- Por defecto **no** se usa el nivel máximo. Si se sube, se justifica en la misma
+  respuesta.
+- Codex permite fijarlo por invocación: `-c model_reasoning_effort="medium"`.
+  Comprobar el encabezado `model:` / `reasoning effort:` que imprime cada run.
+- El coste real depende del contexto y de las herramientas, no solo del effort:
+  cachear el contexto y no repetir la misma investigación ahorra más que bajar un
+  nivel.
+
+## Documentación al día cuando se toca código
+
+Investigar sin mirar la versión instalada produce APIs inventadas. Antes de
+proponer cualquier llamada a librería, framework, SDK o API externa:
+
+- **Context7** si está disponible (`DOC-1` al proponer, `DOC-2` al implementar),
+  según `jl/references/engineering.md` §Context7.
+- **Documentación primaria de la versión instalada**, y el `package.json` /
+  `node_modules/<pkg>` real. En este repo, además, `node_modules/next/dist/docs/`:
+  el Next.js instalado no es el del entrenamiento (`AGENTS.md` §5).
+- Si Context7 y la documentación primaria discrepan, manda la primaria de la
+  versión instalada y se registra la discrepancia.
+
+## Sin ambigüedad, sin sesgo, sin duplicar lo que ya existe
+
+- **Cero ambigüedad**: cada propuesta dice qué cambia, qué no, para qué rol, con
+  qué datos, y qué NO se puede afirmar. Si queda una decisión abierta, se nombra
+  como decisión, no se esconde en el texto.
+- **Sesgos a declarar**: el que escribe, el de la fuente, el de la muestra. Una
+  recomendación basada en un blog no pesa como la documentación oficial.
+- **Adversariales y convergencia**: el bucle de refutación, los estados
+  `CONVERGENCIA DE DISEÑO / CONDICIONADA / BLOQUEADA` y el criterio de parada **no
+  se redefinen aquí**: están en `jl/references/convergence.md`. Esta skill los usa,
+  no los duplica.
+
+## No duplicar skills existentes (ahorro de tokens)
+
+Antes de escribir un procedimiento nuevo, comprobar si ya existe:
+
+| Necesidad | Dónde está ya |
+|---|---|
+| Registrar un hallazgo, bug o funcionalidad | `.agents/skills/hallazgo/` |
+| Investigar → plan → implementar → validar | `.agents/skills/jl/` (`workflow.md`) |
+| Adversariales, convergencia, criterio de parada | `jl/references/convergence.md` |
+| Documentación de API de terceros | `jl/references/engineering.md` (Context7) |
+| QA en navegador | `.agents/skills/qa-navegador/` |
+| Comunicación con el PO, ejemplos cotidianos | `jl/references/comunicacion-usuario.md` |
+
+Esta skill **solo** añade el enrutamiento a ChatGPT, la exigencia de fuentes y la
+elección de modelo/effort. Si algo ya está resuelto arriba, se enlaza y no se
+reescribe: duplicar reglas las desincroniza y gasta contexto en cada lectura.
+
 ## Qué debe devolver una investigación
 
 1. **Pregunta reformulada** y supuestos que se están asumiendo.

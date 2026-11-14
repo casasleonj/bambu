@@ -35,6 +35,12 @@ Cierra con el bloque `### QA en navegador` del skill, por issue: estado
 PASÓ/FALLÓ/NO EJECUTADO/NO APLICA, build/SHA, entorno, herramienta y versión, rol,
 viewports, recorridos j/N, esperado vs observado, incidencia y evidencia.
 
+Y entrega el paquete de aprobación del skill (`## Entrega al PO antes del merge`):
+el **link del preview** del PR, qué cambió, qué se arregló, qué se agregó, qué NO
+cambió, y cómo comprobarlo en un minuto. Lenguaje llano, sin rutas ni hashes: el
+PO decide mirando, no leyendo código. Si el preview no existe, dilo en vez de
+inventar una URL.
+
 Si encuentras un defecto: regístralo con `/hallazgo` antes de continuar, y no
 declares el QA aprobado mientras el fallo siga abierto. Un `FALLÓ` bloquea el
 merge. No arregles el defecto de paso en el mismo PR sin issue que lo respalde.
