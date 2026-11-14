@@ -79,6 +79,50 @@ Reglas de uso:
 - No publicar capturas sin revisarlas antes: pueden contener nombres de clientes,
   teléfonos, direcciones o importes reales.
 
+## Entrega al PO antes del merge: link + qué mirar
+
+El QA del agente no es la aprobación. Antes de pedir el merge hay que entregar al
+PO un **link navegable** donde esté la solución completa, y decirle en lenguaje
+llano qué buscar. Sin eso, el PO no puede aprobar: no sabe qué mirar.
+
+Formato del mensaje de entrega (breve, sin jerga):
+
+```
+🔗 Pruébalo aquí: <URL del preview del PR>
+
+Qué cambió
+- <en qué pantalla> ahora <qué hace distinto> (antes: <qué pasaba>)
+
+Qué se arregló
+- <el error que ya no ocurre, en palabras de quien usa la app>
+
+Qué se agregó
+- <cosa nueva y dónde está>
+
+Qué NO cambió
+- <lo que se preserva, para que no lo busque o tema que se perdió>
+
+Cómo comprobarlo en 1 minuto
+1. Entra con <rol>.
+2. <acción concreta>.
+3. Deberías ver <resultado observable>.
+```
+
+Reglas:
+
+- **El link debe abrirse desde cualquier navegador, no solo en el equipo del PO.**
+  Se usa el preview público de Vercel del PR (`https://<proyecto>-git-<rama>-<hash>-<scope>.vercel.app`),
+  no `localhost` ni una IP de la LAN. Si Vercel tiene deployment protection activa
+  y el PO no puede entrar sin login de Vercel, decirlo explícitamente y dar la
+  alternativa (añadirlo como viewer, o un túnel). No inventar una URL: si no
+  existe preview, el estado es `NO EJECUTADO` y no hay aprobación posible.
+- Nada de nombres de archivo, tablas, endpoints ni hashes. Si el PO pide detalle
+  técnico, entonces sí.
+- Un ejemplo cotidiano con números o nombres reconocibles del negocio (pedido,
+  fiado, cierre) vale más que tres párrafos de explicación.
+- Nunca decir «ya funciona» si el estado del QA es `FALLÓ` o `NO EJECUTADO`.
+- El link se acompaña del estado real del QA, no lo sustituye.
+
 ## Salida obligatoria (bloque por issue)
 
 ```md

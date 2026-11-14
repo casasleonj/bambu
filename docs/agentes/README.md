@@ -8,6 +8,7 @@
 - [`protocolo-investigacion.md`](protocolo-investigacion.md) es **canónico** para investigar, refutar, planificar y, solo con autorización, ejecutar R3. Resolución PO del problema #704.
 - [`flujo-entrega.md`](flujo-entrega.md) es **canónico** para ramas, fases, CI, QA, migraciones, merge, integración y rollback.
 - [`reglas-codigo.md`](reglas-codigo.md) conserva convenciones de código, fuentes y contrato de respuesta.
+- [`presupuesto-y-contexto.md`](presupuesto-y-contexto.md) es **canónico** para coste: escalón más barato primero, el gasto alto se consulta al PO, patrón plan-caro/ejecución-barata, y cuándo y qué compactar sin perder contexto.
 - [`contratos-saldo-favor-696.md`](contratos-saldo-favor-696.md) preserva **las decisiones de #691 y #696 añadidas en main después del snapshot original**, sin autorizar sus rebanadas futuras ni borrar el registro de fuente.
 - [`contratos-tecnicos.md`](contratos-tecnicos.md) dirige a las decisiones técnicas documentadas, versión y verificación con `main`.
 - [`indice-historico-49.md`](indice-historico-49.md) indexa 49 registros históricos con sus anclas (los números 13, 43 y 45 se repiten).
@@ -21,6 +22,7 @@
 - **Claude Code:** `CLAUDE.md` importa `AGENTS.md`, y las skills .claude son compatibles con el repositorio; no asumir que el enlace se ejecutó por existir.
 - **OpenCode:** `opencode.json` carga reglas del repo; `.opencode/prompts/protocolo.txt` apunta a un único protocolo canónico en vez de mantener una implementación contradictoria.
 - **Codex:** usa `AGENTS.md` en raíz y `.agents/skills/`; para evidencia conductual real se necesitan registros de CLI.
+- **Research (ChatGPT):** [`../../.agents/skills/research-codex/SKILL.md`](../../.agents/skills/research-codex/SKILL.md). Enrutamiento obligatorio de ideas, funcionalidades por diseñar, investigaciones, casos adversariales, casos no contemplados, comparaciones y documentación con criterio. Comando `/research`. No autoriza implementar.
 
 ## Autoridad y conocimiento
 

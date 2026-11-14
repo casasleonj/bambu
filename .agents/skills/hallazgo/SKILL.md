@@ -24,4 +24,6 @@ metadata:
 
 Si otro trabajo autorizado escribe después `TODO`/`FIXME`/`HACK`, debe vincularlo con el Issue (p. ej. `TODO(#123)`). **Esta skill no modifica código de producto.**
 
+**Defecto encontrado durante otro trabajo:** si aparece durante la implementación o el QA de un issue (`.agents/skills/qa-navegador/`), se registra aquí como hallazgo propio y se vuelve al ciclo de resolución (`jl`). No se arregla «de paso» dentro del PR en curso sin issue que lo respalde, y no se declara el trabajo original terminado mientras el defecto siga abierto. Registrar sigue sin ser implementar: la corrección necesita su autorización.
+
 **Eficiencia:** no ejecutar navegador para propuestas sin flujo visual; para reportes UI/UX el intento de navegación es obligatorio, con alcance acotado y sin reintentos indefinidos. Las referencias se cargan solo cuando aplican. Nunca ahorrar tiempo/tokens ocultando una verificación omitida.

@@ -31,9 +31,22 @@ Procedimiento:
    Si el paso imprescindible escribe y no hay entorno aislado, el estado es
    `NO EJECUTADO`, no un falso PASÓ.
 
+6. **Escalón de modelo.** Usar el escalón que corresponda al trabajo
+   (`docs/agentes/presupuesto-y-contexto.md` §7): el **por defecto** para un
+   recorrido completo por rol; **effort bajo** para comprobar pantallas ya
+   conocidas; effort alto **solo** si aparecen casos límite ocultos, dinero o
+   permisos. `max`/tope de gama se consulta al PO. Un modelo caro sin navegador
+   produce peor informe que un modelo medio con navegador.
+
 Cierra con el bloque `### QA en navegador` del skill, por issue: estado
 PASÓ/FALLÓ/NO EJECUTADO/NO APLICA, build/SHA, entorno, herramienta y versión, rol,
 viewports, recorridos j/N, esperado vs observado, incidencia y evidencia.
+
+Y entrega el paquete de aprobación del skill (`## Entrega al PO antes del merge`):
+el **link del preview** del PR, qué cambió, qué se arregló, qué se agregó, qué NO
+cambió, y cómo comprobarlo en un minuto. Lenguaje llano, sin rutas ni hashes: el
+PO decide mirando, no leyendo código. Si el preview no existe, dilo en vez de
+inventar una URL.
 
 Si encuentras un defecto: regístralo con `/hallazgo` antes de continuar, y no
 declares el QA aprobado mientras el fallo siga abierto. Un `FALLÓ` bloquea el
