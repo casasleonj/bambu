@@ -1,8 +1,9 @@
 import { Prisma } from '@prisma/client'
 import { endOfDayBogota, startOfDayBogota } from '@/lib/dates'
 import { embarqueUsaEntregaVivaPorFlag, leerMetadata, CAPTURA_ENTREGA_PEDIDO, CAPTURA_CIERRE } from '@/lib/entrega-fisica-viva'
-import { calcularPorFuentes, tarifasRepartidor, type TarifasRepartidor, type ComisionRepartidor, type FuenteComision, type RevisionComision, type UnidadesReparto } from './comision-repartidor-calculo'
-import { leerEntregasConsulta } from './entregas-consulta'
+import { calcularPorFuentes, tarifasRepartidor, type TarifasRepartidor, type ComisionRepartidor, type FuenteComision, type RevisionComision, type UnidadesReparto, type PedidoComision } from './comision-repartidor-calculo'
+import { leerEntregasConsulta, type EntregaConsulta } from './entregas-consulta'
+import { detallePorDia, hayUnidades, type EventoDia } from './comision-detalle-pedidos'
 export { tarifasRepartidor } from './comision-repartidor-calculo'
 export type { TarifasRepartidor, ComisionRepartidor } from './comision-repartidor-calculo'
 
@@ -12,12 +13,18 @@ export type { TarifasRepartidor, ComisionRepartidor } from './comision-repartido
  */
 export type TxComision = Pick<Prisma.TransactionClient, 'embarque' | 'pedido' | 'config' | 'trabajador' | 'historial' | 'embarqueMovimiento'>
 type TxEntregasComision = Pick<TxComision, 'embarque' | 'pedido' | 'historial' | 'embarqueMovimiento'>
+// #622: nombres del cliente/negocio y líneas del pedido, solo para presentar el detalle por pedido.
+const conNombres = Prisma.validator<Prisma.PedidoInclude>()({
+  cliente: { select: { nombre: true } },
+  negocio: { select: { nombre: true } },
+  items: { select: { producto: true, cantPedido: true, cantEntrega: true } },
+})
 const seleccion = Prisma.validator<Prisma.EmbarqueInclude>()({
-  pedidos: true,
+  pedidos: { include: conNombres },
   actividades: { where: { cantidadCumplida: { gt: 0 } }, select: { id: true, modo: true } },
   movimientos: {
     where: { tipo: { in: ['ENTREGA', 'VENTA_RUTA'] } },
-    select: { id: true, tipo: true, producto: true, cantidad: true, metadata: true, sustitucionEntrega: { select: { id: true } } },
+    select: { id: true, tipo: true, producto: true, cantidad: true, createdAt: true, metadata: true, sustitucionEntrega: { select: { id: true } } },
   },
 })
 type Mision = Prisma.EmbarqueGetPayload<{ include: typeof seleccion }>
@@ -26,6 +33,45 @@ const unidades = (p: Entregado): UnidadesReparto => ({ agua: p.cPacaAguaEnt, hie
 const vacio = (): UnidadesReparto => ({ agua: 0, hielo: 0, botellon: 0 })
 const producto = (p: string) => p === 'PACA_AGUA' ? 'agua' : p === 'PACA_HIELO' ? 'hielo' : p === 'BOTELLON' ? 'botellon' : null
 const invalido = (estado: string) => estado === 'ANULADO' || estado === 'CANCELADO'
+const diaBogota = (f: Date) => f.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+
+type PedidoDetallable = Prisma.PedidoGetPayload<{ include: typeof conNombres }>
+/** Lo pedido y lo entregado (acumulado vigente) de los productos de reparto; prefiere las líneas del pedido. */
+function pedidoYEntregado(p: PedidoDetallable): { pedido: UnidadesReparto; entregado: UnidadesReparto } {
+  const pedido = vacio(), entregado = vacio()
+  if (p.items.length > 0) {
+    for (const i of p.items) { const k = producto(i.producto); if (k) { pedido[k] += i.cantPedido; entregado[k] += i.cantEntrega } }
+  } else {
+    pedido.agua = p.cPacaAguaPed; pedido.hielo = p.cPacaHieloPed; pedido.botellon = p.cBotellonFabPed + p.cBotellonDomPed
+    entregado.agua = p.cPacaAguaEnt; entregado.hielo = p.cPacaHieloEnt; entregado.botellon = p.cBotellonFabEnt + p.cBotellonDomEnt
+  }
+  return { pedido, entregado }
+}
+/** Negocio primero; cliente como dato secundario. */
+function nombreDelPedido(p: PedidoDetallable): { nombre: string; cliente?: string } {
+  const cli = p.clienteId === 'CONSUMIDOR_FINAL' ? 'Cliente final' : (p.cliente?.nombre ?? '')
+  if (p.negocio?.nombre) return { nombre: p.negocio.nombre, cliente: cli && cli !== p.negocio.nombre ? cli : undefined }
+  return { nombre: cli || 'Sin nombre' }
+}
+const comoEventoDia = (e: EntregaConsulta): EventoDia => ({ dia: diaBogota(e.fecha), repartidorId: e.repartidorId, cantidades: e.cantidades, incompleto: e.incompleto, fuente: e.fuente })
+/** #622: fila del detalle. `unidades` es lo que el cálculo de dinero ya cuenta para este pedido; el detalle por día solo se muestra si lo reproduce. */
+function filaPedido(p: PedidoDetallable, trabajadorId: string, unidades: UnidadesReparto, eventos: EntregaConsulta[], esDiaPropio: (dia: string) => boolean): PedidoComision {
+  const { pedido, entregado } = pedidoYEntregado(p)
+  const d = detallePorDia({ pedido, entregadoActual: entregado, eventos: eventos.map(comoEventoDia), trabajadorId, esDiaPropio, unidadesComision: unidades })
+  return {
+    id: p.id, numero: p.numero, href: `/pedidos/${p.id}`, ...nombreDelPedido(p), creadoDia: diaBogota(p.fecha),
+    unidades, pedido, entregadoActual: entregado, detalle: d.detalle, dias: d.dias, alDia: d.alDia, pendiente: d.pendiente,
+    completoAqui: d.completoAqui, completadoDespues: d.completadoDespues,
+  }
+}
+/** Entrega completa anterior sin detalle por día (excepción histórica ya aceptada por el cálculo). */
+function filaHistorica(p: PedidoDetallable, unidades: UnidadesReparto, entregadoAt: Date | null): PedidoComision {
+  const { pedido, entregado } = pedidoYEntregado(p)
+  return {
+    id: p.id, numero: p.numero, href: `/pedidos/${p.id}`, ...nombreDelPedido(p), creadoDia: diaBogota(p.fecha),
+    unidades, pedido, entregadoActual: entregado, detalle: 'HISTORICO', entregadoDia: entregadoAt ? diaBogota(entregadoAt) : undefined, completoAqui: false,
+  }
+}
 
 /** Identidad explícita, sin comparar importes, cantidades ni cercanía temporal. */
 async function pedidosConEntregaAtribuida(tx: Pick<TxComision, 'embarque'>, ids: string[]): Promise<Set<string>> {
@@ -60,7 +106,7 @@ async function pedidosConCapturaModerna(tx: Pick<TxComision, 'historial'>, ids: 
   return { pedidos, oficina }
 }
 
-async function fuentesSinEmbarque(tx: TxEntregasComision, trabajadorId: string, ini: Date, fin: Date) {
+async function fuentesSinEmbarque(tx: TxEntregasComision, trabajadorId: string, ini: Date, fin: Date, detalle: boolean) {
   const rango = { desde: ini, hasta: new Date(+fin + 1) }
   const dentro = (fecha: Date) => fecha >= rango.desde && fecha < rango.hasta
   const eventosDelRango = await leerEntregasConsulta(tx, { rango })
@@ -72,7 +118,7 @@ async function fuentesSinEmbarque(tx: TxEntregasComision, trabajadorId: string, 
       { id: { in: idsConHechos } },
       { entregadoPorId: trabajadorId, entregadoAt: { gte: rango.desde, lt: rango.hasta } },
     ],
-  } })
+  }, include: conNombres })
   const ids = pedidos.map(p => p.id)
   const [eventos, yaAtribuidos, capturasModernas] = await Promise.all([
     leerEntregasConsulta(tx, { ids }),
@@ -98,6 +144,7 @@ async function fuentesSinEmbarque(tx: TxEntregasComision, trabajadorId: string, 
     }
     const moderna = capturasModernas.pedidos.has(p.id) || hechos.some(e => e.fuente !== 'HISTORICO')
     let u = vacio()
+    let historico = false
     if (moderna) {
       // Cada delta pertenece a su fecha y responsable, aunque el pedido siga
       // pendiente o su acumulado/última fecha cambien al completar otra entrega.
@@ -121,21 +168,29 @@ async function fuentesSinEmbarque(tx: TxEntregasComision, trabajadorId: string, 
       if (p.estadoEntrega !== 'ENTREGADO' || p.entregadoPorId !== trabajadorId ||
         !p.entregadoAt || !dentro(p.entregadoAt) || contradictorio) {
         revision('tiene cantidades históricas que no permiten separar fecha y responsable; concilia el reparto antes de pagar.')
-      } else u = acumulado
+      } else { u = acumulado; historico = true }
     }
     if (Object.values(u).some(n => n > 0)) {
-      fuentes.push({ id: p.id, numero: p.numero, href: `/pedidos/${p.id}`, origen: 'SIN_EMBARQUE', unidades: u })
+      const fuente: FuenteComision = { id: p.id, numero: p.numero, href: `/pedidos/${p.id}`, origen: 'SIN_EMBARQUE', unidades: u }
+      if (detalle) {
+        const dIni = diaBogota(ini), dFin = diaBogota(fin)
+        fuente.pedidos = [historico ? filaHistorica(p, u, p.entregadoAt) : filaPedido(p, trabajadorId, u, hechos, dia => dia >= dIni && dia <= dFin)]
+      }
+      fuentes.push(fuente)
     }
   }
   return { fuentes, revisiones }
 }
 
-async function fuentesDeMisiones(tx: Pick<TxComision, 'pedido' | 'embarque'>, misiones: Mision[]) {
+async function fuentesDeMisiones(tx: TxEntregasComision, misiones: Mision[], detalle: boolean) {
   // La asignación actual de Pedido puede ser otra misión. Resolver la identidad
   // del evento por su pedidoId, sin exigir que siga vinculado al embarque original.
   const ids = [...new Set(misiones.flatMap(e => e.movimientos.map(m => leerMetadata(m.metadata).pedidoId).filter((id): id is string => !!id)))]
-  const pedidos = ids.length ? await tx.pedido.findMany({ where: { id: { in: ids } }, select: { id: true, estadoEntrega: true, estado: true } }) : []
+  const pedidos = ids.length ? await tx.pedido.findMany({ where: { id: { in: ids } }, include: conNombres }) : []
   const porId = new Map(pedidos.map(p => [p.id, p]))
+  // #622: entregas por día de los pedidos de las misiones (mismo lector que la comisión sin embarque).
+  const eventosPorPedido = new Map<string, EntregaConsulta[]>()
+  if (detalle && ids.length) for (const ev of await leerEntregasConsulta(tx, { ids })) eventosPorPedido.set(ev.pedidoId, [...(eventosPorPedido.get(ev.pedidoId) ?? []), ev])
   const legadosConEventos = await pedidosConEntregaAtribuida(tx, [...new Set(misiones.filter(e => !esMisionViva(e)).flatMap(e => e.pedidos.map(p => p.id)))])
   const fuentes: FuenteComision[] = []
   const revisiones: RevisionComision[] = []
@@ -143,6 +198,9 @@ async function fuentesDeMisiones(tx: Pick<TxComision, 'pedido' | 'embarque'>, mi
     // Un CIERRE etiquetado conserva su procedencia aun después de apagar el flag.
     const vivo = esMisionViva(e)
     const u = vacio()
+    const porPedidoU = new Map<string, { u: UnidadesReparto; dias: Set<string> }>()
+    const sinPedido = vacio()
+    const filas: PedidoComision[] = []
     const revision = (motivo: string) => {
       if (!revisiones.some(r => r.embarqueId === e.id && r.motivo === motivo)) revisiones.push({ embarqueId: e.id, motivo })
     }
@@ -159,10 +217,16 @@ async function fuentesDeMisiones(tx: Pick<TxComision, 'pedido' | 'embarque'>, mi
           // El cierre escribe solo su delta + ventas libres previas, separado de
           // los eventos ya atribuidos. VENTA_RUTA son las nuevas ventas del cierre.
           u[prod] += m.cantidad
+          sinPedido[prod] += m.cantidad
         } else if (meta.captura === CAPTURA_ENTREGA_PEDIDO) {
           const pedido = meta.pedidoId ? porId.get(meta.pedidoId) : undefined
           if (!pedido) { revision('Una entrega no tiene un pedido verificable.'); continue }
-          if (!invalido(pedido.estadoEntrega) && !invalido(pedido.estado)) u[prod] += m.cantidad
+          if (!invalido(pedido.estadoEntrega) && !invalido(pedido.estado)) {
+            u[prod] += m.cantidad
+            const f = porPedidoU.get(pedido.id) ?? { u: vacio(), dias: new Set<string>() }
+            f.u[prod] += m.cantidad; f.dias.add(diaBogota(m.createdAt))
+            porPedidoU.set(pedido.id, f)
+          }
         } else {
           revision('Hay entregas sin identidad verificable; no se emparejan por cantidad.');
         }
@@ -182,9 +246,19 @@ async function fuentesDeMisiones(tx: Pick<TxComision, 'pedido' | 'embarque'>, mi
         }
         const n = unidades(p)
         u.agua += n.agua; u.hielo += n.hielo; u.botellon += n.botellon
+        if (detalle && hayUnidades(n)) filas.push(filaHistorica(p, n, p.entregadoAt))
       }
     }
-    fuentes.push({ id: e.id, numero: e.numero, href: `/embarques/${e.id}`, origen: vivo ? 'EMBARQUE_VIVO' : 'EMBARQUE_LEGADO', unidades: u })
+    const fuente: FuenteComision = { id: e.id, numero: e.numero, href: `/embarques/${e.id}`, origen: vivo ? 'EMBARQUE_VIVO' : 'EMBARQUE_LEGADO', unidades: u }
+    if (detalle) {
+      for (const [id, f] of porPedidoU) {
+        const p = porId.get(id)
+        if (p && hayUnidades(f.u)) filas.push(filaPedido(p, e.trabajadorId, f.u, eventosPorPedido.get(id) ?? [], dia => f.dias.has(dia)))
+      }
+      fuente.pedidos = filas.sort((a, b) => a.numero - b.numero)
+      fuente.sinPedido = sinPedido
+    }
+    fuentes.push(fuente)
   }
   return { fuentes, revisiones }
 }
@@ -195,15 +269,16 @@ export async function comisionDeEmbarque(tx: TxComision, embarqueId: string): Pr
   const config = await tx.config.findUnique({ where: { clave: 'COM_REPARTIDOR' } })
   const tarifas = tarifasRepartidor(e.trabajador, config ? Number(config.valor) : undefined)
   if (!e.trabajador.usaMoto || !['COMISION', 'MIXTO'].includes(e.trabajador.tipoPago)) return calcularPorFuentes([], tarifas)
-  const { fuentes, revisiones } = await fuentesDeMisiones(tx, [e])
+  const { fuentes, revisiones } = await fuentesDeMisiones(tx, [e], true)
   return calcularPorFuentes(fuentes, tarifas, revisiones)
 }
 
 /** Comisión en [ini, fin]; quien llama decide la elegibilidad COMISION/MIXTO. */
-export async function calcularComisionRepartidor(tx: TxEntregasComision, trabajadorId: string, ini: Date, fin: Date, tarifas: TarifasRepartidor): Promise<ComisionRepartidor> {
+export async function calcularComisionRepartidor(tx: TxEntregasComision, trabajadorId: string, ini: Date, fin: Date, tarifas: TarifasRepartidor, opciones: { detallePedidos?: boolean } = {}): Promise<ComisionRepartidor> {
+  const detalle = opciones.detallePedidos === true // #622: solo cierre y cierre de embarque; la nómina no lo necesita
   const embarques = await tx.embarque.findMany({ where: { trabajadorId, fecha: { gte: ini, lte: fin }, estado: 'CERRADO' }, include: seleccion })
-  const { fuentes, revisiones } = await fuentesDeMisiones(tx, embarques)
-  const sinEmbarque = await fuentesSinEmbarque(tx, trabajadorId, ini, fin)
+  const { fuentes, revisiones } = await fuentesDeMisiones(tx, embarques, detalle)
+  const sinEmbarque = await fuentesSinEmbarque(tx, trabajadorId, ini, fin, detalle)
   fuentes.push(...sinEmbarque.fuentes)
   revisiones.push(...sinEmbarque.revisiones)
   return calcularPorFuentes(fuentes, tarifas, revisiones)
@@ -218,7 +293,7 @@ export async function comisionRepartidoresDelDia(tx: TxComision, fecha: string):
   ])
   const filas: ComisionRepartidorDia[] = []
   for (const t of trabajadores) {
-    const c = await calcularComisionRepartidor(tx, t.id, ini, fin, tarifasRepartidor(t, config ? Number(config.valor) : undefined))
+    const c = await calcularComisionRepartidor(tx, t.id, ini, fin, tarifasRepartidor(t, config ? Number(config.valor) : undefined), { detallePedidos: true })
     filas.push({ trabajadorId: t.id, nombre: t.nombre, ...c })
   }
   return filas

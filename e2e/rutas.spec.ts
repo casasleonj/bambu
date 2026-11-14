@@ -1,5 +1,5 @@
 // @tests api/ruta
-import {test, expect, handleBaseCaja, loginAs, goto, apiPost, apiGet,  resetDatabase} from './fixtures'
+import {test, expect, handleBaseCaja, loginAs, goto, apiPost, apiGet, createTrabajador, resetDatabase} from './fixtures'
 
 test.describe('Rutas', () => {
   test.describe.configure({ mode: 'serial' })
@@ -209,20 +209,65 @@ test.describe('Rutas', () => {
     const body = await res.json()
     expect(body.ruta?.id).toBeTruthy()
 
+    const t = await createTrabajador(page)
+    const trabajadorId = (t.trabajador?.id || t.data?.id) as string
+    expect(trabajadorId).toBeTruthy()
+
     await goto(page, '/embarques')
 
-    await page.click('button:has-text("Nuevo Embarque")')
-    await page.waitForTimeout(500)
+    // El flujo actual de «Nuevo Embarque» es el wizard pedidos-primero (#702):
+    // el selector de Ruta vive en el paso 2, dentro de «Más opciones».
+    const wizard = page.getByTestId('nuevo-embarque-wizard')
+    const boton = page.getByRole('button', { name: /Nuevo Embarque/i }).first()
+    // El clic puede llegar antes de que React enganche el handler: se reintenta
+    // solo mientras el modal siga cerrado.
+    await expect(async () => {
+      if (!(await wizard.isVisible())) await boton.click()
+      await expect(wizard).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 20000 })
 
-    const selects = page.locator('select')
-    const count = await selects.count()
-    expect(count).toBeGreaterThanOrEqual(1)
+    const stock = page.waitForResponse((r) => r.url().includes('/api/embarques') && r.url().includes('stock=true'))
+    await page.getByTestId('wizard-siguiente').click()
+    await stock
 
-    const dialog = page.locator('[role="dialog"]')
-    if (await dialog.isVisible({ timeout: 3000 }).catch(() => false)) {
-      const dialogText = await dialog.innerText()
-      expect(dialogText.length).toBeGreaterThan(0)
+    await page.getByTestId('confirmar-repartidor').selectOption(trabajadorId)
+    await page.getByTestId('carga-PACA_AGUA').fill('1')
+
+    // La ruta creada por la API debe poder elegirse (no solo existir un <select>).
+    await page.getByTestId('mas-opciones').click()
+    const selectRuta = wizard.locator('select').filter({ has: page.locator('option', { hasText: name }) })
+    await expect(selectRuta).toHaveCount(1)
+    await selectRuta.selectOption({ label: name })
+    await expect(selectRuta).toHaveValue(body.ruta.id)
+
+    // Con stock insuficiente el wizard exige confirmarlo; los dos estados son válidos.
+    const crear = page.getByTestId('wizard-crear')
+    const override = page.getByTestId('stock-override')
+    await expect
+      .poll(async () => (await crear.isEnabled()) || (await override.isVisible()), { timeout: 15000 })
+      .toBe(true)
+    if (!(await crear.isEnabled())) {
+      await override.getByRole('checkbox').check()
+      const motivo = override.locator('textarea')
+      if (await motivo.isVisible()) await motivo.fill('Stock físico verificado (prueba E2E)')
     }
+    await expect(crear).toBeEnabled()
+    await crear.click()
+    // Sin pedidos el wizard pide confirmación explícita.
+    await page.getByRole('button', { name: 'Crear igual' }).click()
+
+    await expect(page.getByTestId('wizard-ir-detalle')).toBeVisible({ timeout: 15000 })
+    await page.getByTestId('wizard-ir-detalle').click()
+    await page.waitForURL(/\/embarques\/.+/, { timeout: 15000 })
+
+    // El embarque quedó realmente asociado a la ruta elegida.
+    const embarqueId = page.url().match(/\/embarques\/([^/?#]+)/)?.[1]
+    expect(embarqueId).toBeTruthy()
+    const det = await apiGet(page, `/api/embarques/${embarqueId}`)
+    expect(det.status()).toBe(200)
+    const emb = (await det.json())
+    const embarque = emb.embarque ?? emb.data ?? emb
+    expect(embarque.ruta?.id ?? embarque.rutaId).toBe(body.ruta.id)
   })
 
   test('crear con todos los campos', async ({ page }) => {

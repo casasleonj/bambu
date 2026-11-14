@@ -1,6 +1,7 @@
 import { prisma } from './prisma'
 import { getTodayRange, getTodayString } from './dates'
 import { EstadoEmbarque } from '@prisma/client'
+import { netoPrevioDelDia } from './produccion-previas'
 
 export interface StockSnapshot {
   PACA_AGUA: number
@@ -88,7 +89,10 @@ export async function getStockDisponible(): Promise<StockDisponibleResult> {
   // Los dos lotes corren en paralelo porque no comparten datos intermedios.
   const [loteConfig, loteProduccion] = await Promise.all([
     Promise.all([
+      // #668: solo cierres ANTERIORES a hoy. El cierre de hoy ya incluye la producción y los embarques de hoy que se suman
+      // abajo: tomarlo como base los contaría dos veces.
       prisma.cierreDia.findFirst({
+        where: { fecha: { lt: startOfDay } },
         orderBy: { fecha: 'desc' },
       }),
       getStockEstimadoHoy(),
@@ -99,7 +103,8 @@ export async function getStockDisponible(): Promise<StockDisponibleResult> {
         where: {
           produccion: { fecha: { gte: startOfDay, lt: endOfDay } },
         },
-        select: { producto: true, producido: true },
+        // #668: con las pérdidas, para descontarlas una sola vez (misma regla que las producciones previas de #645).
+        select: { producto: true, producido: true, rotas: true, filtradas: true, consumoInterno: true },
       }),
       // Embarques del día: abiertos, en ruta y cerrados en UNA sola query.
       // Antes eran dos queries separadas (abiertos + cerrados), ahora se filtran
@@ -125,32 +130,32 @@ export async function getStockDisponible(): Promise<StockDisponibleResult> {
     BOLSA_HIELO: 0,
   }
 
-  for (const item of produccionesHoy) {
-    if (item.producto === 'PACA_AGUA') {
-      stockBase.PACA_AGUA += item.producido
-    } else if (item.producto === 'PACA_HIELO') {
-      stockBase.PACA_HIELO += item.producido
-    }
-  }
+  // #668: producido menos filtradas, merma (rotas) y consumo interno; nada se descuenta dos veces.
+  const produccionHoy = [{ items: produccionesHoy }]
+  stockBase.PACA_AGUA += netoPrevioDelDia(produccionHoy, 'PACA_AGUA')
+  stockBase.PACA_HIELO += netoPrevioDelDia(produccionHoy, 'PACA_HIELO')
 
-  // Un solo loop: restar cargadas (abiertos/en_ruta), sumar devueltas (cerrados)
+  // Un solo loop. #668: la carga sale del almacén en cualquier estado; en un embarque cerrado vuelve solo lo devuelto
+  // (500 iniciales − 100 cargadas + 20 devueltas = 420).
   for (const emb of embarquesHoy) {
     const esCerrado = emb.estado === EstadoEmbarque.CERRADO
     for (const prod of emb.productos) {
       const key = prod.producto as keyof StockSnapshot
       if (key in stockBase) {
-        if (esCerrado) {
-          stockBase[key] += prod.devueltas
-        } else {
-          stockBase[key] -= prod.cargadas
-        }
+        stockBase[key] -= prod.cargadas
+        if (esCerrado) stockBase[key] += prod.devueltas
       }
     }
     // Fallback legacy (productos array vacío pero legacy pacasAgua/pacasHielo seteados)
     if (emb.productos.length === 0) {
       if (emb.pacasAgua > 0 || emb.devueltasAgua > 0) {
-        stockBase.PACA_AGUA += esCerrado ? emb.devueltasAgua : -emb.pacasAgua
-        stockBase.PACA_HIELO += esCerrado ? emb.devueltasHielo : -emb.pacasHielo
+        // #668: misma regla que arriba — la carga sale siempre; en un cerrado vuelve lo devuelto.
+        stockBase.PACA_AGUA -= emb.pacasAgua
+        stockBase.PACA_HIELO -= emb.pacasHielo
+        if (esCerrado) {
+          stockBase.PACA_AGUA += emb.devueltasAgua
+          stockBase.PACA_HIELO += emb.devueltasHielo
+        }
       }
     }
   }

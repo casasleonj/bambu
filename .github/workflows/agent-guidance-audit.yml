@@ -1,0 +1,74 @@
+name: Agent Instructions Audit (preparatory)
+
+on:
+  pull_request:
+    paths:
+      - 'AGENTS.md'
+      - 'src/**/AGENTS.md'
+      - 'e2e/AGENTS.md'
+      - 'prisma/AGENTS.md'
+      - '.claude/rules/**'
+      - 'CLAUDE.md'
+      - 'opencode.json'
+      - '.agents/skills/**'
+      - '.claude/skills/**'
+      - '.opencode/prompts/**'
+      - 'scripts/auditoria-agentes/**'
+      - 'docs/agentes/**'
+      - '.github/workflows/agent-guidance-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Unit tests of verification gate
+        run: python -m unittest discover -s scripts/auditoria-agentes/tests -v
+      - name: Verify modularization and exact original snapshot
+        run: python scripts/auditoria-agentes/check_modularizacion.py --repo . --salida /tmp/agent-modularization-report.json
+      - name: Verify 49 historic records indexed and linked
+        run: python scripts/auditoria-agentes/check_indice_historico.py --repo .
+      - name: Verify JL and Hallazgo skill routes (not runtime)
+        run: python scripts/auditoria-agentes/check_skills.py --repo .
+      - name: Verify scoped contracts and Claude path rules
+        run: python scripts/auditoria-agentes/check_scoped_rules.py --repo .
+      - name: Verify full original-line traceability without claiming semantic certification
+        run: python scripts/auditoria-agentes/check_reconciliacion.py --repo .
+      - name: Verify 530 candidate positions and preliminary semantic provenance
+        run: python scripts/auditoria-agentes/check_preanalisis.py --repo .
+      - name: Verify new main delta (691 and 696) not lost
+        run: python scripts/auditoria-agentes/check_delta_main.py --repo .
+      - name: Verify historical context residual positions
+        run: python scripts/auditoria-agentes/check_contexto_residual.py --repo .
+      - name: Emit conservative audit report
+        shell: bash
+        run: |
+          python scripts/auditoria-agentes/check_cutover.py \
+            --repo . \
+            --matriz docs/agentes/auditoria-2026-11/matriz_fuente_798.csv \
+            --evidencia docs/agentes/auditoria-2026-11/evidencia_no_ejecutada.json \
+            --salida /tmp/agent-guidance-audit.json
+      - name: Block premature AGENTS.md cutover
+        shell: bash
+        run: |
+          git diff --name-only "${{ github.event.pull_request.base.sha || 'HEAD~1' }}" HEAD > /tmp/changed-files
+          if grep -qx 'AGENTS.md' /tmp/changed-files; then
+            python scripts/auditoria-agentes/check_cutover.py \
+              --repo . \
+              --matriz docs/agentes/auditoria-2026-11/matriz_fuente_798.csv \
+              --evidencia docs/agentes/auditoria-2026-11/evidencia_no_ejecutada.json \
+              --salida /tmp/agent-guidance-cutover.json \
+              --exigir-corte
+          else
+            echo "AGENTS.md intacto: no intentar declarar el cutover validado."
+          fi

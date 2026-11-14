@@ -12,7 +12,7 @@ El cierre de un embarque es una operación infrecuente pero con múltiples efect
 ## Decisión
 
 - El lock de cierre es `CIERRE:{embarqueId}` (agregado = el embarque que se cierra).
-- El cierre de día usa `CIERRE:{inicioDelDiaEnBogotá}` para serializar `/api/cierre` y `/api/cierre-dia` entre sí para el mismo día.
+- El cierre de día usa `CIERRE:{inicioDelDiaEnBogotá}` para serializar los cierres del mismo día. Desde #691 el único que cierra un día es `/api/cierre`; `/api/cierre-dia` quedó de solo lectura (su `POST` se eliminó).
 - Idempotencia por `offlineId`: replay con el mismo `offlineId` y estado `CERRADO` retorna `deduped: true` sin re-ejecutar.
 
 ## Estado de implementación (FASE 0)

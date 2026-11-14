@@ -1,3 +1,4 @@
+import { UnitPrice } from '@/shared/domain/unit-price'
 /**
  * Corrección de precio de una línea del pedido (ADR-MONETARIO-002 §1, ADR-CIERRE-004).
  *
@@ -11,7 +12,7 @@
  *   (`PRECIO_GENERARIA_SOBREPAGO`): `chk_pedido_montopagado_le_total` y la regla
  *   `totalPagado = Σ Pago + Σ Abono` no permiten bajar el total sin reversar pagos.
  * - «Precio raro» (< $2.000 en pacas, < $7.500 en botellón): se marca y lo aplica solo un ADMIN.
- * - El ASISTENTE solicita; el ADMIN aplica.
+ * - Solo el ADMIN corrige y aplica (#616); el ASISTENTE ve el historial.
  */
 
 export const PRECIO_RARO_MINIMO: Readonly<Record<string, number>> = {
@@ -20,7 +21,6 @@ export const PRECIO_RARO_MINIMO: Readonly<Record<string, number>> = {
   BOTELLON: 7500,
 }
 
-const redondear = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100
 const aCentavos = (n: number): number => Math.round((n + Number.EPSILON) * 100)
 const deCentavos = (c: number): number => c / 100
 
@@ -52,13 +52,13 @@ export function calcularCorreccion(input: CorreccionInput): CorreccionResultado 
   if (!Number.isFinite(precioNuevo) || precioNuevo <= 0) {
     throw new Error('PRECIO_INVALIDO: el precio nuevo debe ser un número mayor que 0.')
   }
-  if (redondear(precioNuevo) === redondear(precioAnterior)) {
+  if (precioNuevo === precioAnterior) {
     throw new Error('PRECIO_SIN_CAMBIO: el precio nuevo es igual al actual.')
   }
   if (!Number.isInteger(cantidad) || cantidad <= 0) {
     throw new Error('LINEA_SIN_CANTIDAD: la línea no tiene cantidad pedida.')
   }
-  const deltaC = (aCentavos(precioNuevo) - aCentavos(precioAnterior)) * cantidad
+  const deltaC = UnitPrice.fromDecimal(precioNuevo).total(cantidad).cents - UnitPrice.fromDecimal(precioAnterior).total(cantidad).cents
   const totalNuevoC = aCentavos(total) + deltaC
   const pagadoC = aCentavos(totalPagado)
   const excedenteC = Math.max(0, pagadoC - totalNuevoC)
@@ -74,12 +74,15 @@ export function calcularCorreccion(input: CorreccionInput): CorreccionResultado 
 
 export type RolCorreccion = 'ADMIN' | 'ASISTENTE' | string
 
-/** Quién puede registrar una corrección (ADMIN y ASISTENTE). */
+/**
+ * Quién puede corregir un precio: solo el ADMIN (decisión del PO 2026-11-08, #616). El ASISTENTE ya no solicita:
+ * ve el historial. Las solicitudes PENDIENTE que dejó antes de este cambio las sigue resolviendo un ADMIN.
+ */
 export function puedeSolicitarCorreccion(rol: RolCorreccion): boolean {
-  return rol === 'ADMIN' || rol === 'ASISTENTE'
+  return rol === 'ADMIN'
 }
 
-/** Solo un ADMIN aplica; el ASISTENTE deja una solicitud pendiente. */
+/** Un ADMIN aplica en el acto. (`SOLICITAR` quedó solo para filas históricas: nadie más puede registrar una corrección.) */
 export function decidirAplicacion(rol: RolCorreccion): 'APLICAR' | 'SOLICITAR' {
   return rol === 'ADMIN' ? 'APLICAR' : 'SOLICITAR'
 }

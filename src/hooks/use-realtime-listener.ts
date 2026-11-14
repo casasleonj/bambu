@@ -17,33 +17,42 @@ export function useRealtimeListener(
   callback: (event: RealtimeEvent) => void,
   options: { debounceMs?: number } = {},
 ) {
-  const ctx = useContext(RealtimeContext)
+  const subscribe = useContext(RealtimeContext)?.subscribe
   const callbackRef = useRef(callback)
-  const filtersKey = filters.join(',')
+  // Los consumidores pasan arrays inline. Su contenido define la suscripción,
+  // no su identidad ni el status cambiante del contexto (#779).
+  const filtersKey = JSON.stringify(filters)
 
   useEffect(() => {
     callbackRef.current = callback
   }, [callback])
 
   const debounceMs = options.debounceMs ?? 500
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingRef = useRef<RealtimeEvent | null>(null)
-
   useEffect(() => {
-    if (!ctx) return undefined
-    if (filters.length === 0) return undefined
+    if (!subscribe) return undefined
+    const subscriptionFilters = JSON.parse(filtersKey) as string[]
+    if (subscriptionFilters.length === 0) return undefined
+    let active = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let pending: RealtimeEvent | null = null
 
-    return ctx.subscribe(filters, (event) => {
-      pendingRef.current = event
-      if (timerRef.current) {
-        clearTimeout(timerRef.current)
-      }
-      timerRef.current = setTimeout(() => {
-        if (pendingRef.current) {
-          callbackRef.current(pendingRef.current)
-          pendingRef.current = null
+    const unsubscribe = subscribe(subscriptionFilters, (event) => {
+      if (!active) return
+      pending = event
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        if (active && pending) {
+          const latest = pending
+          pending = null
+          callbackRef.current(latest)
         }
       }, debounceMs)
     })
-  }, [ctx, filters, filtersKey, debounceMs])
+    return () => {
+      active = false
+      clearTimeout(timer)
+      pending = null
+      unsubscribe()
+    }
+  }, [subscribe, filtersKey, debounceMs])
 }

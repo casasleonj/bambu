@@ -19,6 +19,7 @@ import { shouldFireCulminado } from '@/lib/pedido-utils'
 import { startOfDayBogota } from '@/lib/dates'
 import { entregarPedidoUseCase } from '@/modules/pedidos'
 import { EntregaOficinaError, ESTADO_HTTP_OFICINA } from '@/modules/pedidos/domain/services/entrega-oficina.errors'
+import { numeroVisibleEmbarque } from '@/lib/embarque-numero'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -81,14 +82,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const emb = await prisma.embarque
           .findUnique({
             where: { id: result.embarqueLiberadoId },
-            select: { estado: true, numero: true, trabajador: { select: { userId: true } } },
+            select: { estado: true, numero: true, numeroDia: true, trabajador: { select: { userId: true } } },
           })
           .catch(() => null)
         const repartidorUserId = emb?.trabajador?.userId
         if (emb?.estado === 'EN_RUTA' && repartidorUserId) {
           void sendPushToUser(repartidorUserId, {
             title: 'Pedido entregado desde la oficina',
-            body: `El pedido #${result.pedido.numero} se registró desde la oficina; sale del embarque #${emb.numero}.`,
+            body: `El pedido #${result.pedido.numero} se registró desde la oficina; sale del embarque #${numeroVisibleEmbarque(emb)}.`,
             url: '/repartidor',
             tag: `embarque-ruta-modificado-${result.embarqueLiberadoId}`,
           })

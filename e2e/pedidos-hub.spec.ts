@@ -20,6 +20,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect, apiPost, apiGet, apiPut, apiPatch, createCliente, createTrabajador, createEmbarque, BASE, sharedLoginAs, appMain } from './fixtures'
 import { PrismaClient } from '@prisma/client'
+import { comprobarPrecioDecimal, comprobarPrecioOffline } from './precio-decimal-795.casos'
 
 const prisma = new PrismaClient()
 
@@ -27,6 +28,16 @@ const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
 
 test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
   test.skip(!HUB_ON, 'requiere NEXT_PUBLIC_PEDIDOS_V2=true + webServer fresco')
+
+  test('#795 · venta en ruta cobra $138.000 por 63 unidades y conserva precio preciso', async ({browser}) => {
+    const page = await sharedLoginAs(browser,'admin')
+    await comprobarPrecioDecimal(page,'ruta')
+  })
+
+  test('#795 · sin conexión conserva precio y total; sincronizar dos veces crea un solo pedido', async ({browser}) => {
+    const page = await sharedLoginAs(browser,'admin')
+    await comprobarPrecioOffline(page)
+  })
 
   test('shell: filtros visibles y acceso independiente a Fiados/Alertas (#515)', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
@@ -64,18 +75,16 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await expect(app.getByTestId('consulta-filtros')).toBeVisible()
 
     const totalAntes = await app.locator('[data-testid^="operacion-row-"]').count()
-    await app.getByRole('button',{name:'Más filtros',exact:true}).click()
-    await app.getByLabel('Pago',{exact:true}).selectOption('fiado')
-    const consulta=page.waitForResponse(r=>r.url().includes('/api/pedidos/consulta')&&r.ok())
-    await app.getByRole('button',{name:'Aplicar filtros',exact:true}).click()
+    await app.getByRole('button',{name:/^Filtros/}).click()
+    const consulta=page.waitForResponse(r=>r.url().includes('/api/pedidos/consulta')&&r.url().includes('pago=fiado')&&r.ok())
+    await app.getByRole('button',{name:'Fiado · entregado con saldo',exact:true}).click()
     await consulta
     // el filtro reduce (o iguala) — nunca aumenta
     const totalDespues = await app.locator('[data-testid^="operacion-row-"]').count()
     expect(totalDespues).toBeLessThanOrEqual(totalAntes)
     // re-clic deselecciona
-    await app.getByLabel('Pago',{exact:true}).selectOption('todos')
-    const restaurada=page.waitForResponse(r=>r.url().includes('/api/pedidos/consulta')&&r.ok())
-    await app.getByRole('button',{name:'Aplicar filtros',exact:true}).click()
+    const restaurada=page.waitForResponse(r=>r.url().includes('/api/pedidos/consulta')&&r.url().includes('pago=todos')&&r.ok())
+    await app.getByRole('button',{name:'Fiado · entregado con saldo',exact:true}).click()
     await restaurada
     await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(totalAntes)
   })
@@ -112,6 +121,10 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
   // encolada se ve como "pendiente", NUNCA como "confirmado". El estado
   // confirmado sólo aparece tras la respuesta del servidor.
   test('G9: online confirmado → offline encolado ("pendiente", no "confirmado") → reconexión → sincroniza', async ({ browser }) => {
+    // #733: el test encadena tres workspaces y una espera de 20 s para que drene la cola.
+    // Con los 30 s por defecto se agotaba sólo por su propio recorrido (su error es un
+    // «Test timeout» limpio, sin venta repetida: causa distinta a la de #408/#426).
+    test.setTimeout(120_000)
     const page = await sharedLoginAs(browser, 'admin')
     const app = appMain(page)
     const nombreCliente = `G9 E2E ${Date.now()}`
@@ -119,6 +132,11 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await page.goto(`${BASE}/pedidos`)
 
     async function abrirWorkspace() {
+      // #783 / G9: el aviso de éxito del pedido anterior tapa el FAB y Sonner se pausa
+      // mientras el puntero está encima, así que el clic reintenta hasta agotar el test.
+      // #426 ya resuelve esto igual: esperar a que no quede ningún aviso antes de pulsar.
+      await page.mouse.move(5, 5) // fuera del aviso: así Sonner no se pausa y se va solo
+      await expect(page.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 20000 })
       await app.getByTestId('fab-main').click()
       await page.getByTestId('fab-pedido-envio').click()
       await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
@@ -239,14 +257,17 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     // La fila de ESTE test (PENDIENTE → tiene acción destacada); `.first()`
     // podría caer en un pedido viejo ya cerrado sin acción.
     await app.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCli }).first().click()
-    await expect(page.getByTestId('peek-desktop')).toBeVisible()
+    // #779: el mismo contrato G4 se prueba en ambos proyectos. En móvil
+    // el detalle es la hoja, no el panel lateral exclusivo de escritorio.
+    const peek = page.getByTestId((page.viewportSize()?.width ?? 1280) < 1024 ? 'peek-mobile' : 'peek-desktop')
+    await expect(peek).toBeVisible()
     expect(page.url()).toBe(urlAntes) // G4: no navegó
 
     await expect(page.getByTestId('peek-accion-destacada')).toBeVisible()
     await page.keyboard.press('ArrowDown')
-    await expect(page.getByTestId('peek-desktop')).toBeVisible() // sigue abierto en otra operación
+    await expect(peek).toBeVisible() // sigue abierto en otra operación
     await page.keyboard.press('Escape')
-    await expect(page.getByTestId('peek-desktop')).toHaveCount(0)
+    await expect(peek).toHaveCount(0)
   })
 
   test('command menu: ⌘/Ctrl+K abre; "Abrir planificación de hoy" navega, no ejecuta', async ({ browser }) => {
@@ -1104,7 +1125,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     const pedidoId: string = (creadoBody.data?.pedido ?? creadoBody.pedido).id
 
     await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
-    await page.getByRole('button', { name: /Editar/ }).click()
+    await page.getByTestId('detalle-accion-editar').click()
     await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
     await expect(page.getByTestId('workspace-canal-fijo')).toBeVisible()
     await expect(page.getByTestId('workspace-cant-PACA_AGUA')).toHaveValue('3')
@@ -1124,6 +1145,147 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     const items = detalle.pedido.items as Array<{ producto: string; cantPedido: number }>
     expect(items.find((i) => i.producto === 'PACA_AGUA')?.cantPedido).toBe(4)
   })
+
+  // #408: la misma venta cargada dos veces seguidas avisa (no bloquea); marcar «Es otra venta distinta» la deja
+  // guardar y queda anotado en el historial de la segunda venta. Se mira la base de datos, no solo la pantalla.
+  test('#408: venta repetida — aviso con casilla, se guardan las dos y la confirmación queda en el historial', async ({ browser }) => {
+    // #733: dos ventas con hasta 27 clics cada una no caben en los 30 s por defecto en el
+    // runner de CI; al agotarse, el `finally` restauraba la ventana con la página ya cerrada
+    // y el valor 60 s se filtraba a #426 (que crea un cliente NUEVO y recibía «Parece una
+    // venta repetida»). Mismo margen que #426, que ya usa 120 s.
+    test.setTimeout(120_000)
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    await page.goto(`${BASE}/pedidos`)
+    const desde = new Date()
+    // cantidad distinta en cada intento: un reintento seguido no debe chocar con la venta del anterior
+    const pacas = 8 + Math.floor(Math.random() * 20)
+    const ventana = (valor: string) => apiPost(page, '/api/config', { clave: 'VENTA_REPETIDA_VENTANA_SEG', valor })
+    expect((await ventana('60')).ok()).toBe(true) // por defecto el aviso va apagado en la base de pruebas
+    try {
+    const cargarVenta = async () => {
+      await app.getByTestId('fab-main').click()
+      await page.getByTestId('fab-venta-rapida').click()
+      await expect(page.getByTestId('workspace-venta-rapida')).toBeVisible()
+      // #733: fijar la cantidad en una sola escritura. Rellenar el campo dispara el mismo
+      // onChange que los «+», así que la venta se carga igual y se ahorran hasta 27 clics.
+      // Se comprueba el valor: si el campo no queda aplicado, la venta saldría con otra
+      // cantidad y el aviso de venta repetida se evaluaría sobre datos distintos, dando un
+      // verde o un rojo engañoso. Mejor fallar aquí que aguas abajo.
+      const cantidad = page.getByTestId('workspace-cant-PACA_AGUA')
+      await cantidad.fill(String(pacas))
+      // inputValue() devuelve siempre string; `toHaveValue` compara como número en
+      // <input type="number"> y daría un fallo confuso por tipo, no por la cantidad.
+      expect(await cantidad.inputValue()).toBe(String(pacas))
+      await page.getByTestId('dinero-pagar-completo-EFECTIVO').click()
+      await expect(page.getByTestId('dinero-saldo')).toHaveText('Pagado', { timeout: 10000 })
+    }
+
+    await cargarVenta()
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    await expect(page.getByTestId('venta-repetida')).toHaveCount(0) // la primera no es repetida
+    await page.getByTestId('workspace-commit').click()
+    await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+
+    await cargarVenta()
+    const aviso = page.getByTestId('venta-repetida')
+    await expect(aviso).toBeVisible({ timeout: 10000 })
+    await expect(aviso).toContainText('Parece una venta repetida')
+    await expect(page.getByTestId('workspace-commit')).toBeDisabled()
+    await page.getByTestId('venta-repetida-confirmar').check()
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    const creado = page.waitForResponse((r) => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST')
+    await page.getByTestId('workspace-commit').click()
+    expect((await creado).status()).toBeLessThan(300)
+    await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+
+    const ventas = await prisma.pedido.findMany({
+      where: { clienteId: 'CONSUMIDOR_FINAL', createdAt: { gte: desde }, items: { some: { producto: 'PACA_AGUA', cantPedido: pacas } } },
+      orderBy: { createdAt: 'asc' },
+    })
+    expect(ventas).toHaveLength(2)
+    const hist = await prisma.historial.findMany({ where: { entidad: 'Pedido', registroId: ventas[1].id } })
+    expect(hist.some((h) => h.datos.includes('VENTA_REPETIDA_CONFIRMADA'))).toBe(true)
+    expect(await prisma.historial.count({ where: { registroId: ventas[0].id, datos: { contains: 'VENTA_REPETIDA_CONFIRMADA' } } })).toBe(0)
+    } finally {
+      // #733: restaurar sin depender de que la página siga viva. Antes se hacía sólo con
+      // `apiPost(page, ...)`: al agotarse el tiempo del test la página ya estaba cerrada,
+      // lanzaba «Target page, context or browser has been closed» y la ventana quedaba en 60 s,
+      // filtrándose al test siguiente. La base tenía 0 antes de este test (seed-test.ts) y se
+      // enciende dentro del `try`, así que devolverla a 0 aquí reproduce el estado previo y no
+      // puede apagar una ventana que otro test haya encendido a propósito.
+      // El upsert cubre el caso de que la fila no exista; ya no depende del navegador.
+      await prisma.config.upsert({
+        where: { clave: 'VENTA_REPETIDA_VENTANA_SEG' },
+        update: { valor: '0' },
+        create: { clave: 'VENTA_REPETIDA_VENTANA_SEG', valor: '0' },
+      }).catch(() => {})
+      // Además se invalida la caché de config (`unstable_cache`, TTL 60 s) por la API: sin esto
+      // el 60 puede sobrevivir en memoria hasta un minuto aunque la base ya esté en 0. Es
+      // best-effort a propósito: si la página murió, la base ya quedó restaurada arriba.
+      await ventana('0').catch(() => {})
+    }
+  })
+
+  // #426: «Guardar también la ubicación» guarda el punto del pedido en el cliente; si ya había otra no se pisa
+  // en silencio (hay que elegir) y lo reemplazado queda en el historial. Se mira la base de datos.
+  test('#426: guardar también la ubicación — se guarda, no pisa en silencio y reemplazar queda en el historial', async ({ browser }) => {
+    test.setTimeout(120_000) // tres pedidos seguidos con su revisión de ubicación
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    const nombre = `Ubic426 ${Date.now()}`
+    const { cliente } = await createCliente(page, { nombre })
+    await page.goto(`${BASE}/pedidos`)
+
+    const crearPedido = async (link: string, elegir?: 'reemplazar' | 'dejar') => {
+      await expect(page.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 20000 }) // un aviso anterior no tapa el «+»
+      await app.getByTestId('fab-main').click()
+      await page.getByTestId('fab-pedido-envio').click()
+      await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
+      await page.getByTestId('cliente-search-input').fill(nombre)
+      await page.getByTestId('cliente-search-result').first().click()
+      await page.getByTestId('workspace-inc-PACA_AGUA').click()
+      const cambiar = page.getByTestId('workspace-entrega-cambiar')
+      await expect(cambiar.or(page.getByTestId('workspace-entrega-link'))).toBeVisible({ timeout: 10000 })
+      if (await cambiar.isVisible()) await cambiar.click()
+      await page.getByTestId('workspace-entrega-link').fill(link)
+      await expect(page.getByTestId('guardar-ubicacion-casilla')).not.toBeChecked() // apagada por defecto
+      await page.getByTestId('guardar-ubicacion-casilla').check()
+      if (elegir) {
+        await expect(page.getByTestId('guardar-ubicacion-otra')).toBeVisible({ timeout: 10000 })
+        await expect(page.getByTestId('workspace-commit')).toBeDisabled() // no se guarda sin elegir
+        await page.getByTestId(`guardar-ubicacion-${elegir}`).click()
+      }
+      await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+      await page.getByTestId('workspace-commit').click()
+      await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+      await page.mouse.move(5, 5) // Sonner se pausa con el cursor encima: así el aviso se va solo
+    }
+    const coords = async () => {
+      const c = await prisma.cliente.findUniqueOrThrow({ where: { id: cliente.id } })
+      return { lat: c.lat == null ? null : Number(c.lat), lng: c.lng == null ? null : Number(c.lng) }
+    }
+    const eventos = async () => (await prisma.historial.findMany({ where: { entidad: 'Cliente', registroId: cliente.id } }))
+      .filter((h) => h.datos.includes('UBICACION_GUARDADA_DESDE_PEDIDO'))
+
+    // 1) sin ubicación previa: se guarda.
+    await crearPedido('https://www.google.com/maps?q=8.7479,-75.8814')
+    await expect(page.getByText('La ubicación quedó guardada en el cliente para los próximos pedidos.')).toBeVisible({ timeout: 10000 })
+    expect((await coords()).lat).toBeCloseTo(8.7479, 4)
+    expect((await coords()).lng).toBeCloseTo(-75.8814, 4)
+    expect((await eventos()).some((h) => h.datos.includes('"GUARDADA"'))).toBe(true)
+
+    // 2) ya hay otra: elegir «Dejar la que ya tenía» no cambia nada.
+    await crearPedido('https://www.google.com/maps?q=8.7455,-75.8830', 'dejar')
+    expect((await coords()).lat).toBeCloseTo(8.7479, 4)
+
+    // 3) «Reemplazarla por la nueva» cambia el punto y queda anotado con lo anterior.
+    await crearPedido('https://www.google.com/maps?q=8.7455,-75.8830', 'reemplazar')
+    expect((await coords()).lat).toBeCloseTo(8.7455, 4)
+    expect((await coords()).lng).toBeCloseTo(-75.883, 4)
+    const reemplazo = (await eventos()).find((h) => h.datos.includes('"REEMPLAZADA"'))
+    expect(reemplazo?.datos).toContain('8.7479')
+  })
 })
 
 test.describe('flag OFF: la UI de tabs sigue funcionando', () => {
@@ -1142,4 +1304,5 @@ test.describe('flag OFF: la UI de tabs sigue funcionando', () => {
 
 // La misma suite CI Hub incluye los recorridos de consulta aprobados.
 import './pedidos-consulta-516.casos'
+import './pedidos-realtime-779.casos'
 import './pedidos-consulta-resumen-537.casos'

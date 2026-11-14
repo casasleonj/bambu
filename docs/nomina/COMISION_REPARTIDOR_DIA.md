@@ -11,7 +11,7 @@ La comisión se calcula sola; el **pago** es un toque deliberado, porque es dine
 | Tabla de pagos | `PagoComisionRepartidor` (migración `20261027_pago_comision_repartidor`) |
 | Ver el día | `GET /api/nomina/dia?fecha=` (ADMIN/CONTADOR) |
 | Pagar | `POST /api/nomina/dia/pagar` (ADMIN/CONTADOR) |
-| Cierre de caja | `POST /api/cierre` y `POST /api/cierre-dia` calculan `comisiones` en el servidor |
+| Cierre de caja | `POST /api/cierre` calcula `comisiones` en el servidor (`/api/cierre-dia` ya no cierra días: #691) |
 | Nómina del período | `POST /api/nomina` descuenta lo pagado (`Nomina.comisionPagadaCaja`) |
 | Verificador | regla V16 (`src/lib/integridad/reglas.ts`) |
 
@@ -50,3 +50,7 @@ Límites: la excepción histórica por acumulados no prueba quién hizo cada ent
 - Si ya se pagaron 203 unidades y la cifra correcta aumenta a 206, solo queda la comisión de 3. El replay del pago conserva su resultado y la pantalla desactualizada recibe `MONTO_CAMBIO`. No se reescriben nóminas, pagos ni cierres guardados.
 
 Pruebas: `integration/comision-parciales-669.test.ts` (datos sintéticos, PostgreSQL y handlers reales), `nomina-comision-sin-embarque.test.ts`, `comision-repartidor-dia.test.ts`, `pago-comision-repartidor.test.ts`, `comision-salario-medio-pago-305.test.ts` y `e2e/comision-repartidor-dia.spec.ts` (cantidades, enlace de detalle y pago de la diferencia). La regresión de partida reproduce 203 en vez de 206 y cero pendiente en vez de la comisión de las 3 unidades.
+
+## Detalle por pedido en «Ver entregas y cálculo» (#622)
+
+El desglose muestra, dentro de cada embarque o pedido sin embarque, la lista de pedidos con su negocio (primero) o cliente, lo entregado **en esta comisión** y, aparte, lo pedido, lo entregado hasta ese día y lo pendiente. Una entrega cuenta en el día en que ocurrió y por quien la hizo, no en el día en que se creó el pedido: un pedido de 10 con 5 entregadas ayer y 5 hoy muestra 5 y 5, «Completó hoy» en el día de hoy y «5 de 10 · se completó después» en el cierre de ayer. Las unidades por pedido más las «ventas en ruta (sin pedido)» suman exactamente las del embarque. Es solo lectura: no cambia unidades, tarifas, pagos ni nómina, y si el detalle por día no se puede verificar se dice «sin detalle verificable» y se conserva «Por conciliar».

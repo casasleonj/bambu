@@ -178,3 +178,13 @@ El backfill deja los datos consistentes si se reactiva.
 - `ResponsibilityCase` gana un cuarto tipo — el panel de excepciones de embarque
   (`mission-detail`) ya lo renderiza genéricamente, pero `PAGO_NO_CONFIRMADO`
   puede no tener `embarqueId` → aparece solo en un listado global de casos.
+
+## Addendum 2026-11-09 (#406) — quién confirma: casilla por usuario
+
+Decisión del PO (maqueta aprobada el 2026-11-09): confirma pagos **quien tenga la casilla «Puede confirmar pagos»** en Usuarios (`User.puedeConfirmarPagos`), igual que «Puede autorizar excepciones de crédito». Sustituye lo de §3 («una persona concreta vía `Config.USUARIO_CONFIRMA_PAGOS`»):
+
+- Pueden ser **varias personas**. Sigue siendo un permiso por persona, no un rol: ser ADMIN no basta.
+- Solo un **Admin, Asistente o Contador** puede tenerla. El Repartidor no (confirmaría lo que él mismo cobra); cambiar a alguien a otro rol se la quita. Un usuario inactivo no confirma.
+- Solo el ADMIN la marca o desmarca (`PUT /api/users/[id]`); queda en la auditoría.
+- Compatibilidad: si `Config.USUARIO_CONFIRMA_PAGOS` apunta a un usuario activo con rol válido, también confirma. En producción esa clave nunca se guardó.
+- El resto del ADR (REPORTADO → CONFIRMADO, flag `NEXT_PUBLIC_PAGO_CONFIRMACION`) no cambia.

@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
 import type { Cliente, FiltroRiesgo, FiltrosActivos, MostrarNegocio, UbicacionMapsFilter } from './types'
 import { formatCurrency } from '@/lib/utils'
+import { saldoFavorDeFila } from '@/lib/saldo-favor-textos'
 import { EmptyState, EmptySearch } from '@/components/empty-state'
 import { Tooltip } from '@/components/tooltip'
 import { NegociosUbicacionesFilter } from './negocios-ubicaciones-filter'
@@ -44,8 +45,11 @@ interface ClienteTableProps {
   allClientesLoading?: boolean
   loading?: boolean
   filterSaldo?: boolean
+  /** #696: solo clientes con saldo a favor. */
+  filterSaldoFavor?: boolean
   filterFrecuencia?: boolean
   onFilterSaldoChange?: (val: boolean) => void
+  onFilterSaldoFavorChange?: (val: boolean) => void
   onFilterFrecuenciaChange?: (val: boolean) => void
 }
 
@@ -73,8 +77,10 @@ export const ClienteTable = React.memo(function ClienteTable({
   allClientesLoading = false,
   loading = false,
   filterSaldo = false,
+  filterSaldoFavor = false,
   filterFrecuencia = false,
   onFilterSaldoChange = () => {},
+  onFilterSaldoFavorChange = () => {},
   onFilterFrecuenciaChange = () => {},
 }: ClienteTableProps) {
   const router = useRouter()
@@ -117,6 +123,7 @@ export const ClienteTable = React.memo(function ClienteTable({
   // clientes-client/index.tsx sobre por qué no se filtra acá.
   const hasActiveFilters =
     filterSaldo ||
+    filterSaldoFavor ||
     filterFrecuencia ||
     search ||
     optimisticFiltroRiesgo ||
@@ -125,6 +132,7 @@ export const ClienteTable = React.memo(function ClienteTable({
 
   const clearFilters = () => {
     onFilterSaldoChange(false)
+    onFilterSaldoFavorChange(false)
     onFilterFrecuenciaChange(false)
     onSearchChange('')
     setOptimisticFiltroRiesgo(null)
@@ -256,7 +264,7 @@ export const ClienteTable = React.memo(function ClienteTable({
         )}
 
         <div className="flex flex-wrap gap-2">
-          <Tooltip content="Mostrar solo clientes con saldo pendiente" position="bottom">
+          <Tooltip content="Mostrar solo clientes con deuda (saldo pendiente)" position="bottom">
             <button
               onClick={() => onFilterSaldoChange(!filterSaldo)}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] md:min-h-0 rounded-full text-xs font-medium border transition ${
@@ -268,8 +276,24 @@ export const ClienteTable = React.memo(function ClienteTable({
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              Con saldo
+              Con deuda
               {filterSaldo && <span className="w-1.5 h-1.5 rounded-full bg-red-500" />}
+            </button>
+          </Tooltip>
+
+          <Tooltip content="Mostrar solo clientes con saldo a favor: dinero suyo que ya tiene la empresa" position="bottom">
+            <button
+              data-testid="filtro-saldo-favor"
+              aria-pressed={filterSaldoFavor}
+              onClick={() => onFilterSaldoFavorChange(!filterSaldoFavor)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] md:min-h-0 rounded-full text-xs font-medium border transition ${
+                filterSaldoFavor
+                  ? 'bg-teal-50 border-teal-300 text-teal-800'
+                  : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Con saldo a favor
+              {filterSaldoFavor && <span className="w-1.5 h-1.5 rounded-full bg-teal-600" />}
             </button>
           </Tooltip>
 
@@ -544,6 +568,7 @@ export const ClienteTable = React.memo(function ClienteTable({
               return (
                 <div
                   key={cliente.id}
+                  data-testid={`cliente-row-${cliente.id}`}
                   className={`grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 p-4 bg-white border border-gray-200 rounded-lg shadow-sm cursor-pointer transition group relative hover:border-gray-300 hover:shadow-md ${
                     selectedClienteId === cliente.id
                       ? 'border-l-4 border-blue-500 border-blue-500 bg-blue-50'
@@ -686,9 +711,14 @@ export const ClienteTable = React.memo(function ClienteTable({
                     </div>
                     {/* Mobile-only badges */}
                     <div className="flex flex-wrap gap-1 mt-1 md:hidden">
-                      {cliente.saldoPendiente && cliente.saldoPendiente > 0 && (
+                      {cliente.saldoPendiente != null && cliente.saldoPendiente > 0 && (
                         <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] font-medium rounded">
                           Saldo: {formatCurrency(cliente.saldoPendiente)}
+                        </span>
+                      )}
+                      {saldoFavorDeFila(cliente) > 0 && (
+                        <span data-testid="chip-saldo-favor-movil" className="px-1.5 py-0.5 bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-semibold rounded">
+                          A favor: {formatCurrency(saldoFavorDeFila(cliente))}
                         </span>
                       )}
                       {cliente.plantillaRecurrente?.activo && (
@@ -748,7 +778,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                   </div>
 
                   {/* Balance */}
-                  <div className="md:col-span-2 text-right">
+                  <div className="md:col-span-2 flex flex-col items-end gap-0.5 text-right">
                     {cliente.saldoPendiente && cliente.saldoPendiente > 0 ? (
                       <Tooltip content={`Este cliente debe ${formatCurrency(cliente.saldoPendiente)}`} position="top">
                         <span className="inline-flex items-center gap-1 text-red-600 font-bold">
@@ -760,6 +790,13 @@ export const ClienteTable = React.memo(function ClienteTable({
                       </Tooltip>
                     ) : (
                       <span className="text-green-600 text-sm font-medium">Al día</span>
+                    )}
+                    {saldoFavorDeFila(cliente) > 0 && (
+                      <Tooltip content={`Tiene ${formatCurrency(saldoFavorDeFila(cliente))} a favor: dinero suyo que se descuenta de su próximo pedido.`} position="top">
+                        <span data-testid="chip-saldo-favor" className="inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800">
+                          A favor {formatCurrency(saldoFavorDeFila(cliente))}
+                        </span>
+                      </Tooltip>
                     )}
                   </div>
 

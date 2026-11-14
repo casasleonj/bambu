@@ -55,20 +55,16 @@ test.describe('Corrección de precio (ADR-MONETARIO-002 §1)', () => {
     expect((await leerPedido(page, p.id)).total).toBe(p.total)
   })
 
-  test('el ASISTENTE solo solicita: queda PENDIENTE y el total no cambia', async ({ page }) => {
+  test('#616: el ASISTENTE ya no puede corregir el precio: 403, no queda nada registrado y el total no cambia', async ({ page }) => {
     await loginAs(page, 'asistente')
     const p = await crearPedido(page)
     const res = await apiPost(page, `/api/pedidos/${p.id}/corregir-precio`, {
       producto: 'PACA_AGUA', precioNuevo: 2000, motivo: 'el cliente reclama',
     })
-    expect(res.status()).toBe(201)
-    expect((await res.json()).estado).toBe('PENDIENTE')
+    expect(res.status()).toBe(403)
     expect((await leerPedido(page, p.id)).total).toBe(p.total)
-    // y no puede resolverla
-    const sol = (await (await page.request.get(`${BASE}/api/pedidos/${p.id}/correcciones-precio`)).json()).correcciones[0]
-    const resolver = await page.request.patch(`${BASE}/api/pedidos/correcciones-precio/${sol.id}`, {
-      data: { resolucion: 'AUTORIZAR' },
-    })
-    expect(resolver.status()).toBe(403)
+    // El historial sigue siendo visible para él, pero vacío: no se creó ninguna solicitud.
+    const hist = await (await page.request.get(`${BASE}/api/pedidos/${p.id}/correcciones-precio`)).json()
+    expect(hist.correcciones).toHaveLength(0)
   })
 })

@@ -46,6 +46,11 @@ export interface PreviewPedidoDeps {
   getPrecioMinimos: () => Promise<Array<{ producto: string; cantMin: number; cantMax: number | null; precioMinimo: number | null }>>
   /** `linkUbicacion → coords` server-only (best-effort). Solo se llama si no hay coords almacenadas. */
   resolverCoordsDeLink: (link: string | null | undefined) => Promise<{ lat: number; lng: number } | null>
+  /**
+   * #408: busca una venta igual (cliente, productos, total) registrada hace pocos segundos. Opcional para no
+   * romper fixtures parciales; sin él, el preview simplemente no avisa.
+   */
+  buscarVentaRepetida?: (q: { clienteId: string; items: Array<{ producto: string; cantidad: number }>; total: number; offlineId?: string }) => Promise<{ id: string; numero: number; haceSegundos: number } | null>
 }
 
 /** Id sintético de un cliente nuevo que aún no existe (solo vive en el preview, nunca se persiste). */
@@ -147,7 +152,7 @@ export class PreviewPedidoUseCase {
     }))
 
     // ── Semántica de cálculo (contrato) ──
-    const total = items.reduce((s, i) => s + i.subtotal, 0)
+    const total = items.reduce((s, i) => s + Math.round(i.subtotal * 100), 0) / 100
     const recargoDomicilio = canal === 'DOMICILIO'
       ? resueltos.reduce((acc, r) => {
           // Solo el precio base lleva recargo; manual, especial y volumen son finales (#493).
@@ -409,6 +414,28 @@ export class PreviewPedidoUseCase {
       riskSignals = alertas.map(a => ({ tipo: a.tipo, severidad: a.severidad, detalle: a.detalle }))
     }
 
+    // #408: aviso (no bloqueo) de venta repetida. Solo al crear; editar un pedido no es "cargarlo otra vez".
+    let ventaRepetida: PreviewPedidoResult['ventaRepetida']
+    if (!esEdicion && clienteId && this.deps.buscarVentaRepetida) {
+      try {
+        const repetida = await this.deps.buscarVentaRepetida({
+          clienteId,
+          items: input.items.map(i => ({ producto: i.producto, cantidad: i.cantidad })),
+          total,
+          offlineId: input.borradorId,
+        })
+        if (repetida) {
+          ventaRepetida = repetida
+          warnings.push({
+            code: 'VENTA_POSIBLE_DUPLICADA',
+            message: `Parece una venta repetida: hace ${repetida.haceSegundos} segundos se registró la venta #${repetida.numero} con el mismo cliente, los mismos productos y el mismo total.`,
+          })
+        }
+      } catch {
+        // El aviso es una ayuda: si la consulta falla, la venta sigue su curso sin él.
+      }
+    }
+
     return {
       calculation: {
         items,
@@ -424,6 +451,7 @@ export class PreviewPedidoUseCase {
       permissions: { canCreate, canSetManualPrice },
       allowedActions,
       warnings,
+      ventaRepetida,
       riskSignals,
       excepcionAplicada,
       excepcionNoAplica,

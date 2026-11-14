@@ -10,7 +10,6 @@ Generado automáticamente el 2026-08-24 contra el commit `4c6cba35` de `main` (F
 |---|---|---|---|---|
 | Playwright | `playwright.config.ts` (default) | 107 | 1660 (medido: `--list`) | Sí — job `e2e`, 8 shards |
 | Playwright | `playwright.config.ts` testIgnore (exploratory/qa-comprehensive/produccion) | 82 | no medido (excluido) | No |
-| Playwright | `playwright.test.config.ts` (huérfano, ver LEGACY_INVENTORY) | mismo `testDir: e2e`, sin testIgnore | no medido | No — 0 referencias en package.json/CI |
 | Vitest | `vitest.config.ts` (unit) | 263 | ~2637 (grep it/test) | Sí — job `quality` (bloqueante) |
 | Vitest | `vitest.integration.config.ts` | 24 | no medido | Sí — job `integration` (non-blocking) |
 | Vitest | `prisma/__tests__/**` (huérfano, ver LEGACY_INVENTORY) | 4 | no medido | **No — excluido de ambos config, sin script propio** |
@@ -319,7 +318,8 @@ Generado automáticamente el 2026-08-24 contra el commit `4c6cba35` de `main` (F
 | `src/components/__tests__/money-display.test.tsx` | Sí |
 | `src/components/__tests__/negocio-detail-modal.test.tsx` | Sí |
 | `src/components/__tests__/negocio-selector.test.tsx` | Sí |
-| `src/components/__tests__/push-opt-in-toast.test.tsx` | Sí |
+| `src/components/__tests__/push-opt-in-strip.test.tsx` | Sí |
+| `src/components/__tests__/push-opt-in-bell.test.tsx` | Sí |
 | `src/components/__tests__/push-settings.test.tsx` | Sí |
 | `src/components/__tests__/realtime-provider-cooldown-reconnect.test.tsx` | Sí |
 | `src/components/__tests__/realtime-provider.test.tsx` | Sí |

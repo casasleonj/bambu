@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { NextRequest } from 'next/server'
 import { requireRole } from '@/lib/auth-check'
@@ -167,19 +168,29 @@ export async function POST(request: NextRequest) {
         }
         if (fondos.every(f => f.restante <= 0)) break
       }
-      // D.6 se conserva. #524 sigue abierto: el crédito no crea un ingreso en cierre.
+      // D.6 se conserva: el sobrante se acredita a saldo a favor. #524: ese dinero SÍ entró a la caja
+      // (en su medio de pago), así que se registra como ingreso propio, por medio, para que el cierre
+      // lo cuente una sola vez. Consumir el crédito después no vuelve a escribir aquí. BONO ya era
+      // crédito: no entra dinero nuevo.
+      // Id de la auditoría de este cobro: el ingreso del sobrante apunta a ella.
+      const auditoriaId = offlineId ? idResultadoFiado(offlineId) : randomUUID()
       const sobrante = fondos.reduce((sum, f) => sum + f.restante, 0) / 100
       let saldoFavorAcreditado = 0
       if (sobrante > 0 && !isConsumidorFinalCanonical(clienteId)) {
         await tx.cliente.update({ where: { id: clienteId }, data: { saldoFavor: { increment: sobrante } } })
         saldoFavorAcreditado = sobrante
+        for (const f of fondos) {
+          if (f.restante <= 0 || f.metodo === 'BONO') continue
+          await tx.ingresoSaldoFavor.create({ data: { clienteId, metodo: f.metodo, monto: f.restante / 100,
+            origen: 'PAGAR_FIADO', offlineId: offlineId ?? null, auditoriaId, createdById: auth.user?.id ?? null } })
+        }
       }
       const resultado: ResultadoCobroFiado = { referencia: offlineId ?? null, clienteId,
         clienteNombre: preparacion.clienteNombre, registradoAt: new Date().toISOString(), pagosAplicados, ...(recepcion ? { recepcion } : {}),
         montoRecibido: monto, montoAplicado: (Math.round(monto * 100) - Math.round(sobrante * 100)) / 100, montoSobrante: sobrante, saldoFavorAcreditado,
         medios: fondos.map(f => ({ metodo: f.metodo, monto: f.monto, montoAplicado: f.aplicado / 100,
           saldoFavor: f.restante / 100, confirmacion: f.aplicado > 0 ? datosConfirmacionInicial(f.metodo, preparacion.metodosPorConfirmar).confirmacion : null })) }
-      await logAudit({ ...(offlineId ? { id: idResultadoFiado(offlineId) } : {}), entidad: 'Pedido', registroId: clienteId,
+      await logAudit({ id: auditoriaId, entidad: 'Pedido', registroId: clienteId,
         accion: 'UPDATE', usuarioId: auth.user?.id, datos: { operacion: 'COBRO_FIADO_V2', huella, resultado,
           monto, pagos, pagosAplicados, saldoFavorAcreditado,
           ...(oficina ? { recibioDinero, repartidorId: recibidoPorId, fechaRecepcion: ocurridoAt?.toISOString() ?? null } : {}) } }, tx)

@@ -7,6 +7,7 @@ export interface AdminUser {
   activo: boolean
   puedeAutorizarExcepcionCredito?: boolean
   puedeAutorizarReduccionComercial?: boolean
+  puedeConfirmarPagos?: boolean
   createdAt: string
   trabajador?: { nombre: string } | null
 }

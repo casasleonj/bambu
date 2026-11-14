@@ -8,7 +8,7 @@
  * - Transactional persistence (Pedido + Items + Pagos + Factura)
  */
 
-import { Money } from '@/shared/domain'
+import { Money, UnitPrice } from '@/shared/domain'
 import { getNextNumero } from '@/lib/sequence'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
@@ -276,7 +276,7 @@ export class CrearPedidoUseCase {
       // debe mandar `canal = DOMICILIO` (compra en punto con envío).
       // (La decisión vive en `estadoEntregaAlCrear`, compartida con el preview.)
       const estadoEntrega = EstadoEntregaVO.create(estadoEntregaCreacion)
-      const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
+      const total = preciosResueltos.reduce((sum, pr) => sum + Math.round(pr.subtotal * 100), 0) / 100
 
       // P0 (docs/pedidos/HUB_REVISION_INTEGRAL_v1.0.md §11): CONSUMIDOR_FINAL
       // es ausencia de cliente real — no tiene a quién devolverle ni de quién
@@ -355,7 +355,7 @@ export class CrearPedidoUseCase {
         new PedidoItem(
           pr.producto,
           pr.cantidad,
-          Money.fromDecimal(pr.precio),
+          UnitPrice.fromDecimal(pr.precio),
           pr.origen,
           // entrega posterior → nada entregado todavía (cantEntrega = 0).
           estadoEntregaCreacion === 'ENTREGADO' ? pr.cantidad : 0,

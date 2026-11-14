@@ -1,5 +1,7 @@
 import { Input } from '@/components/ui/input'
 import { PRODUCTO_INFO } from '@/lib/prices'
+import { formatPrecioUnitario, formatImportePedido, importeLineaEditable } from '@/lib/precio-formato'
+import { MAX_UNIT_PRICE } from '@/shared/domain/unit-price'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import type { Tier } from './types'
 
@@ -79,11 +81,11 @@ export function PedidoItemEditor({
                   )}
                   {precioManual !== undefined && precioManual > 0 ? (
                     <>
-                      <span className="text-[9px] text-gray-400 line-through">${precioBase.toLocaleString()}</span>
-                      <span className="text-xs font-bold text-amber-600">${precioManual.toLocaleString()}</span>
+                      <span className="text-[9px] text-gray-400 line-through">{formatPrecioUnitario(precioBase)}</span>
+                      <span className="text-xs font-bold text-amber-600">{formatPrecioUnitario(precioManual)}</span>
                     </>
                   ) : (
-                    <span className="text-xs text-gray-500">${precio.toLocaleString()}</span>
+                    <span className="text-xs text-gray-500">{formatPrecioUnitario(precio)}</span>
                   )}
                   {precioOrigen === 'cliente' && (
                     <span className="text-[9px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">Especial</span>
@@ -100,7 +102,7 @@ export function PedidoItemEditor({
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                   </button>
                 </div>
-                {cant > 0 && <span className="text-sm font-bold">${(cant * precio).toLocaleString()}</span>}
+                {cant > 0 && <span className="text-sm font-bold">{formatImportePedido(importeLineaEditable(precio, cant))}</span>}
               </div>
               {cant > 0 && (
                 <div className="mt-1.5 flex items-center gap-1">
@@ -108,10 +110,15 @@ export function PedidoItemEditor({
                   <input
                     type="number"
                     min="0"
+                    max={MAX_UNIT_PRICE}
+                    step="0.000001"
+                    inputMode="decimal"
+                    aria-label={`Precio unitario de ${info.nombre}`}
+                    data-testid={`${testIdPrefix}-precio-${info.codigo}`}
                     value={precioManual ?? ''}
                     onChange={(e) => onPrecioManualChange(info.codigo, parseFloat(e.target.value) || 0)}
                     placeholder={`${precioBase}`}
-                    className="w-16 text-xs border border-gray-300 rounded px-1 py-0.5 text-right focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
+                    className="w-28 text-xs border border-gray-300 rounded px-1 py-0.5 text-right focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
                   />
                   {precioManual !== undefined && precioManual > 0 && (
                     <button

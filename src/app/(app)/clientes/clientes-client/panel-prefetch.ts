@@ -1,4 +1,5 @@
 import type { ClienteStats, TimelineEvent } from './types'
+import type { SaldoFavorCliente } from '@/lib/saldo-favor-cliente'
 
 /**
  * Caché + prefetch de las pestañas Stats e Historial del panel de cliente.
@@ -28,6 +29,8 @@ export interface HistorialPage {
   page: number
   pageSize: number
   hasMore: boolean
+  /** #696: el saldo a favor no se pudo leer; no es que no tenga movimientos. */
+  saldoFavorNoDisponible?: boolean
 }
 
 const PANEL_TTL_MS = 60_000
@@ -41,6 +44,7 @@ type CacheEntry<T> = {
 
 const statsCache = new Map<string, CacheEntry<ClienteStats>>()
 const historialCache = new Map<string, CacheEntry<HistorialPage>>()
+const saldoFavorCache = new Map<string, CacheEntry<SaldoFavorCliente>>()
 
 function isFresh<T>(entry: CacheEntry<T>): boolean {
   return Date.now() - entry.ts < PANEL_TTL_MS
@@ -93,11 +97,23 @@ async function fetchAndCacheHistorial(clienteId: string): Promise<HistorialPage 
       page: data.page,
       pageSize: data.pageSize,
       hasMore: data.hasMore,
+      saldoFavorNoDisponible: data.saldoFavorNoDisponible,
     }
     setCacheEntry(historialCache, clienteId, page)
     return page
   }
   historialCache.delete(clienteId)
+  return null
+}
+
+async function fetchAndCacheSaldoFavor(clienteId: string): Promise<SaldoFavorCliente | null> {
+  const data = await fetchJson<SaldoFavorCliente>(`/api/clientes/${clienteId}/saldo-favor`)
+  if (data && Array.isArray(data.movimientos) && typeof data.saldo === 'number') {
+    const lectura: SaldoFavorCliente = { cliente: data.cliente, saldo: data.saldo, movimientos: data.movimientos, hayMas: data.hayMas }
+    setCacheEntry(saldoFavorCache, clienteId, lectura)
+    return lectura
+  }
+  saldoFavorCache.delete(clienteId)
   return null
 }
 
@@ -130,6 +146,17 @@ export function loadClienteHistorial(clienteId: string): Promise<HistorialPage |
   return load(historialCache, clienteId, () => fetchAndCacheHistorial(clienteId))
 }
 
+/** #696: saldo a favor y sus movimientos, con caché compartido. null = fallo (no queda cacheado). */
+export function loadClienteSaldoFavor(clienteId: string): Promise<SaldoFavorCliente | null> {
+  return load(saldoFavorCache, clienteId, () => fetchAndCacheSaldoFavor(clienteId))
+}
+
+/** Lectura síncrona de caché fresco (para estado inicial de componentes). */
+export function peekClienteSaldoFavor(clienteId: string): SaldoFavorCliente | null {
+  const entry = saldoFavorCache.get(clienteId)
+  return entry?.data && !entry.promise && isFresh(entry) ? entry.data : null
+}
+
 /** Lectura síncrona de caché fresco (para estado inicial de componentes). */
 export function peekClienteStats(clienteId: string): ClienteStats | null {
   const entry = statsCache.get(clienteId)
@@ -150,6 +177,7 @@ export function peekClienteHistorial(clienteId: string): HistorialPage | null {
 export function prefetchClientePanel(clienteId: string): void {
   void loadClienteStats(clienteId)
   void loadClienteHistorial(clienteId)
+  void loadClienteSaldoFavor(clienteId)
 }
 
 /**
@@ -162,6 +190,7 @@ export function prefetchClientePanel(clienteId: string): void {
 export function invalidateClientePanelCaches(): void {
   statsCache.clear()
   historialCache.clear()
+  saldoFavorCache.clear()
 }
 
 /** Solo para tests. */

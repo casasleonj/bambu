@@ -3,7 +3,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { randomUUID } from 'node:crypto'
-import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
+import { testPrisma, resetAndSeed, disconnect, getAdminUser, registrarBaseDia } from './setup'
 import { startOfDayInBogota } from '@/lib/date-helpers'
 
 const actor = { id: 'placeholder', role: 'ADMIN' }
@@ -107,6 +107,7 @@ describe('auditoría adversarial del cierre #511 / #513', () => {
     const dia = '2026-03-12'
     const { p } = await pedido(dia, 10000, { pagado: 10000 })
     await testPrisma.pago.create({ data: { pedidoId: p.id, monto: 10000, metodo: 'EFECTIVO', createdAt: mediodia(dia) } })
+    await registrarBaseDia(dia, 10000) // #688
     const res = await cerrar(request('/api/cierre', payload(dia, {
       cobrado: 999999, efectivo: 999999, totalGastos: 999999, numPedidos: 999999,
     })))
@@ -138,6 +139,7 @@ describe('auditoría adversarial del cierre #511 / #513', () => {
     const res = await preview(new NextRequest(`http://localhost/api/cierre?fecha=${dia}`))
     expect(res.status).toBe(409)
     expect((await res.json()).error.code).toBe('COBROS_PENDIENTES_CONCILIACION')
+    await registrarBaseDia(dia, 10000) // #688
     expect((await cerrar(request('/api/cierre', payload(dia)))).status).toBe(409)
     expect(await testPrisma.cierreDia.count()).toBe(0)
     const r = await verificarIntegridad(testPrisma, { reglas: REGLAS.filter(r => r.id === 'V17') })
@@ -161,6 +163,7 @@ describe('auditoría adversarial del cierre #511 / #513', () => {
   it('#513: V18 detecta alteración de un snapshot nuevo sin cambiar las columnas', async () => {
     const dia = '2026-03-18'
     await pedido(dia, 10000)
+    await registrarBaseDia(dia, 10000) // #688
     expect((await cerrar(request('/api/cierre', payload(dia)))).status).toBe(201)
     const cierre = await testPrisma.cierreDia.findUniqueOrThrow({ where: { fecha: startOfDayInBogota(dia) } })
     const reglas = REGLAS.filter(r => r.id === 'V18')

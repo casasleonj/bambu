@@ -1,7 +1,6 @@
 // @tests #601 — «¿Cuánto efectivo debe haber en la caja?»
 import { describe, expect, it } from 'vitest'
-import { fireEvent, render, screen, within } from '@testing-library/react'
-import { useState } from 'react'
+import { render, screen, within } from '@testing-library/react'
 import CierreEfectivoEsperado, { efectivoEsperadoDelCierre } from '../cierre-efectivo-esperado'
 
 describe('CierreEfectivoEsperado', () => {
@@ -34,27 +33,23 @@ describe('#646 fichas del cálculo del efectivo', () => {
   })
 })
 
-describe('#666 efectivo inicial en un solo lugar', () => {
+describe('#688 el efectivo inicial es la base de caja del día: el cierre solo la lee', () => {
   const props = { efectivoPagos: 0, cobroCarteraEfectivo: 0, totalGastos: 0, comisiones: 0, salarios: 0, pagosDigitales: 0 }
 
-  it('con valor muestra la ficha «Empezó con» y ningún campo', () => {
-    render(<CierreEfectivoEsperado baseDia={50000} onBaseChange={() => {}} {...props} />)
-    expect(screen.getByTestId('cierre-efectivo-esperado')).toHaveTextContent(/Empezó con\s*\$\s*50\.000/)
-    expect(screen.queryByLabelText('Efectivo con el que empezó el día')).not.toBeInTheDocument()
+  it('con base muestra la ficha «Empezó con», el pie con su fuente y ningún campo', () => {
+    render(<CierreEfectivoEsperado baseDia={50000} pie={<p data-testid="pie-base">Base de caja de hoy</p>} {...props} />)
+    const bloque = screen.getByTestId('cierre-efectivo-esperado')
+    expect(bloque).toHaveTextContent(/Empezó con\s*\$\s*50\.000/)
+    expect(screen.getByTestId('pie-base')).toBeInTheDocument()
+    expect(within(bloque).queryByRole('textbox')).toBeNull()
+    expect(screen.queryByLabelText('Efectivo con el que empezó el día')).toBeNull()
   })
 
-  it('sin valor avisa que falta y ofrece el campo ahí mismo; el campo no desaparece al teclear', () => {
-    function Con() {
-      const [b, setB] = useState(0)
-      return <CierreEfectivoEsperado baseDia={b} onBaseChange={setB} {...props} />
-    }
-    render(<Con />)
-    expect(screen.getByTestId('base-dia-campo')).toHaveTextContent('Falta este dato para poder cerrar el día')
-    const campo = screen.getByLabelText('Efectivo con el que empezó el día')
-    fireEvent.change(campo, { target: { value: '5' } })
-    expect(screen.getByLabelText('Efectivo con el que empezó el día')).toHaveValue(5) // sigue ahí para seguir escribiendo
-    fireEvent.change(screen.getByLabelText('Efectivo con el que empezó el día'), { target: { value: '50000' } })
-    expect(screen.getByTestId('efectivo-debe-haber')).toHaveTextContent(/\$\s*50\.000/)
-    expect(screen.getByTestId('cierre-efectivo-esperado')).toHaveTextContent(/Empezó con\s*\$\s*50\.000/)
+  it('sin base no inventa un valor: muestra «—», oculta las fichas y deja el aviso (pie)', () => {
+    render(<CierreEfectivoEsperado baseDia={0} sinBase pie={<p data-testid="aviso-falta">Falta la base de caja de hoy</p>} {...props} efectivoPagos={130000} />)
+    expect(screen.getByTestId('efectivo-debe-haber')).toHaveTextContent('—')
+    expect(screen.getByTestId('cierre-efectivo-esperado')).not.toHaveTextContent('Empezó con')
+    expect(screen.getByTestId('cierre-efectivo-esperado')).not.toHaveTextContent('Cobrado en efectivo')
+    expect(screen.getByTestId('aviso-falta')).toBeInTheDocument()
   })
 })

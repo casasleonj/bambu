@@ -24,7 +24,7 @@ test.describe('push permission flow en /configuracion', () => {
     if (testInfo.project.name === 'chromium-mobile') {
       // El proyecto simula iOS sin standalone: tampoco se ofrece el aviso
       // con permiso pendiente. La configuración visible confirma el mount.
-      await expect(page.getByTestId('push-opt-in-toast')).not.toBeVisible()
+      await expect(page.getByTestId('push-opt-in-strip')).not.toBeVisible()
     }
   })
 
@@ -78,7 +78,7 @@ test.describe('push permission flow en /configuracion', () => {
     await login(page)
     await page.goto('/configuracion')
     await expect(page.getByTestId('push-settings')).toContainText('Permitido')
-    await expect(page.locator('[data-testid="push-opt-in-toast"]')).not.toBeVisible()
+    await expect(page.locator('[data-testid="push-opt-in-strip"]')).not.toBeVisible()
   })
 
   test('el opt-in toast no aparece cuando el permiso esta denegado', async ({ page }) => {
@@ -86,6 +86,6 @@ test.describe('push permission flow en /configuracion', () => {
     await login(page)
     await page.goto('/configuracion')
     await expect(page.getByTestId('push-settings')).toContainText('Bloqueadas')
-    await expect(page.locator('[data-testid="push-opt-in-toast"]')).not.toBeVisible()
+    await expect(page.locator('[data-testid="push-opt-in-strip"]')).not.toBeVisible()
   })
 })

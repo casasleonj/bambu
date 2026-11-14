@@ -11,7 +11,7 @@ vi.mock('@/lib/realtime', () => ({ publishRealtimeEvent: vi.fn().mockResolvedVal
 vi.mock('@/lib/notifications/notify-event', () => ({ notifyEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn().mockResolvedValue(undefined) }))
 
-import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
+import { testPrisma, resetAndSeed, disconnect, getAdminUser, registrarBaseDia } from './setup'
 import { POST as crearNomina } from '@/app/api/nomina/route'
 import { POST as pagarSueldo } from '@/app/api/nomina/sueldo/pagar/route'
 import { POST as crearTrabajador } from '@/app/api/trabajadores/route'
@@ -107,6 +107,7 @@ describe('#644 — sueldo fijo con frecuencia de pago', () => {
   it('el cierre ya no recibe «Salarios»: lo que mande un cliente antiguo se ignora', async () => {
     await testPrisma.cierreDia.deleteMany({})
     const dia = '2026-03-26'
+    await registrarBaseDia(dia, 50000) // #688
     const res = await cerrar(post('/api/cierre', {
       fecha: dia, baseDia: 50000, salarios: 90000, stockIniAgua: 0, prodAgua: 0, stockFinAgua: 0,
       stockIniHielo: 0, prodHielo: 0, stockFinHielo: 0, reporte: JSON.stringify({ arqueo: { 50000: 1 } }),

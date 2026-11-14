@@ -45,7 +45,7 @@ Además: un `4xx` del preview es un rechazo real y bloquea «Confirmar» (D1); s
 - Pago sin productos ⇒ `400`.
 
 ### 5. Señales, no acusaciones (#450, D6)
-El servidor devuelve en el preview/cierre una lista de **señales** que nunca bloquean ni crean deuda: venta libre fiada que compensa faltante, pedido corregido a la baja, sobrante de caja sobre el umbral, cambios sin pedido en la ruta. El sobrante de caja sobre el umbral exige nota. **Umbral:** el mismo `UMBRAL_MINIMO_FALTANTE_CAJA` ($5.000), una sola constante para faltante y sobrante. El servidor lo reporta como señal `SOBRANTE_CAJA_SIN_NOTA` (no bloquea, para no dejar sin salida a la pantalla actual, que no muestra el campo); la pantalla nueva (flag `NEXT_PUBLIC_CIERRE_V2`) bloquea «Confirmar» hasta que haya nota.
+El servidor devuelve en el preview/cierre una lista de **señales** que nunca bloquean ni crean deuda: venta libre fiada que compensa faltante, pedido corregido a la baja, sobrante de caja sobre el umbral, cambios sin pedido en la ruta. **«Pedido corregido a la baja» (#712, `PEDIDO_CORREGIDO_A_LA_BAJA`):** avisa si, desde la salida del embarque (`horaSalida`, o su creación si falta), se aplicó una reducción comercial o una corrección de precio a la baja sobre un pedido del embarque, con la cantidad de pedidos y cuánto bajó; no bloquea ni cambia dinero. El sobrante de caja sobre el umbral exige nota. **Umbral:** el mismo `UMBRAL_MINIMO_FALTANTE_CAJA` ($5.000), una sola constante para faltante y sobrante. El servidor lo reporta como señal `SOBRANTE_CAJA_SIN_NOTA` (no bloquea, para no dejar sin salida a la pantalla actual, que no muestra el campo); la pantalla nueva (flag `NEXT_PUBLIC_CIERRE_V2`) bloquea «Confirmar» hasta que haya nota.
 
 ### 6. Límites de entrada (#444)
 Topes explícitos (monto por gasto, largo de notas, número de gastos y de ventas libres) y respuestas `400` con mensaje, nunca `500`.
@@ -79,8 +79,8 @@ Cada regla con una prueba en rojo antes del arreglo, contra Postgres real: pedid
 | Cancelar suelta del embarque | `CancelarPedidoUseCase` | mismo test de integración |
 | §3 Preview sin consumir secuencias | `sinConsumirSecuencias()` en `src/lib/sequence.ts` (números provisionales ≥ 1.000.000 que no se persisten) | `cierre-preview-sin-secuencias.test.ts` |
 | §4 Venta libre | `crear-ventas-libres.service.ts`: `negocioId`, `pedidoOrigenId`, `excepcionId`, precios especiales, `DEUDOR_REQUERIDO` (422), `CLIENTE_DEBE`, pago sin productos y pago > total (400) | `cierre-venta-libre-reglas.test.ts` |
-| §5 Señales | `senales-cierre.service.ts`; `senales[]` en el cierre y el preview; sección «Para revisar» con el flag | `senales-cierre.service.test.ts`, `cierre-senales.test.ts` |
+| §5 Señales | `senales-cierre.service.ts`; `senales[]` en el cierre y el preview; sección «Para revisar» con el flag | `senales-cierre.service.test.ts`, `cierre-senales.test.ts`, `correcciones-a-la-baja.service.test.ts`, `cierre-senal-corregido-baja-712.test.ts` |
 | §6 Límites | `CerrarEmbarqueSchema` (montos ≤ 99.999.999, notas ≤ 2000, ≤ 200 pedidos, ≤ 100 ventas libres, ≤ 60 gastos, ≤ 10 pagos) → 400 | `cerrar-embarque-schema-limites.test.ts` |
 | Preview = cierre real | `cierre-http.ts` (`toCerrarInput`, `mapCierreError`) compartido por ambas rutas | E2E `embarques-cierre-integridad.spec.ts` |
 
-**No incluido en esta fase (siguen siendo ADR/issues aparte):** corrección de precio con recálculo y reducción comercial (ADR-MONETARIO-002, #451), escasez (#452), «pedido corregido a la baja» y «cambios sin pedido» como señales, y la excepción de crédito *solicitada desde* el cierre (el cierre ya acepta una `excepcionId` autorizada).
+**No incluido en esta fase (siguen siendo ADR/issues aparte):** corrección de precio con recálculo y reducción comercial (ADR-MONETARIO-002, #451), escasez (#452), «cambios sin pedido» como señal, y la excepción de crédito *solicitada desde* el cierre (el cierre ya acepta una `excepcionId` autorizada).

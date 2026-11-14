@@ -7,7 +7,7 @@
 //   - idempotencia, solicitudes pendientes que cambian antes de autorizarse, concurrencia;
 //   - propiedad: tras cualquier secuencia, el dinero se conserva y el verificador V1–V16 no se queja.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { testPrisma, resetAndSeed, disconnect, getAdminUser, createTestCliente, uniqueId } from './setup'
+import { testPrisma, resetAndSeed, disconnect, getAdminUser, createTestCliente, uniqueId, sembrarSolicitudPendiente } from './setup'
 import { SolicitarCorreccionPrecioUseCase, ResolverCorreccionPrecioUseCase } from '@/modules/pedidos/application/use-cases/CorreccionPrecioUseCases'
 import { SolicitarReduccionComercialUseCase } from '@/modules/pedidos/application/use-cases/ReduccionComercialUseCases'
 import { AnularPedidoUseCase } from '@/modules/pedidos/application/use-cases/AnularPedidoUseCase'
@@ -386,7 +386,7 @@ describe('Excedente → saldo a favor (#533)', () => {
     it('solicitud pendiente que llega a ser inválida antes de autorizarse: se rechaza al aplicar y sigue PENDIENTE', async () => {
       const c = await createTestCliente('adv6')
       const p = await crearPedido(c.id, [{ monto: 25000, metodo: 'NEQUI', confirmacion: 'CONFIRMADO' }])
-      const s = await solPrecio.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2300, motivo: 'cliente reclama', actorId: asistenteId, actorRol: 'ASISTENTE' })
+      const s = await sembrarSolicitudPendiente(p.id, { precioNuevo: 2300, motivo: 'cliente reclama', solicitadoPorId: asistenteId })
       expect(s.estado).toBe('PENDIENTE')
       // Mientras tanto el pago se marca discrepante.
       await testPrisma.pago.updateMany({ where: { pedidoId: p.id }, data: { confirmacion: 'DISCREPANTE' } })
@@ -399,7 +399,7 @@ describe('Excedente → saldo a favor (#533)', () => {
     it('solicitud pendiente sin excedente cuando se pidió, con excedente cuando se autoriza: se calcula con los datos de ese momento', async () => {
       const c = await createTestCliente('adv7')
       const p = await crearPedido(c.id, [{ monto: 10000 }])
-      const s = await solPrecio.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2000, motivo: 'cliente reclama', actorId: asistenteId, actorRol: 'ASISTENTE' })
+      const s = await sembrarSolicitudPendiente(p.id, { precioNuevo: 2000, motivo: 'cliente reclama', solicitadoPorId: asistenteId })
       // El cliente completa el pago antes de que el admin autorice.
       await testPrisma.pago.create({ data: { pedidoId: p.id, metodo: 'EFECTIVO', monto: 15000, confirmacion: 'CONFIRMADO' } })
       await testPrisma.pedido.update({ where: { id: p.id }, data: { totalPagado: 25000, saldo: 0, estadoPago: 'PAGADO' } })
@@ -424,7 +424,7 @@ describe('Excedente → saldo a favor (#533)', () => {
     it('autorizar dos veces la misma solicitud no acredita dos veces', async () => {
       const c = await createTestCliente('adv9')
       const p = await crearPedido(c.id, [{ monto: 25000 }])
-      const s = await solPrecio.execute({ pedidoId: p.id, producto: 'PACA_AGUA', precioNuevo: 2000, motivo: 'cliente reclama', actorId: asistenteId, actorRol: 'ASISTENTE' })
+      const s = await sembrarSolicitudPendiente(p.id, { precioNuevo: 2000, motivo: 'cliente reclama', solicitadoPorId: asistenteId })
       await resPrecio.execute({ correccionId: s.id, resolucion: 'AUTORIZAR', actorId: adminId, actorRol: 'ADMIN' })
       const otra = await resPrecio.execute({ correccionId: s.id, resolucion: 'AUTORIZAR', actorId: adminId, actorRol: 'ADMIN' })
       expect(otra.deduped).toBe(true)

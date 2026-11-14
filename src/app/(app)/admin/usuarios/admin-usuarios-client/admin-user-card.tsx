@@ -51,6 +51,14 @@ export function AdminUserCard({
                 Autoriza crédito
               </span>
             )}
+            {user.puedeConfirmarPagos && (
+              <span
+                data-testid="badge-confirma-pagos"
+                className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800"
+              >
+                Confirma pagos
+              </span>
+            )}
             {user.puedeAutorizarReduccionComercial && (
               <span
                 data-testid="badge-autoriza-reduccion"
