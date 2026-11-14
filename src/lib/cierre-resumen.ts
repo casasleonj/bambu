@@ -227,15 +227,17 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
     // #513: el Abono espejo de pagar-fiado ya está en `cobroVentasHoy` (su Pago); no se cuenta dos veces.
     const abonos = await resumirAbonosDelDia(prisma, startOfDay, endOfDay)
     const cobroCartera = abonos.total
-    const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
-    // #601: lo que entró en la caja física (efectivo) y lo que llegó por medios digitales.
+    // #745: BONO aplica crédito previamente recibido; permanece en `bono` para auditoría,
+    // pero nunca se vuelve a sumar a dinero recibido ni al neto del cierre.
+    const cobroVentasHoy = efectivo + transferencia + nequi + daviplata
+    // #601/#745: caja física y medios bancarios reciben dinero nuevo; BONO no es digital.
     const cobroCarteraEfectivo = abonos.totalEfectivo
     const cobroEfectivoHoy = efectivo + cobroCarteraEfectivo
     const cobroDigitalHoy = (cobroVentasHoy - efectivo) + (cobroCartera - cobroCarteraEfectivo)
 
     // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6: desglose INFORMATIVO de pagos aún
-    // REPORTADO cobrados HOY. NO altera netoCaja — el cierre suma todos los
-    // pagos por método como siempre.
+    // REPORTADO capturados HOY (incluye BONO informativo). No altera netoCaja:
+    // esta magnitud excluye expresamente la aplicación de crédito.
     const porConfirmar = {
       ...buildPorConfirmar(pagosReportadosHoyRaw, reportadosDiasPreviosAgg),
       // #631: detalle para listar pedido, cliente, factura y fecha de cada pago.
