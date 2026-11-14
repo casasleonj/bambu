@@ -1,3 +1,4 @@
+import { formatImportePedido, importeLineaEditable } from '@/lib/precio-formato'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { PRODUCTO_INFO } from '@/lib/prices'
 
@@ -41,7 +42,7 @@ export function PedidoPricingSummary({ lineas, total, totalPagado, saldoPendient
           return (
             <div key={prodId} className="flex justify-between text-sm">
               <span className="text-gray-600"><Icon size={16} className="inline-block align-text-bottom" /> {cantidad} x {info.nombre}</span>
-              <span className="font-medium">${(cantidad * precio).toLocaleString()}</span>
+              <span className="font-medium">{formatImportePedido(importeLineaEditable(precio, cantidad))}</span>
             </div>
           )
         })}
@@ -52,18 +53,18 @@ export function PedidoPricingSummary({ lineas, total, totalPagado, saldoPendient
       <div className="border-t pt-2 space-y-1">
         <div className="flex justify-between text-sm">
           <span className="text-gray-500">Total:</span>
-          <span className="font-bold text-lg">${total.toLocaleString()}</span>
+          <span className="font-bold text-lg">{formatImportePedido(total)}</span>
         </div>
         {totalPagado > 0 && (
           <div className="flex justify-between text-sm">
             <span className="text-gray-500">Pagado:</span>
-            <span className="font-medium text-green-600">${totalPagado.toLocaleString()}</span>
+            <span className="font-medium text-green-600">{formatImportePedido(totalPagado)}</span>
           </div>
         )}
         {saldoPendiente > 0 && (
           <div className="flex justify-between text-sm">
             <span className="text-gray-500">Saldo:</span>
-            <span className="font-medium text-red-600">${saldoPendiente.toLocaleString()}</span>
+            <span className="font-medium text-red-600">{formatImportePedido(saldoPendiente)}</span>
           </div>
         )}
       </div>

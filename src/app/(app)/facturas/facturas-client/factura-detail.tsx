@@ -8,15 +8,12 @@ import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import type { Factura, EmpresaConfig } from './types'
 import { pedidoEnConsulta } from '@/lib/pedidos-contexto'
+import { formatPrecioUnitario, formatImportePedido as formatCurrency } from '@/lib/precio-formato'
 
 const BRAND = {
   green: '#4CAF50',
   blue: '#2196F3',
   brown: '#8D6E63',
-}
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(value)
 }
 
 function formatDate(dateStr: string): string {
@@ -82,7 +79,7 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
         <tr>
           <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;">${meta.label}</td>
           <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;text-align:right;">${item.cantPedido}</td>
-          <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;text-align:right;">${formatCurrency(Number(item.precio))}</td>
+          <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;text-align:right;">${formatPrecioUnitario(Number(item.precio))}</td>
           <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;text-align:right;"><strong>${formatCurrency(Number(item.subtotal))}</strong></td>
         </tr>
       `
@@ -454,7 +451,7 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
                             <span className="text-sm font-medium">{meta.label}</span>
                           </TableCell>
                           <TableCell className="py-3 text-right text-sm">{item.cantPedido}</TableCell>
-                          <TableCell className="py-3 text-right text-sm hidden sm:table-cell">{formatCurrency(Number(item.precio))}</TableCell>
+                          <TableCell className="py-3 text-right text-sm hidden sm:table-cell">{formatPrecioUnitario(Number(item.precio))}</TableCell>
                           <TableCell className="py-3 text-right text-sm font-bold">{formatCurrency(Number(item.subtotal))}</TableCell>
                         </TableRow>
                       )
