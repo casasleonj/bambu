@@ -40,9 +40,24 @@ describe('F1: pagar-fiado audita dentro del lock CARTERA', () => {
     expect(auditCall).toBeLessThan(lockReturn)
   })
 
-  it('solo existe UNA invocación de logAudit y lleva `, tx)`', () => {
-    const matches = source.match(/logAudit\(\{/g) ?? []
-    expect(matches.length).toBe(1)
+  it('CADA auditoría (cobro y procedencia BONO) se espera y escribe dentro de CARTERA', () => {
+    // #772 añade evidencia del consumo de BONO; F1 protege la transacción,
+    // no el número arbitrario de registros de auditoría.
+    const llamadas = [...source.matchAll(/await logAudit\(\{/g)].map((m) => m.index)
+    const todas = source.match(/logAudit\(\{/g) ?? []
+    expect(llamadas.length).toBeGreaterThanOrEqual(2)
+    expect(todas).toHaveLength(llamadas.length) // ninguna auditoría sin await
+    const lockOpen = source.indexOf("withAdvisoryLock('CARTERA'")
+    const lockReturn = source.indexOf('return { resultado, culminados }')
+    expect(lockOpen).toBeGreaterThan(-1)
+    expect(lockReturn).toBeGreaterThan(lockOpen)
+    for (const [i, inicio] of llamadas.entries()) {
+      const fin = source.indexOf('}, tx)', inicio)
+      expect(inicio).toBeGreaterThan(lockOpen)
+      expect(fin).toBeGreaterThan(inicio)
+      expect(fin).toBeLessThan(lockReturn)
+      if (i + 1 < llamadas.length) expect(fin).toBeLessThan(llamadas[i + 1])
+    }
   })
 })
 

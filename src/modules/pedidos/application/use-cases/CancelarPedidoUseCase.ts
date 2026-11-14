@@ -6,6 +6,7 @@ import { getNextNumero } from '@/lib/sequence'
 import { revertirCreditoDelPedido } from '../services/saldo-favor-excedente.service'
 import { logAudit } from '@/lib/audit'
 import { registrarReversionPedido } from '@/lib/receivable-entry'
+import { restituirBonoPedidoAnulado } from '@/lib/bono-saldo-favor'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
 import type { IPedidoRepository } from '../../domain/repositories/IPedidoRepository'
 import type { IFacturaRepository } from '../../domain/repositories/IFacturaRepository'
@@ -22,7 +23,7 @@ export class CancelarPedidoUseCase {
     private txManager: ITransactionManager,
   ) {}
 
-  async execute(input: CancelarPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean; saldoFavorRevertido?: number; saldoFavorYaUsado?: number; saldoFavorCliente?: number }> {
+  async execute(input: CancelarPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean; saldoFavorRevertido?: number; saldoFavorYaUsado?: number; saldoFavorCliente?: number; saldoFavorBonoRestituido?: number }> {
     // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:notaCredito` (paridad con
     // AnularPedidoUseCase). La NC se genera con MAX+1 → serialización global.
     return this.txManager.executeWithLock('SECUENCIA', 'notaCredito', async (tx) => {
@@ -100,14 +101,16 @@ export class CancelarPedidoUseCase {
         actorId: input.actorId ?? '',
       })
 
+      const bonoRestituido = await restituirBonoPedidoAnulado(tx, pedido.id.get(), pedido.clienteId)
+
       await logAudit({
         entidad: 'Pedido',
         registroId: pedido.id.get(),
         accion: 'UPDATE',
-        datos: { motivo: input.motivo, estado: updated.estadoEntrega.get(), notaCredito: tuvoPagos, reversion: montoRevertido, ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}), ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}) },
+        datos: { motivo: input.motivo, estado: updated.estadoEntrega.get(), notaCredito: tuvoPagos, reversion: montoRevertido, ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}), ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}), ...(bonoRestituido > 0 ? { saldoFavorBonoRestituido: bonoRestituido } : {}) },
       }, tx)
 
-      const saldoFavorCliente = revertido > 0 || yaUsado > 0
+      const saldoFavorCliente = revertido > 0 || yaUsado > 0 || bonoRestituido > 0
         ? Number((await tx.cliente.findUnique({ where: { id: pedido.clienteId }, select: { saldoFavor: true } }))?.saldoFavor ?? 0)
         : undefined
 
@@ -115,6 +118,7 @@ export class CancelarPedidoUseCase {
         pedido: PedidoDTOMapper.toResumen(updated),
         ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}),
         ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}),
+        ...(bonoRestituido > 0 ? { saldoFavorBonoRestituido: bonoRestituido } : {}),
         ...(saldoFavorCliente !== undefined ? { saldoFavorCliente } : {}),
       }
     })

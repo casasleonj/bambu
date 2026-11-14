@@ -12,6 +12,7 @@ import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { registrarReceivableEntry, detectarDivergencia, registrarDivergencia } from '@/lib/receivable-entry'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
+import { BonoSaldoFavorError, consumirBonoDeSaldoFavor, idConsumoBonoAbono, OPERACION_CONSUMO_BONO } from '@/lib/bono-saldo-favor'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-2): Only ADMIN/CONTADOR can read abonos
@@ -100,6 +101,13 @@ export async function POST(request: NextRequest) {
         throw new Error('PEDIDO_NO_ENTREGADO')
       }
 
+      // #772: el Abono independiente en BONO también consume crédito REAL.
+      // El dedup por offlineId ocurrió antes bajo CARTERA; si falla la
+      // creación del Abono/Pedido, se revierte este descuento con la tx.
+      if (metodoPago === 'BONO') {
+        await consumirBonoDeSaldoFavor(tx, clienteId, monto)
+      }
+
       // Calcular siguiente número
       const nextNum = await getNextNumero(tx, { model: 'abono', field: 'numero' })
 
@@ -120,6 +128,17 @@ export async function POST(request: NextRequest) {
           offlineId: offlineId || null,
         },
       })
+
+      if (metodoPago === 'BONO') {
+        // Solo los Abonos BONO con esta evidencia debitaron saldo a favor.
+        // Al corregir uno de ellos se podrá devolver crédito sin inventarlo
+        // para registros históricos no verificables.
+        await logAudit({
+          id: idConsumoBonoAbono(abono.id), entidad: 'Abono', registroId: abono.id,
+          accion: 'CREATE', usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+          datos: { operacion: OPERACION_CONSUMO_BONO, clienteId, monto, metodo: 'BONO' },
+        }, tx)
+      }
 
       // Actualizar saldo y monto pagado de la factura atómicamente
       const updatedFactura = await tx.factura.update({
@@ -208,6 +227,7 @@ export async function POST(request: NextRequest) {
       result.deduped ? 200 : 201,
     )
   } catch (error) {
+    if (error instanceof BonoSaldoFavorError) return apiError(error.message, error.status, { code: error.code })
     if (error instanceof Error && error.message === 'OFFLINE_ID_REUSADO') {
       return apiError('Esta clave de reintento ya corresponde a otro abono.', 409)
     }
