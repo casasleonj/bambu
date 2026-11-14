@@ -1,12 +1,7 @@
-# Optimización de `hallazgo` y `jl` · propuesta para aprobación
+# Optimización de `hallazgo` y `jl` · propuesta y estado
 
-**Fecha:** 2026-11-14 · **Estado:** `PROPUESTA`, no aplicada
+**Fecha:** 2026-11-14 · **Estado:** P1, P2, P3, P4 y P5 **APLICADAS** (#806 para P1/P4, #807 para P2/P3/P5)
 **Medición base:** tamaños y estructura leídos del repo a `main` @ d2e810fe.
-
-No se ha modificado ninguna de las dos skills. Este documento es lo que hay que
-aprobar antes de tocarlas.
-
----
 
 ## 1. Lo que medí
 
@@ -125,13 +120,30 @@ Sin medición no hay afirmación de ahorro. Antes y después, para 3 tareas real
 
 Sin esos números, el ahorro queda como **no medido**.
 
-## 6. Aprobación necesaria
+## 6. Estado de aplicación
 
-P1–P5 son cambios de estructura y enrutamiento en skills del proyecto (`jl` es de
-terceros: P1/P2/P5 tocarían su copia local y habría que decidir si se hace fork o
-se propone upstream). Requiere aprobación del PO antes de aplicar nada.
+Autorizado por el PO el 2026-11-14 («dale», «decide tu y soluciona, aplica las
+propuesta tambien»). Todo aplicado, nada pendiente de aprobación:
 
-Recomendación: empezar por **P1 y P4** (riesgo mínimo, retorno inmediato), medir,
-y solo después decidir P3.
+| Propuesta | Estado | Dónde |
+|---|---|---|
+| P1 índice de activación | aplicada | #806, `.agents/skills/jl/SKILL.md` §0 |
+| P2 partir líneas-muro | aplicada | #807; línea máxima de `jl` 1.041 → 506, de `hallazgo` 673 → 454 |
+| P3 delegar QA de navegador | aplicada | #807, `hallazgo/references/reproduccion-navegador.md` |
+| P4 hallazgo no implementa | aplicada | #806, `hallazgo/SKILL.md` |
+| P5 presupuesto en jl | aplicada | #807, remite a `docs/agentes/presupuesto-y-contexto.md` |
 
-Refs #804.
+Añadido fuera de las cinco, pedido por el PO: **bucle de refutación hasta
+converger** en `jl/SKILL.md` §4, con los estados y el criterio de parada delegados
+en `convergence.md`.
+
+**Sobre `jl` de terceros:** se editó la copia local del proyecto. No hay fork ni
+propuesta upstream abierta; si el PO quiere que las mejoras P1/P2/P5 sobrevivan a
+una actualización de JL, hay que proponerlas al paquete o mantener el parche
+documentado.
+
+**Lo que sigue sin medirse:** el ahorro real en tareas. Las cifras de este
+documento son tamaños de archivo y longitudes de línea, no tokens consumidos en un
+flujo completo.
+
+Refs #804, #806, #807, #808.
