@@ -60,6 +60,11 @@ Reglas del reparto:
   revisando su propio código tiende a aprobar su propio idiom.
 - **La autoría se declara.** En el reporte de cada fase: `quién + modelo + ruta del
   artefacto`. Sin eso no se puede auditar la cadena.
+- **El modelo se pasa explícito, nunca por defecto.** `claude -p` sin `--model` ni
+  `--effort` usa lo que decida el CLI: eso no es una decisión registrada. Se invoca con
+  ambos flags y se anota el valor en la ficha de cierre. Verificar el modelo realmente
+  usado contra `~/.claude/projects/<dir>/*.jsonl` (`modelUsage`), no contra el flag:
+  es la misma regla que §6 aplica a `opencode run`.
 - **Fase y modelo no son lo mismo.** `INVESTIGAR` es un modo de JL, no un modelo; dos
   agentes pueden investigar con modelos distintos y el artefacto se compara.
 

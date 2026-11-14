@@ -14,6 +14,7 @@
 - [`indice-historico-49.md`](indice-historico-49.md) indexa 49 registros históricos con sus anclas (los números 13, 43 y 45 se repiten).
 - [`historial-y-trazabilidad.md`](historial-y-trazabilidad.md) dirige a 49 bloques de incidentes y contratos históricos, sin declarar automáticamente obsoleto o vigente ninguno.
 - [`reparto-fases-y-modelos.md`](reparto-fases-y-modelos.md) fija qué CLI y modelo usa cada fase, cómo se pasan los artefactos entre agentes y dónde viven las decisiones compartidas. **Propuesta operativa**: no sustituye `AGENTS.md` ni el protocolo.
+- **Gate de CI por tipo de cambio (#778):** una skill declarativa **no es código ERP**. `scripts/ci/clasificar-cambios.mjs` decide con `git diff --raw -z` si el diff es solo documentación (`docs/**`, `AGENTS.md`, Markdown de `.agents/skills/**` y `.claude/skills/**`) o exige la suite E2E completa. Es fail-closed: scripts, hooks, `package.json`, lockfiles, `.github/**`, symlinks, cambios de modo, renombres entre clases distintas y diff ilegible fuerzan E2E. La regla completa está en [flujo-entrega.md](flujo-entrega.md) §6. Omitir el E2E no valida comportamiento de agente: eso sigue siendo `QA AGENTE PENDIENTE`.
 - [`auditoria-2026-11/`](auditoria-2026-11/README.md) contiene matriz, evidencia, limitaciones de pruebas por agente y gate, no es documento normativo.
 
 ## Skills existentes
