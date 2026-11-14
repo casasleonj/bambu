@@ -21,6 +21,7 @@
 - **Claude Code:** `CLAUDE.md` importa `AGENTS.md`, y las skills .claude son compatibles con el repositorio; no asumir que el enlace se ejecutó por existir.
 - **OpenCode:** `opencode.json` carga reglas del repo; `.opencode/prompts/protocolo.txt` apunta a un único protocolo canónico en vez de mantener una implementación contradictoria.
 - **Codex:** usa `AGENTS.md` en raíz y `.agents/skills/`; para evidencia conductual real se necesitan registros de CLI.
+- **Research (ChatGPT):** [`../../.agents/skills/research-codex/SKILL.md`](../../.agents/skills/research-codex/SKILL.md). Enrutamiento obligatorio de ideas, funcionalidades por diseñar, investigaciones, casos adversariales, casos no contemplados, comparaciones y documentación con criterio. Comando `/research`. No autoriza implementar.
 
 ## Autoridad y conocimiento
 

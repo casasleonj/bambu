@@ -19,6 +19,8 @@
 
 ## 3. Investigación obligatoria · decisión PO #704
 
+**Quién investiga:** ChatGPT vía Codex CLI (`.agents/skills/research-codex/SKILL.md`). Ideas, funcionalidades por diseñar, investigaciones, casos adversariales, casos no contemplados, comparaciones y documentación con criterio se enrutan ahí; implementar y corregir es de Claude Code/OpenCode, y decidir producto o negocio es del PO. La vía es `codex exec --sandbox read-only`; declarar el modelo real que contestó.
+
 Para trabajo que pudiera terminar escribiendo **código de producto**, primero ejecutar **tres iteraciones de R1 (descubrimiento) + R2 (contraste, refutación y plan)**, cada una incorporando lo aprendido. **R3 es implementación y verificación posterior a aprobación expresa del plan/fase**, no parte de una iteración que debiera ocurrir antes del código. En modo `INVESTIGAR` o consulta sin autorización de implementación **no ejecutar R3**. No exigir tres aprobaciones intermedias idénticas ni repetir web arbitrariamente: tercera R2 presenta convergencia, escenarios y aprobaciones requeridas. Detalle y criterios: [protocolo-investigacion.md](docs/agentes/protocolo-investigacion.md).
 
 R1: recuperar decisiones y código antes de preguntar; investigar alternativas, documentación oficial, Context7 cuando aplique y esté disponible, empresas, comunidad, historial y fallos conocidos. R2: contrastar opciones, trazar `entrada → regla → persistencia → consumidores → operación posterior → histórico/reversión`; investigar adversariales, regresiones, permisos, concurrencia, reintentos y offline. Preferir reutilización semántica; distinguir métricas con origen, tiempo, unidad y filtros diferentes. Iterar sobre mejoras **materiales**; clasificar certeza. Una propuesta no autoriza código.
