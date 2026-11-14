@@ -110,6 +110,10 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
   // encolada se ve como "pendiente", NUNCA como "confirmado". El estado
   // confirmado sólo aparece tras la respuesta del servidor.
   test('G9: online confirmado → offline encolado ("pendiente", no "confirmado") → reconexión → sincroniza', async ({ browser }) => {
+    // #733: el test encadena tres workspaces y una espera de 20 s para que drene la cola.
+    // Con los 30 s por defecto se agotaba sólo por su propio recorrido (su error es un
+    // «Test timeout» limpio, sin venta repetida: causa distinta a la de #408/#426).
+    test.setTimeout(120_000)
     const page = await sharedLoginAs(browser, 'admin')
     const app = appMain(page)
     const nombreCliente = `G9 E2E ${Date.now()}`
@@ -1129,6 +1133,11 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
   // #408: la misma venta cargada dos veces seguidas avisa (no bloquea); marcar «Es otra venta distinta» la deja
   // guardar y queda anotado en el historial de la segunda venta. Se mira la base de datos, no solo la pantalla.
   test('#408: venta repetida — aviso con casilla, se guardan las dos y la confirmación queda en el historial', async ({ browser }) => {
+    // #733: dos ventas con hasta 27 clics cada una no caben en los 30 s por defecto en el
+    // runner de CI; al agotarse, el `finally` restauraba la ventana con la página ya cerrada
+    // y el valor 60 s se filtraba a #426 (que crea un cliente NUEVO y recibía «Parece una
+    // venta repetida»). Mismo margen que #426, que ya usa 120 s.
+    test.setTimeout(120_000)
     const page = await sharedLoginAs(browser, 'admin')
     const app = appMain(page)
     await page.goto(`${BASE}/pedidos`)
@@ -1142,7 +1151,16 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
       await app.getByTestId('fab-main').click()
       await page.getByTestId('fab-venta-rapida').click()
       await expect(page.getByTestId('workspace-venta-rapida')).toBeVisible()
-      for (let i = 0; i < pacas; i++) await page.getByTestId('workspace-inc-PACA_AGUA').click()
+      // #733: fijar la cantidad en una sola escritura. Rellenar el campo dispara el mismo
+      // onChange que los «+», así que la venta se carga igual y se ahorran hasta 27 clics.
+      // Se comprueba el valor: si el campo no queda aplicado, la venta saldría con otra
+      // cantidad y el aviso de venta repetida se evaluaría sobre datos distintos, dando un
+      // verde o un rojo engañoso. Mejor fallar aquí que aguas abajo.
+      const cantidad = page.getByTestId('workspace-cant-PACA_AGUA')
+      await cantidad.fill(String(pacas))
+      // inputValue() devuelve siempre string; `toHaveValue` compara como número en
+      // <input type="number"> y daría un fallo confuso por tipo, no por la cantidad.
+      expect(await cantidad.inputValue()).toBe(String(pacas))
       await page.getByTestId('dinero-pagar-completo-EFECTIVO').click()
       await expect(page.getByTestId('dinero-saldo')).toHaveText('Pagado', { timeout: 10000 })
     }
@@ -1174,7 +1192,22 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     expect(hist.some((h) => h.datos.includes('VENTA_REPETIDA_CONFIRMADA'))).toBe(true)
     expect(await prisma.historial.count({ where: { registroId: ventas[0].id, datos: { contains: 'VENTA_REPETIDA_CONFIRMADA' } } })).toBe(0)
     } finally {
-      await ventana('0')
+      // #733: restaurar sin depender de que la página siga viva. Antes se hacía sólo con
+      // `apiPost(page, ...)`: al agotarse el tiempo del test la página ya estaba cerrada,
+      // lanzaba «Target page, context or browser has been closed» y la ventana quedaba en 60 s,
+      // filtrándose al test siguiente. La base tenía 0 antes de este test (seed-test.ts) y se
+      // enciende dentro del `try`, así que devolverla a 0 aquí reproduce el estado previo y no
+      // puede apagar una ventana que otro test haya encendido a propósito.
+      // El upsert cubre el caso de que la fila no exista; ya no depende del navegador.
+      await prisma.config.upsert({
+        where: { clave: 'VENTA_REPETIDA_VENTANA_SEG' },
+        update: { valor: '0' },
+        create: { clave: 'VENTA_REPETIDA_VENTANA_SEG', valor: '0' },
+      }).catch(() => {})
+      // Además se invalida la caché de config (`unstable_cache`, TTL 60 s) por la API: sin esto
+      // el 60 puede sobrevivir en memoria hasta un minuto aunque la base ya esté en 0. Es
+      // best-effort a propósito: si la página murió, la base ya quedó restaurada arriba.
+      await ventana('0').catch(() => {})
     }
   })
 
