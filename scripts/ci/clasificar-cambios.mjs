@@ -222,6 +222,20 @@ export function clasificar(entradas) {
 const ESTADO_RAW = /^:(\d{6}) (\d{6}) [0-9a-f]+ [0-9a-f]+ ([A-Z][0-9]*)$/
 
 /**
+ * Una entrada de `git diff --raw`. Todos los campos estructurales son
+ * opcionales porque una entrada ilegible solo trae `estado`, `ruta` e
+ * `invalida`: el parser prefiere devolver algo marcado a descartarlo.
+ *
+ * @typedef {object} EntradaDiff
+ * @property {string} [estado]
+ * @property {string} [modoAnterior]
+ * @property {string} [modoNuevo]
+ * @property {string} [ruta]
+ * @property {string} [rutaAnterior]
+ * @property {boolean} [invalida]
+ */
+
+/**
  * Parsea la salida de `git diff --raw -z`. El formato por entrada es
  *   `:<modoAnt> <modoNue> <shaAnt> <shaNue> <estado>\0<ruta>\0`
  * y en renombres/copias añade `\0<rutaAnterior>\0`.
@@ -229,6 +243,9 @@ const ESTADO_RAW = /^:(\d{6}) (\d{6}) [0-9a-f]+ [0-9a-f]+ ([A-Z][0-9]*)$/
  * Es **fail-closed**: un fragmento que no empieza por `:` no se descarta en
  * silencio — se devuelve como entrada inválida para que `clasificar` fuerce el
  * E2E. Perder una ruta aquí significaría omitir la suite sin decirlo.
+ *
+ * @param {string} salida
+ * @returns {EntradaDiff[]}
  */
 export function parsearRawDiff(salida) {
   if (!salida) return []
