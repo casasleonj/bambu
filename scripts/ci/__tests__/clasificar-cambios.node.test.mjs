@@ -98,7 +98,9 @@ test('un cambio de modo corre E2E (§4)', () => {
 test('rename de código a docs/ corre E2E — el agujero del allowlist viejo', () => {
   const r = clasificar([ren('src/lib/motor.ts', 'docs/motor.md')])
   assert.equal(r.e2e_required, true)
-  assert.match(r.detalle.inciertos[0], /rename/)
+  // El origen es ejecutable, así que ni siquiera llega a la rama de rename:
+  // lo clasifica como ejecutable, que es la razón más fuerte para correr E2E.
+  assert.match(r.detalle.ejecutables[0], /src\/lib\/motor\.ts/)
 })
 
 test('rename de docs/ a src/** corre E2E', () => {
@@ -159,6 +161,49 @@ test('un borrado de docs/ es declarativo', () => {
   assert.equal(r.e2e_required, false)
 })
 
+// ── Hallazgos de la auditoría independiente (Claude sonnet-5-5) ────────────
+// El parser invertía origen y destino. Estos casos no distinguían el orden
+// porque ambos extremos caían en clases distintas, y el bug pasaba inadvertido.
+test('rename docs/guia.md -> docs/guia.sh corre E2E (destino ejecutable)', () => {
+  const r = clasificar([ren('docs/guia.md', 'docs/guia.sh')])
+  assert.equal(r.e2e_required, true)
+  assert.match(r.detalle.ejecutables[0], /docs\/guia\.sh/)
+})
+
+test('rename docs/x.md -> docs/package.json corre E2E', () => {
+  assert.equal(clasificar([ren('docs/x.md', 'docs/package.json')]).e2e_required, true)
+})
+
+test('rename docs/x.md -> docs/y.ts corre E2E', () => {
+  assert.equal(clasificar([ren('docs/x.md', 'docs/y.ts')]).e2e_required, true)
+})
+
+test('un rename de docs/ a docs/ sigue omitiendo el E2E', () => {
+  assert.equal(clasificar([ren('docs/viejo.md', 'docs/nuevo.md')]).e2e_required, false)
+})
+
+test('parsearRawDiff usa el orden real de git: origen primero', () => {
+  const [e] = parsearRawDiff(':100644 100644 aaaa bbbb R100\0docs/guia.md\0docs/guia.sh\0')
+  assert.equal(e.rutaAnterior, 'docs/guia.md')
+  assert.equal(e.ruta, 'docs/guia.sh')
+})
+
+test('un submódulo (gitlink 160000) corre E2E', () => {
+  const r = clasificar([{ estado: 'M', modoAnterior: '160000', modoNuevo: '160000', ruta: 'docs/vendor' }])
+  assert.equal(r.e2e_required, true)
+  assert.match(r.detalle.inciertos[0], /submódulo/)
+})
+
+test('un archivo nuevo con bit ejecutable corre E2E por su modo', () => {
+  const r = clasificar([{ estado: 'A', modoAnterior: '000000', modoNuevo: '100755', ruta: 'docs/deploy' }])
+  assert.equal(r.e2e_required, true)
+})
+
+test('las extensiones se comparan sin distinguir mayúsculas', () => {
+  assert.equal(clasificar([f('docs/x.SH')]).e2e_required, true)
+  assert.equal(clasificar([f('docs/DEPLOY.PY')]).e2e_required, true)
+})
+
 // ── Parser de `git diff --raw -z` ──────────────────────────────────────────
 test('parsea una modificación simple', () => {
   assert.deepEqual(parsearRawDiff(':100644 100644 aaaa bbbb M\0docs/x.md\0'), [
@@ -166,8 +211,10 @@ test('parsea una modificación simple', () => {
   ])
 })
 
-test('parsea un rename con las dos rutas y lo clasifica como E2E', () => {
-  const entradas = parsearRawDiff(':100644 100644 aaaa bbbb R100\0docs/nuevo.md\0src/viejo.ts\0')
+test('parsea un rename con las dos rutas, en el orden real de git', () => {
+  // git emite ORIGEN primero y DESTINO después (verificado con `od -c` sobre
+  // la salida real): `R100\0src/viejo.ts\0docs/nuevo.md\0`.
+  const entradas = parsearRawDiff(':100644 100644 aaaa bbbb R100\0src/viejo.ts\0docs/nuevo.md\0')
   assert.deepEqual(entradas, [
     { estado: 'R100', modoAnterior: '100644', modoNuevo: '100644', ruta: 'docs/nuevo.md', rutaAnterior: 'src/viejo.ts' },
   ])

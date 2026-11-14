@@ -14,6 +14,7 @@ import {
   esRutaDeSkillDeclarativa,
   esRutaEjecutable,
   MODO_SYMLINK,
+  MODO_SUBMODULO,
 } from '../ci/clasificar-cambios.mjs'
 
 /** Entrada de diff. Modos por defecto: archivo normal 100644. */
@@ -108,7 +109,41 @@ describe('clasificar — casos que DEBEN correr el E2E completo', () => {
   it('rename de código a docs/ — el caso que el allowlist viejo dejaba pasar', () => {
     const r = clasificar([rename('src/lib/motor.ts', 'docs/motor.md')])
     expect(r.e2e_required).toBe(true)
-    expect(r.detalle.inciertos[0]).toContain('rename')
+    // El origen es ejecutable: se clasifica por esa razón, la más fuerte.
+    expect(r.detalle.ejecutables[0]).toContain('src/lib/motor.ts')
+  })
+
+  // ── Hallazgos de la auditoría independiente (Claude sonnet-5-5) ──────────
+  // El parser invertía origen y destino. Los casos entre clases distintas daban
+  // `true` con cualquiera de los dos órdenes, así que el bug era invisible.
+  it('rename docs/guia.md → docs/guia.sh corre E2E (destino ejecutable)', () => {
+    const r = clasificar([rename('docs/guia.md', 'docs/guia.sh')])
+    expect(r.e2e_required).toBe(true)
+    expect(r.detalle.ejecutables[0]).toContain('docs/guia.sh')
+  })
+
+  it('rename docs/x.md → docs/package.json corre E2E', () => {
+    expect(clasificar([rename('docs/x.md', 'docs/package.json')]).e2e_required).toBe(true)
+  })
+
+  it('un rename entre dos .md de docs/ sigue omitiendo el E2E', () => {
+    expect(clasificar([rename('docs/viejo.md', 'docs/nuevo.md')]).e2e_required).toBe(false)
+  })
+
+  it('un submódulo (gitlink 160000) corre E2E', () => {
+    const r = clasificar([{ estado: 'M', modoAnterior: MODO_SUBMODULO, modoNuevo: MODO_SUBMODULO, ruta: 'docs/vendor' }])
+    expect(r.e2e_required).toBe(true)
+    expect(r.detalle.inciertos[0]).toContain('submódulo')
+  })
+
+  it('un archivo nuevo con bit ejecutable corre E2E por su modo', () => {
+    const r = clasificar([{ estado: 'A', modoAnterior: '000000', modoNuevo: '100755', ruta: 'docs/deploy' }])
+    expect(r.e2e_required).toBe(true)
+  })
+
+  it('las extensiones se comparan sin distinguir mayúsculas', () => {
+    expect(clasificar([f('docs/x.SH')]).e2e_required).toBe(true)
+    expect(clasificar([f('docs/DEPLOY.PY')]).e2e_required).toBe(true)
   })
 
   it('rename de docs/ a src/**', () => {
@@ -216,8 +251,9 @@ describe('parsearRawDiff', () => {
     ])
   })
 
-  it('lee un rename con su ruta anterior', () => {
-    const raw = ':100644 100644 aaaa bbbb R100\0docs/nuevo.md\0src/viejo.ts\0'
+  it('lee un rename con su ruta anterior, en el orden real de git', () => {
+    // git emite ORIGEN primero y DESTINO después (verificado con `od -c`).
+    const raw = ':100644 100644 aaaa bbbb R100\0src/viejo.ts\0docs/nuevo.md\0'
     const r = parsearRawDiff(raw)
     expect(r).toEqual([
       { estado: 'R100', modoAnterior: '100644', modoNuevo: '100644', ruta: 'docs/nuevo.md', rutaAnterior: 'src/viejo.ts' },

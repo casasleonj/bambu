@@ -50,6 +50,9 @@ export const ARCHIVOS_EJECUTABLES = [
 /** Modo git de un symlink. */
 export const MODO_SYMLINK = '120000'
 
+/** Modo git de un gitlink (submódulo): el contenido lo decide otro repo. */
+export const MODO_SUBMODULO = '160000'
+
 function normalizar(p) {
   return String(p).replace(/^\.\//, '')
 }
@@ -76,11 +79,15 @@ export function esRutaDeDocs(ruta) {
 export function esRutaEjecutable(ruta) {
   const p = normalizar(ruta)
   const base = p.split('/').pop() ?? ''
-  if (ARCHIVOS_EJECUTABLES.includes(base)) return true
+  // La comparación es insensible a mayúsculas: `docs/x.SH` es tan ejecutable
+  // como `docs/x.sh`, y en un filesystem case-insensitive ambos son el mismo
+  // archivo.
+  const baseMin = base.toLowerCase()
+  if (ARCHIVOS_EJECUTABLES.some((a) => a.toLowerCase() === baseMin)) return true
   if (esPrefijoDe(p, ['.github/'])) return true
   // El propio clasificador y sus pruebas deciden el gate: tocarlos exige E2E.
   if (p === 'scripts/ci/clasificar-cambios.mjs') return true
-  return EXT_EJECUTABLES.some((ext) => base.endsWith(ext))
+  return EXT_EJECUTABLES.some((ext) => baseMin.endsWith(ext))
 }
 
 /**
@@ -132,6 +139,9 @@ export function clasificar(entradas) {
     }
     const esRenameOCopia = estado.startsWith('R') || estado.startsWith('C')
     const esSymlink = e.modoAnterior === MODO_SYMLINK || e.modoNuevo === MODO_SYMLINK
+    // Un gitlink (submódulo) apunta a otro repositorio: su contenido no está en
+    // este diff, así que no se puede afirmar que sea declarativo.
+    const esSubmodulo = e.modoAnterior === MODO_SUBMODULO || e.modoNuevo === MODO_SUBMODULO
     // `000000` es «no existía» en una creación o un borrado, no un modo: solo
     // hay cambio de modo cuando ambos extremos existen y difieren.
     const MODOS_AUSENTES = new Set(['000000', '', undefined, null])
@@ -145,15 +155,31 @@ export function clasificar(entradas) {
       detalle.inciertos.push(`${ruta} (symlink)`)
       continue
     }
+    if (esSubmodulo) {
+      detalle.inciertos.push(`${ruta} (submódulo)`)
+      continue
+    }
     if (cambioDeModo) {
       detalle.inciertos.push(`${ruta} (modo ${e.modoAnterior}→${e.modoNuevo})`)
       continue
     }
+    // Un archivo NUEVO con bit de ejecución tampoco es documentación, aunque su
+    // nombre no lleve extensión conocida (`docs/deploy` con modo 100755).
+    if (e.modoNuevo === '100755' && !esRutaDeSkillDeclarativa(ruta)) {
+      detalle.ejecutables.push(`${ruta} (nuevo ejecutable, modo 100755)`)
+      continue
+    }
 
-    // Un rename solo es inocuo si AMBOS extremos caen en la misma clase
-    // declarativa. Mover `src/x.ts` a `docs/x.md` no es documentación.
+    // Un rename solo es inocuo si AMBOS extremos son documentación declarativa
+    // **y ninguno es ejecutable**. Mover `docs/guia.md` a `docs/guia.sh` deja
+    // los dos bajo `docs/` pero el destino es un script: no es documentación.
+    // Por eso la comprobación de ejecutable va primero, sobre origen y destino.
     if (esRenameOCopia) {
       const anterior = normalizar(e.rutaAnterior ?? '')
+      if (esRutaEjecutable(ruta) || esRutaEjecutable(anterior)) {
+        detalle.ejecutables.push(`${anterior} → ${ruta}`)
+        continue
+      }
       const mismaClaseInocua =
         anterior.length > 0 &&
         ((esRutaDeDocs(anterior) && esRutaDeDocs(ruta)) ||
@@ -204,7 +230,8 @@ export function clasificar(entradas) {
     return {
       e2e_required: false,
       skill_declarativa: true,
-      motivo: 'Solo Markdown de skills declarativas: se exige la auditoría de skills y se omite el E2E del ERP (§1).',
+      motivo:
+        'Solo Markdown de skills declarativas: se omite el E2E del ERP (§1). La auditoría de skills corre por su propio workflow, no por este gate.',
       detalle,
     }
   }
@@ -274,18 +301,33 @@ export function parsearRawDiff(salida) {
     }
     const [, modoAnterior, modoNuevo, bruto] = m
     const estado = bruto
-    const ruta = partes[++i] ?? ''
-    if (!ruta) {
+    // En un rename/copia `git diff --raw -z` emite PRIMERO el origen y después
+    // el destino (verificado con git real: `R100\0src/viejo.ts\0docs/nuevo.md`).
+    // Invertirlos hacía que `esRutaEjecutable` mirara solo el origen y diera por
+    // documentación un `docs/guia.md → docs/guia.sh`. Este orden está cubierto
+    // por prueba contra la salida real de git, no contra un fixture inventado.
+    const primera = partes[++i] ?? ''
+    const esRename = estado.startsWith('R') || estado.startsWith('C')
+    if (!primera) {
       entradas.push({ estado, modoAnterior, modoNuevo, ruta: '', invalida: true })
       continue
     }
-    const entrada = { estado, modoAnterior, modoNuevo, ruta }
-    if (estado.startsWith('R') || estado.startsWith('C')) {
-      entrada.rutaAnterior = partes[++i] ?? ''
-      if (!entrada.rutaAnterior) {
-        entrada.invalida = true
-        entrada.ruta = `${ruta} (rename sin origen legible)`
+    let entrada
+    if (esRename) {
+      const segunda = partes[++i] ?? ''
+      if (!segunda) {
+        entradas.push({
+          estado,
+          modoAnterior,
+          modoNuevo,
+          ruta: `${primera} (rename sin destino legible)`,
+          invalida: true,
+        })
+        continue
       }
+      entrada = { estado, modoAnterior, modoNuevo, ruta: segunda, rutaAnterior: primera }
+    } else {
+      entrada = { estado, modoAnterior, modoNuevo, ruta: primera }
     }
     entradas.push(entrada)
   }
@@ -321,14 +363,24 @@ if (esPrincipal()) {
     const resultado = clasificar(parsearRawDiff(bruto))
     imprimir(resultado)
     // Se escribe el output de GitHub Actions si el runner lo ofrece.
+    // Si la escritura falla y aun así saliéramos con 0, `e2e_required` quedaría
+    // vacío y los jobs E2E se saltarían sin que nada lo justifique: el fallo
+    // debe propagarse. Se exige explícitamente que el runner lo haya provisto,
+    // porque en ese contexto no escribirlo es un error, no un caso normal.
     const salida = process.env.GITHUB_OUTPUT
     if (salida) {
       try {
         fs.appendFileSync(salida, `e2e_required=${resultado.e2e_required}\n`)
         fs.appendFileSync(salida, `skill_declarativa=${resultado.skill_declarativa}\n`)
       } catch (e) {
-        console.log(`aviso: no se pudo escribir GITHUB_OUTPUT (${e instanceof Error ? e.message : e})`)
+        console.log(`::error::no se pudo escribir GITHUB_OUTPUT (${e instanceof Error ? e.message : e}); se cancela el paso para no omitir el E2E en silencio`)
+        process.exit(1)
       }
+    } else if (process.env.GITHUB_ACTIONS === 'true') {
+      // Dentro de Actions pero sin el fichero de salida: el resultado no llegaría
+      // a los jobs. Se falla en vez de aparentar que se clasificó.
+      console.log('::error::GITHUB_ACTIONS está activo pero falta GITHUB_OUTPUT; el resultado no llegaría a los jobs')
+      process.exit(1)
     }
   })
 }
