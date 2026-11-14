@@ -9,6 +9,12 @@ import test from 'node:test'
 import {
   clasificar,
   parsearRawDiff,
+  escribirSalida,
+  imprimir,
+  paraLog,
+  esRutaDeDocs,
+  esRutaDeSkill,
+  esRutaEjecutable,
   MODO_SYMLINK,
 } from '../clasificar-cambios.mjs'
 
@@ -202,6 +208,115 @@ test('un archivo nuevo con bit ejecutable corre E2E por su modo', () => {
 test('las extensiones se comparan sin distinguir mayúsculas', () => {
   assert.equal(clasificar([f('docs/x.SH')]).e2e_required, true)
   assert.equal(clasificar([f('docs/DEPLOY.PY')]).e2e_required, true)
+})
+
+// ── Publicación del resultado en GitHub Actions ────────────────────────────
+// Este comportamiento decide si los jobs E2E reciben la condición que los
+// justifica. Sin prueba, el `exit 1` era una afirmación del commit.
+test('escribirSalida escribe los dos outputs cuando hay GITHUB_OUTPUT', () => {
+  const escritos = []
+  const r = escribirSalida(
+    { e2e_required: true, skill_declarativa: false },
+    { env: { GITHUB_OUTPUT: '/tmp/out' }, escribir: (destino, texto) => escritos.push([destino, texto]) },
+  )
+  assert.equal(r.ok, true)
+  assert.equal(escritos.length, 2)
+  assert.match(escritos[0][1], /^e2e_required=true$/m)
+  assert.match(escritos[1][1], /^skill_declarativa=false$/m)
+  assert.equal(escritos[0][0], '/tmp/out')
+})
+
+test('escribirSalida falla si la escritura revienta — no omite el E2E en silencio', () => {
+  const r = escribirSalida(
+    { e2e_required: false, skill_declarativa: true },
+    {
+      env: { GITHUB_OUTPUT: '/tmp/out' },
+      escribir: () => {
+        throw new Error('EACCES')
+      },
+    },
+  )
+  assert.equal(r.ok, false)
+  assert.match(r.motivo, /GITHUB_OUTPUT/)
+})
+
+test('escribirSalida falla dentro de Actions si falta GITHUB_OUTPUT', () => {
+  const r = escribirSalida(
+    { e2e_required: false, skill_declarativa: true },
+    { env: { GITHUB_ACTIONS: 'true' }, escribir: () => {} },
+  )
+  assert.equal(r.ok, false)
+  assert.match(r.motivo, /GITHUB_OUTPUT/)
+})
+
+test('escribirSalida no es un error fuera de Actions (uso local)', () => {
+  const r = escribirSalida({ e2e_required: true, skill_declarativa: false }, { env: {}, escribir: () => {} })
+  assert.equal(r.ok, true)
+})
+
+// ── Casos que faltaban en el job barato (el que decide) ────────────────────
+// La auditoría detectó divergencia con la suite de vitest: si un predicado
+// degenera, el job barato no lo ve y omitiría el E2E sin que nada lo frene.
+test('esRutaDeDocs no acepta cualquier archivo terminado en AGENTS.md', () => {
+  assert.equal(esRutaDeDocs('src/AGENTS.md'), false)
+  assert.equal(esRutaDeDocs('AGENTS.md'), true)
+})
+
+test('esRutaDeSkill exige un nombre de skill, no el prefijo a secas', () => {
+  assert.equal(esRutaDeSkill('.agents/skills/'), false)
+  assert.equal(esRutaDeSkill('.agents/skills/hallazgo/SKILL.md'), true)
+})
+
+test('esRutaEjecutable reconoce lockfiles, workflows y páginas del ERP', () => {
+  assert.equal(esRutaEjecutable('pnpm-lock.yaml'), true)
+  assert.equal(esRutaEjecutable('.github/workflows/x.yml'), true)
+  assert.equal(esRutaEjecutable('src/app/page.tsx'), true)
+})
+
+test('un rename de docs/ a docs/ con destino ejecutable corre E2E', () => {
+  assert.equal(clasificar([ren('docs/x.md', 'docs/y.ts')]).e2e_required, true)
+})
+
+test('lee varias entradas seguidas mezclando declarativo y ejecutable', () => {
+  const raw =
+    ':100644 100644 aaaa bbbb M\0docs/a.md\0' +
+    ':100644 100644 cccc dddd R100\0src/b.ts\0docs/b.md\0'
+  const r = parsearRawDiff(raw)
+  assert.equal(r.length, 2)
+  assert.equal(r[1].rutaAnterior, 'src/b.ts')
+  assert.equal(clasificar(r).e2e_required, true)
+})
+
+// ── Inyección de comandos de workflow por nombre de archivo ────────────────
+// Verificado con git real: un archivo llamado `docs/a\n::error::Injected` hacía
+// que el log imprimiera una línea que GitHub Actions interpreta como comando.
+test('paraLog neutraliza saltos de línea que inyectarían comandos de workflow', () => {
+  const ruta = 'docs/a\n::error::Injected message'
+  const limpio = paraLog(ruta)
+  assert.equal(limpio.includes('\n'), false)
+  assert.match(limpio, /\\n/)
+})
+
+test('paraLog escapa retorno de carro, tabulador y caracteres de control', () => {
+  assert.equal(paraLog('a\rb'), 'a\\rb')
+  assert.equal(paraLog('a\tb'), 'a\\tb')
+  assert.equal(paraLog('a\u001bb'), 'a\\x1bb')
+})
+
+test('paraLog no altera una ruta normal', () => {
+  assert.equal(paraLog('docs/guia.md'), 'docs/guia.md')
+})
+
+test('imprimir no emite ninguna línea que empiece por ::', () => {
+  const original = console.log
+  const lineas = []
+  console.log = (...a) => lineas.push(a.join(' '))
+  try {
+    imprimir(clasificar([f('docs/a\n::error::Injected message')]))
+  } finally {
+    console.log = original
+  }
+  assert.equal(lineas.some((l) => l.startsWith('::')), false)
 })
 
 // ── Parser de `git diff --raw -z` ──────────────────────────────────────────

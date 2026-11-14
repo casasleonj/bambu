@@ -13,6 +13,9 @@ import {
   esRutaDeSkill,
   esRutaDeSkillDeclarativa,
   esRutaEjecutable,
+  escribirSalida,
+  imprimir,
+  paraLog,
   MODO_SYMLINK,
   MODO_SUBMODULO,
 } from '../ci/clasificar-cambios.mjs'
@@ -144,6 +147,74 @@ describe('clasificar — casos que DEBEN correr el E2E completo', () => {
   it('las extensiones se comparan sin distinguir mayúsculas', () => {
     expect(clasificar([f('docs/x.SH')]).e2e_required).toBe(true)
     expect(clasificar([f('docs/DEPLOY.PY')]).e2e_required).toBe(true)
+  })
+
+  // ── Inyección de comandos de workflow por nombre de archivo ─────────────
+  // Verificado con git real: `docs/a\n::error::Injected` imprimía una línea
+  // que GitHub Actions interpreta como comando de workflow.
+  it('paraLog neutraliza saltos de línea inyectables', () => {
+    const limpio = paraLog('docs/a\n::error::Injected message')
+    expect(limpio).not.toContain('\n')
+    expect(limpio).toContain('\\n')
+  })
+
+  it('paraLog escapa retorno de carro, tabulador y control', () => {
+    expect(paraLog('a\rb')).toBe('a\\rb')
+    expect(paraLog('a\tb')).toBe('a\\tb')
+    expect(paraLog('a\u001bb')).toBe('a\\x1bb')
+  })
+
+  it('imprimir no emite líneas que empiecen por ::', () => {
+    const lineas: string[] = []
+    const orig = console.log
+    console.log = (...a: unknown[]) => lineas.push(a.join(' '))
+    try {
+      imprimir(clasificar([f('docs/a\n::error::Injected message')]))
+    } finally {
+      console.log = orig
+    }
+    expect(lineas.some((l) => l.startsWith('::'))).toBe(false)
+  })
+
+  // ── Publicación del resultado en GitHub Actions ─────────────────────────
+  it('escribirSalida escribe los dos outputs', () => {
+    const escritos: [string, string][] = []
+    const r = escribirSalida(
+      { e2e_required: true, skill_declarativa: false },
+      { env: { GITHUB_OUTPUT: '/tmp/out' }, escribir: (d: string, t: string) => escritos.push([d, t]) },
+    )
+    expect(r.ok).toBe(true)
+    expect(escritos).toHaveLength(2)
+    expect(escritos[0][1]).toContain('e2e_required=true')
+    expect(escritos[1][1]).toContain('skill_declarativa=false')
+  })
+
+  it('escribirSalida falla si la escritura revienta', () => {
+    const r = escribirSalida(
+      { e2e_required: false, skill_declarativa: true },
+      {
+        env: { GITHUB_OUTPUT: '/tmp/out' },
+        escribir: () => {
+          throw new Error('EACCES')
+        },
+      },
+    )
+    expect(r.ok).toBe(false)
+    expect(r.motivo).toContain('GITHUB_OUTPUT')
+  })
+
+  it('escribirSalida falla dentro de Actions sin GITHUB_OUTPUT', () => {
+    const r = escribirSalida(
+      { e2e_required: false, skill_declarativa: true },
+      { env: { GITHUB_ACTIONS: 'true' }, escribir: () => {} },
+    )
+    expect(r.ok).toBe(false)
+  })
+
+  it('escribirSalida no es error fuera de Actions', () => {
+    expect(escribirSalida({ e2e_required: true, skill_declarativa: false }, { env: {}, escribir: () => {} }).ok).toBe(
+      true,
+    )
   })
 
   it('rename de docs/ a src/**', () => {

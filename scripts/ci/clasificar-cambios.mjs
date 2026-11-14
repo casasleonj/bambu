@@ -22,6 +22,7 @@
 // docs/motor.ts` se clasificaba como documentación y omitía el E2E para un
 // cambio de código. Con `git diff --raw` se ven ambos extremos del rename y
 // los modos, y la decisión queda cubierta por pruebas.
+import { appendFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
 /** Prefijos del repositorio cuyo contenido es documentación del producto. */
@@ -339,48 +340,92 @@ export function esPrincipal() {
   return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href
 }
 
+/**
+ * Neutraliza un nombre de archivo para imprimirlo en el log del job.
+ *
+ * Un nombre con salto de línea permite que la ruta ocupe una línea propia; si
+ * empieza por `::`, GitHub Actions la interpreta como un comando de workflow
+ * (`::error::`, `::add-mask::`, `::set-output::` antes, etc.). Verificado con un
+ * archivo llamado `docs/a\n::error::Injected message`. Los caracteres de control
+ * se escapan a su forma visible y la ruta se marca explícitamente.
+ *
+ * @param {string} ruta
+ * @returns {string}
+ */
+export function paraLog(ruta) {
+  return String(ruta)
+    .replace(/\\/g, '\\\\')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')
+    // Cualquier otro control (incluido ESC, que puede manipular la salida).
+    .replace(/[\u0000-\u001f\u007f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
+}
+
 /** Imprime el veredicto en el formato que lee el workflow. */
 export function imprimir(resultado) {
   const { e2e_required, skill_declarativa, motivo, detalle } = resultado
   console.log(`e2e_required=${e2e_required}`)
   console.log(`skill_declarativa=${skill_declarativa}`)
-  console.log(`motivo: ${motivo}`)
+  console.log(`motivo: ${paraLog(motivo)}`)
   if (detalle.cuenta) console.log(`archivos clasificados: ${detalle.cuenta}`)
   for (const [clase, rutas] of Object.entries(detalle)) {
     if (clase === 'cuenta' || rutas.length === 0) continue
     console.log(`  [${clase}]`)
-    for (const r of rutas) console.log(`    ${r}`)
+    for (const r of rutas) console.log(`    ${paraLog(r)}`)
   }
+}
+
+/**
+ * Escribe los outputs en el fichero de GitHub Actions.
+ *
+ * Devuelve `{ ok, motivo }` en vez de llamar a `process.exit`, para que el
+ * comportamiento sea testeable: dentro de Actions, no poder publicar el
+ * resultado es un fallo, porque los jobs E2E se quedarían sin la condición que
+ * los justifica y se omitirían en silencio.
+ *
+ * @param {object} resultado
+ * @param {object} [entorno] Inyectable para las pruebas (env + escritor).
+ * @returns {{ok: boolean, motivo?: string}}
+ */
+export function escribirSalida(resultado, entorno = {}) {
+  const env = entorno.env ?? process.env
+  const escribir = entorno.escribir ?? appendFileSync
+  const salida = env.GITHUB_OUTPUT
+  if (salida) {
+    try {
+      escribir(salida, `e2e_required=${resultado.e2e_required}\n`)
+      escribir(salida, `skill_declarativa=${resultado.skill_declarativa}\n`)
+      return { ok: true }
+    } catch (e) {
+      return {
+        ok: false,
+        motivo: `no se pudo escribir GITHUB_OUTPUT (${e instanceof Error ? e.message : e}); se cancela el paso para no omitir el E2E en silencio`,
+      }
+    }
+  }
+  if (env.GITHUB_ACTIONS === 'true') {
+    return {
+      ok: false,
+      motivo: 'GITHUB_ACTIONS está activo pero falta GITHUB_OUTPUT; el resultado no llegaría a los jobs',
+    }
+  }
+  // Fuera de Actions (uso local, pruebas) no hay fichero y no es un error.
+  return { ok: true }
 }
 
 if (esPrincipal()) {
   // El diff llega por stdin para no depender de cómo se invoque git.
-  const fs = await import('node:fs')
   let bruto = ''
   process.stdin.setEncoding('utf8')
   process.stdin.on('data', (t) => { bruto += t })
   process.stdin.on('end', () => {
     const resultado = clasificar(parsearRawDiff(bruto))
     imprimir(resultado)
-    // Se escribe el output de GitHub Actions si el runner lo ofrece.
-    // Si la escritura falla y aun así saliéramos con 0, `e2e_required` quedaría
-    // vacío y los jobs E2E se saltarían sin que nada lo justifique: el fallo
-    // debe propagarse. Se exige explícitamente que el runner lo haya provisto,
-    // porque en ese contexto no escribirlo es un error, no un caso normal.
-    const salida = process.env.GITHUB_OUTPUT
-    if (salida) {
-      try {
-        fs.appendFileSync(salida, `e2e_required=${resultado.e2e_required}\n`)
-        fs.appendFileSync(salida, `skill_declarativa=${resultado.skill_declarativa}\n`)
-      } catch (e) {
-        console.log(`::error::no se pudo escribir GITHUB_OUTPUT (${e instanceof Error ? e.message : e}); se cancela el paso para no omitir el E2E en silencio`)
-        process.exit(1)
-      }
-    } else if (process.env.GITHUB_ACTIONS === 'true') {
-      // Dentro de Actions pero sin el fichero de salida: el resultado no llegaría
-      // a los jobs. Se falla en vez de aparentar que se clasificó.
-      console.log('::error::GITHUB_ACTIONS está activo pero falta GITHUB_OUTPUT; el resultado no llegaría a los jobs')
-      process.exit(1)
+    const salida = escribirSalida(resultado)
+    if (!salida.ok) {
+      console.log(`::error::${salida.motivo}`)
+      process.exitCode = 1
     }
   })
 }

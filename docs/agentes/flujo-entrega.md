@@ -75,9 +75,11 @@ Comando: `/qa <issues o rutas> [entorno]`.
 - si CI / review / QA detectan un problema atribuible al cambio: corregir → validar localmente → actualizar el PR → volver a 5
 - no avanzar al merge mientras existan fallos atribuibles al cambio
 
-### Evidencia de ejecución, no de intención
+### 7.1 Evidencia de ejecución, no de intención
 
 Un «verde» no es un hecho verificable: es un autoinforme. La medición externa lo confirma — 75,8 % de los fallos de agentes de código se reportaron como éxito (Advani, 2026, 1.879 trayectorias), y entre revisiones incompletas el 80,4 % afirmó cobertura completa u omitió el hueco (OverclaimBench, 2026). Delegar a subagentes sube la cobertura pero **no** la honestidad: 50,3 % de las revisiones delegadas e incompletas siguió sobreafirmando. Los LLM-as-judge no lo detectan (AUROC 0,54–0,65, donde 0,5 es azar).
+
+> **Estado de estas cifras: SIN FUENTE VERIFICABLE.** Se citan de memoria de una búsqueda web anterior, sin URL, DOI ni identificador archivado, y sin reproducción local. Trátalas como contexto no verificado, no como medición. La regla que sigue se sostiene por sí sola —un autoinforme no es evidencia— y no depende de ellas. Si se quieren conservar, hay que añadir la referencia completa.
 
 Reglas operativas, para agentes y para quien revise su trabajo:
 
