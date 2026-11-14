@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { buscarDifuso } from '@/lib/busqueda-fuzzy'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { EmptyState } from '@/components/empty-state'
@@ -33,17 +34,12 @@ export default function AdminUsuariosClient({ users: initialUsers }: { users: Ad
     }
   }
 
-  const filtered = users.filter(u => {
-    const term = search.toLowerCase()
-    return (
-      u.username.toLowerCase().includes(term) ||
-      u.nombre.toLowerCase().includes(term) ||
-      u.apellido.toLowerCase().includes(term) ||
-      u.rol.toLowerCase().includes(term) ||
-      u.trabajador?.nombre.toLowerCase().includes(term)
-    )
-  })
-
+  const filtered = buscarDifuso(users, search, (u) => ({
+    textos: [u.nombre, u.apellido, u.rol, u.trabajador?.nombre],
+    pesosTexto: [3, 3, 1, 2],
+    // Username solo exacto/prefijo: jamás inventar cuentas por errata.
+    identificadores: [u.username],
+  }), (u) => u.id)
   function openCreate() {
     setEditingUser(null)
     setShowModal(true)

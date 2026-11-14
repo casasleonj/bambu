@@ -63,6 +63,19 @@ describe('useClienteSearch (#376)', () => {
     expect(result.current.error).toBe(false)
   })
 
+  it('#789 mantiene búsqueda local aproximada cuando la red falla', async () => {
+    const clienteConNegocio = {
+      ...cli('7', 'Camilo'),
+      negocios: [{ id: 'n1', nombre: 'Panadería La Esperanza' }],
+    } as Cliente
+    fetchMock.mockRejectedValue(new TypeError('Sin red'))
+    const { result } = renderHook(() => useClienteSearch('pnaaderia', [clienteConNegocio]))
+    expect(result.current.resultados.map((c) => c.id)).toEqual(['7'])
+    await avanzar(DEBOUNCE_MS + 10)
+    expect(result.current.resultados.map((c) => c.id)).toEqual(['7'])
+    expect(result.current.error).toBe(true)
+  })
+
   it('encontrar un cliente que NO está en la lista precargada (lista vacía)', async () => {
     fetchMock.mockResolvedValue(respuesta([cli('7', 'Luis Alfonso')]))
     const { result } = renderHook(() => useClienteSearch('luis', []))
