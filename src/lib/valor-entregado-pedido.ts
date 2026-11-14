@@ -1,3 +1,4 @@
+import { importeLineaCentavos } from '@/shared/domain/unit-price'
 /** Valor comercial del cumplimiento actual. No representa cobros ni cambia el pedido. */
 export interface PedidoParaValorEntregado {
   total: unknown
@@ -8,7 +9,7 @@ export interface PedidoParaValorEntregado {
 export function valorEntregadoPedidoCentavos(p: PedidoParaValorEntregado): number {
   if (p.estadoEntrega === 'ANULADO' || p.estadoEntrega === 'CANCELADO') return 0
   if (p.estadoEntrega === 'ENTREGADO') return Math.round(Number(p.total) * 100)
-  return (p.items ?? []).reduce((total, i) => total + i.cantEntrega * Math.round(Number(i.precio) * 100), 0)
+  return (p.items ?? []).reduce((total, i) => total + importeLineaCentavos(i.precio, i.cantEntrega), 0)
 }
 
 /** Una proyección de lectura: el saldo contractual nunca se reescribe para mostrar la deuda entregada. */

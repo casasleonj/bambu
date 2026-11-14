@@ -152,7 +152,7 @@ export class PreviewPedidoUseCase {
     }))
 
     // ── Semántica de cálculo (contrato) ──
-    const total = items.reduce((s, i) => s + i.subtotal, 0)
+    const total = items.reduce((s, i) => s + Math.round(i.subtotal * 100), 0) / 100
     const recargoDomicilio = canal === 'DOMICILIO'
       ? resueltos.reduce((acc, r) => {
           // Solo el precio base lleva recargo; manual, especial y volumen son finales (#493).

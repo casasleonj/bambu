@@ -1,3 +1,4 @@
+import { importeLinea } from '@/shared/domain/unit-price'
 /**
  * ProyectarAjusteCantidadUseCase (Fase 6-0 del rediseño de Pedidos —
  * docs/pedidos/fase6-g11-flujo-plan.md §2, P4/P7).
@@ -93,13 +94,13 @@ export class ProyectarAjusteCantidadUseCase {
     const delta = input.cantidadNueva - cantidadOriginal
     const precioHistorico = Number(item.precio)
     const subtotalAntes = Number(item.subtotal)
-    const subtotalDespues = input.cantidadNueva * precioHistorico
-    const deltaSubtotal = subtotalDespues - subtotalAntes
+    const subtotalDespues = importeLinea(precioHistorico, input.cantidadNueva)
+    const deltaSubtotal = (Math.round(subtotalDespues * 100) - Math.round(subtotalAntes * 100)) / 100
 
     const totalAntes = Number(pedido.total)
     const totalPagado = Number(pedido.totalPagado)
     const saldoAntes = Number(pedido.saldo)
-    const totalDespues = totalAntes + deltaSubtotal
+    const totalDespues = (Math.round(totalAntes * 100) + Math.round(deltaSubtotal * 100)) / 100
     const saldoDespues = totalDespues - totalPagado
     const estadoPagoDespues = calcularEstadoPago(totalDespues, totalPagado, pedido.estadoEntrega)
     const sobrepagoProyectado = Math.max(0, totalPagado - totalDespues)

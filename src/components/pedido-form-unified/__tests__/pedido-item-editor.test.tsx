@@ -72,9 +72,9 @@ describe('PedidoItemEditor', () => {
         ])}
       />,
     )
-    expect(screen.getByText('$10,000')).toBeInTheDocument() // tachado (base)
-    // "$8,000" aparece dos veces (precio manual en el header + total = cant*precio) — ambos correctos.
-    expect(screen.getAllByText('$8,000').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('$10.000')).toBeInTheDocument() // tachado (base)
+    expect(screen.getByText('$8.000')).toBeInTheDocument() // precio unitario
+    expect(screen.getByText('$8.000,00')).toBeInTheDocument() // importe monetario
     expect(screen.getByText('Especial')).toBeInTheDocument()
   })
 
@@ -120,5 +120,23 @@ describe('PedidoItemEditor', () => {
       <PedidoItemEditor {...baseProps()} preciosLoading={true} />,
     )
     expect(container.querySelector('.animate-spin')).toBeInTheDocument()
+  })
+
+  it('#795 permite escribir el precio preciso y muestra el importe después de multiplicar', () => {
+    const props = baseProps([makeItem({cantidad:63,precio:2190.47619,precioManual:2190.47619})])
+    render(<PedidoItemEditor {...props} />)
+    const precio = screen.getByRole('spinbutton',{name:/Precio unitario de Paca de Agua/})
+    expect(precio).toHaveValue(2190.47619)
+    expect(precio).toBeValid()
+    expect(screen.getByText('$2.190,47619')).toBeInTheDocument()
+    expect(screen.getByText('$138.000,00')).toBeInTheDocument()
+    fireEvent.change(precio,{target:{value:'2190.476191'}})
+    expect(props.onPrecioManualChange).toHaveBeenCalledWith('PACA_AGUA',2190.476191)
+  })
+
+  it('#795 una entrada con precisión excesiva no rompe el editor ni presenta deuda cero', () => {
+    render(<PedidoItemEditor {...baseProps([makeItem({cantidad:63,precio:2190.4761904,precioManual:2190.4761904})])} />)
+    expect(screen.getByRole('spinbutton',{name:/Precio unitario de Paca de Agua/})).toBeInvalid()
+    expect(screen.getByText('—')).toBeInTheDocument()
   })
 })

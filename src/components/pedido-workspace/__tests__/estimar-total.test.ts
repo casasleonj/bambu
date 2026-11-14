@@ -26,4 +26,12 @@ describe('estimarTotalOffline (B-20)', () => {
   it('sin productos: null', () => {
     expect(estimarTotalOffline([], 'PUNTO', tabla, configs)).toBeNull()
   })
+
+  it('#795 estima el importe con precio preciso también sin tabla de precios', () => {
+    expect(estimarTotalOffline([{producto:'PACA_AGUA',cantidad:63,precioManual:2190.47619}],'PUNTO',{},[])).toBe(138000)
+  })
+
+  it('#795 no inventa un total con precisión que el servidor no puede conservar', () => {
+    expect(estimarTotalOffline([{producto:'PACA_AGUA',cantidad:63,precioManual:2190.4761904}],'PUNTO',{},[])).toBeNull()
+  })
 })
