@@ -22,6 +22,7 @@ import AvisoUnidadesAproximadas, { unidadesAproximadasDe } from '@/components/ci
 import CierreValidationList from '@/components/cierre/cierre-validation-list'
 import type { CierreData } from './types'
 import { PagosPersonal, resumenPagosPersonal } from './pagos-personal'
+import { FechasPagosComision } from './fechas-pagos-comision'
 import { ProduccionDelCierre } from './produccion-del-cierre'
 import { useBaseCajaCierre } from './use-base-caja-cierre'
 import { FuenteBaseCaja, AvisoBaseActualizada, BaseCajaFaltante, DialogoBaseCambio } from '@/components/cierre/base-caja-cierre'
@@ -412,6 +413,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         </div>
 
         <CierreKpiGrid data={data} />
+        {data.conciliacionComisiones && <FechasPagosComision pagos={data.conciliacionComisiones.pagosCaja}
+          efectivo={data.conciliacionComisiones.actual} sinFechaVerificada={data.conciliacionComisiones.sinFechaVerificada}
+          conciliacion={data.conciliacionComisiones} />}
         <CierreDesgloseCobros data={data} />
         <CierreDetalleVentas data={data} />
 
@@ -743,7 +747,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       <CierreSection
         number={3}
         title="Pagos al personal"
-        description="Paga las comisiones y los sueldos que tocan. Lo que pagues en efectivo sale de la caja de hoy."
+        description="Paga las comisiones y los sueldos que tocan. En comisiones, confirma el día en que entregaste el dinero; solo el efectivo sale de esa caja."
         status={resumenPagosPersonal(data).pendiente > 0 ? 'actual' : 'completo'}
       >
         <PagosPersonal

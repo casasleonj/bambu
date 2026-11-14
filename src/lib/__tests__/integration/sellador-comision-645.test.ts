@@ -70,7 +70,7 @@ describe('#645 — comisión del sellador con botellón llenado', () => {
     expect(fila.detalle.find((d: { producto: string }) => d.producto === 'BOTELLON')).toMatchObject({ unidades: 8, comision: 2640 })
     expect(antes.comisionesAuto.total).toBe(0)
 
-    const pago = await pagarComision(post('/api/nomina/dia/pagar', { trabajadorId: s.id, fecha: HOY, offlineId: `pc-${randomUUID()}`, montoEsperado: 12540 }))
+    const pago = await pagarComision(post('/api/nomina/dia/pagar', { fechaPagoReal: HOY, trabajadorId: s.id, fecha: HOY, offlineId: `pc-${randomUUID()}`, montoEsperado: 12540 }))
     expect(pago.status).toBe(201)
     const despues = await cierre()
     expect(despues.comisionesAuto.selladores.find((x: { trabajadorId: string }) => x.trabajadorId === s.id)).toMatchObject({ pagado: 12540, pendiente: 0 })
@@ -80,7 +80,7 @@ describe('#645 — comisión del sellador con botellón llenado', () => {
     expect(await testPrisma.pagoComisionRepartidor.findFirstOrThrow({ where: { trabajadorId: s.id } })).toMatchObject({ concepto: 'PRODUCCION' })
 
     // pagar otra vez no hay nada pendiente
-    const otra = await pagarComision(post('/api/nomina/dia/pagar', { trabajadorId: s.id, fecha: HOY, offlineId: `pc-${randomUUID()}` }))
+    const otra = await pagarComision(post('/api/nomina/dia/pagar', { fechaPagoReal: HOY, trabajadorId: s.id, fecha: HOY, offlineId: `pc-${randomUUID()}` }))
     expect(otra.status).toBe(409)
   })
 
@@ -88,7 +88,7 @@ describe('#645 — comisión del sellador con botellón llenado', () => {
     const otro = await sellador()
     expect((await produccion(otro.id, 'TARDE')).status).toBe(201)
     const antes = (await cierre()).comisionesAuto.total
-    const pago = await pagarComision(post('/api/nomina/dia/pagar', { trabajadorId: otro.id, fecha: HOY, offlineId: `pc-${randomUUID()}`, metodo: 'NEQUI' }))
+    const pago = await pagarComision(post('/api/nomina/dia/pagar', { fechaPagoReal: HOY, trabajadorId: otro.id, fecha: HOY, offlineId: `pc-${randomUUID()}`, metodo: 'NEQUI' }))
     expect(pago.status).toBe(201)
     const c = await cierre()
     expect(c.comisionesAuto.total).toBe(antes)
@@ -112,12 +112,12 @@ describe('#645 — comisión del sellador con botellón llenado', () => {
     expect(antes.comisionesAuto.repartidores.find((x: { trabajadorId: string }) => x.trabajadorId === dual.id)).toMatchObject({ total: 800, pagado: 0 })
     expect(antes.comisionesAuto.selladores.find((x: { trabajadorId: string }) => x.trabajadorId === dual.id)).toMatchObject({ total: 9900, pagado: 0 })
 
-    expect((await pagarComision(post('/api/nomina/dia/pagar', { trabajadorId: dual.id, fecha: HOY, offlineId: `pc-${randomUUID()}`, concepto: 'PRODUCCION' }))).status).toBe(201)
+    expect((await pagarComision(post('/api/nomina/dia/pagar', { fechaPagoReal: HOY, trabajadorId: dual.id, fecha: HOY, offlineId: `pc-${randomUUID()}`, concepto: 'PRODUCCION' }))).status).toBe(201)
     const medio = await cierre()
     expect(medio.comisionesAuto.selladores.find((x: { trabajadorId: string }) => x.trabajadorId === dual.id)).toMatchObject({ pagado: 9900, pendiente: 0 })
     expect(medio.comisionesAuto.repartidores.find((x: { trabajadorId: string }) => x.trabajadorId === dual.id)).toMatchObject({ pagado: 0, pendiente: 800 })
 
-    expect((await pagarComision(post('/api/nomina/dia/pagar', { trabajadorId: dual.id, fecha: HOY, offlineId: `pc-${randomUUID()}`, concepto: 'REPARTO' }))).status).toBe(201)
+    expect((await pagarComision(post('/api/nomina/dia/pagar', { fechaPagoReal: HOY, trabajadorId: dual.id, fecha: HOY, offlineId: `pc-${randomUUID()}`, concepto: 'REPARTO' }))).status).toBe(201)
     const fin = await cierre()
     expect(fin.comisionesAuto.repartidores.find((x: { trabajadorId: string }) => x.trabajadorId === dual.id)).toMatchObject({ pagado: 800, pendiente: 0 })
     expect(fin.comisionesAuto.selladores.find((x: { trabajadorId: string }) => x.trabajadorId === dual.id)).toMatchObject({ pagado: 9900 })
@@ -129,7 +129,7 @@ describe('#645 — comisión del sellador con botellón llenado', () => {
     const s = await sellador()
     await testPrisma.cierreDia.deleteMany({})
     expect((await produccion(s.id, 'NOCHE')).status).toBe(201)
-    await pagarComision(post('/api/nomina/dia/pagar', { trabajadorId: s.id, fecha: HOY, offlineId: `pc-${randomUUID()}` }))
+    await pagarComision(post('/api/nomina/dia/pagar', { fechaPagoReal: HOY, trabajadorId: s.id, fecha: HOY, offlineId: `pc-${randomUUID()}` }))
     const res = await crearNomina(post('/api/nomina', { trabajadorId: s.id, fechaInicio: HOY, fechaFin: HOY, tipoCalculo: 'AUTO' }))
     expect(res.status).toBe(200)
     const n = await testPrisma.nomina.findFirstOrThrow({ where: { trabajadorId: s.id } })

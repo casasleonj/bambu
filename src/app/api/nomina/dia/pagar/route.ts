@@ -1,12 +1,15 @@
 import { NextRequest } from 'next/server'
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { executeSerializableWithRetry } from '@/lib/serializable'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { formatZodError } from '@/lib/utils'
-import { startOfDayBogota, todayStringBogota } from '@/lib/dates'
+import { parseDateParam, startOfDayBogota, todayStringBogota } from '@/lib/dates'
+import { dayInBogota } from '@/lib/date-helpers'
+import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { nominaQueCubre } from '@/lib/nomina-cobertura'
 import { comisionDiaConEstado, comisionSelladoresDia } from '@/lib/comision-pagada'
 
@@ -20,7 +23,9 @@ import { comisionDiaConEstado, comisionSelladoresDia } from '@/lib/comision-paga
 
 const PagarComisionSchema = z.object({
   trabajadorId: z.string().min(1),
-  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)'),
+  fecha: z.string().refine(v => parseDateParam(v, '') === v && v !== '', 'Fecha inválida (YYYY-MM-DD)'),
+  // Opcional únicamente para reconocer reintentos ya aceptados de clientes anteriores.
+  fechaPagoReal: z.string().refine(v => parseDateParam(v, '') === v && v !== '', 'Día del pago inválido (YYYY-MM-DD)').optional(),
   offlineId: z.string().min(8).max(100),
   montoEsperado: z.coerce.number().min(0).optional(),
   // #305: con qué se pagó. Sin indicarlo se asume EFECTIVO (clientes anteriores). Solo EFECTIVO sale de la caja del cierre.
@@ -56,11 +61,12 @@ export async function POST(request: NextRequest) {
   }
   const parsed = PagarComisionSchema.safeParse(body)
   if (!parsed.success) return apiError(formatZodError(parsed.error), 400)
-  const { trabajadorId, fecha, offlineId, montoEsperado, metodo, concepto: conceptoPedido } = parsed.data
+  const { trabajadorId, fecha, fechaPagoReal, offlineId, montoEsperado, metodo, concepto: conceptoPedido } = parsed.data
 
   const dia = startOfDayBogota(fecha)
   if (Number.isNaN(dia.getTime())) return apiError('Fecha inválida', 400)
   if (fecha > todayStringBogota()) return apiError('No se puede pagar la comisión de un día que no ha llegado', 422, { code: 'FECHA_FUTURA' })
+  if (fechaPagoReal && fechaPagoReal > todayStringBogota()) return apiError('El día en que se entregó el dinero no puede ser futuro', 422, { code: 'FECHA_PAGO_FUTURA' })
 
   const userId = (authResult.user as { id?: string } | undefined)?.id
 
@@ -69,11 +75,22 @@ export async function POST(request: NextRequest) {
       let concepto: 'REPARTO' | 'PRODUCCION' = 'REPARTO'
       const previo = await tx.pagoComisionRepartidor.findUnique({ where: { offlineId } })
       if (previo) {
-        if (previo.trabajadorId !== trabajadorId || previo.fecha.getTime() !== dia.getTime()) {
+        if (previo.trabajadorId !== trabajadorId || previo.fecha.getTime() !== dia.getTime()
+          || previo.metodo !== metodo
+          || (conceptoPedido !== undefined && previo.concepto !== conceptoPedido)
+          || (fechaPagoReal !== undefined && (!previo.fechaPagoReal || dayInBogota(previo.fechaPagoReal) !== fechaPagoReal))
+          || (montoEsperado !== undefined && Math.round(Number(previo.monto) * 100) !== Math.round(montoEsperado * 100))) {
           throw new PagoComisionError(409, 'Esa clave de reintento ya se usó para otro pago', 'OFFLINE_ID_EN_USO')
         }
         return { pago: previo, deduped: true as const }
       }
+
+      if (!fechaPagoReal) throw new PagoComisionError(422, 'Indica el día en que se entregó el dinero. Si el formulario es anterior, actualiza la aplicación.', 'FECHA_PAGO_REQUERIDA')
+      const diaPago = startOfDayBogota(fechaPagoReal)
+      // Misma exclusión que el cierre, y comprobación dentro de Serializable: no cruzar un cierre concurrente.
+      await acquireAdvisoryLockTx(tx, 'CIERRE', diaPago.toISOString())
+      const cerrado = await tx.cierreDia.findUnique({ where: { fecha: diaPago }, select: { id: true } })
+      if (cerrado) throw new PagoComisionError(409, 'Ese día ya está cerrado. El pago requiere conciliación; no se modifica el cierre guardado.', 'DIA_CERRADO')
 
       const cubre = await nominaQueCubre(tx, trabajadorId, dia)
       if (cubre) {
@@ -95,27 +112,28 @@ export async function POST(request: NextRequest) {
       }
 
       const pago = await tx.pagoComisionRepartidor.create({
-        data: { trabajadorId, fecha: dia, monto: fila.pendiente, metodo, concepto, pagadoPorId: userId ?? null, offlineId },
+        data: { trabajadorId, fecha: dia, fechaPagoReal: diaPago, monto: fila.pendiente, metodo, concepto, pagadoPorId: userId ?? null, offlineId },
       })
+      await logAudit({
+        entidad: 'PagoComisionRepartidor', registroId: pago.id, accion: 'CREATE',
+        datos: { trabajadorId, fecha, fechaPagoReal, monto: Number(pago.monto), metodo: pago.metodo, concepto, registradoAt: pago.createdAt.toISOString() },
+        usuarioId: userId,
+      }, tx)
       return { pago, deduped: false as const }
     }, 'nomina/dia/pagar')
 
-    if (!resultado.deduped) {
-      logAudit({
-        entidad: 'PagoComisionRepartidor',
-        registroId: resultado.pago.id,
-        accion: 'CREATE',
-        datos: { trabajadorId, fecha, monto: Number(resultado.pago.monto), metodo: resultado.pago.metodo },
-        usuarioId: userId,
-      }).catch(() => {})
-    }
     return apiSuccess({
-      pago: { id: resultado.pago.id, monto: Number(resultado.pago.monto), metodo: resultado.pago.metodo, fecha, createdAt: resultado.pago.createdAt },
+      pago: { id: resultado.pago.id, monto: Number(resultado.pago.monto), metodo: resultado.pago.metodo, fecha,
+        fechaPagoReal: resultado.pago.fechaPagoReal ? dayInBogota(resultado.pago.fechaPagoReal) : null,
+        createdAt: resultado.pago.createdAt },
       deduped: resultado.deduped,
     }, resultado.deduped ? 200 : 201)
   } catch (error) {
     if (error instanceof PagoComisionError) {
       return apiError(error.message, error.status, { code: error.codigo, ...(error.datos ? { impacto: error.datos } : {}) })
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return apiError('Esa clave de reintento ya se usó para otro pago', 409, { code: 'OFFLINE_ID_EN_USO' })
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error pagando comisión del repartidor:')
     return apiError('No se pudo registrar el pago de la comisión', 500)

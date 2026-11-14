@@ -57,7 +57,7 @@ async function entrega(repartidorId: string, agua: number) {
 }
 
 const pagar = (trabajadorId: string, extra: Record<string, unknown> = {}) =>
-  pagarComision(json('/api/nomina/dia/pagar', { trabajadorId, fecha: HOY, offlineId: unico() + '-x', ...extra }))
+  pagarComision(json('/api/nomina/dia/pagar', { fechaPagoReal: HOY, trabajadorId, fecha: HOY, offlineId: unico() + '-x', ...extra }))
 
 const cierreBody = (extra: Record<string, unknown>) => ({
   baseDia: 1000, stockIniAgua: 0, prodAgua: 0, stockFinAgua: 0, stockIniHielo: 0, prodHielo: 0, stockFinHielo: 0, salarios: 0, ...extra,

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
 import { DENOMINACIONES } from '@/components/arqueo-caja'
 import type { CierreData } from '../cierre-client/types'
+import { FechasPagosComision } from '../cierre-client/fechas-pagos-comision'
 import { getTodayString } from '@/lib/dates'
 
 const ORIGEN_LABELS: Record<string, string> = {
@@ -106,6 +107,11 @@ function ReporteContent() {
           </p>
         )}
       </section>
+
+      <FechasPagosComision abierto pagos={data.conciliacionComisiones?.pagosCaja ?? data.comisionesAuto?.pagosCaja ?? []}
+        efectivo={data.conciliacionComisiones?.actual ?? data.comisionesAuto?.pagadoRepartidores ?? 0}
+        sinFechaVerificada={data.conciliacionComisiones?.sinFechaVerificada ?? data.comisionesAuto?.pagosSinFechaVerificada ?? 0}
+        conciliacion={data.conciliacionComisiones} />
 
       <section className="mb-6">
         <h3 className="text-lg font-bold border-b pb-1 mb-3">Cobrado por medio de pago</h3>

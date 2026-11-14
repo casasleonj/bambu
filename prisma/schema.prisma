@@ -860,6 +860,9 @@ model PagoComisionRepartidor {
   trabajadorId String
   trabajador   Trabajador @relation("PagoComisionTrabajador", fields: [trabajadorId], references: [id])
   fecha        DateTime   @db.Timestamptz()
+  // #673: día real del desembolso, normalizado al inicio de Bogotá; no acredita una hora física.
+  // NULL conserva el legado sin inventar que trabajo, captura y pago ocurrieron el mismo día.
+  fechaPagoReal DateTime? @db.Timestamptz()
   monto        Decimal    @db.Decimal(10, 2)
   // #305: con qué se pagó. Solo EFECTIVO sale de la caja del cierre; los demás medios no la tocan.
   metodo       MetodoPago @default(EFECTIVO)
@@ -871,6 +874,7 @@ model PagoComisionRepartidor {
   createdAt    DateTime   @default(now()) @db.Timestamptz()
 
   @@index([trabajadorId, fecha])
+  @@index([fechaPagoReal])
   @@index([createdAt])
 }
 
