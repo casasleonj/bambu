@@ -49,7 +49,15 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         repo.findByIdWithFactura(PedidoId.from(id), tx),
         leerExigibles(tx, { id }),
         tx.pago.findMany({ where: { pedidoId: id }, orderBy: { createdAt: 'asc' },
-          select: { id: true, metodo: true, monto: true, createdAt: true, confirmacion: true } }),
+          select: {
+            id: true, metodo: true, monto: true, createdAt: true, confirmacion: true,
+            // #617: fecha efectiva (cuándo se cobró), si viene de una regularización y el rastro de sus correcciones de fecha.
+            ocurridoAt: true, regularizacionId: true,
+            correccionesFecha: {
+              orderBy: { corregidoAt: 'desc' },
+              select: { id: true, fechaAnterior: true, fechaNueva: true, motivo: true, corregidoAt: true, corregidoPor: { select: { nombre: true } } },
+            },
+          } }),
       ])
       return { found, exigible: exigibles.get(id) ?? 0, pagosDetalleRows }
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 15000 })
@@ -90,6 +98,17 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       monto: Number(p.monto),
       fecha: p.createdAt.toISOString(),
       confirmacion: p.confirmacion,
+      // #617: `fecha` sigue siendo el REGISTRO (concilia la caja); `ocurridoAt` es cuándo se cobró de verdad (null = el registro).
+      ocurridoAt: p.ocurridoAt ? p.ocurridoAt.toISOString() : null,
+      regularizado: p.regularizacionId !== null,
+      correccionesFecha: p.correccionesFecha.map((c) => ({
+        id: c.id,
+        fechaAnterior: c.fechaAnterior.toISOString(),
+        fechaNueva: c.fechaNueva.toISOString(),
+        motivo: c.motivo,
+        corregidoAt: c.corregidoAt.toISOString(),
+        corregidoPor: c.corregidoPor.nombre,
+      })),
     }))
     const pedidoOrigenId = selfRow?.pedidoOrigenId ?? null
     // Fase 8 F8-0 — "pedido habitual" del contexto (Q4: negocio si hay

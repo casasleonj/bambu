@@ -1,5 +1,6 @@
 'use client'
 
+import { avisarBaseCajaActualizada } from '@/lib/client/base-caja-evento'
 import { useEffect, useState, useCallback } from 'react'
 import { useBaseCaja } from '@/hooks/use-base-caja'
 import { todayInBogota } from '@/lib/date-helpers'
@@ -121,6 +122,7 @@ export function useBaseCajaEditor() {
         if (result.status === 'ok') {
           setBaseDia(newValor)
           setState({ status: 'con_base', valor: newValor })
+          avisarBaseCajaActualizada()
           return { ok: true }
         }
 

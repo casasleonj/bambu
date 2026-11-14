@@ -14,7 +14,11 @@ export class CobrosSinConciliarError extends Error {
   }
 }
 
-export type TxCobroCartera = Pick<Prisma.TransactionClient, '$queryRaw'>
+/** Lectura de abonos y correcciones: solo SQL crudo. */
+export type TxLecturaCartera = Pick<Prisma.TransactionClient, '$queryRaw'>
+
+/** Resumen del día: además lee los ingresos de saldo a favor (#524). */
+export type TxCobroCartera = TxLecturaCartera & Pick<Prisma.TransactionClient, 'ingresoSaldoFavor' | 'devolucionSaldoFavor'>
 
 export type CobroCartera = {
   fecha: Date
@@ -47,7 +51,7 @@ export type CobroCartera = {
  * procedencia independiente. No inferir identidad por importes o timestamps.
  */
 export async function leerAbonosDelPeriodo(
-  tx: TxCobroCartera,
+  tx: TxLecturaCartera,
   desde: Date,
   hasta: Date,
   incluirEspejosDePagos = false,
@@ -126,7 +130,7 @@ type FilaCorreccion = {
   pedidoId: string | null; pedidoNumero: number | null; cliente: string | null; autorizadoNombre: string | null; autorizadoUsuario: string | null
 }
 
-async function leerCorreccionesDeAbonos(tx: TxCobroCartera, abonoIds: string[]): Promise<CorreccionDelDia[]> {
+async function leerCorreccionesDeAbonos(tx: TxLecturaCartera, abonoIds: string[]): Promise<CorreccionDelDia[]> {
   if (abonoIds.length === 0) return []
   const filas = await tx.$queryRaw<FilaCorreccion[]>(Prisma.sql`
     SELECT c.numero, c.tipo, c."montoRevertido", c.motivo, c."createdAt", a.numero AS "abonoNumero",
@@ -204,7 +208,46 @@ export async function resumirAbonosDelDia(
     }
   }
   if (pendientes.length) throw new CobrosSinConciliarError(pendientes)
+  // #524: el sobrante de un cobro de fiados acreditado a saldo a favor es dinero que entró a la caja
+  // de este día pero no tiene pedido ni factura (no es Pago ni Abono). Cuenta como cobro independiente,
+  // en su medio; consumir el crédito después no escribe aquí, así que el dinero entra una sola vez.
+  const ingresos = await tx.ingresoSaldoFavor.findMany({
+    where: { createdAt: { gte: desde, lt: hasta } },
+    select: { id: true, metodo: true, monto: true, createdAt: true, cliente: { select: { nombre: true } } },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  })
+  for (const i of ingresos) {
+    const centavos = Math.round(Number(i.monto) * 100)
+    independientes += centavos
+    if (i.metodo === 'EFECTIVO') independientesEfectivo += centavos
+    abonosDetalle.push({
+      abonoId: i.id, numero: 'Saldo a favor', cliente: i.cliente.nombre, factura: null,
+      pedidoId: null, pedidoNumero: null, metodo: i.metodo, monto: Number(i.monto),
+      fecha: i.createdAt.toISOString(), corregido: 0,
+    })
+  }
   const correcciones = await leerCorreccionesDeAbonos(tx, abonosConCorreccion)
+  // #560: devolver el saldo a favor al cliente es una salida de dinero del día de su registro (una sola vez,
+  // sin reabrir cierres anteriores). Resta como ajuste de cobros; solo la devolución en EFECTIVO sale de la caja.
+  const devoluciones = await tx.devolucionSaldoFavor.findMany({
+    where: { createdAt: { gte: desde, lt: hasta } },
+    select: { id: true, metodo: true, monto: true, motivo: true, createdAt: true, autorizadoPorId: true, cliente: { select: { nombre: true } } },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  })
+  const autorizadores = devoluciones.length
+    ? await tx.$queryRaw<Array<{ id: string; nombre: string | null; username: string }>>(Prisma.sql`
+        SELECT id, nombre, username FROM "User" WHERE id IN (${Prisma.join([...new Set(devoluciones.map((d) => d.autorizadoPorId))])})`)
+    : []
+  const nombreDe = new Map(autorizadores.map((u) => [u.id, u.nombre?.trim() || u.username]))
+  for (const d of devoluciones) {
+    const centavos = Math.round(Number(d.monto) * 100)
+    reversiones += centavos
+    if (d.metodo === 'EFECTIVO') reversionesEfectivo += centavos
+    correcciones.push({
+      numero: 'Devolución', abonoNumero: 'Saldo a favor', tipo: 'DEVOLUCION_SALDO_FAVOR', monto: Number(d.monto), motivo: d.motivo,
+      autorizadoPor: nombreDe.get(d.autorizadoPorId) ?? 'Sin dato', cliente: d.cliente.nombre, pedidoId: null, pedidoNumero: null, fecha: d.createdAt.toISOString(),
+    })
+  }
   return {
     detalle: { abonos: abonosDetalle, correcciones },
     abonosIndependientes: independientes / 100,

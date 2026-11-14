@@ -1,5 +1,7 @@
 # Sistema de diseño, UI y UX, sin inventar estándares
 
+**Cobertura de interfaz y experiencia (ESC):** si una función toca reglas, estados o decisiones del usuario, antes de la maqueta listar los recorridos completos y los puntos de contacto relevantes: búsqueda/selección, formularios/botones, confirmación, vistas posteriores, historial, reversión y errores. Maquetar estados y pantallas impactados, no solo la pantalla mencionada en el issue. Presentar el mapa visible al PO según [escenarios-impacto-usuario.md](escenarios-impacto-usuario.md); no inventar pantallas ni aprobar implícitamente cambios.
+
 Leer cuando haya interfaz o **cambio observable por una persona** (incluye cifras, estados, errores, tiempos y permisos aunque el diff sea solo backend). Omitir si se demuestra ausencia de efecto visible y se justifica.
 
 ## Capas separadas
@@ -31,6 +33,14 @@ No automatizar pagos, entregas, accesos, cifras físicas o acciones irreversible
 - Examinar móvil/escritorio realmente pertinentes: solapamientos, cortes, zoom, foco de teclado, targets táctiles, contraste, responsive y pantallas pequeñas; **el color nunca es única señal**.
 - Probar con y sin datos, errores de escritura, teclados/puntero, latencia, errores temporales, ausencia de permisos y recuperación. Validar con personas del perfil objetivo si están disponibles; la simulación de agente **no demuestra** comprensión humana.
 - Comparar `antes → después`: pasos/campos que el humano completa, errores evitables, tiempo observable, resultados correctos, comprensión real. Reducir clics no es criterio aislado; no usar números inventados.
+
+## Presentación de maquetas comprensible y dinámica
+
+Al diseñar una UI/UX, cargar [comunicacion-usuario.md](comunicacion-usuario.md) para comunicar `🎨 preparando → disponible para revisión → decisión pendiente → aprobada explícitamente`, sin confundirlas. Junto a la **maqueta real** (archivo o vista verificable) contar un recorrido de trabajo cotidiano **antes → acción → después**, incluidos estados de carga, error y confirmación que importen, escritorio/móvil cuando apliquen y **qué no cambia**. La propuesta no es implementación ni aprobación. Si solo existe descripción textual, decirlo. El agente no debe prometer una imagen o mockup que la herramienta no creó. Se puede adjuntar comparación visual real cuando la plataforma lo permite; nunca capturas falsamente atribuidas a la aplicación.
+
+## Visibilidad de las pruebas de experiencia
+
+Al iniciar **pruebas reales de Playwright E2E o un recorrido real de interfaz por agente**, y no al escribir specs o planes, usar los avisos `QA DE USUARIO INICIADO / EN CURSO / FINALIZADO` descritos en [verification-release.md](verification-release.md). Informar a la persona del flujo en prueba, rol, dispositivo y avance entre escenarios, no de cada clic. Distinguir observación visual, aserción automática, feedback humano y evidencia pendiente; una inspección del componente o una maqueta **no son** una prueba en navegador.
 
 ## Benchmark y refutación
 

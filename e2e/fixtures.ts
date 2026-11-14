@@ -37,12 +37,10 @@ export function resetTestDatabase() {
   // Routed through reset-locked.ts (Postgres advisory lock) so that two
   // workers' beforeAll/beforeEach hooks never interleave their clean+seed
   // sequences. See prisma/reset-locked.ts for the full rationale.
-  // DIAGNOSTIC (temporal, ver AGENTS.md Known Issue #20): stdio 'inherit' en
-  // vez de 'ignore' para que el output de clean.ts (incluido el retry de
-  // lock_timeout del fix b3162bbf: "Cleaned X"/"Lock contention on X,
-  // retrying...") aparezca en los logs de CI. Sin esto no hay forma de saber
-  // si ese retry se dispara. Revertir a 'ignore' una vez recolectada evidencia
-  // de un run real, para no inflar el log de cada test con ruido permanente.
+  // stdio 'inherit' (#322): reset-locked.ts imprime solo lo relevante del reset
+  // (`[reset] …`: contención de locks, tablas omitidas, errores y la duración).
+  // El reporter `list` de Playwright vuelca ese stdout al log de CI; el `html`
+  // no lo hace.
   execSync('npx tsx prisma/reset-locked.ts test', { cwd: root, stdio: 'inherit' })
 }
 
@@ -50,8 +48,7 @@ export function resetTestDatabase() {
 
 export function resetDatabase() {
   const root = resolve(__dirname, '..')
-  // DIAGNOSTIC (temporal, ver AGENTS.md Known Issue #20) — mismo motivo que
-  // resetTestDatabase() arriba.
+  // Mismo motivo que resetTestDatabase() arriba (#322).
   execSync('npx tsx prisma/reset-locked.ts full', { cwd: root, stdio: 'inherit' })
 }
 
@@ -281,7 +278,25 @@ const USERNAME_TO_ROLE: Record<string, Role> = {
   repartidor: 'repartidor',
 }
 
+/** #779: SSE sano mantiene conexiones abiertas. Playwright desaconseja
+ * networkidle como señal de preparación; comprobar el shell autenticado.
+ * Cada spec conserva sus propias aserciones de datos y acciones. */
+export async function waitForAuthenticatedShell(page: Page) {
+  await expect(page.getByTestId('user-menu')).toBeVisible()
+  await expect(appMain(page)).toBeVisible()
+}
+
+async function prepareLogin(page: Page) {
+  // #779: desmontar la sesión anterior antes de cambiar cookies. Sus
+  // respuestas Auth.js pendientes no deben restaurar el usuario anterior.
+  if (page.url() !== 'about:blank') {
+    await page.goto(`${BASE}/api/health`, { waitUntil: 'domcontentloaded', timeout: LOGIN_TIMEOUT })
+  }
+  await page.context().clearCookies()
+}
+
 export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
+  await prepareLogin(page)
   await skipBaseCaja(page)
 
   const role = USERNAME_TO_ROLE[user]
@@ -297,7 +312,7 @@ export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
 
   // Navigate to dashboard to establish session cookie in the browser context.
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
-  await page.waitForLoadState('networkidle')
+  await waitForAuthenticatedShell(page)
 
   await handleBaseCaja(page)
 }
@@ -343,12 +358,13 @@ export async function sharedPageLogin(browser: { newPage: () => Promise<Page> },
     await csrfLogin(page, user, pass)
   }
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
-  await page.waitForLoadState('networkidle')
+  await waitForAuthenticatedShell(page)
   await handleBaseCaja(page)
   return page
 }
 
 export async function loginAs(page: Page, role: Role) {
+  await prepareLogin(page)
   // El banner PWA "Instalar aplicación" (fixed bottom-0, z-40) queda TAPADO por
   // modales (`?openCliente=`) y barras inferiores (/cierre) de mayor z-index, y
   // `dismissInstallBanner` esperaba 30 s a poder pulsar su "X" (#397, #417).
@@ -357,7 +373,7 @@ export async function loginAs(page: Page, role: Role) {
   await skipBaseCaja(page)
   await applyCachedRoleAuth(page, role)
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
-  await page.waitForLoadState('networkidle')
+  await waitForAuthenticatedShell(page)
   await handleBaseCaja(page)
 }
 
@@ -380,7 +396,7 @@ export async function sharedLoginAs(browser: { newPage: () => Promise<Page> }, r
   await skipBaseCaja(page)
   await applyCachedRoleAuth(page, role)
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
-  await page.waitForLoadState('networkidle')
+  await waitForAuthenticatedShell(page)
   await handleBaseCaja(page)
   return page
 }
@@ -554,9 +570,15 @@ export async function openFabPedidoEnvio(page: Page) {
  * `chromium-mobile` projects.
  */
 export async function openSidebarIfMobile(page: Page) {
-  const hamburger = page.getByRole('button', { name: /abrir men[uú]/i })
-  if (await hamburger.isVisible({ timeout: 1000 }).catch(() => false)) {
-    await hamburger.click()
+  // #779: SSR empieza como móvil incluso en PC. Esperar el control que
+  // corresponde al viewport evita pulsar un botón que cambia al hidratar.
+  const desktop = await page.evaluate(() => window.matchMedia('(min-width: 768px)').matches)
+  const toggle = page.getByRole('button', {
+    name: desktop ? 'Colapsar/expandir menú' : 'Abrir menú', exact: true,
+  })
+  await expect(toggle).toBeVisible()
+  if (!desktop) {
+    await toggle.click()
   }
 }
 
@@ -574,6 +596,15 @@ export function responsiveContainer(page: Page, mobileTestId: string, desktopTes
 
 export async function apiPost(page: Page, path: string, data: unknown) {
   return page.request.post(`${BASE}${path}`, { data })
+}
+
+/**
+ * #688 — el cierre exige la base de caja de ESA fecha (Config `BASE_DIA_<fecha>`). La registra por la misma API que usa
+ * «Caja base»; los E2E que cierran o muestran un día la llaman antes, con el mismo valor que envían en `baseDia`.
+ */
+export async function registrarBaseDia(page: Page, fecha: string, valor = 100000) {
+  const res = await apiPost(page, '/api/config', { clave: `BASE_DIA_${fecha}`, valor: String(valor) })
+  if (!res.ok()) throw new Error(`No se pudo registrar la base de caja de ${fecha}: ${res.status()}`)
 }
 
 export async function apiGet(page: Page, path: string) {

@@ -1,42 +1,13 @@
-import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth, requireRole } from '@/lib/auth-check'
-import { z } from 'zod'
+import { requireAuth } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
-import { logAudit } from '@/lib/audit'
 import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
-import { withAdvisoryLock } from '@/lib/locks'
-import { logger } from '@/lib/logger'
-import { comisionesDelCierre } from '@/lib/comision-pagada'
 
-const CierreDiaSchema = z.object({
-  fecha: z.string().datetime().optional(),
-  numPedidos: z.coerce.number().int().min(0).optional(),
-  totalVentas: z.coerce.number().min(0).optional(),
-  aguaVendida: z.coerce.number().int().min(0).optional(),
-  hieloVendido: z.coerce.number().int().min(0).optional(),
-  botellonVendido: z.coerce.number().int().min(0).optional(),
-  bolsaAguaVendida: z.coerce.number().int().min(0).optional(),
-  bolsaHieloVendida: z.coerce.number().int().min(0).optional(),
-  cobrado: z.coerce.number().min(0).optional(),
-  fiado: z.coerce.number().min(0).optional(),
-  efectivo: z.coerce.number().min(0).optional(),
-  nequi: z.coerce.number().min(0).optional(),
-  daviplata: z.coerce.number().min(0).optional(),
-  transferencia: z.coerce.number().min(0).optional(),
-  baseDia: z.coerce.number().min(0).optional(),
-  comisiones: z.coerce.number().min(0).optional(),
-  salarios: z.coerce.number().min(0).optional(),
-  gastos: z.coerce.number().min(0).optional(),
-  stockIniAgua: z.coerce.number().int().min(0).optional(),
-  prodAgua: z.coerce.number().int().min(0).optional(),
-  stockFinAgua: z.coerce.number().int().min(0).optional(),
-  stockIniHielo: z.coerce.number().int().min(0).optional(),
-  prodHielo: z.coerce.number().int().min(0).optional(),
-  stockFinHielo: z.coerce.number().int().min(0).optional(),
-  netoCaja: z.coerce.number().min(0).optional(),
-})
+// #691 — Esta ruta es SOLO de lectura. Antes tenía un POST (solo ADMIN, sin uso en la interfaz) que insertaba un
+// cierre con los números que llegaran en el cuerpo, sin las reglas de POST /api/cierre (base de caja vigente,
+// huecos entre cierres, embarques abiertos, efectivo esperado, conteo). Un día se cierra únicamente con
+// POST /api/cierre.
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -59,110 +30,6 @@ export async function GET(request: NextRequest) {
 
     return apiSuccess({ cierres })
   } catch (_error) {
-    return apiError('Error', 500)
-  }
-}
-
-export async function POST(request: NextRequest) {
-  const authResult = await requireAuth()
-  if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole('ADMIN')
-  if (roleCheck instanceof Response) return roleCheck
-  try {
-    const body = await request.json()
-    const parsed = CierreDiaSchema.safeParse(body)
-    if (!parsed.success) {
-      return apiError(formatZodError(parsed.error), 400)
-    }
-
-    const { fecha, ...rest } = parsed.data
-
-    // FIX F-N15 (hallazgo 17): usar withAdvisoryLock('CIERRE', ...) y
-    // validar previamente la existencia de un cierre para esa fecha.
-    //
-    // Antes: prisma.cierreDia.create directo SIN lock. La unique
-    // constraint en CierreDia.fecha previene el duplicado a nivel
-    // DB, pero causa P2002 → 500 confuso cuando dos admins cierran
-    // el mismo día casi simultáneo. Peor aún: hay inconsistencia
-    // con el endpoint /api/cierre que SÍ usa el lock 'CIERRE' y
-    // re-valida antes de crear.
-    //
-    // Ahora: con lock 'CIERRE' (mismo que /api/cierre), dos admins
-    // se serializan. La validación previa dentro del lock detecta
-    // el duplicado y devuelve 409 limpio.
-    // FASE 0 (ADR-CONCURRENCIA-001, §6 "Cierre"): lock por día. La clave se
-    // deriva del inicio del día en Bogotá para que /api/cierre y
-    // /api/cierre-dia se serialicen entre sí para el MISMO día (misma key).
-    //
-    // FIX bug real (Known Issue #25, backlog post-#123): startOfDayInBogota/
-    // endOfDayInBogota (src/lib/date-helpers.ts) exigen un string YYYY-MM-DD
-    // plano — su propio docstring lo dice explícitamente. Este endpoint les
-    // pasaba un datetime ISO completo (`new Date(...).toISOString()`, con
-    // hora/milisegundos/"Z"), que la función concatena como
-    // `${fechaStr}T00:00:00-05:00` → produce un string con dos marcadores de
-    // timezone (ej. "...648ZT00:00:00-05:00"), un `Date` inválido, y
-    // `.toISOString()` tira `RangeError: Invalid time value`. Resultado: TODO
-    // POST /api/cierre-dia devolvía 500, con o sin `fecha` explícita —
-    // reproducido en Node y confirmado contra los logs reales de CI
-    // ("Error creating cierre: Invalid time value").
-    // Fix: convertir el instante a fecha calendario de Bogotá (YYYY-MM-DD)
-    // con el mismo patrón ya usado en src/lib/dates.ts (toLocaleDateString
-    // 'en-CA', evita el bug de "hoy en UTC" de Known Issue #17) ANTES de
-    // pasarlo a startOfDayInBogota/endOfDayInBogota.
-    const fechaBogota = (fecha ? new Date(fecha) : new Date()).toLocaleDateString('en-CA', {
-      timeZone: 'America/Bogota',
-    })
-    const lockKey = startOfDayInBogota(fechaBogota).toISOString()
-
-    const cierre = await withAdvisoryLock('CIERRE', lockKey, async (tx) => {
-      // Re-leer y re-validar dentro del lock
-      const targetDate = fecha ? new Date(fecha) : new Date()
-      const start = startOfDayInBogota(fechaBogota)
-      const end = endOfDayInBogota(fechaBogota)
-
-      const existente = await tx.cierreDia.findFirst({
-        where: {
-          fecha: { gte: start, lte: end },
-        },
-      })
-      if (existente) {
-        throw new Error('CIERRE_YA_EXISTE')
-      }
-
-      // #499: las comisiones las calcula el servidor (sellador + repartidores pagados de la caja
-      // ese día); la cifra del cuerpo se ignora para que no se salte el cálculo automático.
-      const comisiones = await comisionesDelCierre(tx, fechaBogota, start, end)
-
-      return tx.cierreDia.create({
-        data: {
-          fecha: targetDate,
-          ...rest,
-          comisiones: comisiones.total,
-        },
-      })
-    })
-
-    logAudit({
-      entidad: 'CierreDia',
-      registroId: cierre.id,
-      accion: 'CREATE',
-      datos: { fecha: cierre.fecha, totalVentas: cierre.totalVentas },
-      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
-    }).catch(() => {})
-
-    return apiSuccess({ cierre }, 201)
-  } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === 'CIERRE_YA_EXISTE') {
-        return apiError('Ya existe un cierre para esta fecha', 409)
-      }
-      // Capturar P2002 residual (por si el lock no se adquiere correctamente
-      // en una condición de borde) y mapearlo a 409 limpio
-      if (error.message.includes('Unique constraint') || (error as { code?: string }).code === 'P2002') {
-        return apiError('Ya existe un cierre para esta fecha', 409)
-      }
-      logger.error({ err: error.message }, 'Error creating cierre:')
-    }
     return apiError('Error', 500)
   }
 }

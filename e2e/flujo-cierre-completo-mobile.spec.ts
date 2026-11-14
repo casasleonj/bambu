@@ -5,7 +5,7 @@
 //   2. Intentar cerrar de nuevo el mismo día → 4xx (no 500 silencioso)
 //   3. GET /api/cierre?fecha=X devuelve el reporte guardado
 import { test, expect } from '@playwright/test'
-import { loginAs, apiPost } from './fixtures'
+import { loginAs, apiPost, registrarBaseDia } from './fixtures'
 
 test.use({
   viewport: { width: 390, height: 844 },
@@ -33,7 +33,8 @@ test.describe('H3-2: Cierre del día (iPhone 13)', () => {
       salarios: 0,
     }
 
-    // 2. Primer intento
+    // 2. Primer intento (#688: el cierre exige la base de caja de hoy)
+    await registrarBaseDia(page, new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }), 100000)
     const r1 = await apiPost(page, '/api/cierre', data)
     // Aceptamos 201 (éxito) O 400/409 (conflicto de día/cierre previo)
     // Lo importante: NO debe ser 500 (error silencioso del server)

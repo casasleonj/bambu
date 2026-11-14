@@ -394,6 +394,8 @@ export interface PreviewPedidoInput {
   pedidoOrigenId?: string
   /** #542: venta en ruta — no se exige dirección/ubicación de entrega. */
   ventaEnRuta?: boolean
+  /** #408: clave del borrador; el reintento del mismo borrador no cuenta como venta repetida. */
+  borradorId?: string
   /** modo edición: preview de un PUT declarativo de items sobre un pedido existente. */
   pedidoId?: string
   /** userId de la sesión — lo inyecta la route, no viene del body. */
@@ -436,6 +438,8 @@ export interface PreviewPedidoResult {
   }
   allowedActions: Array<'crear' | 'crear-y-enviar-a-ruta' | 'actualizar'>
   warnings: Array<{ code: string; message: string; field?: string }>
+  /** #408: venta igual registrada hace pocos segundos (aviso, no bloqueo). */
+  ventaRepetida?: { id: string; numero: number; haceSegundos: number }
   riskSignals: Array<{ tipo: string; severidad: 'BAJA' | 'MEDIA' | 'ALTA'; detalle: string }>
   /**
    * F2: mismo campo que expone `GetFiadoStatusUseCase` — el preview lo

@@ -1,5 +1,8 @@
 'use client'
 
+import { importeLineaEditable } from '@/lib/precio-formato'
+
+
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { generateUUID } from '@/lib/uuid'
 import { toast } from 'sonner'
@@ -119,6 +122,10 @@ export interface PedidoUnifiedData {
   vendidoPorId?: string
   /** Fecha (YYYY-MM-DD) hasta la que promete pagar el cliente real que queda debiendo. */
   promesaPagoFecha?: string
+  /** #408: el usuario confirmó que esta venta es distinta de la que el aviso de venta repetida mostró. */
+  ventaRepetidaConfirmada?: boolean
+  /** #426: guardar también la ubicación del pedido en la tienda/cliente. `reemplazar` solo si ya había otra y se eligió cambiarla. */
+  guardarUbicacion?: { reemplazar?: boolean }
 }
 
 // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: el toggle "entregar después" de la
@@ -515,8 +522,8 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       const cant = cantidades[prodId] || 0
       if (cant <= 0) return sum
       const info = PRODUCTO_INFO[prodId]
-      return sum + cant * getPrecio(info.codigo)
-    }, 0)
+      return sum + Math.round(importeLineaEditable(getPrecio(info.codigo), cant) * 100)
+    }, 0) / 100
   }
 
   const total = calcularTotal()
@@ -716,6 +723,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
+    if (!Number.isFinite(total)) { toast.error('Revisa las cantidades y los precios: se admiten hasta 6 decimales.'); return }
     // Bloquear el submit mientras el precio real todavía se está resolviendo
     // (debounce + fetch a /api/precios/resolver). El total/precio autoritativo
     // lo calcula el servidor de todas formas, pero si se cobra/factura con un
@@ -726,7 +734,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       toast.info('Espera a que se actualicen los precios...')
       return
     }
-    if (total <= 0) { toast.error('Agrega al menos un producto'); return }
+    if (!Number.isFinite(total) || total <= 0) { toast.error('Agrega al menos un producto'); return }
     if (requiereCliente && !clienteSeleccionado && !mostrarNuevo) {
       toast.error(
         canal === 'DOMICILIO'
@@ -1080,7 +1088,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
           type="button"
           onClick={() => handleSubmit()}
           data-testid="submit-pedido"
-          disabled={submitting || preciosLoading || total <= 0 || (fiadosStatus?.nivel === 'limite' && saldoPendiente > 0)}
+          disabled={submitting || preciosLoading || !Number.isFinite(total) || total <= 0 || (fiadosStatus?.nivel === 'limite' && saldoPendiente > 0)}
           className={`w-full py-3 rounded-xl text-white font-bold text-lg shadow-lg transition ${
             canal === 'PUNTO'
               ? 'bg-green-600 hover:bg-green-700'

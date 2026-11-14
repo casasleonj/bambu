@@ -246,6 +246,8 @@ model User {
   puedeAutorizarExcepcionCredito Boolean    @default(false)
   /// #451: permiso por usuario (no por rol) para autorizar una reducción comercial.
   puedeAutorizarReduccionComercial Boolean  @default(false)
+  /// #406: permiso por usuario (no por rol) para confirmar pagos digitales. El Repartidor no puede tenerlo.
+  puedeConfirmarPagos            Boolean    @default(false)
   createdAt                      DateTime   @default(now()) @db.Timestamptz()
   updatedAt                      DateTime   @updatedAt @db.Timestamptz()
 
@@ -323,6 +325,7 @@ model User {
 
   // F4 (Cumplimiento — reprogramación de remanente)
   obligacionesReprogramadas ObligacionPendienteReprogramacion[]
+  pagoFechaCorrecciones PagoFechaCorreccion[] @relation("PagoFechaCorreccionAutor")
 }
 
 // ====================
@@ -482,6 +485,8 @@ model Cliente {
   pedidos  Pedido[]
   facturas Factura[]
   abonos   Abono[]
+  ingresosSaldoFavor IngresoSaldoFavor[]
+  devolucionesSaldoFavor DevolucionSaldoFavor[]
   casos    Caso[]    @relation("CasoCliente")
 
   // FASE 3 (obligaciones)
@@ -1048,27 +1053,27 @@ model Pedido {
   // Productos embebidos (DEPRECATED — leer desde items[])
   cPacaAguaPed   Int     @default(0)
   cPacaAguaEnt   Int     @default(0)
-  precioPacaAgua Decimal @default(0) @db.Decimal(10, 2)
+  precioPacaAgua Decimal @default(0) @db.Decimal(14, 6)
 
   cPacaHieloPed   Int     @default(0)
   cPacaHieloEnt   Int     @default(0)
-  precioPacaHielo Decimal @default(0) @db.Decimal(10, 2)
+  precioPacaHielo Decimal @default(0) @db.Decimal(14, 6)
 
   cBotellonFabPed   Int     @default(0)
   cBotellonFabEnt   Int     @default(0)
-  precioBotellonFab Decimal @default(0) @db.Decimal(10, 2)
+  precioBotellonFab Decimal @default(0) @db.Decimal(14, 6)
 
   cBotellonDomPed   Int     @default(0)
   cBotellonDomEnt   Int     @default(0)
-  precioBotellonDom Decimal @default(0) @db.Decimal(10, 2)
+  precioBotellonDom Decimal @default(0) @db.Decimal(14, 6)
 
   cBolsaAguaPed   Int     @default(0)
   cBolsaAguaEnt   Int     @default(0)
-  precioBolsaAgua Decimal @default(0) @db.Decimal(10, 2)
+  precioBolsaAgua Decimal @default(0) @db.Decimal(14, 6)
 
   cBolsaHieloPed   Int     @default(0)
   cBolsaHieloEnt   Int     @default(0)
-  precioBolsaHielo Decimal @default(0) @db.Decimal(10, 2)
+  precioBolsaHielo Decimal @default(0) @db.Decimal(14, 6)
 
   // Totales
   total       Decimal @default(0) @db.Decimal(10, 2)
@@ -1168,7 +1173,7 @@ model PedidoItem {
   producto     String // PACA_AGUA, PACA_HIELO, BOTELLON, BOLSA_AGUA, BOLSA_HIELO
   cantPedido   Int     @default(0)
   cantEntrega  Int     @default(0)
-  precio       Decimal @default(0) @db.Decimal(10, 2)
+  precio       Decimal @default(0) @db.Decimal(14, 6)
   subtotal     Decimal @default(0) @db.Decimal(10, 2)
   precioOrigen String  @default("base") // manual, cliente, volumen, base
 
@@ -1237,11 +1242,37 @@ model Pago {
   embarqueId String?
   embarque   Embarque? @relation("PagoEmbarque", fields: [embarqueId], references: [id], onDelete: SetNull)
 
+  /// #617: correcciones de la fecha efectiva (append-only; `createdAt` nunca cambia).
+  correccionesFecha PagoFechaCorreccion[]
+
   @@index([pedidoId])
   @@index([offlineId])
   @@index([confirmacion])
   @@index([embarqueId])
   @@index([regularizacionId])
+}
+
+/// #617 — Corrección administrativa de la fecha EFECTIVA de un pago (cuándo se cobró de verdad).
+/// Append-only: cada fila guarda la fecha efectiva anterior y la nueva, quién la corrigió, cuándo y por qué.
+/// Nunca toca `Pago.createdAt` (la fecha de REGISTRO, que concilia la caja): corregir la fecha efectiva
+/// cambia lo que muestran el pedido, el cliente y la factura, no mueve dinero entre cierres.
+model PagoFechaCorreccion {
+  id             String   @id @default(cuid())
+  pagoId         String
+  pago           Pago     @relation(fields: [pagoId], references: [id], onDelete: Restrict)
+  /// Fecha efectiva antes de corregir (`ocurridoAt ?? createdAt`).
+  fechaAnterior  DateTime @db.Timestamptz()
+  /// Fecha efectiva después de corregir (`ocurridoAt ?? createdAt`).
+  fechaNueva     DateTime @db.Timestamptz()
+  motivo         String
+  corregidoPorId String
+  corregidoPor   User     @relation("PagoFechaCorreccionAutor", fields: [corregidoPorId], references: [id], onDelete: Restrict)
+  corregidoAt    DateTime @default(now()) @db.Timestamptz()
+  /// Clave idempotente del borrador: un reintento no duplica la corrección.
+  offlineId      String?  @unique
+
+  @@index([pagoId])
+  @@index([corregidoPorId])
 }
 
 /// #402 — Regularización histórica de pagos (plan de integridad v1.2 §5.D).
@@ -3077,8 +3108,8 @@ model PedidoCorreccionPrecio {
 
   producto       String
   cantidad       Int
-  precioAnterior Decimal @db.Decimal(10, 2)
-  precioNuevo    Decimal @db.Decimal(10, 2)
+  precioAnterior Decimal @db.Decimal(14, 6)
+  precioNuevo    Decimal @db.Decimal(14, 6)
   /// (precioNuevo − precioAnterior) × cantidad, con signo.
   delta          Decimal @db.Decimal(10, 2)
   /// Precio por debajo del umbral de alerta (< $2.000 pacas, < $7.500 botellón).
@@ -3132,7 +3163,7 @@ model PedidoReduccionComercial {
   cantPedidoAntes   Int
   cantPedidoDespues Int
   /// Precio unitario vigente de la línea; la reducción no lo cambia.
-  precio            Decimal @db.Decimal(10, 2)
+  precio            Decimal @db.Decimal(14, 6)
   /// cantidadReducida × precio: lo que baja la obligación.
   monto             Decimal @db.Decimal(10, 2)
   motivo            String
@@ -3206,6 +3237,56 @@ model PedidoSaldoFavorMovimiento {
   @@index([origenTipo, origenId])
 }
 
+/// #524 — dinero que el cliente entregó de MÁS en un cobro de fiados y que se acreditó a
+/// `Cliente.saldoFavor`. Es un ingreso real a la caja del día (en su medio de pago), pero no tiene
+/// pedido ni factura, así que no cabe en `Pago` ni en `Abono`. Append-only: el consumo posterior
+/// del crédito NO es un ingreso nuevo y no escribe aquí. `createdAt` (now() de la base) decide la
+/// caja en que cuenta, igual que `Pago.createdAt`.
+model IngresoSaldoFavor {
+  id          String     @id @default(cuid())
+  clienteId   String
+  cliente     Cliente    @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  /// Medio en que llegó el dinero. BONO no genera ingreso (consume crédito, no entra dinero).
+  metodo      MetodoPago
+  /// Siempre > 0 (CHECK en la migración).
+  monto       Decimal    @db.Decimal(10, 2)
+  /// 'PAGAR_FIADO'
+  origen      String
+  /// Referencia idempotente del cobro que lo originó (el reintento no lo duplica).
+  offlineId   String?
+  /// `Historial.id` de la auditoría COBRO_FIADO_V2 que originó el ingreso: vínculo explícito (no se
+  /// empareja por monto ni por hora) para que el Dashboard no marque «por conciliar» lo ya registrado.
+  auditoriaId String?
+  createdById String?
+  createdAt   DateTime   @default(now()) @db.Timestamptz()
+
+  @@unique([origen, offlineId, metodo])
+  @@index([auditoriaId])
+  @@index([clienteId])
+  @@index([createdAt])
+}
+
+
+/// #560 — Devolución al cliente de su saldo a favor (egreso). Append-only. Solo el EFECTIVO sale de la caja del
+/// cierre de la fecha de registro; los demás medios quedan registrados sin tocar la caja física.
+model DevolucionSaldoFavor {
+  id              String     @id @default(cuid())
+  clienteId       String
+  cliente         Cliente    @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  /// EFECTIVO, TRANSFERENCIA, NEQUI o DAVIPLATA (BONO nunca; CHECK en la migración).
+  metodo          MetodoPago
+  /// Siempre > 0 (CHECK en la migración).
+  monto           Decimal    @db.Decimal(10, 2)
+  motivo          String
+  /// Referencia idempotente: el reintento no devuelve dos veces.
+  offlineId       String     @unique
+  /// Quién autorizó y entregó (solo ADMIN).
+  autorizadoPorId String
+  createdAt       DateTime   @default(now()) @db.Timestamptz()
+
+  @@index([clienteId])
+  @@index([createdAt])
+}
 
 /// Hechos de entrega #656. Asignado se conserva solo por compatibilidad; se proyecta al leer.
 model EntregaExigible {

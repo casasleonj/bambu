@@ -58,7 +58,7 @@ npm run test:integration  → vitest run --config vitest.integration.config.ts
 npm run test:e2e          → playwright test                              (usa playwright.config.ts)
 ```
 
-No existe script para `playwright.test.config.ts` ni para `prisma/__tests__/**` — ver `LEGACY_INVENTORY.md`.
+El archivo `playwright.test.config.ts` se eliminó (#320). No existe script para `prisma/__tests__/**` — ver `LEGACY_INVENTORY.md`.
 
 ## 5. Suites incluidas/excluidas (confirmado contra config real, no solo contra AGENTS.md)
 

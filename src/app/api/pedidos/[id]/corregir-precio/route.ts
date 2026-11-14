@@ -1,3 +1,4 @@
+import { PrecioUnitarioSchema } from '@/lib/validators'
 import { z } from 'zod'
 import { NextRequest } from 'next/server'
 import { requireAuth, requireRole } from '@/lib/auth-check'
@@ -10,20 +11,20 @@ import { mapCorreccionPrecioError } from '@/modules/pedidos/presentation/correcc
 
 const CorregirPrecioSchema = z.object({
   producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),
-  precioNuevo: z.number().positive().max(99_999_999),
+  precioNuevo: PrecioUnitarioSchema.positive().max(99_999_999),
   motivo: z.string().max(500),
   offlineId: z.string().optional(),
 })
 
 /**
  * POST /api/pedidos/[id]/corregir-precio — corrige el precio de una línea con recálculo
- * (ADR-MONETARIO-002 §1). ADMIN aplica en el acto; ASISTENTE deja una solicitud PENDIENTE
- * que un ADMIN resuelve en PATCH /api/pedidos/correcciones-precio/[id].
+ * (ADR-MONETARIO-002 §1). Solo ADMIN, con motivo obligatorio y rastro (#616): se aplica en el acto.
+ * Las solicitudes PENDIENTE que dejó un ASISTENTE antes se resuelven en PATCH /api/pedidos/correcciones-precio/[id].
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth()
   if (auth instanceof Response) return auth
-  const role = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], auth)
+  const role = await requireRole([ROLES.ADMIN], auth)
   if (role instanceof Response) return role
   const { id } = await params
 

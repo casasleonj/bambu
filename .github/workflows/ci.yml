@@ -18,20 +18,15 @@ on:
         description: 'Construir y correr el job e2e con NEXT_PUBLIC_PEDIDOS_V2=true'
         type: boolean
         default: false
-  # Soak temporal del Pedido Hub V2 (Fase 10). Cada 3h dispara SOLO el job
-  # `e2e-hub` (los demás jobs se saltan vía `if: github.event_name !=
-  # 'schedule'`). El objetivo es medir estabilidad sostenida en el tiempo,
-  # independiente del ritmo de merges. Criterio de salida: >=72h + >=18
-  # ejecuciones programadas verdes (0 failed / 0 flaky / sin retries).
-  # Se elimina junto con el job `e2e-hub` en F10b.
-  #
-  # Minuto :23 (no :00) y cada 3h (no 4h): GitHub Actions descarta/retrasa
-  # los cron al tope de la hora bajo carga — las corridas de 00:00Z y 04:00Z
-  # del intento a `0 */4` no dispararon (total_count=0). :23 evita el minuto
-  # congestionado; */3 da 24 ticks en 72h → margen para drops residuales sin
-  # estirar el soak (el gate real es >=72h + >=18 verdes).
-  schedule:
-    - cron: '23 */3 * * *'
+  # El cron de soak del Hub V2 (cada 3h) se retiró (#703): su criterio de salida
+  # (>=72h y >=18 ejecuciones verdes) venció el 2026-10-10 sin decisión y gastaba
+  # minutos sin decidir nada. El job `e2e-hub` SE CONSERVA en push/PR porque
+  # producción corre con NEXT_PUBLIC_PEDIDOS_V2=true y la matriz `e2e` prueba V2
+  # OFF; su eliminación definitiva es F10b (#312). Para restaurar el soak, volver
+  # a agregar un bloque `schedule` con cron.
+
+permissions:
+  contents: read
 
 concurrency:
   # `github.event_name` en el grupo: una corrida programada (soak) y una
@@ -251,7 +246,9 @@ jobs:
   integration:
     name: Integration tests (non-blocking)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    #766: Vitest terminó exit 0 en 813s, pero el job de 15m fue cancelado durante cleanup.
+    # Margen para instalación, preparación de DB y diagnóstico final, sin omitir cobertura.
+    timeout-minutes: 20
     # No bloquea merges todavía -- es la primera vez que este suite corre
     # en CI (antes solo se ejecutaba localmente contra Postgres real, si
     # el desarrollador lo hacía). Igual que Lint cuando se introdujo:
@@ -316,73 +313,45 @@ jobs:
         run: npx prisma db push
 
       - name: Apply raw-SQL sequence migrations (not covered by db push)
-        # Mismo motivo/patrón que el job E2E: `prisma db push` no crea las
-        # secuencias raw-SQL (factura/abono/embarque/compra_insumo numero_seq)
-        # que getNextNumero() necesita. Ver comentario del job e2e para el
-        # detalle completo.
-        #
-        # También aplica (bug #2 y #3 encontrados en la primera corrida real
-        # de este job, PR #120):
-        #   - pg_trgm: la extensión solo se crea vía migration.sql
-        #     (20260530_add_pg_trgm_search, 20260618_add_import_staging);
-        #     `db push` no ejecuta CREATE EXTENSION. Sin ella, similarity()/
-        #     word_similarity() (usadas por src/lib/import/matcher.ts,
-        #     supplier-matcher.ts, worker-matcher.ts) fallan con
-        #     "function similarity(text, text) does not exist" — root cause
-        #     de los fallos en import-historico.test.ts.
-        #   - 20260817_plan_maestro_ledgers: migración consolidada e
-        #     idempotente (CREATE TABLE/INDEX/CONSTRAINT IF NOT EXISTS, DO $$
-        #     IF NOT EXISTS por cada CHECK/FK) que agrega, entre otras cosas,
-        #     los CHECK constraints del ledger físico (chk_embarque_movimiento_*,
-        #     chk_obligacion_*, chk_recovery_*) y las secuencias
-        #     pedido_numero_seq/nota_credito_numero_seq — ninguna de las dos
-        #     cosas es expresable en schema.prisma, así que `db push` no las
-        #     crea. Root cause de los fallos en ledger-fisico-constraints.test.ts
-        #     y de parte de los fallos de secuencias-atomicas.test.ts (además
-        #     del bug de this-binding en sequence.ts, ya corregido aparte).
-        #     Las tablas que este archivo declara con CREATE TABLE IF NOT
-        #     EXISTS ya existen (creadas por `db push` desde schema.prisma),
-        #     así que esos statements son no-ops aquí; solo aplican los CHECK/
-        #     índices parciales/secuencias que sí son exclusivos del SQL.
-        run: |
-          export PGPASSWORD=bambu_dev
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "
-            DO \$\$ BEGIN
-              IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'app_write') THEN
-                CREATE ROLE app_write;
-              END IF;
-            END \$\$;
-          "
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260610_add_factura_numero_seq/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260611_add_abono_embarque_seqs/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260619_import_fase2_proveedor_compra_seq/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260817_plan_maestro_ledgers/migration.sql
-          # 20260817 (arriba) crea ReceivableEntry_offlineId_key UNIQUE; esta
-          # migración posterior lo baja a índice normal (bug pagar-fiado con
-          # abonos que cubren 2+ pedidos). Se aplica acá para replicar el
-          # orden de `prisma migrate deploy` de prod.
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260829_receivable_entry_offlineid_not_unique/migration.sql
-          # ADR-CORRECCION-MONETARIA-001 g2.1: el CHECK `chk_correccion_monto_pos`
-          # y los GRANT no son expresables en schema.prisma, así que `db push`
-          # no los crea. Idempotente (IF NOT EXISTS por tabla/índice/FK/CHECK).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260901_add_correccion_abono/migration.sql
-          # G5.5 (ADR-PEDIDO-ESTADO-CANONICO-001 §2): CHECK `chk_pedido_estadopago_proyectado`
-          # no expresable en schema.prisma. `db push` no la crea; sin esta línea
-          # los tests de `pedido-estadopago-check.test.ts` (y cualquier otro que
-          # dependa del CHECK) correrían en CI sin el constraint presente.
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
-          # #401: una sola secuencia para Pedido.numero (DEFAULT + índice único parcial + trigger).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
-          # #427: una sola secuencia para Embarque.numero (mismo patrón que #401).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261103_embarque_numero_autoridad_unica/migration.sql
-          # #402: Pago.ocurridoAt/regularizacionId + tabla Regularizacion (CHECK no expresable en schema.prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261024_pago_tres_fechas_regularizacion/migration.sql
-          # #513: procedencia y vínculo de abonos (CHECK fuera de Prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261027_abono_procedencia_pago/migration.sql
+        # `prisma db push` no crea secuencias, CHECK, triggers ni pg_trgm. UNA sola lista
+        # (scripts/migraciones-sql-crudas.txt) para CI y para desarrollo local (#714):
+        # antes estaba copiada a mano en los jobs integration, e2e y e2e-hub.
+        run: bash scripts/aplicar-migraciones-sql-crudas.sh
 
+      # #766: registrar duración real y recursos sin alterar fixtures, tests ni gates.
+      # El resumen se emite incluso cuando Vitest falla; el exit code original se conserva.
       - name: Run integration tests
-        run: npm run test:integration
+        shell: bash
+        run: |
+          started_at=$(date +%s)
+          echo "Integration suite started (epoch): $started_at"
+          set +e
+          npm run test:integration
+          result=$?
+          set -e
+          finished_at=$(date +%s)
+          echo "Integration suite duration: $((finished_at - started_at)) seconds"
+          echo "Integration suite exit code: $result"
+          exit "$result"
+
+      - name: Integration runner diagnostics (#766)
+        if: always()
+        shell: bash
+        run: |
+          echo "::group::Runner memory and disk"
+          free -h || true
+          df -h . || true
+          echo "::endgroup::"
+          echo "::group::Docker container state and resources"
+          docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' || true
+          docker stats --no-stream || true
+          echo "::endgroup::"
+          echo "::group::PostgreSQL recent logs"
+          docker logs --tail 80 postgres 2>&1 || true
+          echo "::endgroup::"
+          echo "::group::Redis recent logs"
+          docker logs --tail 40 redis 2>&1 || true
+          echo "::endgroup::"
 
   e2e:
     name: E2E (${{ matrix.shard }}/${{ strategy.job-total }})
@@ -503,48 +472,10 @@ jobs:
         run: npx prisma db push
 
       - name: Apply raw-SQL sequence migrations (not covered by db push)
-        # `prisma db push` only syncs what's declared in schema.prisma. These
-        # 3 migrations create Postgres sequences (factura_numero_seq,
-        # abono_numero_seq, embarque_numero_seq, compra_insumo_numero_seq)
-        # via raw SQL — db push never creates them, so getNextNumero() (used
-        # by every pedido/venta-libre/recurrente/abono/compra creation) 500s
-        # with `relation "..._seq" does not exist` on any CI-fresh database.
-        # Root cause confirmed by reproducing e2e/offline-resilience.spec.ts
-        # locally against a fresh db-push'd Postgres. The migration files
-        # GRANT to `app_write`, which doesn't exist in this ephemeral
-        # container (only the POSTGRES_USER superuser does) — create it
-        # first so the migrations apply unmodified, same SQL as prod.
-        run: |
-          export PGPASSWORD=bambu_dev
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "
-            DO \$\$ BEGIN
-              IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'app_write') THEN
-                CREATE ROLE app_write;
-              END IF;
-            END \$\$;
-          "
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260610_add_factura_numero_seq/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260611_add_abono_embarque_seqs/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260619_import_fase2_proveedor_compra_seq/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260817_plan_maestro_ledgers/migration.sql
-          # 20260817 (arriba) crea ReceivableEntry_offlineId_key UNIQUE; esta
-          # migración posterior lo baja a índice normal (bug pagar-fiado con
-          # abonos que cubren 2+ pedidos). Se aplica acá para replicar el
-          # orden de `prisma migrate deploy` de prod.
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260829_receivable_entry_offlineid_not_unique/migration.sql
-          # ADR-CORRECCION-MONETARIA-001 g2.1 — CHECK + GRANT no expresables en schema.prisma.
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260901_add_correccion_abono/migration.sql
-          # G5.5 — CHECK `chk_pedido_estadopago_proyectado`, no expresable en schema.prisma.
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
-          # #401: una sola secuencia para Pedido.numero (DEFAULT + índice único parcial + trigger).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
-          # #427: una sola secuencia para Embarque.numero (mismo patrón que #401).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261103_embarque_numero_autoridad_unica/migration.sql
-          # #402: Pago.ocurridoAt/regularizacionId + tabla Regularizacion (CHECK no expresable en schema.prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261024_pago_tres_fechas_regularizacion/migration.sql
-          # #513: procedencia y vínculo de abonos (CHECK fuera de Prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261027_abono_procedencia_pago/migration.sql
+        # `prisma db push` no crea secuencias, CHECK, triggers ni pg_trgm. UNA sola lista
+        # (scripts/migraciones-sql-crudas.txt) para CI y para desarrollo local (#714):
+        # antes estaba copiada a mano en los jobs integration, e2e y e2e-hub.
+        run: bash scripts/aplicar-migraciones-sql-crudas.sh
 
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts
@@ -580,7 +511,7 @@ jobs:
           npx playwright install-deps chromium
 
       - name: Run Playwright tests (shard ${{ matrix.shard }})
-        run: npx playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=html
+        run: npx playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=list,html
 
       - name: Dump Postgres/Redis container logs and resource usage
         # Investigación de capacidad de CI (continuación de Known Issue #25):
@@ -626,10 +557,9 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   # e2e-hub — soak del Pedido Hub V2 (Fase 10-C).
   #
-  # Se ejecuta en push a `main` y en cada PR (validación de cambios) Y cada
-  # 3h (:23) por `schedule` (soak temporal — mide estabilidad sostenida sin
-  # depender del ritmo de merges). Es el ÚNICO job que corre en el cron: los
-  # demás llevan `if: github.event_name != 'schedule'`.
+  # Se ejecuta en push a `main`, en cada PR y por `workflow_dispatch`. Ya no hay
+  # cron de soak (#703); los `if: github.event_name != 'schedule'` de otros jobs
+  # quedan como defensa por si se restaura.
   #
   # Job SEPARADO y transitorio: corre SOLO la suite del Hub con
   # NEXT_PUBLIC_PEDIDOS_V2=true, mientras el job `e2e` de arriba se mantiene
@@ -732,31 +662,10 @@ jobs:
         run: npx prisma db push
 
       - name: Apply raw-SQL sequence migrations (not covered by db push)
-        run: |
-          export PGPASSWORD=bambu_dev
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "
-            DO \$\$ BEGIN
-              IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'app_write') THEN
-                CREATE ROLE app_write;
-              END IF;
-            END \$\$;
-          "
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260610_add_factura_numero_seq/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260611_add_abono_embarque_seqs/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260619_import_fase2_proveedor_compra_seq/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260817_plan_maestro_ledgers/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260829_receivable_entry_offlineid_not_unique/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260901_add_correccion_abono/migration.sql
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
-          # #401: una sola secuencia para Pedido.numero (DEFAULT + índice único parcial + trigger).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261023_pedido_numero_autoridad_unica/migration.sql
-          # #427: una sola secuencia para Embarque.numero (mismo patrón que #401).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261103_embarque_numero_autoridad_unica/migration.sql
-          # #402: Pago.ocurridoAt/regularizacionId + tabla Regularizacion (CHECK no expresable en schema.prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261024_pago_tres_fechas_regularizacion/migration.sql
-          # #513: procedencia y vínculo de abonos (CHECK fuera de Prisma).
-          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20261027_abono_procedencia_pago/migration.sql
+        # `prisma db push` no crea secuencias, CHECK, triggers ni pg_trgm. UNA sola lista
+        # (scripts/migraciones-sql-crudas.txt) para CI y para desarrollo local (#714):
+        # antes estaba copiada a mano en los jobs integration, e2e y e2e-hub.
+        run: bash scripts/aplicar-migraciones-sql-crudas.sh
 
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts
@@ -798,6 +707,7 @@ jobs:
           e2e/pedidos-g11.spec.ts
           e2e/pedidos-peek-riesgo.spec.ts
           e2e/parciales-proyecciones-656.spec.ts
+          e2e/pedidos-entregas-historicas-763.spec.ts
 
       - name: Dump Postgres/Redis container logs and resource usage
         if: always()
@@ -830,3 +740,56 @@ jobs:
           name: playwright-traces-hub
           path: test-results/
           retention-days: 7
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # ci-gate — check-resumen estable (#703). Corre SIEMPRE (`if: always()`) y
+  # solo pasa si las validaciones exigidas realmente pasaron: un job omitido,
+  # cancelado o ausente NO cuenta como éxito (GitHub reporta `skipped` como
+  # verde para checks requeridos; aquí se trata como falla, salvo el E2E de un
+  # PR solo de documentación, que `detect-changes` omite a propósito).
+  # Exige: detect-changes, quality (tsc + unit) y e2e-hub en `success`, y el
+  # E2E de 8 turnos en `success` cuando `e2e_required == 'true'`.
+  # `lint` e `integration` son informativos (continue-on-error) y solo se listan.
+  # NO está marcado como required en `main`: eso es decisión del PO (ver
+  # docs/ci/GATES.md).
+  # ───────────────────────────────────────────────────────────────────────────
+  ci-gate:
+    name: CI gate (resumen)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs: [detect-changes, quality, e2e, e2e-hub, lint, integration]
+    steps:
+      - name: Evaluar resultados exigidos
+        env:
+          R_DETECT: ${{ needs.detect-changes.result }}
+          R_QUALITY: ${{ needs.quality.result }}
+          R_E2E: ${{ needs.e2e.result }}
+          R_HUB: ${{ needs.e2e-hub.result }}
+          R_LINT: ${{ needs.lint.result }}
+          R_INTEGRATION: ${{ needs.integration.result }}
+          E2E_REQUIRED: ${{ needs.detect-changes.outputs.e2e_required }}
+        run: |
+          fail=0
+          check() { # nombre resultado esperado-descripcion
+            if [ "$2" != "success" ]; then
+              echo "::error::$1: $2 (se esperaba success)"
+              fail=1
+            else
+              echo "OK   $1: success"
+            fi
+          }
+          check "detect-changes" "$R_DETECT"
+          check "quality (tsc + unit)" "$R_QUALITY"
+          check "e2e-hub (V2 ON)" "$R_HUB"
+          if [ "$E2E_REQUIRED" = "true" ]; then
+            check "e2e (8 turnos)" "$R_E2E"
+          elif [ "$E2E_REQUIRED" = "false" ] && [ "$R_E2E" = "skipped" ]; then
+            echo "OK   e2e: omitido (el diff es solo documentación, allowlist de detect-changes)"
+          else
+            echo "::error::e2e: resultado '$R_E2E' con e2e_required='$E2E_REQUIRED' no es interpretable como éxito"
+            fail=1
+          fi
+          echo "INFO lint (informativo): $R_LINT"
+          echo "INFO integration (informativo): $R_INTEGRATION"
+          exit $fail

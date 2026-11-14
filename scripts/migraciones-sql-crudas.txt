@@ -1,0 +1,38 @@
+# Migraciones SQL que `prisma db push` NO aplica y que una base de pruebas necesita:
+# secuencias, CHECK, triggers, índices parciales y la extensión pg_trgm (no expresables en
+# schema.prisma). UNA sola lista para CI y para desarrollo local (#714).
+#
+# - Un nombre por línea, en el orden en que deben aplicarse. Las líneas con # son comentarios.
+# - Cada migración debe ser idempotente (se puede aplicar dos veces).
+# - Se aplican con scripts/aplicar-migraciones-sql-crudas.sh (CI y local) después de `prisma db push`.
+# - Una migración nueva con CHECK, secuencia, trigger o índice parcial va aquí o en la lista de
+#   excluidas del test src/lib/__tests__/migraciones-sql-crudas.test.ts.
+
+# Secuencias de numeración (getNextNumero necesita factura/abono/embarque/compra_insumo numero_seq).
+20260610_add_factura_numero_seq
+20260611_add_abono_embarque_seqs
+20260619_import_fase2_proveedor_compra_seq
+# Ledgers del plan maestro: CHECK del ledger físico, secuencias pedido/nota_credito.
+20260817_plan_maestro_ledgers
+# Baja ReceivableEntry_offlineId_key a índice normal (replica el orden de `migrate deploy`).
+20260829_receivable_entry_offlineid_not_unique
+# ADR-CORRECCION-MONETARIA-001: CHECK chk_correccion_monto_pos y GRANT.
+20260901_add_correccion_abono
+# G5.5: CHECK chk_pedido_estadopago_proyectado.
+20260905_add_pedido_estadopago_check
+# #401: una sola secuencia para Pedido.numero (DEFAULT + índice único parcial + trigger).
+20261023_pedido_numero_autoridad_unica
+# #427: una sola secuencia para Embarque.numero.
+20261103_embarque_numero_autoridad_unica
+# #402: tres fechas del pago y tabla Regularizacion (CHECK).
+20261024_pago_tres_fechas_regularizacion
+# #513: procedencia y vínculo de abonos (CHECK).
+20261027_abono_procedencia_pago
+# #524: ingreso del sobrante de un cobro de fiados (CHECK).
+20261110_ingreso_saldo_favor
+# #617: corrección de la fecha efectiva de un pago (CHECK).
+20261111_pago_fecha_correccion
+# #701: search_clientes(text, int); solo la definición final (CREATE OR REPLACE, idempotente).
+20260729210000_fix_search_clientes_phone_negocio
+# #560: devolución del saldo a favor al cliente (CHECK).
+20261111_devolucion_saldo_favor

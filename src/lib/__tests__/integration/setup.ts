@@ -80,3 +80,34 @@ export async function getSeededCliente() {
   if (!c) throw new Error('No cliente found — ¿corriste seed-test?')
   return c
 }
+
+/**
+ * #688 — el servidor solo cierra un día con la base de caja de ESA fecha (Config `BASE_DIA_<fecha>`). Las pruebas que
+ * cierran el día la registran con esto y mandan el mismo valor en `baseDia`.
+ */
+export async function registrarBaseDia(fecha: string, valor = 50000): Promise<number> {
+  const clave = `BASE_DIA_${fecha}`
+  await testPrisma.config.upsert({ where: { clave }, create: { clave, valor: String(valor) }, update: { valor: String(valor) } })
+  return valor
+}
+
+/**
+ * #616: ya nadie puede REGISTRAR una corrección de precio salvo un ADMIN (que la aplica en el acto). Las solicitudes PENDIENTE
+ * que un ASISTENTE dejó antes del cambio siguen existiendo y las resuelve un ADMIN: esto crea una fila así, como la habría dejado el
+ * flujo anterior, para probar esa resolución.
+ */
+export async function sembrarSolicitudPendiente(
+  pedidoId: string,
+  d: { precioNuevo: number; motivo: string; solicitadoPorId: string; producto?: string; offlineId?: string },
+) {
+  const producto = d.producto ?? 'PACA_AGUA'
+  const item = await testPrisma.pedidoItem.findFirstOrThrow({ where: { pedidoId, producto } })
+  const precioAnterior = Number(item.precio)
+  return testPrisma.pedidoCorreccionPrecio.create({
+    data: {
+      pedidoId, producto, cantidad: item.cantPedido, precioAnterior, precioNuevo: d.precioNuevo,
+      delta: (d.precioNuevo - precioAnterior) * item.cantPedido, precioRaro: d.precioNuevo < 2000,
+      motivo: d.motivo, solicitadoPorId: d.solicitadoPorId, offlineId: d.offlineId ?? null,
+    },
+  })
+}

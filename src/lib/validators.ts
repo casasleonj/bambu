@@ -1,3 +1,4 @@
+import { UnitPrice, MAX_UNIT_PRICE } from '@/shared/domain/unit-price'
 import { z } from "zod";
 import { validarPlanPago } from '@/lib/sueldos-fijos'
 import { importeFiadoSchema, metodoFiadoSchema, sumarCobroFiado } from './fiados-cobro'
@@ -56,10 +57,14 @@ export const itemsSinProductosDuplicados = (items: Array<{ producto: string }>, 
   }
 }
 
+export const PrecioUnitarioSchema = z.number().min(0).max(MAX_UNIT_PRICE).refine(value => {
+  try { UnitPrice.fromDecimal(value); return true } catch { return false }
+}, { message: 'El precio admite hasta 6 decimales.' })
+
 export const PedidoItemSchema = z.object({
   producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),
   cantidad: z.coerce.number().int().min(0),
-  precioManual: z.number().min(0).optional().refine(
+  precioManual: PrecioUnitarioSchema.optional().refine(
     val => val === undefined || val > 0,
     { message: 'Precio manual debe ser mayor a 0' }
   ),
@@ -79,7 +84,7 @@ export const PedidoCreateSchema = z.object({
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional().default('DOMICILIO'),
   origen: OrigenPedidoSchema.optional().default('PEDIDO'),
   items: z.array(PedidoItemSchema).min(1, 'Agrega al menos un producto').superRefine(itemsSinProductosDuplicados),
-  preciosManuales: z.record(z.string(), z.number().min(0, 'Precio manual no puede ser negativo')).optional(),
+  preciosManuales: z.record(z.string(), PrecioUnitarioSchema).optional(),
   pagos: z.array(
     z.object({
       metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
@@ -98,6 +103,11 @@ export const PedidoCreateSchema = z.object({
   entregaLng: z.number().min(-180).max(180).optional().nullable(),
   // Offline-first: id generado por el cliente para dedup si se encola
   offlineId: z.string().optional(),
+  // #408: el usuario confirmó que esta venta NO es una repetida de la anterior. Solo deja rastro; no cambia el cálculo.
+  ventaRepetidaConfirmada: z.boolean().optional(),
+  // #426: guardar la ubicación del pedido (entregaLat/entregaLng) como ubicación de la tienda o del cliente.
+  // `reemplazar` solo si el usuario eligió pisar la que ya tenía. Sin este campo no se guarda nada.
+  guardarUbicacion: z.object({ reemplazar: z.boolean().optional() }).optional(),
   // TEMPORAL-SIN-EMBARQUE(#535): «venta en ruta» — el ADMIN registra la venta que un
   // repartidor hizo en la calle. `vendidoPorId` queda como `Pedido.entregadoPorId`;
   // solo vale en una venta rápida a domicilio y solo con la gestión directa encendida.
@@ -180,6 +190,8 @@ export const PreviewPedidoSchema = z.object({
   pedidoOrigenId: z.string().optional(),
   /** #542: «venta en ruta» (la vendió un repartidor en la calle): la dirección de entrega es opcional. */
   ventaEnRuta: z.boolean().optional(),
+  /** #408: clave del borrador (la misma que luego viaja como offlineId al guardar): el reintento del mismo borrador no es una venta repetida. El preview sigue siendo de solo lectura. */
+  borradorId: z.string().min(8).max(100).optional(),
   /** modo edición: preview de un PUT declarativo sobre un pedido existente. */
   pedidoId: z.string().trim().min(1).optional(),
   // F2 (Excepciones de Crédito): ver VentaLibreSchema.excepcionId.
@@ -344,7 +356,7 @@ export const VentaLibreSchema = z.object({
   // 2026-09-06) — reemplazado por `origen` explícito.
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional(),
   origen: z.enum(['PEDIDO', 'VENTA_RAPIDA']).optional(),
-  preciosManuales: z.record(z.string(), z.number()).optional(),
+  preciosManuales: z.record(z.string(), PrecioUnitarioSchema).optional(),
   total: z.number().optional(),
   clienteNuevo: z.object({
     nombre: z.string().min(1).max(100).optional(),
@@ -781,9 +793,6 @@ export const CierreCreateSchema = z.object({
   // anteriores). Lo pagado por otro medio no resta de la caja del cierre.
   salariosEfectivo: z.coerce.number().min(0).optional(),
   reporte: z.string().optional(),
-  // #306: solo ADMIN. Permite cerrar saltando días anteriores que SÍ tuvieron operación;
-  // el motivo (mínimo 10 caracteres) queda en el historial.
-  saltarDiasConOperacion: z.object({ motivo: z.string().trim().min(10).max(500) }).optional(),
 }).strict().refine( // Reject extra fields like netoCaja, totalVentas, etc.
   (d) => d.salariosEfectivo === undefined || d.salariosEfectivo <= d.salarios,
   { message: 'Los salarios pagados en efectivo no pueden superar el total de salarios', path: ['salariosEfectivo'] },
@@ -902,12 +911,12 @@ export const CerrarEmbarqueSchema = z.object({
       cBolsaHieloEnt: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
     }).nullish(),
     preciosReales: z.object({
-      pacaAgua: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
-      pacaHielo: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
-      botellonFab: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
-      botellonDom: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
-      bolsaAgua: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
-      bolsaHielo: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
+      pacaAgua: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
+      pacaHielo: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
+      botellonFab: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
+      botellonDom: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
+      bolsaAgua: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
+      bolsaHielo: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
     }).nullish(),
     pagado: z.enum(['COMPLETO', 'PARCIAL', 'NO_PAGADO']),
     pagos: z.array(z.object({
@@ -1154,6 +1163,7 @@ export const UserUpdateSchema = z.object({
   apellido: z.string().max(100).optional(),
   puedeAutorizarExcepcionCredito: z.boolean().optional(),
   puedeAutorizarReduccionComercial: z.boolean().optional(),
+  puedeConfirmarPagos: z.boolean().optional(),
 })
 
 // ====================

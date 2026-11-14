@@ -13,8 +13,10 @@ import {
 } from "@/lib/pedidos-consulta";
 import { PedidoHub, type PedidoHubCounts } from "./index";
 import { FiltrosConsulta } from "./filtros-consulta";
+import { EntregasDestacadas } from "./entregas-destacadas";
 import { ResumenConsulta } from "./resumen-consulta";
 import { RecurrentesDelDia } from "./recurrentes-del-dia";
+import { fechaLecturaConsulta } from "./fecha-consulta";
 import type { AccionKey, Pedido } from "./types";
 
 interface Props {
@@ -177,6 +179,16 @@ export function ConsultaPedidosHub(props: Props) {
               respuesta completa.
             </p>
           )}
+          {datos && filtrosLeidos?.fechaBase === "pedido" && !filtrosLeidos.all && (
+            <EntregasDestacadas
+              entregas={datos.destacadas ?? []}
+              total={datos.destacadasTotal ?? 0}
+              rangoAmplio={!!datos.destacadasRangoAmplio}
+              hasta={filtrosLeidos.hasta}
+              onVerPedido={props.onVerPedido}
+              onVerTodas={() => aplicar({ ...filtrosLeidos, fechaBase: "entrega", resumen: true, page: 1 })}
+            />
+          )}
           {datos?.resumen && filtrosLeidos && (
             <ResumenConsulta resumen={datos.resumen} filtros={filtrosLeidos} />
           )}
@@ -285,11 +297,7 @@ export function ConsultaPedidosHub(props: Props) {
             {datos && (
               <p className="mt-3 text-xs text-slate-500">
                 Lectura del{" "}
-                {new Intl.DateTimeFormat("es-CO", {
-                  timeZone: "America/Bogota",
-                  dateStyle: "short",
-                  timeStyle: "medium",
-                }).format(new Date(datos.leidoAt))}
+                {fechaLecturaConsulta(datos.leidoAt)}
                 .
                 {!isOnline
                   ? " Sin conexión; conserva las cifras de esta lectura."

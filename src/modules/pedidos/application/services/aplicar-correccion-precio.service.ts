@@ -1,3 +1,4 @@
+import { importeLinea } from '@/shared/domain/unit-price'
 /**
  * Aplica una corrección de precio ya autorizada (ADR-MONETARIO-002 §1, ADR-CIERRE-004).
  *
@@ -53,7 +54,7 @@ export async function aplicarCorreccionPrecio(
     where: { id: item.id },
     data: {
       precio: num(c.precioNuevo),
-      subtotal: Math.round(num(c.precioNuevo) * item.cantPedido * 100) / 100,
+      subtotal: importeLinea(num(c.precioNuevo), item.cantPedido),
       precioOrigen: 'manual',
       autorizadoPorAdmin: true,
       autorizadoPorId: input.actorId,

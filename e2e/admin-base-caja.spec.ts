@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login, resetDatabase, skipBaseCaja, apiPost, BASE } from './fixtures'
+import { login, resetDatabase, skipBaseCaja, apiPost, BASE, registrarBaseDia } from './fixtures'
 
 test.describe('Admin - Base de caja', () => {
   test.describe.configure({ mode: 'serial' })
@@ -78,6 +78,7 @@ test.describe('Admin - Base de caja', () => {
     twoDaysAgo.setDate(twoDaysAgo.getDate() - 2)
     const fechaPasada = twoDaysAgo.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 
+    await registrarBaseDia(adminPage, fechaPasada, 100000) // #688: el cierre exige la base de caja de esa fecha
     const cierreRes = await apiPost(adminPage, '/api/cierre', {
       fecha: fechaPasada,
       baseDia: 100000,

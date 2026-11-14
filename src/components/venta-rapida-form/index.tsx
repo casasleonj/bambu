@@ -1,5 +1,8 @@
 'use client'
 
+import { importeLineaEditable } from '@/lib/precio-formato'
+
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { ClienteSelect } from './cliente-select'
@@ -108,8 +111,8 @@ export function VentaRapidaForm({ clientes, onSubmit }: VentaRapidaFormProps) {
 
   const total = productosActuales.reduce((sum, prodId) => {
     const cant = cantidades[prodId] || 0
-    return sum + cant * getPrecio(PRODUCTO_INFO[prodId].codigo)
-  }, 0)
+    return sum + Math.round(importeLineaEditable(getPrecio(PRODUCTO_INFO[prodId].codigo), cant) * 100)
+  }, 0) / 100
 
   const resolverPrecios = useCallback(async (prods: Record<string, number>, canalVal: 'PUNTO' | 'DOMICILIO', cid?: string) => {
     const items = productosActuales
@@ -241,13 +244,14 @@ export function VentaRapidaForm({ clientes, onSubmit }: VentaRapidaFormProps) {
   }
 
   const pagarCompleto = () => {
-    if (total <= 0) return
+    if (!Number.isFinite(total) || total <= 0) return
     setPagos([{ metodo: 'EFECTIVO', monto: total }])
   }
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
-    if (total <= 0) {
+    if (!Number.isFinite(total)) { toast.error('Revisa las cantidades y los precios: se admiten hasta 6 decimales.'); return }
+    if (!Number.isFinite(total) || total <= 0) {
       toast.error('Agrega al menos un producto')
       return
     }

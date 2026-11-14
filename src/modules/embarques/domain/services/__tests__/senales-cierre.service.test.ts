@@ -74,3 +74,17 @@ describe('señales de cambios (#446)', () => {
     expect(calcularSenales(base)).toEqual([])
   })
 })
+
+describe('PEDIDO_CORREGIDO_A_LA_BAJA (#712)', () => {
+  it('sin correcciones: sin señal', () => {
+    expect(calcularSenales({ ...base, correccionesALaBaja: { pedidos: 0, monto: 0 } })).toEqual([])
+  })
+
+  it('con pedidos bajados: una señal con la cantidad y el monto', () => {
+    const s = calcularSenales({ ...base, correccionesALaBaja: { pedidos: 2, monto: 11500 } })
+    expect(s).toHaveLength(1)
+    expect(s[0].codigo).toBe('PEDIDO_CORREGIDO_A_LA_BAJA')
+    expect(s[0].mensaje).toContain('2 pedido')
+    expect(s[0].mensaje).toContain('11')
+  })
+})

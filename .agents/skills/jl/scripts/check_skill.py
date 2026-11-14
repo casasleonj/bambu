@@ -60,14 +60,30 @@ if len(SKILL.splitlines()) > 500 or len(SKILL.encode('utf-8')) > 12000:
 CONTRACT = {
     'modos': ['INVESTIGAR', 'IMPLEMENTAR', 'VALIDAR', 'COMPLETO', 'LOTE', 'INSTALAR'],
     'etapas': ['INVESTIGANDO', 'IMPLEMENTANDO', 'VALIDANDO', 'INVESTIGACIÓN TERMINADA', 'IMPLEMENTACIÓN TERMINADA', 'VALIDACIÓN TERMINADA', 'BLOQUEADA', 'REABIERTA'],
+    'qa_navegador': ['Playwright','QA DE USUARIO INICIADO', 'QA DE USUARIO EN CURSO', 'QA DE USUARIO FINALIZADO', 'QA DE USUARIO PENDIENTE', 'flujo en curso','agent-browser'],
     'alcance': ['QUIERE', 'NO QUIERE', 'PRESERVAR', 'FUERA DE ALCANCE', 'ACEPTACIÓN'],
-    'tecnicas': ['DOC-1','DOC-2','REUSE-1','REUSE-2','Context7','convergencia'],
+    'tecnicas': ['DOC-1','DOC-2','REUSE-1','REUSE-2','XMOD-1','XMOD-2','XMOD-3','Context7','convergencia'],
     'seguridad': ['producción','QA','autorización','regresión','baseline','evidencia'],
+    'transversal': ['cross-module-consistency.md','consumidores indirectos','conciliación entre consumidores','misma métrica'],
+    'escenarios': ['ESC-1','ESC-2','ESC-3','MAPA DE ESCENARIOS DESCUBIERTOS','escenarios-impacto-usuario.md','siguiente operación','reversas'],
+    'sintesis': ['SYN-1','SYN-2','escenarios ESC','investigar soluciones existentes','antes del plan','no se pregunten otra vez'],
+    'comunicacion_usuario': ['comunicacion-usuario.md','antes → acción','ejemplo concreto','hipotético','maquetas','pruebas de agente','definidas vs ejecutadas', 'qué ocurre, qué significa para el usuario y qué sigue'],
 }
 for group, words in CONTRACT.items():
     for word in words:
         if word.casefold() not in SKILL.casefold():
             fail(f'Contrato ausente ({group}): {word}')
+
+# Los gates de síntesis deben existir en sus referencias reales, no solo mencionarse en SKILL.
+for path,required in {
+    'references/evidence-reuse.md':['SYN-1','SYN-2','empresas','comunidad','ESC','REUSE','XMOD','No reabrir decisiones existentes'],
+    'references/escenarios-impacto-usuario.md':['SYN-1','SYN-2','precedentes externos','sin volver a preguntarla'],
+    'references/user-feedback.md':['no autoridad para deshacer una decisión'],
+}.items():
+    document=text(ROOT/path)
+    for phrase in required:
+        if phrase.casefold() not in document.casefold():
+            fail(f'Síntesis faltante en {path}: {phrase}')
 
 for term in ['casasleonj/bambu','Agua Bambú','Next.js 16.2.4','Prisma 6.19.3','e2e/rutas.spec.ts']:
     if term in SKILL:
@@ -89,7 +105,7 @@ for path in ROOT.rglob('*.md'):
         if not dest.is_file() or (dest != ROOT and ROOT not in dest.parents):
             fail(f'Link local roto/fuera de skill: {path.relative_to(ROOT)} -> {target}')
 
-refs = ['workflow','user-feedback','code-reuse','evidence-reuse','engineering','convergence','experience','verification-release','installation']
+refs = ['workflow','user-feedback','code-reuse','evidence-reuse','engineering','convergence','experience','verification-release','browser-tools','installation','cross-module-consistency','comunicacion-usuario','escenarios-impacto-usuario']
 for r in refs:
     if not (ROOT/'references'/f'{r}.md').is_file():
         fail(f'Referencia obligatoria ausente: {r}.md')
@@ -102,7 +118,7 @@ if not (ROOT/'assets'/'report.md').is_file():
 # El test externo con PyYAML comprueba además el parseo sintáctico integral.
 evals = text(ROOT/'tests'/'evals.yaml')
 ids = re.findall(r'^- id:\s*([\w-]+)\s*$', evals, re.M)
-if len(ids) < 135 or len(ids) != len(set(ids)):
+if len(ids) < 215 or len(ids) != len(set(ids)):
     fail(f'Casos de evaluación insuficientes/duplicados: total={len(ids)}, únicos={len(set(ids))}')
 for block in re.split(r'(?=^- id:)', evals, flags=re.M):
     if not block.startswith('- id:'):

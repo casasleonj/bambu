@@ -25,6 +25,7 @@ import { AlertasTable } from './alertas-table'
 import { FacturaConsultaModal } from './factura-consulta-modal'
 import { CobroFiadoDialog } from './cobro-fiado-dialog'
 import { ConsultaPedidosHub } from '../pedido-hub/consulta-pedidos-hub'
+import { PedidoHub } from '../pedido-hub'
 import type { ResultadoConsultaPedidos } from '@/lib/pedidos-consulta'
 import { EstoSeRepite, type EstoSeRepiteContexto } from '../pedido-hub/esto-se-repite'
 import { PedidosWorkspace, type WorkspacePedidoInicial } from '@/components/pedido-workspace'
@@ -58,6 +59,7 @@ import { capturarGpsSilencioso } from '@/lib/gps-silencioso'
 import { resolverEntrega } from '@/lib/entrega-quien'
 import { isWithinDeliveryRadius } from '@/lib/gps'
 import { loadClienteDetail } from '@/lib/cliente-detail-cache'
+import { avisarUbicacionGuardada } from '@/lib/geo/aviso-ubicacion-guardada'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
 import type { PedidoInicial, PedidoUnifiedData } from '@/components/pedido-form-unified'
@@ -1179,6 +1181,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
         } else {
           toast.success(msg)
         }
+        avisarUbicacionGuardada(result.ubicacionGuardada)
         return true
       }
     } catch (error) {
@@ -2168,6 +2171,31 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
         const vistaLoading = atrasadosParam ? loadingAtrasados : loadingEnRiesgo
         const vistaError = atrasadosParam ? errorAtrasados : errorEnRiesgo
         const vistaPedidos = atrasadosParam ? pedidosAtrasados : pedidosEnRiesgo
+        // #605: con el Hub activo, «Verlos» usa la misma lista (y el mismo panel
+        // de detalle) que Pedidos; solo cambia el conjunto de pedidos.
+        if (hubMode) {
+          return (
+            <PedidoHub
+              pedidos={vistaPedidos}
+              counts={{ porPlanificarCount, atrasadosCount, enRutaCount, esperandoPagoCount, esperandoPagoTotal, pendientesN2Count }}
+              loading={vistaLoading}
+              error={vistaError}
+              userRole={userRole}
+              onAccion={handleHubAccion}
+              onNuevaOperacion={puedeCrear ? () => setShowModal(true) : undefined}
+              onRetry={() => (atrasadosParam ? refetchAtrasados() : refetchEnRiesgo())}
+              onRefetch={() => { if (atrasadosParam) refetchAtrasados(); else refetchEnRiesgo(); refetchCounts() }}
+              onPeekMovilChange={setHojaMovilAbierta}
+              consulta={{
+                userRole,
+                gestionDirecta: gestionAdmin.activa && !(userRole === 'ADMIN' && gestionAdmin.estadoConsulta && gestionAdmin.estadoConsulta !== 'verificado'),
+                volver: `/pedidos?${shallowParams.toString()}`,
+                onVerPedido: id => abrirDocumentoPedido(id, 'Volver a Pedidos'),
+                onVerFactura: p => p.factura && setFacturaConsulta({ id: p.factura.id, volver: 'Volver a Pedidos', pedidoId: p.id, pedidoNumero: p.numero, consulta: `/pedidos?${shallowParams.toString()}` }),
+              }}
+            />
+          )
+        }
         if (vistaLoading && vistaPedidos.length === 0) {
           return (
             <div className="space-y-4">

@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
         activo: true,
         puedeAutorizarExcepcionCredito: true,
         puedeAutorizarReduccionComercial: true,
+        puedeConfirmarPagos: true,
         createdAt: true,
         trabajador: { select: { nombre: true } },
       },
