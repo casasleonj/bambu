@@ -77,8 +77,13 @@ def scan_tool_calls(data, skill):
                 # Sólo un exit_code==0 con salida real prueba que el archivo se leyó.
                 if code is None:
                     pending=True
-                elif code!=0 or not output.strip() or "No permissions to create a new namespace" in output or "bwrap:" in output:
+                elif code!=0 or not output.strip():
                     failed=True
+                # Sin comprobación extra del error de sandbox: si bwrap está denegado
+                # el comando sale con código != 0 y ya queda marcado arriba. Mirarlo
+                # también en la salida de comandos exitosos daba falsos negativos,
+                # porque el modelo cita "bwrap: No permissions..." al explicar el
+                # entorno, y esa cita anulaba lecturas reales de 23 KB.
             if o.get("type")=="mcp_tool_call":
                 name=o.get("tool") or o.get("server")
                 args=o.get("arguments") or args
