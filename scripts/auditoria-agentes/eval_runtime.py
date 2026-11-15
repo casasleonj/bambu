@@ -162,8 +162,17 @@ def seed_auth(agent,home):
     return seeded
 
 def cli_command(agent,prompt):
+    # El sandbox propio de codex usa bubblewrap, que necesita namespaces de
+    # usuario sin privilegios. En contenedores donde el kernel los deniega
+    # (E2E_PERM_NOCREATE: "bwrap: No permissions to create a new namespace"),
+    # todo comando sale exit=1 y la medición no distingue "no activó la skill"
+    # de "no pudo leer el archivo": da 0 activaciones reales sobre 46 comandos.
+    # Ahí el aislamiento ya lo aporta el propio contenedor, así que se puede
+    # pedir acceso completo al filesystem sin perder la garantía de que solo
+    # se observan lecturas. Pedirlo explícitamente evita un verde falso.
+    sandbox=os.environ.get("EVAL_RUNTIME_CODEX_SANDBOX","read-only")
     if agent=="codex":
-        return ["codex","exec","--json","--sandbox","read-only","--skip-git-repo-check",prompt]
+        return ["codex","exec","--json","--sandbox",sandbox,"--skip-git-repo-check",prompt]
     if agent=="claude":
         return ["claude","-p",prompt,"--output-format","stream-json","--verbose","--tools","Read,Glob,Grep,Skill","--permission-mode","dontAsk"]
     if agent=="opencode":
