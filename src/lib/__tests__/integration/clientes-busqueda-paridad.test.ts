@@ -108,9 +108,21 @@ describe('tolerancia a erratas (#384)', () => {
     expect(ids(r.filas)).toContain(zulma)
   })
 
-  it('con coincidencia exacta no se agregan difusos de ruido', async () => {
+  it('no incluye homónimos sin parecido suficiente', async () => {
     const r = await buscar('panaderia juan')
     expect(ids(r.filas)).toEqual([juan])
+  })
+  it('#789 mantiene sugerencias aproximadas de negocios junto a la coincidencia exacta', async () => {
+    const negocio = await testPrisma.negocio.create({
+      data: { clienteId: juanB, nombre: 'Panaderea La Esperanza' },
+    })
+    try {
+      const r = await buscar('panaderia la esperanza')
+      expect(ids(r.filas)[0]).toBe(juan)
+      expect(ids(r.filas)).toContain(juanB)
+    } finally {
+      await testPrisma.negocio.delete({ where: { id: negocio.id } })
+    }
   })
 })
 
