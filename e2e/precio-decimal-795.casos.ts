@@ -49,10 +49,7 @@ export async function comprobarPrecioDecimal(page: Page, flujo: 'pedido' | 'rapi
       const rechazado = page.waitForResponse(r => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST' && r.status() === 500)
       await commit.click()
       await rechazado
-      // #783 (previo): el aviso puede cubrir el botón; el hover pausa su cierre.
-      // Acción real de usuario: apartar el puntero y esperar el cierre normal.
-      await page.mouse.move(0,0)
-      await expect(page.locator('[data-sonner-toast][data-type="error"]')).toHaveCount(0,{timeout:15000})
+      // #783: corregir y reintentar sin esperar a que desaparezca el aviso.
       await expect(inputPrecio).toHaveValue('2190.47619')
       expect(await db.pedido.count({where:{clienteId:cliente.id}})).toBe(0)
       const cola = await page.evaluate(async () => {

@@ -63,7 +63,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </PushOptInProvider>
         <BaseCajaLoader />
         <UpdateNotification />
-        <Toaster />
+        <Toaster
+          position="top-center"
+          offset={{ top: '72px' }}
+          mobileOffset={{ top: '72px', left: '16px', right: '16px' }}
+          closeButton
+          containerAriaLabel="Avisos"
+          toastOptions={{ closeButtonAriaLabel: 'Cerrar aviso' }}
+        />
         <PwaInstallBanner />
       </RealtimeProvider>
     </Providers>
