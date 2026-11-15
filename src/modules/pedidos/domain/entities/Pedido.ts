@@ -5,7 +5,7 @@
  * Encapsulates all business rules for order lifecycle.
  */
 
-import { Money, calcularSaldo } from '@/shared/domain'
+import { Money, calcularSaldo, importeLineaCentavos } from '@/shared/domain'
 import type { ProductCode } from '@/shared/domain'
 import { PedidoId } from '../value-objects/PedidoId'
 import { CanalVO } from '../value-objects/Canal'
@@ -411,7 +411,7 @@ export class Pedido {
 
     if (faltantes.length === 0) return null
 
-    const totalHijo = faltantes.reduce((sum, f) => sum + f.precio * f.cantidad, 0)
+    const totalHijo = faltantes.reduce((sum, f) => sum + importeLineaCentavos(f.precio, f.cantidad), 0) / 100
 
     return {
       numero: numeroHijo,

@@ -1,3 +1,4 @@
+import { PrecioUnitarioSchema } from '@/lib/validators'
 import { z } from 'zod'
 import { NextRequest } from 'next/server'
 import { requireAuth, requireRole } from '@/lib/auth-check'
@@ -10,7 +11,7 @@ import { mapCorreccionPrecioError } from '@/modules/pedidos/presentation/correcc
 
 const CorregirPrecioSchema = z.object({
   producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),
-  precioNuevo: z.number().positive().max(99_999_999),
+  precioNuevo: PrecioUnitarioSchema.positive().max(99_999_999),
   motivo: z.string().max(500),
   offlineId: z.string().optional(),
 })

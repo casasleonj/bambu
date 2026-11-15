@@ -25,6 +25,17 @@ describe('CorreccionPrecioPanel', () => {
   beforeEach(() => vi.clearAllMocks())
   afterEach(() => vi.restoreAllMocks())
 
+  it('#795 conserva seis decimales y explica el efecto monetario de la línea, sin redondear primero el precio', async () => {
+    mockFetch([])
+    render(<CorreccionPrecioPanel pedidoId="p1" lineas={[{producto:'PACA_AGUA',cantPedido:63,precio:2190.48}]} userRole="ADMIN" corregible />)
+    fireEvent.click(screen.getByTestId('correccion-abrir'))
+    fireEvent.change(screen.getByTestId('correccion-precio'),{target:{value:'2190.47619'}})
+    expect(screen.getByTestId('correccion-precio')).toBeValid()
+    expect(screen.getByTestId('correccion-efecto')).toHaveTextContent('baja $0,24')
+    fireEvent.change(screen.getByTestId('correccion-precio'),{target:{value:'2190.4761904'}})
+    expect(screen.getByTestId('correccion-precio')).toBeInvalid()
+  })
+
   it('ADMIN ve el botón y puede autorizar una solicitud pendiente', async () => {
     const patches: string[] = []
     mockFetch([pendiente], (u, init) => {

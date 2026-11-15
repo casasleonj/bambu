@@ -1,5 +1,7 @@
 'use client'
 
+import { formatImportePedido, formatPrecioUnitario, importeLineaEditable } from '@/lib/precio-formato'
+import { MAX_UNIT_PRICE } from '@/shared/domain/unit-price'
 import { Input } from '@/components/ui/input'
 import { PRODUCTO_INFO } from '@/lib/prices'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
@@ -119,6 +121,10 @@ export function ProductGrid({
                     <input
                       type="number"
                       min="0"
+                      max={MAX_UNIT_PRICE}
+                      step="0.000001"
+                      inputMode="decimal"
+                      aria-label={`Precio unitario de ${info.nombre}`}
                       autoFocus
                       defaultValue={precio}
                       onBlur={(e) => {
@@ -140,12 +146,12 @@ export function ProductGrid({
                           (e.target as HTMLInputElement).blur()
                         }
                       }}
-                      className="w-20 border rounded px-2 py-1 text-sm text-right"
+                      className="w-28 border rounded px-2 py-1 text-sm text-right"
                     />
                   </div>
                 ) : (
                   <div className="flex items-center gap-1">
-                    <span className="font-semibold">${precio.toLocaleString()}</span>
+                    <span className="font-semibold">{formatPrecioUnitario(precio)}</span>
                     <button
                       type="button"
                       onClick={() => setPreciosEditando(prev => ({ ...prev, [info.codigo]: true }))}
@@ -163,7 +169,7 @@ export function ProductGrid({
             {cant > 0 && (
               <div className="flex justify-between items-center text-sm font-bold text-gray-800 mt-0.5">
                 <span>Subtotal:</span>
-                <span>${(cant * precio).toLocaleString()}</span>
+                <span>{formatImportePedido(importeLineaEditable(precio, cant))}</span>
               </div>
             )}
           </div>

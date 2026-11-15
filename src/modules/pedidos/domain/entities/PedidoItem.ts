@@ -5,19 +5,21 @@
  * Immutable except for delivery quantity.
  */
 
-import { Money } from '@/shared/domain'
+import { Money, UnitPrice } from '@/shared/domain'
 import type { ProductCode } from '@/shared/domain'
 
 export class PedidoItem {
+  readonly precio: UnitPrice
+
   constructor(
     readonly producto: ProductCode,
     readonly cantPedido: number,
-    readonly precio: Money,
+    precio: Money | UnitPrice,
     readonly precioOrigen: string,
     private _cantEntrega: number = 0,
   ) {
     if (cantPedido < 0) throw new Error('cantPedido no puede ser negativa')
-    if (precio.cents < 0) throw new Error('precio no puede ser negativo')
+    this.precio = precio instanceof UnitPrice ? precio : UnitPrice.fromDecimal(precio.toDecimal())
   }
 
   get cantEntrega(): number {
@@ -25,11 +27,11 @@ export class PedidoItem {
   }
 
   get subtotalPedido(): Money {
-    return new Money(this.precio.cents * this.cantPedido)
+    return this.precio.total(this.cantPedido)
   }
 
   get subtotalEntregado(): Money {
-    return new Money(this.precio.cents * this._cantEntrega)
+    return this.precio.total(this._cantEntrega)
   }
 
   get faltante(): number {
@@ -51,7 +53,7 @@ export class PedidoItem {
     this._cantEntrega = acumulado
   }
 
-  cloneWithPrecio(nuevoPrecio: Money, nuevoOrigen: string): PedidoItem {
+  cloneWithPrecio(nuevoPrecio: Money | UnitPrice, nuevoOrigen: string): PedidoItem {
     return new PedidoItem(this.producto, this.cantPedido, nuevoPrecio, nuevoOrigen, this._cantEntrega)
   }
 

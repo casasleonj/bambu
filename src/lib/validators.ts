@@ -1,3 +1,4 @@
+import { UnitPrice, MAX_UNIT_PRICE } from '@/shared/domain/unit-price'
 import { z } from "zod";
 import { validarPlanPago } from '@/lib/sueldos-fijos'
 import { importeFiadoSchema, metodoFiadoSchema, sumarCobroFiado } from './fiados-cobro'
@@ -56,10 +57,14 @@ export const itemsSinProductosDuplicados = (items: Array<{ producto: string }>, 
   }
 }
 
+export const PrecioUnitarioSchema = z.number().min(0).max(MAX_UNIT_PRICE).refine(value => {
+  try { UnitPrice.fromDecimal(value); return true } catch { return false }
+}, { message: 'El precio admite hasta 6 decimales.' })
+
 export const PedidoItemSchema = z.object({
   producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),
   cantidad: z.coerce.number().int().min(0),
-  precioManual: z.number().min(0).optional().refine(
+  precioManual: PrecioUnitarioSchema.optional().refine(
     val => val === undefined || val > 0,
     { message: 'Precio manual debe ser mayor a 0' }
   ),
@@ -79,7 +84,7 @@ export const PedidoCreateSchema = z.object({
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional().default('DOMICILIO'),
   origen: OrigenPedidoSchema.optional().default('PEDIDO'),
   items: z.array(PedidoItemSchema).min(1, 'Agrega al menos un producto').superRefine(itemsSinProductosDuplicados),
-  preciosManuales: z.record(z.string(), z.number().min(0, 'Precio manual no puede ser negativo')).optional(),
+  preciosManuales: z.record(z.string(), PrecioUnitarioSchema).optional(),
   pagos: z.array(
     z.object({
       metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
@@ -351,7 +356,7 @@ export const VentaLibreSchema = z.object({
   // 2026-09-06) — reemplazado por `origen` explícito.
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional(),
   origen: z.enum(['PEDIDO', 'VENTA_RAPIDA']).optional(),
-  preciosManuales: z.record(z.string(), z.number()).optional(),
+  preciosManuales: z.record(z.string(), PrecioUnitarioSchema).optional(),
   total: z.number().optional(),
   clienteNuevo: z.object({
     nombre: z.string().min(1).max(100).optional(),
@@ -906,12 +911,12 @@ export const CerrarEmbarqueSchema = z.object({
       cBolsaHieloEnt: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
     }).nullish(),
     preciosReales: z.object({
-      pacaAgua: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
-      pacaHielo: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
-      botellonFab: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
-      botellonDom: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
-      bolsaAgua: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
-      bolsaHielo: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
+      pacaAgua: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
+      pacaHielo: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
+      botellonFab: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
+      botellonDom: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
+      bolsaAgua: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
+      bolsaHielo: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
     }).nullish(),
     pagado: z.enum(['COMPLETO', 'PARCIAL', 'NO_PAGADO']),
     pagos: z.array(z.object({
