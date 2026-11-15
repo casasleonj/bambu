@@ -1,3 +1,4 @@
+import { importeLineaCentavos } from '@/shared/domain/unit-price'
 /**
  * Ventas Domain Service.
  *
@@ -82,7 +83,7 @@ export function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {
         existing.cantidad += item.cantEntrega
         existing.subtotal =
           (Math.round(existing.subtotal * 100) +
-            item.cantEntrega * Math.round(Number(item.precio) * 100)) /
+            importeLineaCentavos(item.precio, item.cantEntrega)) /
           100
       } else {
         map.set(key, {
@@ -91,7 +92,7 @@ export function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {
           precio: Number(item.precio),
           cantidad: item.cantEntrega,
           subtotal:
-            (item.cantEntrega * Math.round(Number(item.precio) * 100)) / 100,
+            (importeLineaCentavos(item.precio, item.cantEntrega)) / 100,
         })
       }
     }

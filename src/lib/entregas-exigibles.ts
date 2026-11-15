@@ -1,3 +1,4 @@
+import { importeLineaCentavos } from '@/shared/domain/unit-price'
 // #656 (fase fiado por entrega parcial). Lógica pura: sin Prisma, sin efectos.
 // Regla: el saldo canónico es Pedido.saldo (= total − totalPagado). Las entregas exigibles solo REPARTEN ese saldo.
 // Invariantes (se validan en servidor antes de confirmar cualquier cambio):
@@ -118,12 +119,12 @@ export function calcularExigibleVigente(p: PedidoExigible): number {
       cantidades.set(l.producto, (cantidades.get(l.producto) ?? 0) + l.cantidad)
     }
   }
-  const valorActual = p.items.reduce((sum, i) => sum + Math.max(0, i.cantEntrega) * cent(Number(i.precio)), 0)
+  const valorActual = p.items.reduce((sum, i) => sum + importeLineaCentavos(i.precio, Math.max(0, i.cantEntrega)), 0)
   const porAsignar = new Map(cantidades)
   const valorRegistrado = p.items.reduce((sum, i) => {
     const cantidad = Math.min(Math.max(0, i.cantEntrega), porAsignar.get(i.producto) ?? 0)
     porAsignar.set(i.producto, Math.max(0, (porAsignar.get(i.producto) ?? 0) - cantidad))
-    return sum + cantidad * cent(Number(i.precio))
+    return sum + importeLineaCentavos(i.precio, cantidad)
   }, historico)
   return Math.max(0, Math.min(saldo, Math.min(valorActual, valorRegistrado) - cent(Number(p.totalPagado)))) / 100
 }

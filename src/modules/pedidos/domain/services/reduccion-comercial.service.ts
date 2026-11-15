@@ -1,3 +1,4 @@
+import { importeLineaCentavos } from '@/shared/domain/unit-price'
 /**
  * Reducción comercial aceptada (#451, ADR-REDUCCION-COMERCIAL-001).
  *
@@ -66,7 +67,7 @@ export function calcularReduccion(input: ReduccionInput): ReduccionResultado {
   if (cantPedidoNueva + input.unidadesOtrasLineas <= 0) {
     throw new Error('REDUCCION_TOTAL: el pedido se quedaría sin unidades. Para eso se cancela o se anula el pedido.')
   }
-  const montoC = aCentavos(input.precio) * cantidadReducida
+  const montoC = importeLineaCentavos(input.precio, cantPedido) - importeLineaCentavos(input.precio, cantPedidoNueva)
   const totalNuevoC = aCentavos(input.total) - montoC
   const pagadoC = aCentavos(input.totalPagado)
   const excedenteC = Math.max(0, pagadoC - totalNuevoC)
@@ -96,14 +97,19 @@ export function topeReduccion(i: {
   unidadesOtrasLineas: number
 }): number {
   const pendiente = Math.max(0, i.cantPedido - i.cantEntrega)
-  const precioC = aCentavos(i.precio)
-  if (pendiente === 0 || !Number.isFinite(precioC) || precioC <= 0) return 0
+  if (pendiente === 0 || !Number.isFinite(i.precio) || i.precio <= 0) return 0
   const holguraC = Math.max(0, aCentavos(i.total) - aCentavos(i.totalPagado))
-  let tope = Math.min(pendiente, Math.floor(holguraC / precioC))
   // El pedido no puede quedar sin unidades.
   const maximoSinVaciar = i.cantPedido + i.unidadesOtrasLineas - 1
-  tope = Math.min(tope, Math.max(0, maximoSinVaciar))
-  return Math.max(0, tope)
+  let bajo = 0, alto = Math.min(pendiente, Math.max(0, maximoSinVaciar))
+  const actualC = importeLineaCentavos(i.precio, i.cantPedido)
+  while (bajo < alto) {
+    const medio = Math.ceil((bajo + alto) / 2)
+    const reduccionC = actualC - importeLineaCentavos(i.precio, i.cantPedido - medio)
+    if (reduccionC <= holguraC) bajo = medio
+    else alto = medio - 1
+  }
+  return bajo
 }
 
 /** Quién puede registrar una reducción (cualquiera que vea pedidos de oficina). */

@@ -22,7 +22,7 @@
  * bajo el lock `PEDIDO:{id}`, con una auditoría con antes/después y el motivo.
  */
 
-import { Money } from '@/shared/domain'
+import { Money, UnitPrice } from '@/shared/domain'
 import { logAudit } from '@/lib/audit'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
 import { CanalVO } from '../../domain/value-objects/Canal'
@@ -188,10 +188,10 @@ export class CorregirCanalPedidoUseCase {
         const porProducto = new Map(resueltos.map((r) => [r.producto as string, r]))
         nuevosItems = pedido.items.map((i) => {
           const r = porProducto.get(i.producto as string)
-          return r ? new PedidoItem(r.producto, r.cantidad, Money.fromDecimal(r.precio), r.origen, 0) : i
+          return r ? new PedidoItem(r.producto, r.cantidad, UnitPrice.fromDecimal(r.precio), r.origen, 0) : i
         })
       }
-      const totalDespues = nuevosItems.reduce((s, i) => s + i.subtotalPedido.toDecimal(), 0)
+      const totalDespues = nuevosItems.reduce((s, i) => s + i.subtotalPedido.cents, 0) / 100
       if (totalDespues < totalPagado) {
         throw new CorreccionCanalError(
           'TOTAL_MENOR_A_PAGADO',
