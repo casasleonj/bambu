@@ -89,6 +89,28 @@ por teclado y recarga. No usa force-click ni elimina elementos del DOM.
 
 ## Liberación pendiente
 
+### Actualización de validación local · 15-11-2026
+
+- Sincronización con `0c97ee43`: candidata `568cb98e`; cambio posterior únicamente
+  de documentación y refuerzo de la comprobación visible de pago en E2E legado.
+- Unitarias después de sincronizar: **516 archivos, 5097 pruebas aprobadas,
+  exit 0**, `npm test -- --maxWorkers=2 --reporter=dot`. Resultado anterior a ese
+  último refuerzo de E2E; no se atribuye a un SHA posterior sin CI.
+- Segundo build de producción, Hub OFF: **exit 0**.
+- Suite legado final: **10/10 aprobadas, exit 0**, los specs
+  `avisos-pedidos-783.spec.ts` y `precio-decimal-795.spec.ts`, escritorio/móvil.
+- Antes de esa última pasada, Venta rápida móvil tuvo una discrepancia aislada:
+  total 138000 y totalPagado 0 después de pulsar Pagar completo sin comprobar su
+  efecto en pantalla. Tres repeticiones de la candidata y ocho de main pasaron.
+  Otro intento de main agotó la espera de guardado, **firma distinta** que no
+  demuestra la misma discrepancia. No se identificó causa raíz ni afectación
+  productiva; no se declara corregida por #783. Se añadió la aserción del importe
+  «Pagado» visible antes del guardado, conservando las aserciones de DB.
+- Observación y límites registrados en #795, comentario
+  <https://github.com/casasleonj/bambu/issues/795#issuecomment-6888217241>.
+- Preview verificado en READY con login público de la app. No se verificó una
+  base aislada allí: solo consulta; escrituras de prueba exclusivamente locales.
+
 Validación final del árbol, comparación contra main, CI/review, registro
 `.qa/pr-<N>.md`, enlace real de preview con restricciones de datos claras y gates
 de merge aplicables. Una maqueta o un resultado local no acredita despliegue.

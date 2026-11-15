@@ -33,7 +33,12 @@ export async function comprobarPrecioDecimal(page: Page, flujo: 'pedido' | 'rapi
     if (repartidorId) await page.getByTestId('venta-ruta-repartidor').selectOption(repartidorId)
     if (flujo !== 'pedido') {
       if (workspace) await page.getByTestId('dinero-pagar-completo-EFECTIVO').click()
-      else await page.getByRole('button', {name:'Pagar completo',exact:true}).click()
+      else {
+        await page.getByRole('button', {name:'Pagar completo',exact:true}).click()
+        // Verificar el efecto visible del clic antes de guardar: la intención
+        // de pagar no demuestra que el formulario ya tenga un pago aplicado.
+        await expect(page.getByText('Pagado:', { exact: true }).locator('..')).toContainText('$138.000,00')
+      }
     }
     const commit = page.getByTestId(workspace ? 'workspace-commit' : 'submit-pedido')
     await expect(commit).toBeEnabled({timeout:15000})
