@@ -9,7 +9,7 @@
  * debe filtrar por rol, estado, fecha y demás reglas ANTES de puntuar.
  */
 import { normalizarTexto } from './cliente-search'
-import { extraerDigitos } from './telefono'
+import { extraerDigitos, INDICATIVO_COLOMBIA, MIN_DIGITOS_TELEFONO } from './telefono'
 
 export type TipoCoincidencia = 'identificador' | 'exacta' | 'prefijo' | 'parcial' | 'aproximada'
 
@@ -110,16 +110,21 @@ export function evaluarBusqueda(
       return { puntuacion: 51000, tipo: 'identificador' }
   }
 
-  // El teléfono se compara únicamente por sus dígitos, incluyendo variantes +57.
+  // El teléfono se compara únicamente por sus dígitos.
+  //
+  // El error era comparar `('57'+real).includes(digitos)`: el indicativo es
+  // prefijo de TODOS los números en formato internacional, así que la consulta
+  // `57` devolvía la agenda entera. El indicativo solo vale para igualdad
+  // exacta; el fragmento se busca sobre los dígitos reales, sin añadirlo.
   if (/^[+()\d\s.-]+$/.test(q) && /\d/.test(q)) {
     const digitos = extraerDigitos(q)
     if (digitos.length >= 2) {
       for (const telefono of registro.telefonos ?? []) {
         const real = extraerDigitos(telefono)
         if (!real) continue
-        if (real === digitos || ('57' + real) === digitos)
+        if (real === digitos || INDICATIVO_COLOMBIA + real === digitos)
           return { puntuacion: 53000, tipo: 'identificador' }
-        if (real.includes(digitos) || ('57' + real).includes(digitos))
+        if (real.includes(digitos))
           return { puntuacion: 50000, tipo: 'identificador' }
       }
     }
