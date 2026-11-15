@@ -1,0 +1,35 @@
+Fecha de consulta de **todas las URLs: 15-11-2026**. «Verificado» significa documentación oficial leída; los papers se identifican aparte.
+
+1. **Revisión obligatoria: mecanismos verificados**
+
+- **GitHub:** branch protection configura `required_pull_request_reviews.required_approving_review_count`; el autor del PR **no puede aprobarlo**. Esto identifica al creador del PR, no automáticamente a todos los autores del código. [API](https://docs.github.com/en/rest/branches/branch-protection), [restricción del autor](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/approving-a-pull-request-with-required-reviews).
+- Para cambios posteriores existen `dismiss_stale_reviews` y `require_last_push_approval`; también deben controlarse `enforce_admins` y las excepciones `bypass_pull_request_allowances`. Exigir una aprobación sin controlar bypasses deja vías de evasión. [API oficial](https://docs.github.com/en/rest/branches/branch-protection).
+- **GitLab:** `POST /projects/:id/approval_rules` con `approvals_required: 1`; `POST /projects/:id/approvals` con `merge_requests_author_approval: false`. La UI lo llama **Prevent approval by merge request creator** y lo activa por defecto. [API](https://docs.gitlab.com/api/merge_request_approvals/), [configuración](https://docs.gitlab.com/user/project/merge_requests/approvals/settings/).
+- GitLab distingue creador de MR y contribuidores: `merge_requests_disable_committers_approval: true` excluye autores y committers; también permite impedir modificaciones de las reglas por MR. [Configuración oficial](https://docs.gitlab.com/user/project/merge_requests/approvals/settings/).
+- **Gerrit:** `[label "Code-Review"] ignoreSelfApproval = true` permite votar al uploader del último patchset, pero su aprobación no habilita submit; **está deprecado**. No equivale exactamente a excluir al autor Git. [Labels oficiales](https://gerrit-review.googlesource.com/Documentation/config-labels.html).
+- El reemplazo oficial es un submit requirement: `submittableIf = label:Code-Review=MAX,user=non_uploader AND -label:Code-Review=MIN`. [Ejemplo oficial](https://gerrit-review.googlesource.com/Documentation/config-submit-requirements.html#code-review-example).
+- **Chromium:** desde el 24-03-2021 Gerrit impide eludir Code-Review y OWNERS mediante autoaprobación o bypass del presubmit; es enforcement del servidor. Documenta excepciones como Rubber Stamper para ciertos cambios de rama previamente revisados. [Documento oficial](https://chromium.googlesource.com/chromium/src/+/main/docs/code_review_owners.md).
+
+2. **Misma familia: evidencia empírica y límites**
+
+- **Paper, NeurIPS 2024:** *LLM Evaluators Recognize and Favor Their Own Generations* documenta autopreferencia frente al juicio humano; estudia evaluación de texto, no demuestra eficacia de auditorías de software. [Paper](https://proceedings.neurips.cc/paper_files/paper/2024/file/7f1f0218e45f5414c79c0679633e47bc-Paper-Conference.pdf).
+- **Preprint 2024:** *Self-Preference Bias in LLM-as-a-Judge* encuentra preferencia por respuestas de menor perplejidad incluso cuando proceden de otros modelos: el problema excede reconocer la propia autoría. [Estudio](https://arxiv.org/abs/2410.21819).
+- **Preprint 2026, directamente sobre código:** *Self-Preference Bias in Rubric-Based Evaluation…* incluye LiveCodeBench y mide separadamente otros generadores de la misma familia, excluyendo al propio juez; encuentra sobrevaloración de familiares en muchos jueces. [§3 y apéndice D](https://arxiv.org/abs/2604.06996).
+- **Paper, ICML 2025:** *Correlated Errors in Large Language Models* encuentra errores correlacionados incluso entre arquitecturas y proveedores distintos; correlación de errores y autopreferencia son fenómenos diferentes. [Paper](https://proceedings.mlr.press/v267/kim25e.html).
+- **Inferencia:** vuestra exclusión de familia tiene respaldo como precaución, pero no demuestra que una revisión de la misma familia carezca de valor. **SIN FUENTE** para afirmar que cambiar familia o proveedor elimina el sesgo o garantiza independencia en auditorías de PR; los estudios anteriores no establecen esa garantía.
+
+3. **Autoría legible por máquina: precedentes verificados**
+
+- **Git/GitHub:** `Co-authored-by: Nombre <correo>` es una convención reconocida de trailers; `git interpret-trailers --parse` permite extraerlos. Atribuye coautoría, sin campos obligatorios de modelo, familia o fase. [GitHub](https://docs.github.com/en/pull-requests/how-tos/commit-changes/creating-a-commit-with-multiple-authors), [Git](https://git-scm.com/docs/git-interpret-trailers).
+- **Asistente real:** Claude Code documenta trailers `Co-Authored-By` y atribución textual en PR; son configurables y pueden ocultarse. Por tanto, su presencia es una declaración, no una prueba independiente de ejecución. [Referencia oficial](https://code.claude.com/docs/en/settings-reference#attribution).
+- **DCO:** `Signed-off-by` expresa certificación de procedencia y derecho a contribuir; no certifica revisión independiente ni identifica modelos. [DCO 1.1](https://developercertificate.org/), [uso oficial del trailer](https://www.kernel.org/doc/html/latest/process/submitting-patches.html).
+- **OSRF/Open Robotics:** exige declaración en el cuerpo del PR y muestra `Claude:claude-3-opus`; define además el trailer opcional `Assisted-by: AGENT_NAME:MODEL_VERSION [TOOL1] [TOOL2]`. Es un precedente directo para declarar modelo con formato común. [Política oficial vigente](https://github.com/openrobotics/osra-policies-and-procedures/blob/main/OSRF%20Policy%20on%20the%20Use%20of%20Generative%20Tools%20(%E2%80%9CGenerative%20AI%E2%80%9D)%20in%20Contributions.md).
+
+4. **Fallos públicos: límite de lo encontrado**
+
+- **SIN FUENTE:** no encontré un postmortem verificable que establezca conjuntamente «código generado por IA → merge sin revisión efectiva → daño real».
+- **Caso cercano, insuficiente:** Amazon confirma una interrupción de Cost Explorer en diciembre de 2025, atribuye la causa a permisos mal configurados e incorpora revisión por pares para acceso a producción. Su comunicado **no demuestra un PR generado por IA mergeado sin revisión**; no sirve como precedente exacto solicitado. [Comunicado primario, 20-02-2026](https://www.aboutamazon.com/news/aws/aws-service-outage-ai-bot-kiro).
+
+**Inferencia para vuestro gate:** validar la declaración puede hacer cumplir su formato y la incompatibilidad de familias declaradas; no acredita que la revisión haya ocurrido ni que la identidad declarada sea cierta. Esa limitación se desprende del carácter configurable de la [atribución](https://code.claude.com/docs/en/settings-reference#attribution).
+
+Estado: investigación, sin implementación ni pruebas de producto. Consulta CLI ejecutada con `gpt-6.1-sol`, proveedor `openai`, sandbox `read-only`; SHA local consultado: `b0c8e9697e642e6c99498d0e13f92eb8c67c1e38`.
