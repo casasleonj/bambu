@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { buscarDifuso } from '@/lib/busqueda-fuzzy'
 import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import { getEstadoFiados, resolverLimiteFiados } from '@/lib/pedido-utils'
 import { generateUUID } from '@/lib/uuid'
@@ -69,13 +70,19 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
     }
     return [...grouped.values()]
   }, [pedidos, periodo])
-  const filtrados = rows.filter(row => {
-    const nombre = [row.nombreCli, row.apellidoCli, row.nombreNegocioCli, row.telefonoCli].filter(Boolean).join(' ').toLocaleLowerCase('es')
+  // Primero aplicar ámbito financiero y filtros; después ordenar por coincidencia.
+  // Los importes se calculan sobre los mismos deudores visibles, sin modificar deuda.
+  const elegibles = rows.filter(row => {
     const edad = diasFiadoDesde(row.antigua)
-    return (!clienteSolicitado || row.clienteId === clienteSolicitado) && nombre.includes(search.trim().toLocaleLowerCase('es'))
+    return (!clienteSolicitado || row.clienteId === clienteSolicitado)
       && (!min || row.deuda >= Number(min)) && (!max || row.deuda <= Number(max))
       && (dias === 'todos' || dias === '0-7' && edad <= 7 || dias === '8-30' && edad > 7 && edad <= 30 || dias === '30+' && edad > 30)
   })
+  const filtrados = buscarDifuso(elegibles, search, (row) => ({
+    textos: [row.nombreCli, row.apellidoCli, row.nombreNegocioCli],
+    pesosTexto: [3, 3, 2],
+    telefonos: [row.telefonoCli],
+  }), (row) => row.clienteId)
   const hayFiltros = periodo !== 'todos' || Boolean(search || min || max || clienteSolicitado) || dias !== 'todos'
   const limpiar = () => params.set({ fiadosPeriodo: undefined, fiadosBuscar: undefined, fiadosMin: undefined,
     fiadosMax: undefined, fiadosDias: undefined, fiadosCliente: undefined, clienteId: undefined }, { history: 'replace' })
