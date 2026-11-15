@@ -1,0 +1,65 @@
+{
+ "medido_en": "2026-11-15",
+ "agente": "codex",
+ "modelo": "codex-cli 0.169.0",
+ "sandbox": "danger-full-access",
+ "estado": "REQUIERE_REVISION_HUMANA_DE_TRAZAS",
+ "positivos_con_activacion": 10,
+ "positivos_total": 19,
+ "negativos_correctos": 2,
+ "negativos_total": 2,
+ "sin_activacion": [
+  "GATE-704",
+  "GATE-DUPLICADO",
+  "GATE-MERGE",
+  "GATE-UI",
+  "INV-ANY",
+  "INV-INVESTIGA",
+  "INV-OFFLINE",
+  "INV-PRIV",
+  "JL-XMOD"
+ ],
+ "casos": {
+  "GATE-704": [],
+  "GATE-DUPLICADO": [],
+  "GATE-MERGE": [],
+  "GATE-PRIVACIDAD": [
+   "hallazgo"
+  ],
+  "GATE-UI": [],
+  "HALLAZGO-AUTO": [
+   "hallazgo"
+  ],
+  "HALLAZGO-EXPLICITA": [
+   "hallazgo"
+  ],
+  "INV-ANY": [],
+  "INV-BACKLOG": [
+   "jl"
+  ],
+  "INV-DINERO": [
+   "jl"
+  ],
+  "INV-INVESTIGA": [],
+  "INV-MERGE": [
+   "jl"
+  ],
+  "INV-MIG": [
+   "jl"
+  ],
+  "INV-OFFLINE": [],
+  "INV-PRIV": [],
+  "INV-UI": [
+   "jl"
+  ],
+  "JL-EXPLICITA": [
+   "jl"
+  ],
+  "JL-LOTE": [
+   "jl"
+  ],
+  "JL-XMOD": [],
+  "NEGATIVO-CONCEPTO": [],
+  "NEGATIVO-VOCABULARIO": []
+ }
+}

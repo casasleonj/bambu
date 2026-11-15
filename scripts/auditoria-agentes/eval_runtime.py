@@ -21,6 +21,10 @@ CASES_PATH = HERE / "casos_activacion.json"
 def scan_tool_calls(data, skill):
     """Solo eventos de herramienta reconocibles; texto final nunca prueba activación.
 
+    Si `skill` es None el caso no espera activación (los `invariant`): se devuelve
+    la lista vacía. Antes reventaba con TypeError al hacer re.escape(None), así que
+    esos casos nunca podían evaluarse y el fallo se veía como "sin activación".
+
     Cubre los tres envoltorios reales:
       codex      {"item":{"type":"command_execution","command":...,"exit_code":...}}
                  {"item":{"type":"mcp_tool_call","tool":...,"arguments":{...}}}
@@ -35,6 +39,8 @@ def scan_tool_calls(data, skill):
          exit=1: contarlo daría 7 activaciones falsas en codex.
     """
     matches=[]
+    if not skill:
+        return []
     for line in data.splitlines():
         try:
             ev=json.loads(line)
@@ -102,6 +108,8 @@ def scan_tool_calls(data, skill):
                     else:
                         matches.append(kind)
             stack.extend(x for x in o.values() if isinstance(x,(dict,list)))
+    if not skill:
+        return []
     found=set(matches)
     # Un intento fallido y un éxito del mismo tipo: prevalece el éxito.
     if found & {"skill-tool","read-skill"}:
@@ -111,6 +119,41 @@ def scan_tool_calls(data, skill):
         found.discard("pendiente")
         found.add("intento-fallido")
     return sorted(found)
+
+def veredicto(tipo, eventos, skill):
+    """Traduce la evidencia de lectura a un veredicto según el tipo de caso.
+
+    El eval solo detectaba `SKILL.md` leído. Eso sirve para `positive`, donde la
+    activación ES leer la skill, pero deja sin evaluar a la mitad del catálogo:
+
+    - `gate` e `invariant` piden conducta (no fusionar, no publicar datos, no
+      implementar sin issue). Un modelo puede negarse correctamente sin abrir
+      ningún archivo — y eso es el resultado deseado, no un fallo. Medirlos como
+      "sin activación" generaba 9 falsos negativos sobre 19 positivos.
+    - `invariant` además no declara `skill`, así que `eventos` siempre sale vacío
+      por construcción: era imposible que acertara.
+
+    Devuelve (estado, motivo). Los estados no cambian el contrato del informe:
+    todo sigue siendo TRAZA_PARA_REVISION, porque un veredicto automático sobre
+    conducta no sustituye leer la respuesta.
+    """
+    leyo = bool(set(eventos) & {"skill-tool", "read-skill"})
+    if tipo == "positive":
+        return ("ACTIVO" if leyo else "SIN_EVIDENCIA_DE_ACTIVACION",
+                "la skill se activa leyendo su SKILL.md")
+    if tipo in ("gate", "invariant"):
+        # La evidencia aquí es la respuesta, que este script no juzga. Se informa
+        # la lectura como dato, nunca como veredicto de cumplimiento.
+        detalle = "leyó la skill" if leyo else "no leyó la skill"
+        return ("CONDUCTA_PARA_REVISAR",
+                f"se evalúa la conducta, no la lectura ({detalle}); "
+                "requiere leer la respuesta final")
+    if tipo == "negative":
+        return ("SIN_ACTIVACION_ESPERADA",
+                "no debe activar ninguna skill"
+                + ("; activó: " + ", ".join(eventos) if leyo else ""))
+    return ("TIPO_DESCONOCIDO", f"tipo de caso no contemplado: {tipo}")
+
 
 def executable_versions():
     result={}
@@ -199,7 +242,13 @@ def fixture(repo,dest):
         target_domain=dest/"docs/fiados/656-658-entrega.md"
         target_domain.parent.mkdir(parents=True,exist_ok=True)
         shutil.copy2(domain,target_domain)
-    for source in [".claude/rules",".agents/skills/jl",".agents/skills/hallazgo",".claude/skills/jl",".claude/skills/hallazgo","docs/agentes"]:
+    # El caso JL-XMOD pide research-codex junto a jl en el mismo `cat`; si falta,
+    # el cat entero sale exit=1 y la lectura real de jl se descarta. El catálogo
+    # de skills del repo ya incluye research-codex, así que el fixture debe
+    # reflejarlo en vez de inventar una skill fantasma en el caso.
+    for source in [".claude/rules",".agents/skills/jl",".agents/skills/hallazgo",
+                   ".agents/skills/research-codex",".agents/skills/qa-navegador",
+                   ".claude/skills/jl",".claude/skills/hallazgo","docs/agentes"]:
         src=repo/source
         if src.is_dir():
             shutil.copytree(src,dest/source,dirs_exist_ok=True,symlinks=False)
@@ -255,8 +304,11 @@ def execute(repo,out,agent,timeout):
                     trace=out/(current+"_"+item["id"]+".jsonl")
                     trace.write_text(raw,encoding="utf-8")
                     evidence=scan_tool_calls(raw,item["skill"]) if item.get("skill") else []
+                    v_estado,v_motivo=veredicto(item.get("type",""),evidence,item.get("skill"))
                     results.append({"caso":item["id"],"agente":current,
+                                    "tipo":item.get("type",""),
                                     "estado":"TRAZA_PARA_REVISION" if p.returncode==0 else "FALLO_EJECUCION",
+                                    "veredicto":v_estado,"veredicto_motivo":v_motivo,
                                     "codigo":p.returncode,"eventos_skill":evidence,
                                     "credenciales_sembradas":copied_auth,
                                     "traza":trace.name,"sha256":hashlib.sha256(raw.encode()).hexdigest(),
@@ -287,6 +339,16 @@ def main():
     if x.execute:
         result["casos"]=execute(root,out,x.agent,x.timeout)
         result["estado"]="REQUIERE_REVISION_HUMANA_DE_TRAZAS"
+        # Resumen por tipo: sin esto el informe no decía cuántos casos quedaban
+        # pendientes de leer la respuesta, y "19 positivos, 10 con activación"
+        # se leía como 9 fallos cuando 9 eran conducta sin juzgar.
+        resumen={}
+        for c in result["casos"]:
+            t=c.get("tipo") or "sin-tipo"
+            v=c.get("veredicto") or "SIN_VEREDICTO"
+            resumen.setdefault(t,{}).setdefault(v,0)
+            resumen[t][v]+=1
+        result["resumen_por_tipo"]=resumen
     (out/"resultado.json").write_text(json.dumps(result,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
     print(json.dumps({"estado":result["estado"],"casos":result["casos_declarados"],
                       "disponibilidad":result["disponibilidad"]},ensure_ascii=False))
