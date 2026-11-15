@@ -9,7 +9,7 @@
  * debe filtrar por rol, estado, fecha y demás reglas ANTES de puntuar.
  */
 import { normalizarTexto } from './cliente-search'
-import { extraerDigitos, INDICATIVO_COLOMBIA, MIN_DIGITOS_TELEFONO } from './telefono'
+import { extraerDigitos, INDICATIVO_COLOMBIA } from './telefono'
 
 export type TipoCoincidencia = 'identificador' | 'exacta' | 'prefijo' | 'parcial' | 'aproximada'
 
