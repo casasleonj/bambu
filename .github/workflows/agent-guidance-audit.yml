@@ -50,6 +50,22 @@ jobs:
         run: python scripts/auditoria-agentes/check_delta_main.py --repo .
       - name: Verify historical context residual positions
         run: python scripts/auditoria-agentes/check_contexto_residual.py --repo .
+      - name: Verify agent chain declared in the PR body
+        # El reparto de modelos se cumplía a mano y por eso se incumplía: en #809
+        # el mismo agente investigó, implementó, auditó e hizo el QA de navegador.
+        # Este paso lo hace comprobable. Se ejecuta en modo aviso mientras los PRs
+        # abiertos anteriores no declaren el bloque; endurecerlo a bloqueante es el
+        # siguiente paso y requiere rellenarlos primero (ver
+        # docs/agentes/plantilla-cadena-agentes.md).
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s' "$PR_BODY" > /tmp/pr-body.md
+          if ! python scripts/auditoria-agentes/check_cadena_agentes.py --cuerpo /tmp/pr-body.md; then
+            echo "::warning::La cadena de agentes no está declarada o no es coherente. Ver docs/agentes/plantilla-cadena-agentes.md"
+          fi
       - name: Emit conservative audit report
         shell: bash
         run: |

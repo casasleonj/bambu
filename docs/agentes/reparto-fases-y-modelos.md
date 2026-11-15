@@ -1,6 +1,8 @@
 # Reparto de modelos y fases · Agentes (Agua Bambú)
 
-**Estado:** propuesta operativa, no normativa de producto.
+**Estado:** normativo desde #778/#809. El incumplimiento se detecta y se reporta en CI
+(`scripts/auditoria-agentes/check_cadena_agentes.py`); ver la plantilla en
+`docs/agentes/plantilla-cadena-agentes.md`.
 **Alcance:** qué CLI/modelo conviene usar en cada fase y **cómo se pasan la pelota los agentes**.
 **No sustituye** `AGENTS.md`, `docs/agentes/protocolo-investigacion.md` ni `flujo-entrega.md`.
 Si hay conflicto, manda `AGENTS.md`.
