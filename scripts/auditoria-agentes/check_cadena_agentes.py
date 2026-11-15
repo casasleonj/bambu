@@ -9,7 +9,13 @@ Reglas que aplica (todas de §2 y §3 del reparto):
 
 1. **Toda fase declara autoría.** Sin `quién + modelo + artefacto` no hay fase.
 2. **El revisor nunca es el implementador.** Compara el campo `agente` y la
-   `familia` del modelo. Misma familia también invalida la auditoría.
+   `familia` del modelo. Misma familia también invalida la auditoría. **Límite
+   honesto:** la evidencia publicada respalda esto como precaución, no como
+   garantía. *Self-Preference Bias in LLM-as-a-Judge* (arXiv:2410.21819) encuentra
+   preferencia por respuestas de menor perplejidad incluso cuando vienen de otros
+   modelos, y *Correlated Errors in LLMs* (ICML 2025) halla errores correlacionados
+   entre proveedores distintos. Cambiar de familia reduce un sesgo conocido; no
+   acredita independencia real.
 3. **El QA de navegación lo hace un agente distinto del implementador**, y
    declara la herramienta real (`agent-browser`/`playwright`), no una promesa.
 4. **La investigación es research, no lectura de código.** Una fase de
@@ -107,7 +113,15 @@ def familia_de(modelo):
 
 
 def evaluar(texto_pr):
-    """Devuelve (errores, avisos, fases)."""
+    """Devuelve (errores, avisos, fases).
+
+    Alcance real, para no vender más de lo que hace: esto valida **coherencia del
+    formato y de las identidades declaradas**, no que la revisión haya ocurrido ni
+    que la identidad sea cierta. La atribución de un asistente es configurable y
+    puede omitirse, así que cualquier bloque aquí es una declaración de quien
+    escribe el PR. La evidencia externa (auditorías, capturas) es lo que sostiene
+    la afirmación; el bloque sólo la hace auditable.
+    """
     errores, avisos = [], []
     fases = parsear_bloque(texto_pr)
     if fases is None:

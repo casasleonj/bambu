@@ -61,11 +61,19 @@ jobs:
         shell: bash
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
+          # Etiqueta de escape: un PR que de verdad no pasa por la cadena (p. ej.
+          # mantenimiento automático) puede eximirse declarándolo. Sin esta salida
+          # el gate se volvería ruido y alguien lo desactivaría entero.
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
-          printf '%s' "$PR_BODY" > /tmp/pr-body.md
-          if ! python scripts/auditoria-agentes/check_cadena_agentes.py --cuerpo /tmp/pr-body.md; then
-            echo "::warning::La cadena de agentes no está declarada o no es coherente. Ver docs/agentes/plantilla-cadena-agentes.md"
+          if printf '%s' "$PR_LABELS" | grep -q 'sin-cadena-agentes'; then
+            echo "PR eximido con la etiqueta 'sin-cadena-agentes'."
+            exit 0
           fi
+          printf '%s' "$PR_BODY" > /tmp/pr-body.md
+          # Bloqueante: el reparto se cumplía a mano y por eso se incumplió en #809.
+          # Un aviso que nadie mira es lo mismo que no tener gate.
+          python scripts/auditoria-agentes/check_cadena_agentes.py --cuerpo /tmp/pr-body.md
       - name: Emit conservative audit report
         shell: bash
         run: |
