@@ -1,3 +1,4 @@
+import { importeLinea } from '@/shared/domain/unit-price'
 import { generateUUID } from '@/lib/uuid'
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
@@ -197,7 +198,7 @@ export async function POST(request: NextRequest) {
         precioMap[pr.codigo] = pr.precio
       }
 
-      const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
+      const total = preciosResueltos.reduce((sum, pr) => sum + Math.round(pr.subtotal * 100), 0) / 100
 
       // FIX venta-libre-sobrepago: `totalPagado` (arriba) es la suma cruda de
       // los pagos capturados y puede superar `total` (el cliente paga con un
@@ -338,7 +339,7 @@ export async function POST(request: NextRequest) {
               cantPedido: i.cantidad,
               cantEntrega: entregarAhora ? i.cantidad : 0,
               precio: precioMap[i.codigo] || 0,
-              subtotal: (precioMap[i.codigo] || 0) * i.cantidad,
+              subtotal: importeLinea(precioMap[i.codigo] || 0, i.cantidad),
             })),
           },
         },

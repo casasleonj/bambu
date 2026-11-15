@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { formatCurrency } from '@/lib/utils'
+import { formatImportePedido as formatCurrency, formatPrecioUnitario, importeLineaEditable } from '@/lib/precio-formato'
+import { MAX_UNIT_PRICE } from '@/shared/domain/unit-price'
 import { generateUUID } from '@/lib/uuid'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { esPrecioRaro } from '@/modules/pedidos/domain/services/correccion-precio.service'
@@ -91,8 +92,10 @@ export function CorreccionPrecioPanel({ pedidoId, lineas, userRole, corregible }
   const linea = useMemo(() => lineas.find((l) => l.producto === producto), [lineas, producto])
   const precioNum = Number(precio)
   const raro = precioNum > 0 && esPrecioRaro(producto, precioNum)
-  const nuevoTotalDelta = linea && precioNum > 0 ? (precioNum - linea.precio) * linea.cantPedido : 0
-  const valido = Boolean(linea) && precioNum > 0 && precioNum !== linea?.precio && motivo.trim().length >= 3
+  const nuevoTotalDelta = linea && precioNum > 0
+    ? (Math.round(importeLineaEditable(precioNum, linea.cantPedido) * 100) - Math.round(importeLineaEditable(linea.precio, linea.cantPedido) * 100)) / 100
+    : 0
+  const valido = Boolean(linea) && Number.isFinite(nuevoTotalDelta) && precioNum > 0 && precioNum !== linea?.precio && motivo.trim().length >= 3
 
   const recargar = useCallback(() => {
     setCargando(true)
@@ -186,7 +189,7 @@ export function CorreccionPrecioPanel({ pedidoId, lineas, userRole, corregible }
               >
                 {lineas.map((l) => (
                   <option key={l.producto} value={l.producto}>
-                    {getProductoIconConfig(l.producto).label} ({formatCurrency(l.precio)} c/u)
+                    {getProductoIconConfig(l.producto).label} ({formatPrecioUnitario(l.precio)} c/u)
                   </option>
                 ))}
               </select>
@@ -197,6 +200,8 @@ export function CorreccionPrecioPanel({ pedidoId, lineas, userRole, corregible }
                 type="number"
                 inputMode="decimal"
                 min={1}
+                step="0.000001"
+                max={MAX_UNIT_PRICE}
                 value={precio}
                 onChange={(e) => setPrecio(e.target.value)}
                 className="mt-1 h-11 w-full rounded-lg border px-2 text-sm"
@@ -206,7 +211,7 @@ export function CorreccionPrecioPanel({ pedidoId, lineas, userRole, corregible }
           </div>
           {linea && precioNum > 0 && precioNum !== linea.precio && (
             <p className="text-sm text-gray-700" data-testid="correccion-efecto">
-              El total {nuevoTotalDelta < 0 ? 'baja' : 'sube'} {formatCurrency(Math.abs(nuevoTotalDelta))} ({linea.cantPedido} und).
+              {nuevoTotalDelta === 0 ? 'El total se mantiene' : `El total ${nuevoTotalDelta < 0 ? 'baja' : 'sube'} ${formatCurrency(Math.abs(nuevoTotalDelta))}`} ({linea.cantPedido} und).
             </p>
           )}
           {raro && (
@@ -229,7 +234,7 @@ export function CorreccionPrecioPanel({ pedidoId, lineas, userRole, corregible }
             <div className="space-y-2 rounded-lg border-[1.5px] border-amber-400 bg-amber-50 p-3" role="alertdialog" aria-label="Confirmar corrección de precio" data-testid="correccion-confirmar-bloque">
               <p className="text-sm font-semibold text-amber-900">¿Aplicar la corrección?</p>
               <p className="text-sm text-amber-900">
-                {getProductoIconConfig(producto).label}: {formatCurrency(linea.precio)} → {formatCurrency(precioNum)}. El total {nuevoTotalDelta < 0 ? 'baja' : 'sube'} {formatCurrency(Math.abs(nuevoTotalDelta))}.
+                {getProductoIconConfig(producto).label}: {formatPrecioUnitario(linea.precio)} → {formatPrecioUnitario(precioNum)}. {nuevoTotalDelta === 0 ? 'El total se mantiene' : `El total ${nuevoTotalDelta < 0 ? 'baja' : 'sube'} ${formatCurrency(Math.abs(nuevoTotalDelta))}`}.
                 {' '}Esto queda en el historial con tu nombre y no se puede borrar.
               </p>
               <div className="flex gap-2">
@@ -279,7 +284,7 @@ export function CorreccionPrecioPanel({ pedidoId, lineas, userRole, corregible }
             <li key={c.id} className="rounded-lg border p-2 text-sm" data-testid="correccion-item">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium">
-                  {getProductoIconConfig(c.producto).label}: {formatCurrency(c.precioAnterior)} → {formatCurrency(c.precioNuevo)}
+                  {getProductoIconConfig(c.producto).label}: {formatPrecioUnitario(c.precioAnterior)} → {formatPrecioUnitario(c.precioNuevo)}
                 </span>
                 <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${BADGE[c.estado]}`}>{TEXTO[c.estado]}</span>
               </div>

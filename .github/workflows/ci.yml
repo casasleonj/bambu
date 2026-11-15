@@ -111,6 +111,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       e2e_required: ${{ steps.classify.outputs.e2e_required }}
+      skill_declarativa: ${{ steps.classify.outputs.skill_declarativa }}
 
     steps:
       - name: Checkout repository
@@ -118,11 +119,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Classify diff (docs-only vs. requires E2E)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Unit tests of the classifier
+        # El clasificador decide si se corren los 8 shards: sus propias pruebas
+        # no pueden ser opcionales. Si fallan, el job falla y con él el gate.
+        run: node --test scripts/ci/__tests__/clasificar-cambios.node.test.mjs
+
+      - name: Classify diff (declarative vs. requires E2E)
         id: classify
         run: |
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "e2e_required=true" >> "$GITHUB_OUTPUT"
+            echo "skill_declarativa=false" >> "$GITHUB_OUTPUT"
             echo "No es un pull_request (evento: ${{ github.event_name }}) — el E2E completo siempre corre."
             exit 0
           fi
@@ -132,47 +143,20 @@ jobs:
           # Tres puntos (`BASE...HEAD`): solo lo que ESTE PR cambió desde su ancestro común con
           # la base. Con dos puntos (`BASE HEAD`), si `main` avanzó después de ramar, el diff
           # incluye al revés los archivos de código de los PR mergeados entretanto y un PR
-          # solo de documentación corría los 8 turnos de E2E (#547). Si el diff falla (sin
-          # ancestro común), `CHANGED_FILES` queda vacío y se corre el E2E por seguridad.
-          CHANGED_FILES=$(git diff --name-only "$BASE_SHA"..."$HEAD_SHA" 2>/dev/null || true)
-
-          echo "Archivos modificados en este PR (base $BASE_SHA -> head $HEAD_SHA):"
-          echo "$CHANGED_FILES"
-
-          if [ -z "$CHANGED_FILES" ]; then
+          # solo de documentación corría los 8 turnos de E2E (#547).
+          #
+          # `--raw -z` en vez de `--name-only`: el nombre suelto reporta solo el DESTINO de un
+          # rename y no ve modos ni symlinks, así que `git mv src/motor.ts docs/motor.md` se
+          # clasificaba como documentación (#778 §4). `--raw` trae ambos extremos del rename y
+          # los modos; `-z` evita el escapado de rutas con espacios o tildes.
+          if ! git diff --raw -z "$BASE_SHA"..."$HEAD_SHA" > /tmp/cambios.raw 2>/dev/null; then
             echo "e2e_required=true" >> "$GITHUB_OUTPUT"
-            echo "No se pudo calcular el diff (vacío) — el E2E completo corre por seguridad."
+            echo "skill_declarativa=false" >> "$GITHUB_OUTPUT"
+            echo "No se pudo calcular el diff — el E2E completo corre por seguridad (§4)."
             exit 0
           fi
 
-          ALLOWED_PREFIXES=("docs/")
-          ALLOWED_FILES=("AGENTS.md")
-
-          OUTSIDE_ALLOWLIST=""
-          while IFS= read -r file; do
-            [ -z "$file" ] && continue
-            MATCHED="false"
-            for prefix in "${ALLOWED_PREFIXES[@]}"; do
-              case "$file" in
-                "$prefix"*) MATCHED="true" ;;
-              esac
-            done
-            for allowed in "${ALLOWED_FILES[@]}"; do
-              [ "$file" = "$allowed" ] && MATCHED="true"
-            done
-            if [ "$MATCHED" = "false" ]; then
-              OUTSIDE_ALLOWLIST="$OUTSIDE_ALLOWLIST$file"$'\n'
-            fi
-          done <<< "$CHANGED_FILES"
-
-          if [ -n "$OUTSIDE_ALLOWLIST" ]; then
-            echo "e2e_required=true" >> "$GITHUB_OUTPUT"
-            echo "Archivos fuera del allowlist docs-only (fuerzan E2E completo):"
-            echo "$OUTSIDE_ALLOWLIST"
-          else
-            echo "e2e_required=false" >> "$GITHUB_OUTPUT"
-            echo "Todo el diff cae dentro del allowlist docs-only (docs/**, AGENTS.md) — E2E completo omitido."
-          fi
+          node scripts/ci/clasificar-cambios.mjs < /tmp/cambios.raw
 
   quality:
     name: Type check + Tests
@@ -577,6 +561,16 @@ jobs:
     name: E2E Hub (V2 ON)
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    # Mismo criterio que el job `e2e` (#778): si el diff es estrictamente
+    # declarativo, el Hub tampoco tiene nada que probar. Sin este `if:` corría
+    # siempre —incluidos PRs solo de documentación— y se comía 40 min de runner
+    # mientras los 8 shards sí se omitían (verificado en PR #727).
+    #
+    # No es un check requerido hoy; si algún día lo fuera, un job omitido por
+    # `if:` se reporta como Success y no bloquea el merge. Lo que NO debe
+    # marcarse como required son los legs del matrix `E2E (n/8)`.
+    needs: detect-changes
+    if: github.event_name != 'schedule' && needs.detect-changes.outputs.e2e_required == 'true'
 
     env:
       DATABASE_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
@@ -779,16 +773,27 @@ jobs:
               echo "OK   $1: success"
             fi
           }
+          # Un job omitido por `if:` cuenta como éxito SOLO cuando su propio
+          # criterio lo justifica. Verificar la pareja (resultado, condición) es
+          # lo que impide que un job saltado por un motivo inesperado —o que
+          # nunca se generó— pase como verde: `skipped` sin la condición
+          # correspondiente es un fallo explícito.
+          omitido_legitimo() { # nombre resultado condicion-esperada-descripcion
+            if [ "$2" = "skipped" ] && [ "$3" = "false" ]; then
+              echo "OK   $1: omitido ($4)"
+            else
+              echo "::error::$1: '$2' con e2e_required='$3' no es interpretable como éxito"
+              fail=1
+            fi
+          }
           check "detect-changes" "$R_DETECT"
           check "quality (tsc + unit)" "$R_QUALITY"
-          check "e2e-hub (V2 ON)" "$R_HUB"
           if [ "$E2E_REQUIRED" = "true" ]; then
+            check "e2e-hub (V2 ON)" "$R_HUB"
             check "e2e (8 turnos)" "$R_E2E"
-          elif [ "$E2E_REQUIRED" = "false" ] && [ "$R_E2E" = "skipped" ]; then
-            echo "OK   e2e: omitido (el diff es solo documentación, allowlist de detect-changes)"
           else
-            echo "::error::e2e: resultado '$R_E2E' con e2e_required='$E2E_REQUIRED' no es interpretable como éxito"
-            fail=1
+            omitido_legitimo "e2e-hub (V2 ON)" "$R_HUB" "$E2E_REQUIRED" "el diff es declarativo (docs/** o skills Markdown)"
+            omitido_legitimo "e2e (8 turnos)" "$R_E2E" "$E2E_REQUIRED" "el diff es declarativo (docs/** o skills Markdown)"
           fi
           echo "INFO lint (informativo): $R_LINT"
           echo "INFO integration (informativo): $R_INTEGRATION"

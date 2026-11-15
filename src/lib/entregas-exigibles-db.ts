@@ -1,8 +1,14 @@
 import { exigiblesActivos } from './exigibles-flag'
+import { importeEntregaCentavos } from '@/shared/domain/unit-price'
 // Hechos inmutables; el pago se proyecta al leer, nunca se sincroniza en una segunda contabilidad.
 import type { Prisma } from '@prisma/client'
 import { calcularExigibleVigente } from './entregas-exigibles'
-export interface LineaEntregada { producto: string; cantidad: number; precioCents: number }
+export interface LineaEntregada {
+  producto: string; cantidad: number; precioCents: number
+  /** #795: precio sin recortar y acumulado anterior para repartir el redondeo. */
+  precioUnitario?: number
+  cantidadPrevia?: number
+}
 export async function registrarEntregaExigible(tx: Prisma.TransactionClient, input: {
   pedidoId: string; entregadoAt: Date; lineas: LineaEntregada[]; eventoId?: string; huella?: string
   pedido: { total: number; totalPagado: number; saldo: number }
@@ -12,7 +18,12 @@ export async function registrarEntregaExigible(tx: Prisma.TransactionClient, inp
   if (!lineas.length && !input.eventoId) return
   if (lineas.some(l => !Number.isSafeInteger(l.cantidad) || !Number.isSafeInteger(l.precioCents) || l.precioCents < 0))
     throw new Error('ENTREGA_EXIGIBLE_INVALIDA')
-  const valorCents = lineas.reduce((sum, l) => sum + l.cantidad * l.precioCents, 0)
+  const valorCents = lineas.reduce((sum, l) => {
+    const previa = l.cantidadPrevia ?? 0
+    if (!Number.isSafeInteger(previa) || previa < 0) throw new Error('ENTREGA_EXIGIBLE_INVALIDA')
+    if (l.precioUnitario === undefined) return sum + l.cantidad * l.precioCents
+    return sum + importeEntregaCentavos(l.precioUnitario, l.cantidad, previa)
+  }, 0)
   await tx.entregaExigible.create({ data: { pedidoId: input.pedidoId, entregadoAt: input.entregadoAt,
     valorEntregado: valorCents / 100, lineas: lineas.map(l => ({ ...l })),
     eventoId: input.eventoId, huella: input.huella } })

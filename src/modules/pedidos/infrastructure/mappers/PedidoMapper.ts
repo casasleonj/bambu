@@ -5,7 +5,7 @@
  * Handles Decimal → Money conversion and legacy field synchronization.
  */
 
-import { Money } from '@/shared/domain'
+import { Money, UnitPrice } from '@/shared/domain'
 import type { ProductCode } from '@/shared/domain'
 import { Pedido } from '../../domain/entities/Pedido'
 import { PedidoItem } from '../../domain/entities/PedidoItem'
@@ -92,7 +92,7 @@ export class PedidoMapper {
       new PedidoItem(
         i.producto as ProductCode,
         i.cantPedido,
-        Money.fromDecimal(toNumber(i.precio)),
+        UnitPrice.fromDecimal(toNumber(i.precio)),
         i.precioOrigen || 'base',
         i.cantEntrega,
       ),

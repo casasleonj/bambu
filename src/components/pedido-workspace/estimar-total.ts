@@ -1,3 +1,4 @@
+import { importeLineaEditable } from '@/lib/precio-formato'
 import type { Tier } from '@/components/pedido-form-unified/types'
 import type { DraftItem } from './types'
 
@@ -37,7 +38,9 @@ export function estimarTotalOffline(
       // El precio por volumen es final: ya incluye el domicilio (#493).
       unitario = tramo.precio
     }
-    total += unitario * item.cantidad
+    const linea = importeLineaEditable(unitario, item.cantidad)
+    if (!Number.isFinite(linea)) return null
+    total += Math.round(linea * 100)
   }
-  return total
+  return total / 100
 }

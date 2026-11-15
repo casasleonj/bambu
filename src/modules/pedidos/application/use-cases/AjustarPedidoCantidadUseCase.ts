@@ -1,3 +1,4 @@
+import { importeLinea } from '@/shared/domain/unit-price'
 /**
  * AjustarPedidoCantidadUseCase (FASE FINAL, ADR-OBLIGACION-001 / §6).
  *
@@ -114,9 +115,9 @@ export class AjustarPedidoCantidadUseCase {
       const cantidadOriginal = item.cantPedido
       const delta = input.cantidadNueva - cantidadOriginal
       const precioHistorico = Number(item.precio)
-      const nuevoSubtotalItem = input.cantidadNueva * precioHistorico
-      const deltaSubtotal = nuevoSubtotalItem - Number(item.subtotal)
-      const nuevoTotalPedido = Number(pedido.total) + deltaSubtotal
+      const nuevoSubtotalItem = importeLinea(precioHistorico, input.cantidadNueva)
+      const deltaSubtotal = (Math.round(nuevoSubtotalItem * 100) - Math.round(Number(item.subtotal) * 100)) / 100
+      const nuevoTotalPedido = (Math.round(Number(pedido.total) * 100) + Math.round(deltaSubtotal * 100)) / 100
       const totalPagado = Number(pedido.totalPagado)
 
       // Guard adicional (protege chk_pedido_montopagado_le_total): una

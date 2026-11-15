@@ -65,9 +65,9 @@ test.describe('Precios Especiales en Pedidos', () => {
 
       // Check that the price shown is the special price (2000), not the default (6500)
       const summaryText = await page.locator('text=Resumen').locator('..').textContent()
-      expect(summaryText).toContain('$2,000')
+      expect(summaryText).toContain('$2.000,00')
       const totalText = await page.locator('text=Total:').locator('..').textContent()
-      expect(totalText).toContain('$2,000')
+      expect(totalText).toContain('$2.000,00')
     } else {
       test.skip()
     }
@@ -136,7 +136,7 @@ test.describe('Precios Especiales en Pedidos', () => {
 
       // Check that the price shown is the special DOMICILIO price (2500), not default (6500)
       const summaryText = await page.locator('text=Resumen').locator('..').textContent()
-      expect(summaryText).toContain('$2,500')
+      expect(summaryText).toContain('$2.500,00')
     } else {
       test.skip()
     }
@@ -195,7 +195,7 @@ test.describe('Precios Especiales en Pedidos', () => {
 
       // Verify special price is shown
       let summaryText = await page.locator('text=Resumen').locator('..').textContent()
-      expect(summaryText).toContain('$1,000')
+      expect(summaryText).toContain('$1.000,00')
 
       // 6. Remove the client - click the X button in the client chip
       const removeBtn = page.locator('button.text-gray-400.hover\\:text-red-500').first()
@@ -211,7 +211,7 @@ test.describe('Precios Especiales en Pedidos', () => {
       await page.waitForTimeout(500)
 
       summaryText = await page.locator('text=Resumen').locator('..').textContent()
-      expect(summaryText).toContain('$5,600')
+      expect(summaryText).toContain('$5.600,00')
     } else {
       test.skip()
     }
