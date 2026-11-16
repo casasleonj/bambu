@@ -22,6 +22,9 @@ const PagarSueldoSchema = z.object({
   metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA']).default('EFECTIVO'),
   /** Sin indicarlo se usa lo configurado en el trabajador. */
   fueraDeCaja: z.boolean().optional(),
+  /** #673: día en que realmente se pagó el sueldo (opcional); lo valida y aplica el mismo código de Nómina. */
+  fechaPago: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha del pago debe ser AAAA-MM-DD').optional(),
+  motivoFecha: z.string().max(500).optional(),
 })
 
 const json = (url: string, method: string, body: unknown) =>
@@ -57,11 +60,14 @@ export async function POST(request: NextRequest) {
     }
 
     const pagada = await accionNomina(
-      json(`/api/nomina/${nominaId}`, 'PUT', { action: 'PAGAR', metodo, fueraDeCaja }),
+      json(`/api/nomina/${nominaId}`, 'PUT', {
+        action: 'PAGAR', metodo, fueraDeCaja,
+        ...(parsed.data.fechaPago ? { fechaPago: parsed.data.fechaPago, motivoFecha: parsed.data.motivoFecha } : {}),
+      }),
       { params: Promise.resolve({ id: nominaId }) },
     )
-    const resultado = await pagada.json().catch(() => null) as { error?: { message?: string } } | null
-    if (!pagada.ok) return apiError(resultado?.error?.message ?? 'No se pudo marcar la nómina como pagada', pagada.status)
+    const resultado = await pagada.json().catch(() => null) as { error?: { message?: string; code?: string } } | null
+    if (!pagada.ok) return apiError(resultado?.error?.message ?? 'No se pudo marcar la nómina como pagada', pagada.status, resultado?.error?.code ? { code: resultado.error.code } : undefined)
     return apiSuccess({ nominaId, fecha, trabajadorId, metodo, fueraDeCaja }, 201)
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error pagando sueldo fijo:')

@@ -326,6 +326,7 @@ model User {
   // F4 (Cumplimiento — reprogramación de remanente)
   obligacionesReprogramadas ObligacionPendienteReprogramacion[]
   pagoFechaCorrecciones PagoFechaCorreccion[] @relation("PagoFechaCorreccionAutor")
+  pagoComisionFechaCorrecciones PagoComisionFechaCorreccion[] @relation("PagoComisionFechaCorreccionAutor")
 }
 
 // ====================
@@ -869,9 +870,37 @@ model PagoComisionRepartidor {
   pagadoPor    User?      @relation("PagoComisionPagador", fields: [pagadoPorId], references: [id], onDelete: SetNull)
   offlineId    String?    @unique
   createdAt    DateTime   @default(now()) @db.Timestamptz()
+  /// #673 — fecha EFECTIVA de caja: cuándo salió el dinero. NULL = igual a `createdAt` (pago normal y todo lo anterior).
+  /// El cierre de caja y V16 leen `COALESCE(pagadoAt, createdAt)`; la nómina sigue por `fecha` (día del trabajo).
+  /// `createdAt` (captura) nunca se reescribe; cada cambio posterior deja una fila en `PagoComisionFechaCorreccion`.
+  pagadoAt     DateTime?  @db.Timestamptz()
+  correcciones PagoComisionFechaCorreccion[]
 
   @@index([trabajadorId, fecha])
   @@index([createdAt])
+  @@index([pagadoAt])
+}
+
+/// #673 — Corrección administrativa de la fecha EFECTIVA de caja de un pago de comisión, solo ADMIN.
+/// Append-only (sin UPDATE ni DELETE): guarda la fecha efectiva anterior y la nueva, quién, cuándo y por qué.
+/// No reabre cierres: un día ya cerrado conserva su cifra y V16 lee estas filas para ver el pago como explicado.
+model PagoComisionFechaCorreccion {
+  id             String                 @id @default(cuid())
+  pagoId         String
+  pago           PagoComisionRepartidor @relation(fields: [pagoId], references: [id], onDelete: Restrict)
+  /// Fecha efectiva antes de corregir (`pagadoAt ?? createdAt`).
+  fechaAnterior  DateTime               @db.Timestamptz()
+  /// Fecha efectiva después de corregir.
+  fechaNueva     DateTime               @db.Timestamptz()
+  motivo         String
+  corregidoPorId String
+  corregidoPor   User                   @relation("PagoComisionFechaCorreccionAutor", fields: [corregidoPorId], references: [id], onDelete: Restrict)
+  corregidoAt    DateTime               @default(now()) @db.Timestamptz()
+  /// Clave idempotente del borrador: un reintento no duplica la corrección.
+  offlineId      String?                @unique
+
+  @@index([pagoId])
+  @@index([corregidoPorId])
 }
 
 model Nomina {

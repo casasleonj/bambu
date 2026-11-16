@@ -9,7 +9,7 @@ import { startOfDayBogota } from '@/lib/dates'
  * Cada registro es un pago; si la comisión del día sube después, se paga la diferencia.
  *
  * - `fecha` del registro = día (Bogotá) de la comisión → la nómina del período lo descuenta.
- * - `createdAt` del registro = cuándo salió el dinero → el cierre de ESE día de caja lo resta.
+ * - `pagadoAt` (fecha efectiva, #673) = cuándo salió el dinero; si es NULL, `createdAt` (captura) → el cierre de ESE día de caja lo resta.
  */
 
 export type TxPagoComision = TxComision & Pick<Prisma.TransactionClient, 'pagoComisionRepartidor' | 'produccion'>
@@ -84,13 +84,24 @@ export async function comisionDiaConEstado(tx: TxPagoComision, fecha: string): P
 }
 
 /**
+ * #673: el día de caja de un pago es su fecha EFECTIVA (`pagadoAt`: cuándo salió el dinero); los pagos sin ella (todo lo
+ * anterior y el pago normal) caen en `createdAt`. Es la misma regla que aplica V16 al comparar con el cierre.
+ */
+export const dentroDelDiaDeCaja = (desde: Date, hasta: Date): Prisma.PagoComisionRepartidorWhereInput => ({
+  OR: [
+    { pagadoAt: { gte: desde, lt: hasta } },
+    { pagadoAt: null, createdAt: { gte: desde, lt: hasta } },
+  ],
+})
+
+/**
  * Comisión de repartidores que salió de la caja entre `desde` (incluido) y `hasta` (excluido), por fecha
  * de pago. #305: solo cuenta lo pagado en EFECTIVO; lo pagado por transferencia, Nequi o Daviplata no
  * salió de la caja.
  */
 export async function comisionPagadaEnCaja(tx: Pick<Prisma.TransactionClient, 'pagoComisionRepartidor'>, desde: Date, hasta: Date): Promise<number> {
   const agg = await tx.pagoComisionRepartidor.aggregate({
-    where: { createdAt: { gte: desde, lt: hasta }, metodo: 'EFECTIVO' },
+    where: { AND: [dentroDelDiaDeCaja(desde, hasta), { metodo: 'EFECTIVO' }] },
     _sum: { monto: true },
   })
   return num(agg._sum.monto)
@@ -99,7 +110,7 @@ export async function comisionPagadaEnCaja(tx: Pick<Prisma.TransactionClient, 'p
 /** #305: comisión de repartidores pagada ese día por un medio distinto del efectivo (informativo; no resta de la caja). */
 export async function comisionPagadaOtrosMedios(tx: Pick<Prisma.TransactionClient, 'pagoComisionRepartidor'>, desde: Date, hasta: Date): Promise<number> {
   const agg = await tx.pagoComisionRepartidor.aggregate({
-    where: { createdAt: { gte: desde, lt: hasta }, metodo: { not: 'EFECTIVO' } },
+    where: { AND: [dentroDelDiaDeCaja(desde, hasta), { metodo: { not: 'EFECTIVO' } }] },
     _sum: { monto: true },
   })
   return num(agg._sum.monto)
