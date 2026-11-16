@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
+import { logger } from "./logger";
 import { condicionPalabra, palabrasDeBusqueda } from "./clientes-repo";
 import { leerExigibles } from "./entregas-exigibles-db";
 import { importesEntregaPedido } from "./valor-entregado-pedido";
@@ -130,8 +131,14 @@ const validoFinanciero: Prisma.PedidoWhereInput = {
   estado: { notIn: ["ANULADO", "CANCELADO"] },
   estadoPago: { not: "ANULADO" },
 };
+/**
+ * Tope de ids por tipo (clientes y negocios) que alimenta el `IN (...)` de la consulta.
+ * Muy por debajo del límite de parámetros de Prisma (32 767) aun usado en varias consultas.
+ */
+const MAX_COINCIDENCIAS_PEDIDOS = 5000;
+
 /** Resolución previa a conteos y paginación, sin excluir clientes históricos. */
-async function resolverCoincidenciasPedidos(
+export async function resolverCoincidenciasPedidos(
   tx: Prisma.TransactionClient,
   search: string,
 ): Promise<CoincidenciasBusquedaPedidos> {
@@ -149,17 +156,33 @@ async function resolverCoincidenciasPedidos(
   const condicionNegocio = Prisma.join(palabras.map((p) =>
     Prisma.sql`lower(translate(n.nombre, ${acentos}, ${reemplazos})) LIKE ${"%" + p.replace(/[\\%_]/g, "\\$&") + "%"}`),
     " AND ");
+  const condicionCliente = Prisma.join(palabras.map(condicionPalabra), " AND ");
+  // #824: sin ORDER BY el corte seguía el orden físico de la tabla y podía dejar
+  // fuera al cliente buscado. Se ordena por relevancia (palabras completas
+  // primero, luego parecido) con desempate por id, y el tope se sube muy por
+  // encima del catálogo esperable.
   const [c, n] = await Promise.all([
     tx.$queryRaw<Array<{ id: string }>>`
       SELECT c.id FROM "Cliente" c
-      WHERE (${Prisma.join(palabras.map(condicionPalabra), " AND ")})
+      WHERE (${condicionCliente})
          OR ${search} <% c.nombre OR ${search} <% COALESCE(c.apellido, '')
-      LIMIT 500`,
+      ORDER BY (${condicionCliente}) DESC,
+        GREATEST(word_similarity(${search}, c.nombre),
+                 word_similarity(${search}, COALESCE(c.apellido, ''))) DESC,
+        c.id
+      LIMIT ${MAX_COINCIDENCIAS_PEDIDOS}`,
     tx.$queryRaw<Array<{ id: string }>>`
       SELECT n.id FROM "Negocio" n
       WHERE (${condicionNegocio}) OR ${search} <% n.nombre
-      LIMIT 500`,
+      ORDER BY (${condicionNegocio}) DESC, word_similarity(${search}, n.nombre) DESC, n.id
+      LIMIT ${MAX_COINCIDENCIAS_PEDIDOS}`,
   ]);
+  if (c.length >= MAX_COINCIDENCIAS_PEDIDOS || n.length >= MAX_COINCIDENCIAS_PEDIDOS) {
+    logger.warn(
+      { clientes: c.length, negocios: n.length, tope: MAX_COINCIDENCIAS_PEDIDOS },
+      "Búsqueda de Pedidos truncada por el tope de coincidencias (#824)",
+    );
+  }
   return { clientes: c.map((x) => x.id), negocios: n.map((x) => x.id) };
 }
 const centavos = (v: unknown) => {
