@@ -1,7 +1,7 @@
 import { Providers } from '@/components/providers'
 import { RealtimeProvider } from '@/components/realtime-provider'
 import { RealtimeStatusBanner } from '@/components/realtime-status-banner'
-import { Toaster } from 'sonner'
+import { AppToaster } from '@/components/app-toaster'
 import { BaseCajaLoader } from '@/components/base-caja-loader'
 import { UpdateNotification } from '@/components/update-notification'
 import { PwaInstallBanner } from '@/components/pwa-install-banner'
@@ -63,7 +63,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </PushOptInProvider>
         <BaseCajaLoader />
         <UpdateNotification />
-        <Toaster />
+        <AppToaster />
         <PwaInstallBanner />
       </RealtimeProvider>
     </Providers>

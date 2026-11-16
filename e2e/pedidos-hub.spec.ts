@@ -1148,6 +1148,41 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
   // #408: la misma venta cargada dos veces seguidas avisa (no bloquea); marcar «Es otra venta distinta» la deja
   // guardar y queda anotado en el historial de la segunda venta. Se mira la base de datos, no solo la pantalla.
+  test('#828: el aviso de venta cobrada dice pedido, importe, recibido y cambio, sale arriba y no tapa el botón «+»', async ({ browser }) => {
+    test.setTimeout(90_000)
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    await page.goto(`${BASE}/pedidos`)
+    await app.getByTestId('fab-main').click()
+    await page.getByTestId('fab-venta-rapida').click()
+    await expect(page.getByTestId('workspace-venta-rapida')).toBeVisible()
+    await page.getByTestId('workspace-cant-PACA_AGUA').fill('3')
+    await page.getByTestId('dinero-pagar-completo-EFECTIVO').click()
+    await expect(page.getByTestId('dinero-saldo')).toHaveText('Pagado', { timeout: 10000 })
+    await page.getByTestId('dinero-recibido').fill('50000')
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    await page.getByTestId('workspace-commit').click()
+    const aviso = page.locator('[data-sonner-toast]').filter({ hasText: 'Venta cobrada' })
+    await expect(aviso).toBeVisible({ timeout: 10000 })
+    await expect(aviso).toContainText(/Venta cobrada · #\d+/)
+    const texto = (await aviso.innerText()).replace(/\s+/g, ' ')
+    const dinero = (etiqueta: string) => Number((texto.match(new RegExp(etiqueta + ' \\$\\s?([\\d.]+)')) ?? [])[1]?.replace(/\./g, ''))
+    const importe = dinero('Importe'), recibido = dinero('Recibido'), cambio = dinero('Cambio')
+    expect(importe).toBeGreaterThan(0)
+    expect(recibido).toBe(50000)
+    expect(cambio).toBe(50000 - importe) // lo recibido menos lo que costó
+    // sale arriba (bajo el encabezado) y no se cruza con el botón «+»
+    const caja = (await aviso.boundingBox())!, fab = (await app.getByTestId('fab-main').boundingBox())!
+    expect(caja.y).toBeLessThan(150)
+    const seCruza = caja.x < fab.x + fab.width && caja.x + caja.width > fab.x && caja.y < fab.y + fab.height && caja.y + caja.height > fab.y
+    expect(seCruza).toBe(false)
+    // con el aviso visible, el menú del botón abre y se queda abierto
+    await app.getByTestId('fab-main').click()
+    await expect(page.getByTestId('fab-venta-rapida')).toBeVisible()
+    await page.waitForTimeout(600)
+    await expect(page.getByTestId('fab-venta-rapida')).toBeVisible()
+  })
+
   test('#408: venta repetida — aviso con casilla, se guardan las dos y la confirmación queda en el historial', async ({ browser }) => {
     // #733: dos ventas con hasta 27 clics cada una no caben en los 30 s por defecto en el
     // runner de CI; al agotarse, el `finally` restauraba la ventana con la página ya cerrada

@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger'
 import { formatZodError } from '@/lib/utils'
 import { startOfDayBogota, todayStringBogota } from '@/lib/dates'
 import { sueldosPendientesAl } from '@/lib/sueldos-pendientes'
+import { FechaPagoError, resolverFechaPago } from '@/lib/fecha-pago-efectiva'
 import { nominaQueCubre } from '@/lib/nomina-cobertura'
 import { POST as crearNomina } from '@/app/api/nomina/route'
 import { PUT as accionNomina } from '@/app/api/nomina/[id]/route'
@@ -22,6 +23,9 @@ const PagarSueldoSchema = z.object({
   metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA']).default('EFECTIVO'),
   /** Sin indicarlo se usa lo configurado en el trabajador. */
   fueraDeCaja: z.boolean().optional(),
+  /** #673: día en que realmente se pagó el sueldo (opcional); lo valida y aplica el mismo código de Nómina. */
+  fechaPago: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha del pago debe ser AAAA-MM-DD').optional(),
+  motivoFecha: z.string().max(500).optional(),
 })
 
 const json = (url: string, method: string, body: unknown) =>
@@ -39,6 +43,13 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return apiError(formatZodError(parsed.error), 400)
   const { trabajadorId, fecha, metodo } = parsed.data
   if (fecha > todayStringBogota()) return apiError('No se puede pagar un sueldo de una fecha que no ha llegado', 422, { code: 'FECHA_FUTURA' })
+  // #673: se valida el día real del pago ANTES de crear nada; si no, un rechazo dejaría una nómina pendiente suelta.
+  try {
+    resolverFechaPago({ fecha: parsed.data.fechaPago, motivo: parsed.data.motivoFecha })
+  } catch (error) {
+    if (error instanceof FechaPagoError) return apiError(error.message, error.status, { code: error.code })
+    throw error
+  }
 
   try {
     const pendientes = await sueldosPendientesAl(prisma, fecha)
@@ -57,11 +68,14 @@ export async function POST(request: NextRequest) {
     }
 
     const pagada = await accionNomina(
-      json(`/api/nomina/${nominaId}`, 'PUT', { action: 'PAGAR', metodo, fueraDeCaja }),
+      json(`/api/nomina/${nominaId}`, 'PUT', {
+        action: 'PAGAR', metodo, fueraDeCaja,
+        ...(parsed.data.fechaPago ? { fechaPago: parsed.data.fechaPago, motivoFecha: parsed.data.motivoFecha } : {}),
+      }),
       { params: Promise.resolve({ id: nominaId }) },
     )
-    const resultado = await pagada.json().catch(() => null) as { error?: { message?: string } } | null
-    if (!pagada.ok) return apiError(resultado?.error?.message ?? 'No se pudo marcar la nómina como pagada', pagada.status)
+    const resultado = await pagada.json().catch(() => null) as { error?: { message?: string; code?: string } } | null
+    if (!pagada.ok) return apiError(resultado?.error?.message ?? 'No se pudo marcar la nómina como pagada', pagada.status, resultado?.error?.code ? { code: resultado.error.code } : undefined)
     return apiSuccess({ nominaId, fecha, trabajadorId, metodo, fueraDeCaja }, 201)
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error pagando sueldo fijo:')

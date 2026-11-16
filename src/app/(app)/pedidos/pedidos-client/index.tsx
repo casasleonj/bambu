@@ -29,6 +29,7 @@ import { PedidoHub } from '../pedido-hub'
 import type { ResultadoConsultaPedidos } from '@/lib/pedidos-consulta'
 import { EstoSeRepite, type EstoSeRepiteContexto } from '../pedido-hub/esto-se-repite'
 import { PedidosWorkspace, type WorkspacePedidoInicial } from '@/components/pedido-workspace'
+import { resumenCobro, textoAvisoCobro, type AyudaCaja } from '@/components/pedido-workspace/cobro-aviso'
 import { pedidosV2Enabled } from '@/lib/flags'
 
 import type { Pedido, Embarque, Cliente } from './types'
@@ -1064,7 +1065,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
     return (data.entregaLat ?? null) !== (actual?.entregaLat ?? null) || (data.entregaLng ?? null) !== (actual?.entregaLng ?? null)
   }
 
-  async function handlePedidoSubmit(data: PedidoUnifiedData): Promise<boolean> {
+  async function handlePedidoSubmit(data: PedidoUnifiedData, ayudaCaja?: AyudaCaja): Promise<boolean> {
     try {
       const isEdit = data.isEdit && data.pedidoId
       if (isEdit) {
@@ -1178,6 +1179,18 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
           // Reintento de un envío que sí había llegado: es el MISMO pedido.
           const numero = (result.pedido as { numero?: number } | null)?.numero
           toast.info(numero != null ? `Esta venta ya estaba registrada (#${numero}). No se duplicó.` : 'Esta venta ya estaba registrada. No se duplicó.')
+        } else if (data.origen === 'VENTA_RAPIDA' && (data.pagos?.length ?? 0) > 0) {
+          // #828: el aviso de cobro dice qué pedido es, el importe, lo recibido y el cambio.
+          // Solo se muestra: el cambio y el efectivo recibido no se envían ni se guardan.
+          const creado = result.pedido as { numero?: number; total?: number | string } | null
+          const total = Number(creado?.total)
+          const entregaPendiente = data.entregado === false ? ' — entrega pendiente' : ''
+          if (Number.isFinite(total)) {
+            const { titulo, detalle } = textoAvisoCobro(creado?.numero ?? null, resumenCobro(total, data.pagos ?? [], ayudaCaja))
+            toast.success(titulo + entregaPendiente, { description: detalle })
+          } else {
+            toast.success(msg)
+          }
         } else {
           toast.success(msg)
         }

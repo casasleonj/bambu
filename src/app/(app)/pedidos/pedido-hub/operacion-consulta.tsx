@@ -1,5 +1,5 @@
 "use client";
-import { useState, type MouseEvent } from "react";
+import type { MouseEvent } from "react";
 import { canCreatePedidos, canReadFacturas } from "@/lib/permissions";
 import { getProductoIconConfig } from "@/lib/producto-iconos";
 import { formatCurrency } from "@/lib/utils";
@@ -15,6 +15,7 @@ import {
 import type { AccionKey, Pedido } from "./types";
 import { fechaConsulta } from "./fecha-consulta";
 import { etiquetaArrastre } from "./arrastrados";
+import { NotaPedido } from "./nota-pedido";
 import { importesEntregaPedido } from "@/lib/valor-entregado-pedido";
 import styles from "./operacion-consulta.module.css";
 
@@ -35,32 +36,6 @@ function interceptar(e: MouseEvent<HTMLAnchorElement>, abrir: () => void) {
   }
 }
 const tonos = TONOS_CLASE;
-/** Consulta rápida de la observación del pedido, sin salir de la lista (#635). */
-function NotaPedido({ obs, numero }: { obs: string; numero: number }) {
-  const [abierta, setAbierta] = useState(false);
-  return (
-    <div onClick={(e) => e.stopPropagation()}>
-      <button
-        type="button"
-        aria-expanded={abierta}
-        aria-label={`Observaciones del pedido #${numero}`}
-        data-testid={`operacion-nota-${numero}`}
-        className="mt-1 inline-flex min-h-9 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 text-xs font-semibold text-amber-900"
-        onClick={() => setAbierta((v) => !v)}
-      >
-        📝 Nota
-      </button>
-      {abierta && (
-        <p
-          className="mt-1 whitespace-pre-wrap break-words rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950"
-          data-testid={`operacion-nota-texto-${numero}`}
-        >
-          {obs}
-        </p>
-      )}
-    </div>
-  );
-}
 export function OperacionConsulta({
   pedidos,
   viewport,

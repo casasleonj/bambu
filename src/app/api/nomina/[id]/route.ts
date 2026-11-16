@@ -6,11 +6,16 @@ import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { z } from 'zod'
 import { formatZodError } from '@/lib/utils'
+import { FechaPagoError, fechaDePagoNomina } from '@/lib/fecha-pago-efectiva'
 
 // #641: con qué se paga la nómina. Solo EFECTIVO dentro de la caja genera el egreso que resta del cierre.
 const PagarNominaSchema = z.object({
   metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA']).default('EFECTIVO'),
   fueraDeCaja: z.boolean().default(false),
+  // #673: día en que realmente se pagó (YYYY-MM-DD, Bogotá), opcional: los sueldos a veces se atrasan o se adelantan. Sin
+  // indicarlo, o con hoy, es el pago normal. No cambia el periodo que cubre la nómina; solo cuándo salió el dinero.
+  fechaPago: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha del pago debe ser AAAA-MM-DD').optional(),
+  motivoFecha: z.string().max(500).optional(),
 })
 
 export async function PUT(
@@ -32,6 +37,7 @@ export async function PUT(
       if (!parsedPago.success) return apiError(formatZodError(parsedPago.error), 400)
       const { metodo, fueraDeCaja } = parsedPago.data
       const afectaCaja = metodo === 'EFECTIVO' && !fueraDeCaja
+      const { fechaDelPago, nota } = fechaDePagoNomina(parsedPago.data) // #673: lanza FechaPagoError
       const result = await prisma.$transaction(async (tx) => {
         // FIX F-N9 (hallazgo 15): atomic check-and-set.
         // Antes: findUnique + check + update (3 queries). Dos requests
@@ -46,7 +52,7 @@ export async function PUT(
         // ve count=0 porque la fila ya no tiene estado PENDIENTE.
         const updateResult = await tx.nomina.updateMany({
           where: { id, estado: 'PENDIENTE' },
-          data: { estado: 'PAGADA', fechaPago: new Date(), metodoPago: metodo, pagoFueraDeCaja: fueraDeCaja },
+          data: { estado: 'PAGADA', fechaPago: fechaDelPago, metodoPago: metodo, pagoFueraDeCaja: fueraDeCaja },
         })
 
         if (updateResult.count === 0) {
@@ -76,7 +82,8 @@ export async function PUT(
               monto: Number(updated.total),
               responsable: updated.trabajador.nombre,
               trabajadorId: updated.trabajadorId,
-              fecha: new Date(),
+              fecha: fechaDelPago,
+              ...(nota ? { notas: nota } : {}),
             },
           })
         }
@@ -182,6 +189,8 @@ export async function PUT(
 
     return apiError('Acción no válida', 400)
   } catch (error) {
+    // #673: fecha de pago futura, inválida o sin motivo: es un error de captura, no del servidor.
+    if (error instanceof FechaPagoError) return apiError(error.message, error.status, { code: error.code })
     const msg = error instanceof Error ? error.message : 'Unknown'
     logger.error({ err: msg }, 'Error en nomina PUT:')
     if (msg === 'Nómina no encontrada') return apiError(msg, 404)
