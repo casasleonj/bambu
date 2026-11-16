@@ -22,6 +22,9 @@ export interface WorkspaceDineroProps {
   disabled?: boolean
   onPagarCompleto: (metodo: Metodo) => void
   onSetPagos: (pagos: DraftPago[]) => void
+  /** «Recibido en efectivo» controlado por el padre (para el aviso de cobro, #828). Sin esto, estado interno. */
+  recibido?: string
+  onRecibidoChange?: (valor: string) => void
 }
 
 /**
@@ -38,8 +41,11 @@ export interface WorkspaceDineroProps {
  */
 export function WorkspaceDinero({
   total, saldoProyectado, pagos, pagoCompleto, totalEstimado = false, esAnonima, disabled, onPagarCompleto, onSetPagos,
+  recibido: recibidoControlado, onRecibidoChange,
 }: WorkspaceDineroProps) {
-  const [recibido, setRecibido] = useState('')
+  const [recibidoInterno, setRecibidoInterno] = useState('')
+  const recibido = recibidoControlado ?? recibidoInterno
+  const setRecibido = onRecibidoChange ?? setRecibidoInterno
 
   const aplicado = pagos.reduce((s, p) => s + (p.monto || 0), 0)
   const efectivoAplicado = pagos.filter((p) => p.metodo === 'EFECTIVO').reduce((s, p) => s + (p.monto || 0), 0)

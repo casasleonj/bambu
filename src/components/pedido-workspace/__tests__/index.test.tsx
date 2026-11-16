@@ -249,6 +249,30 @@ describe('PedidosWorkspace (Composición)', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ origen: 'VENTA_RAPIDA', clienteId: 'CONSUMIDOR_FINAL' }))
   })
 
+  it('#828: el efectivo anotado viaja como ayuda de caja (segundo argumento), nunca dentro de los datos de la venta', async () => {
+    const onSubmit = vi.fn()
+    render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={onSubmit} />)
+    for (let i = 0; i < 3; i++) fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByTestId('dinero-pagar-completo-EFECTIVO'))
+    fireEvent.change(await screen.findByTestId('dinero-recibido'), { target: { value: '20000' } })
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    const [datos, ayuda] = onSubmit.mock.calls[0]
+    expect(ayuda).toEqual({ recibidoEfectivo: 20000 })
+    expect(JSON.stringify(datos)).not.toMatch(/recibido|cambio/i) // el cambio no se envía ni se guarda
+  })
+
+  it('#828: sin efectivo anotado no viaja ninguna ayuda de caja', async () => {
+    const onSubmit = vi.fn()
+    render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={onSubmit} />)
+    for (let i = 0; i < 3; i++) fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(onSubmit.mock.calls[0]).toHaveLength(1)
+  })
+
   it('P1-2: la venta rápida nace en PUNTO (sin zona de entrega); DOMICILIO es una elección explícita', () => {
     render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={vi.fn()} />)
     expect(screen.queryByTestId('workspace-entrega')).not.toBeInTheDocument()
