@@ -1164,9 +1164,15 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     expect((await ventana('60')).ok()).toBe(true) // por defecto el aviso va apagado en la base de pruebas
     try {
     const cargarVenta = async () => {
-      await app.getByTestId('fab-main').click()
-      await page.getByTestId('fab-venta-rapida').click()
-      await expect(page.getByTestId('workspace-venta-rapida')).toBeVisible()
+      // El menú del botón flotante se cierra con `mouseleave`. Con cursor (CI incluido) a veces llega
+      // un `mouseleave` a los pocos milisegundos del clic y el menú se cierra antes de poder elegir
+      // «Venta Rápida» (medido: clic y cierre con 4 ms de diferencia, #408 intermitente). Se reintenta
+      // el par «abrir menú + elegir» hasta que la venta rápida queda abierta; no se omite ninguna comprobación.
+      await expect(async () => {
+        await app.getByTestId('fab-main').click()
+        await page.getByTestId('fab-venta-rapida').click({ timeout: 3000 })
+        await expect(page.getByTestId('workspace-venta-rapida')).toBeVisible({ timeout: 3000 })
+      }).toPass({ timeout: 30_000 })
       // #733: fijar la cantidad en una sola escritura. Rellenar el campo dispara el mismo
       // onChange que los «+», así que la venta se carga igual y se ahorran hasta 27 clics.
       // Se comprueba el valor: si el campo no queda aplicado, la venta saldría con otra
