@@ -43,14 +43,34 @@ describe('GET /api/facturas/buscar', () => {
 
   it('busca clientes con facturas, palabra por palabra, en toda la base', async () => {
     clienteFindMany.mockResolvedValue([
-      { id: 'c1', nombre: 'sandra', apellido: 'leon', telefono: '573163887163', direccion: null },
+      { id: 'relleno', nombre: 'pedro', apellido: 'lopez', telefono: '3000000000', direccion: null, negocios: [] },
+      { id: 'c1', nombre: 'Sandra', apellido: 'León', telefono: '573163887163', direccion: null, negocios: [] },
     ])
     const body = await (await get('sandra leon')).json()
     expect(body.clientes).toHaveLength(1)
-    const where = clienteFindMany.mock.calls[0][0].where
-    expect(where.AND).toHaveLength(3) // dos palabras + "tiene facturas"
-    expect(where.AND[2]).toEqual({ facturas: { some: {} } })
-    expect(clienteFindMany.mock.calls[0][0].take).toBeLessThanOrEqual(8)
+    expect(body.clientes[0]).toMatchObject({ id: 'c1', nombre: 'Sandra', apellido: 'León' })
+    // Se busca primero en todo el universo autorizado (no en los primeros 8
+    // resultados), luego se ordena y pagina. Nunca exponer otros registros.
+    const consulta = clienteFindMany.mock.calls[0][0]
+    expect(consulta.where).toEqual({ facturas: { some: {} } })
+    expect(consulta.take).toBeUndefined()
+    const filtroFactura = facturaFindMany.mock.calls[0][0].where
+    expect(filtroFactura.OR[1]).toEqual({ clienteId: { in: ['c1'] } })
+  })
+
+  it('incluye negocios y erratas cortas, sin autocompletar identificadores numéricos', async () => {
+    clienteFindMany.mockResolvedValue([
+      { id: 'c1', nombre: 'Camilo', apellido: null, telefono: '3000000000', direccion: null,
+        negocios: [{ nombre: 'Punti Frío' }] },
+      { id: 'c2', nombre: 'Punto', apellido: 'Frío', telefono: '3000000001', direccion: null,
+        negocios: [] },
+    ])
+    const body = await (await get('punt frio')).json()
+    expect(body.clientes.map((c: { id: string }) => c.id)).toContain('c1')
+    const filtroFactura = facturaFindMany.mock.calls[0][0].where
+    expect(filtroFactura.OR[1].clienteId.in).toContain('c1')
+    // El número que escriben las personas permanece literal.
+    expect(filtroFactura.OR[0].numero.contains).toBe('punt frio')
   })
 
   it('devuelve las facturas con el nombre completo del cliente', async () => {

@@ -44,3 +44,14 @@ describe('diasFiadoDesde', () => {
     expect(despues).toBe(8)
   })
 })
+
+describe('resumenFiados (#613)', () => {
+  it('suma exacta de las filas visibles, sin errores de coma flotante', async () => {
+    const { resumenFiados } = await import('../fiados-table')
+    expect(resumenFiados([{ deuda: 0.1, pedidos: [1] }, { deuda: 0.2, pedidos: [1, 2] }])).toEqual({ total: 0.3, clientes: 2, pedidos: 3 })
+  })
+  it('sin filas = cero', async () => {
+    const { resumenFiados } = await import('../fiados-table')
+    expect(resumenFiados([])).toEqual({ total: 0, clientes: 0, pedidos: 0 })
+  })
+})

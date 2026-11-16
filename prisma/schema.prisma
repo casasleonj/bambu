@@ -1053,27 +1053,27 @@ model Pedido {
   // Productos embebidos (DEPRECATED — leer desde items[])
   cPacaAguaPed   Int     @default(0)
   cPacaAguaEnt   Int     @default(0)
-  precioPacaAgua Decimal @default(0) @db.Decimal(10, 2)
+  precioPacaAgua Decimal @default(0) @db.Decimal(14, 6)
 
   cPacaHieloPed   Int     @default(0)
   cPacaHieloEnt   Int     @default(0)
-  precioPacaHielo Decimal @default(0) @db.Decimal(10, 2)
+  precioPacaHielo Decimal @default(0) @db.Decimal(14, 6)
 
   cBotellonFabPed   Int     @default(0)
   cBotellonFabEnt   Int     @default(0)
-  precioBotellonFab Decimal @default(0) @db.Decimal(10, 2)
+  precioBotellonFab Decimal @default(0) @db.Decimal(14, 6)
 
   cBotellonDomPed   Int     @default(0)
   cBotellonDomEnt   Int     @default(0)
-  precioBotellonDom Decimal @default(0) @db.Decimal(10, 2)
+  precioBotellonDom Decimal @default(0) @db.Decimal(14, 6)
 
   cBolsaAguaPed   Int     @default(0)
   cBolsaAguaEnt   Int     @default(0)
-  precioBolsaAgua Decimal @default(0) @db.Decimal(10, 2)
+  precioBolsaAgua Decimal @default(0) @db.Decimal(14, 6)
 
   cBolsaHieloPed   Int     @default(0)
   cBolsaHieloEnt   Int     @default(0)
-  precioBolsaHielo Decimal @default(0) @db.Decimal(10, 2)
+  precioBolsaHielo Decimal @default(0) @db.Decimal(14, 6)
 
   // Totales
   total       Decimal @default(0) @db.Decimal(10, 2)
@@ -1173,7 +1173,7 @@ model PedidoItem {
   producto     String // PACA_AGUA, PACA_HIELO, BOTELLON, BOLSA_AGUA, BOLSA_HIELO
   cantPedido   Int     @default(0)
   cantEntrega  Int     @default(0)
-  precio       Decimal @default(0) @db.Decimal(10, 2)
+  precio       Decimal @default(0) @db.Decimal(14, 6)
   subtotal     Decimal @default(0) @db.Decimal(10, 2)
   precioOrigen String  @default("base") // manual, cliente, volumen, base
 
@@ -3108,8 +3108,8 @@ model PedidoCorreccionPrecio {
 
   producto       String
   cantidad       Int
-  precioAnterior Decimal @db.Decimal(10, 2)
-  precioNuevo    Decimal @db.Decimal(10, 2)
+  precioAnterior Decimal @db.Decimal(14, 6)
+  precioNuevo    Decimal @db.Decimal(14, 6)
   /// (precioNuevo − precioAnterior) × cantidad, con signo.
   delta          Decimal @db.Decimal(10, 2)
   /// Precio por debajo del umbral de alerta (< $2.000 pacas, < $7.500 botellón).
@@ -3163,7 +3163,7 @@ model PedidoReduccionComercial {
   cantPedidoAntes   Int
   cantPedidoDespues Int
   /// Precio unitario vigente de la línea; la reducción no lo cambia.
-  precio            Decimal @db.Decimal(10, 2)
+  precio            Decimal @db.Decimal(14, 6)
   /// cantidadReducida × precio: lo que baja la obligación.
   monto             Decimal @db.Decimal(10, 2)
   motivo            String

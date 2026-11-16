@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { METODOS_PAGO } from '@/lib/metodos-pago'
-import { formatCurrency } from '@/lib/utils'
+import { formatImportePedido as formatCurrency } from '@/lib/precio-formato'
 import type { DraftPago } from './types'
 
 type Metodo = DraftPago['metodo']

@@ -1,0 +1,4 @@
+# La evidencia por PR se versiona; los artefactos pesados no.
+*.png
+*.zip
+*.webm

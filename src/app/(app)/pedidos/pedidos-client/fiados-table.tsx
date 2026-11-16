@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { buscarDifuso } from '@/lib/busqueda-fuzzy'
 import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import { getEstadoFiados, resolverLimiteFiados } from '@/lib/pedido-utils'
 import { generateUUID } from '@/lib/uuid'
@@ -15,6 +16,11 @@ import type { Pedido, Cliente } from './types'
 
 export function diasFiadoDesde(fecha: Date): number {
   return Math.floor((Date.now() - fecha.getTime()) / 86400000)
+}
+/** Suma exacta (en centavos) de las filas que se ven: mismas filas, mismos filtros (#613). */
+export function resumenFiados(rows: Array<{ deuda: number; pedidos: unknown[] }>) {
+  const centavos = rows.reduce((s, r) => s + Math.round(r.deuda * 100), 0)
+  return { total: centavos / 100, clientes: rows.length, pedidos: rows.reduce((s, r) => s + r.pedidos.length, 0) }
 }
 interface FiadoRow {
   clienteId: string; nombreCli: string; apellidoCli?: string | null; telefonoCli: string
@@ -64,13 +70,19 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
     }
     return [...grouped.values()]
   }, [pedidos, periodo])
-  const filtrados = rows.filter(row => {
-    const nombre = [row.nombreCli, row.apellidoCli, row.nombreNegocioCli, row.telefonoCli].filter(Boolean).join(' ').toLocaleLowerCase('es')
+  // Primero aplicar ámbito financiero y filtros; después ordenar por coincidencia.
+  // Los importes se calculan sobre los mismos deudores visibles, sin modificar deuda.
+  const elegibles = rows.filter(row => {
     const edad = diasFiadoDesde(row.antigua)
-    return (!clienteSolicitado || row.clienteId === clienteSolicitado) && nombre.includes(search.trim().toLocaleLowerCase('es'))
+    return (!clienteSolicitado || row.clienteId === clienteSolicitado)
       && (!min || row.deuda >= Number(min)) && (!max || row.deuda <= Number(max))
       && (dias === 'todos' || dias === '0-7' && edad <= 7 || dias === '8-30' && edad > 7 && edad <= 30 || dias === '30+' && edad > 30)
   })
+  const filtrados = buscarDifuso(elegibles, search, (row) => ({
+    textos: [row.nombreCli, row.apellidoCli, row.nombreNegocioCli],
+    pesosTexto: [3, 3, 2],
+    telefonos: [row.telefonoCli],
+  }), (row) => row.clienteId)
   const hayFiltros = periodo !== 'todos' || Boolean(search || min || max || clienteSolicitado) || dias !== 'todos'
   const limpiar = () => params.set({ fiadosPeriodo: undefined, fiadosBuscar: undefined, fiadosMin: undefined,
     fiadosMax: undefined, fiadosDias: undefined, fiadosCliente: undefined, clienteId: undefined }, { history: 'replace' })
@@ -134,6 +146,17 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
       <label className="text-xs font-medium text-gray-600">Antigüedad<select value={dias} onChange={e => setDias(e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border p-2 text-sm"><option value="todos">Todos los días</option><option value="0-7">0–7 días</option><option value="8-30">8–30 días</option><option value="30+">Más de 30 días</option></select></label>
       {hayFiltros && <button className="min-h-11 text-sm text-blue-700 underline" onClick={limpiar}>Limpiar filtros</button>}
     </div>
+    {!(loading && !pedidos.length) && !(error && !pedidos.length) && (() => {
+      const r = resumenFiados(filtrados)
+      const etiquetaPeriodo = PERIODOS.find(p => p.key === periodo)?.label ?? ''
+      return <div className={`rounded-xl border border-red-200 bg-red-50 p-4 ${refetching ? 'opacity-60' : ''}`} data-testid="fiados-total" aria-busy={Boolean(refetching)}>
+        <p className="text-xs font-medium text-red-800">Deuda pendiente{hayFiltros ? ' (según los filtros)' : ''}</p>
+        <p className="text-2xl font-bold text-red-700"><MoneyDisplay value={r.total} userRole={userRole} /> <span className="text-sm font-normal text-red-800">· {r.clientes} cliente{r.clientes === 1 ? '' : 's'} · {r.pedidos} pedido{r.pedidos === 1 ? '' : 's'}</span></p>
+        <p className="mt-1 text-xs text-red-800">{periodo === 'todos'
+          ? 'Pedidos entregados de todas las fechas con saldo pendiente hoy.'
+          : `Pedidos entregados del período «${etiquetaPeriodo}» con saldo pendiente hoy.`} No incluye lo aún no entregado.</p>
+      </div>
+    })()}
     {loading && !pedidos.length ? <p role="status" className="rounded-xl border bg-white p-8 text-center">Cargando fiados…</p>
       : error && !pedidos.length ? null : filtrados.length === 0 ? <div className="rounded-xl border bg-white p-8 text-center">
         <h3 className="font-semibold">{hayFiltros ? 'Sin resultados con estos filtros' : 'No hay deuda pendiente de pedidos entregados'}</h3>

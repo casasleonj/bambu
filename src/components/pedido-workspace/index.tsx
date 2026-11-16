@@ -20,6 +20,7 @@ import { WorkspaceEntrega } from './workspace-entrega'
 import { WorkspaceComprador } from './workspace-comprador'
 import { WorkspaceDinero } from './workspace-dinero'
 import { WorkspaceEntregaMomento } from './workspace-entrega-momento'
+import { WorkspaceObservaciones } from './workspace-observaciones'
 import { WorkspaceVentaEnRuta, type RepartidorVentaRuta } from './workspace-venta-en-ruta'
 import { getTodayString } from '@/lib/dates'
 import { ventaRutaEntregaPosteriorEnabled } from '@/lib/flags'
@@ -766,6 +767,14 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
           onChange={(despues) => dispatch({ type: 'SET_ENTREGADO', entregado: !despues })}
           tieneComprador={tieneComprador}
           pagadoCompleto={pagadoCompleto}
+          disabled={state.phase === 'COMMITTING' || state.phase === 'COMMITTED'}
+        />
+      )}
+
+      {intent !== 'venta-rapida' && (
+        <WorkspaceObservaciones
+          value={state.draft.obs ?? ''}
+          onChange={(obs) => dispatch({ type: 'SET_OBS', obs })}
           disabled={state.phase === 'COMMITTING' || state.phase === 'COMMITTED'}
         />
       )}

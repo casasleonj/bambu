@@ -546,6 +546,30 @@ describe('PedidosWorkspace (Composición)', () => {
     }))
   })
 
+  it('#635: el campo «Observaciones» se ve al editar y su cambio viaja al guardar; la venta rápida no lo muestra', async () => {
+    const onSubmit = vi.fn()
+    const { unmount } = render(
+      <PedidosWorkspace
+        clientes={clientes}
+        onSubmit={onSubmit}
+        pedidoInicial={{
+          id: 'ped-9', numero: 42, clienteId: 'c1', clienteNombre: 'Tienda X', clienteTelefono: '3001112222',
+          clienteDireccion: 'Cra 1', clienteBarrio: 'Centro', negocioId: null, canal: 'DOMICILIO', origen: 'PEDIDO',
+          items: [{ producto: 'PACA_AGUA', cantidad: 4 }], obs: 'urgente',
+        }}
+      />,
+    )
+    const campo = screen.getByLabelText(/Observaciones/) as HTMLTextAreaElement
+    expect(campo.value).toBe('urgente')
+    fireEvent.change(campo, { target: { value: 'dejar con el portero' } })
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ isEdit: true, obs: 'dejar con el portero' }))
+    unmount()
+    render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={vi.fn()} />)
+    expect(screen.queryByTestId('workspace-observaciones')).not.toBeInTheDocument()
+  })
+
   it('modo edición: el origen se toma de pedidoInicial, NO se re-deriva del cliente', async () => {
     const onSubmit = vi.fn()
     // pedido VENTA_RAPIDA con un cliente real (caso donde el viejo initializer

@@ -137,11 +137,8 @@ test.describe('Drawer (menu lateral) mobile', () => {
     // Client Component hidratando. Durante esta transicion, el Sidebar
     // del LAYOUT (que es persistente) ve el pathname viejo y el nuevo
     // aun no monto. El useEffect con deps [pathname, isDesktop] se
-    // ejecuta cuando el nuevo layout hidrate. Sin `networkidle` +
-    // `waitForTimeout`, el test checkea contra el Sidebar viejo que
-    // todavia tiene mobileDrawerOpen=true.
-    await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(500)
+    // ejecuta cuando el nuevo layout hidrate. La aserción espera a que
+    // desaparezca el drawer; SSE sano no permite esperar networkidle.
     await expect(aside).toHaveCount(0)
   })
 })

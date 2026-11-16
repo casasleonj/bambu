@@ -19,8 +19,28 @@ HERE = Path(__file__).resolve().parent
 CASES_PATH = HERE / "casos_activacion.json"
 
 def scan_tool_calls(data, skill):
-    """Solo eventos de herramienta reconocibles; texto final nunca prueba activación."""
+    """Solo eventos de herramienta reconocibles; texto final nunca prueba activación.
+
+    Si `skill` es None el caso no espera activación (los `invariant`): se devuelve
+    la lista vacía. Antes reventaba con TypeError al hacer re.escape(None), así que
+    esos casos nunca podían evaluarse y el fallo se veía como "sin activación".
+
+    Cubre los tres envoltorios reales:
+      codex      {"item":{"type":"command_execution","command":...,"exit_code":...}}
+                 {"item":{"type":"mcp_tool_call","tool":...,"arguments":{...}}}
+      claude     {"type":"assistant","message":{"content":[{"type":"tool_use",...}]}}
+      opencode   {"part":{"type":"tool","tool":"read","state":{"input":{...}}}}
+
+    Dos reglas que hacen la diferencia entre medir y engañarse:
+      1. El envelope anida nombre e input: la búsqueda genérica no lo ve y todo sale [].
+      2. Un intento fallido no es una lectura. Si el evento trae exit_code distinto de 0
+         o el error de sandbox, se registra como "intento-fallido" y NO cuenta como
+         activación. En este entorno bwrap está denegado, así que `cat SKILL.md` sale
+         exit=1: contarlo daría 7 activaciones falsas en codex.
+    """
     matches=[]
+    if not skill:
+        return []
     for line in data.splitlines():
         try:
             ev=json.loads(line)
@@ -35,20 +55,110 @@ def scan_tool_calls(data, skill):
             if not isinstance(o,dict):
                 continue
             name=o.get("tool_name") or o.get("toolName")
-            if name is None and o.get("type") in ("tool_use","tool_call","function_call"):
+            args=o.get("input") or o.get("arguments") or o.get("parameters") or {}
+            failed=False
+            pending=False
+            # Envelope de opencode: {"part":{"type":"tool","tool":"read","state":{"input":{...}}}}
+            if o.get("type")=="tool" and isinstance(o.get("tool"),str):
+                name=o.get("tool")
+                state=o.get("state")
+                if isinstance(state,dict):
+                    args=state.get("input") or args
+                    if state.get("status")=="error":
+                        failed=True
+            # Envelope de codex: command_execution lleva el comando en "command", no en "input",
+            # y mcp_tool_call en "tool"/"arguments". Sin esto codex siempre daba eventos=[].
+            if o.get("type")=="command_execution":
+                name="command_execution"
+                args={"command":o.get("command") or ""}
+                code=o.get("exit_code")
+                output=str(o.get("aggregated_output") or "")
+                # item.started trae exit_code:null y todavía no leyó nada: NO es evidencia.
+                # Sólo un exit_code==0 con salida real prueba que el archivo se leyó.
+                if code is None:
+                    pending=True
+                elif code!=0 or not output.strip():
+                    failed=True
+                # Sin comprobación extra del error de sandbox: si bwrap está denegado
+                # el comando sale con código != 0 y ya queda marcado arriba. Mirarlo
+                # también en la salida de comandos exitosos daba falsos negativos,
+                # porque el modelo cita "bwrap: No permissions..." al explicar el
+                # entorno, y esa cita anulaba lecturas reales de 23 KB.
+            if o.get("type")=="mcp_tool_call":
+                name=o.get("tool") or o.get("server")
+                args=o.get("arguments") or args
+                if o.get("error"):
+                    failed=True
+                result=o.get("result")
+                if isinstance(result,dict) and result.get("isError"):
+                    failed=True
+            if name is None and o.get("type") in ("tool_use","tool_call","function_call","command_execution"):
                 name=o.get("name") or o.get("tool")
                 if isinstance(name,dict):
                     name=name.get("name")
-            args=o.get("input") or o.get("arguments") or o.get("parameters") or {}
             param=json.dumps(args,ensure_ascii=False) if isinstance(args,(dict,list)) else str(args)
             if isinstance(name,str):
                 n=name.lower().split(".")[-1]
+                is_target=False
+                kind=None
                 if n in ("skill","load_skill","skills") and re.search(r"\b"+re.escape(skill)+r"\b",param,re.I):
-                    matches.append("skill-tool")
-                if n in ("read","read_file","exec_command","shell","bash","command") and re.search(r"\b"+re.escape(skill)+r"\b[^\n]*SKILL\.md",param,re.I):
-                    matches.append("read-skill")
+                    is_target=True; kind="skill-tool"
+                if n in ("read","read_file","readfile","exec_command","shell","bash","command","command_execution") and re.search(r"\b"+re.escape(skill)+r"\b[^\n]*SKILL\.md",param,re.I):
+                    is_target=True; kind="read-skill"
+                if is_target:
+                    if pending:
+                        matches.append("pendiente")
+                    elif failed:
+                        matches.append("intento-fallido")
+                    else:
+                        matches.append(kind)
             stack.extend(x for x in o.values() if isinstance(x,(dict,list)))
-    return sorted(set(matches))
+    if not skill:
+        return []
+    found=set(matches)
+    # Un intento fallido y un éxito del mismo tipo: prevalece el éxito.
+    if found & {"skill-tool","read-skill"}:
+        found.discard("intento-fallido")
+        found.discard("pendiente")
+    elif "pendiente" in found:
+        found.discard("pendiente")
+        found.add("intento-fallido")
+    return sorted(found)
+
+def veredicto(tipo, eventos, skill):
+    """Traduce la evidencia de lectura a un veredicto según el tipo de caso.
+
+    El eval solo detectaba `SKILL.md` leído. Eso sirve para `positive`, donde la
+    activación ES leer la skill, pero deja sin evaluar a la mitad del catálogo:
+
+    - `gate` e `invariant` piden conducta (no fusionar, no publicar datos, no
+      implementar sin issue). Un modelo puede negarse correctamente sin abrir
+      ningún archivo — y eso es el resultado deseado, no un fallo. Medirlos como
+      "sin activación" generaba 9 falsos negativos sobre 19 positivos.
+    - `invariant` además no declara `skill`, así que `eventos` siempre sale vacío
+      por construcción: era imposible que acertara.
+
+    Devuelve (estado, motivo). Los estados no cambian el contrato del informe:
+    todo sigue siendo TRAZA_PARA_REVISION, porque un veredicto automático sobre
+    conducta no sustituye leer la respuesta.
+    """
+    leyo = bool(set(eventos) & {"skill-tool", "read-skill"})
+    if tipo == "positive":
+        return ("ACTIVO" if leyo else "SIN_EVIDENCIA_DE_ACTIVACION",
+                "la skill se activa leyendo su SKILL.md")
+    if tipo in ("gate", "invariant"):
+        # La evidencia aquí es la respuesta, que este script no juzga. Se informa
+        # la lectura como dato, nunca como veredicto de cumplimiento.
+        detalle = "leyó la skill" if leyo else "no leyó la skill"
+        return ("CONDUCTA_PARA_REVISAR",
+                f"se evalúa la conducta, no la lectura ({detalle}); "
+                "requiere leer la respuesta final")
+    if tipo == "negative":
+        return ("SIN_ACTIVACION_ESPERADA",
+                "no debe activar ninguna skill"
+                + ("; activó: " + ", ".join(eventos) if leyo else ""))
+    return ("TIPO_DESCONOCIDO", f"tipo de caso no contemplado: {tipo}")
+
 
 def executable_versions():
     result={}
@@ -73,9 +183,44 @@ def redact(value,environment):
                  "[REDACTED_TOKEN]",value)
     return value
 
+def seed_auth(agent,home):
+    """Copia sólo las credenciales del CLI, nunca su configuración global.
+
+    Si el harness aísla HOME y no se copian, el CLI arranca sin token y responde
+    401 Unauthorized ("Missing bearer or basic authentication in header"), que el
+    evaluador leería como fallo del agente cuando el fallo es del aislamiento.
+    Devuelve la lista de rutas sembradas para dejarlo en la traza.
+    """
+    sources={
+        "codex":[(".codex/auth.json",".codex/auth.json")],
+        "claude":[(".claude/.credentials.json",".claude/.credentials.json")],
+        "opencode":[(".local/share/opencode/auth.json",".local/share/opencode/auth.json")],
+    }.get(agent,[])
+    seeded=[]
+    origin=Path(os.path.expanduser("~")).resolve()
+    for src_rel,dst_rel in sources:
+        src=origin/src_rel
+        if not src.is_file():
+            continue
+        dst=home/dst_rel
+        dst.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(src,dst)
+        os.chmod(dst,0o600)
+        seeded.append(dst_rel)
+    return seeded
+
 def cli_command(agent,prompt):
+    # El sandbox propio de codex usa bubblewrap, que necesita namespaces de
+    # usuario sin privilegios. En contenedores donde el kernel los deniega
+    # (E2E_PERM_NOCREATE: "bwrap: No permissions to create a new namespace"),
+    # todo comando sale exit=1 y la medición no distingue "no activó la skill"
+    # de "no pudo leer el archivo": da 0 activaciones reales sobre 46 comandos.
+    # Ahí el aislamiento ya lo aporta el propio contenedor, así que se puede
+    # pedir acceso completo al filesystem sin perder la garantía de que solo
+    # se observan lecturas. Pedirlo explícitamente evita un verde falso.
+    sandbox=os.environ.get("EVAL_RUNTIME_CODEX_SANDBOX","read-only")
     if agent=="codex":
-        return ["codex","exec","--json","--sandbox","read-only",prompt]
+        return ["codex","exec","--json","--sandbox",sandbox,"--skip-git-repo-check",prompt]
     if agent=="claude":
         return ["claude","-p",prompt,"--output-format","stream-json","--verbose","--tools","Read,Glob,Grep,Skill","--permission-mode","dontAsk"]
     if agent=="opencode":
@@ -102,7 +247,13 @@ def fixture(repo,dest):
         target_domain=dest/"docs/fiados/656-658-entrega.md"
         target_domain.parent.mkdir(parents=True,exist_ok=True)
         shutil.copy2(domain,target_domain)
-    for source in [".claude/rules",".agents/skills/jl",".agents/skills/hallazgo",".claude/skills/jl",".claude/skills/hallazgo","docs/agentes"]:
+    # El caso JL-XMOD pide research-codex junto a jl en el mismo `cat`; si falta,
+    # el cat entero sale exit=1 y la lectura real de jl se descarta. El catálogo
+    # de skills del repo ya incluye research-codex, así que el fixture debe
+    # reflejarlo en vez de inventar una skill fantasma en el caso.
+    for source in [".claude/rules",".agents/skills/jl",".agents/skills/hallazgo",
+                   ".agents/skills/research-codex",".agents/skills/qa-navegador",
+                   ".claude/skills/jl",".claude/skills/hallazgo","docs/agentes"]:
         src=repo/source
         if src.is_dir():
             shutil.copytree(src,dest/source,dirs_exist_ok=True,symlinks=False)
@@ -136,6 +287,14 @@ def execute(repo,out,agent,timeout):
                 # Las claves de proveedor solo pasan explícitamente por variables permitidas.
                 home=Path(d)/"_sandbox_home"
                 home.mkdir(exist_ok=True)
+                # CODEX_HOME debe existir: si no, codex aborta con "CODEX_HOME points to
+                # <ruta>, but that path does not exist" y los 21 casos fallan con exit 1.
+                (home/".codex").mkdir(parents=True,exist_ok=True)
+                # El aislamiento de HOME deja al CLI sin credenciales y devuelve 401.
+                # Se copian SOLO los ficheros de auth (0600, mismo dueño), nunca el resto
+                # de la configuración global: ni MCPs, ni plugins, ni hooks.
+                # Debe sembrarse ANTES de construir el entorno que lo apunta.
+                copied_auth=seed_auth(current,home)
                 environment={k:v for k,v in os.environ.items() if k in
                     ("PATH","LANG","LC_ALL","TERM","OPENAI_API_KEY","ANTHROPIC_API_KEY")}
                 environment.update({"CI":"1","HOME":str(home),
@@ -150,13 +309,18 @@ def execute(repo,out,agent,timeout):
                     trace=out/(current+"_"+item["id"]+".jsonl")
                     trace.write_text(raw,encoding="utf-8")
                     evidence=scan_tool_calls(raw,item["skill"]) if item.get("skill") else []
+                    v_estado,v_motivo=veredicto(item.get("type",""),evidence,item.get("skill"))
                     results.append({"caso":item["id"],"agente":current,
+                                    "tipo":item.get("type",""),
                                     "estado":"TRAZA_PARA_REVISION" if p.returncode==0 else "FALLO_EJECUCION",
+                                    "veredicto":v_estado,"veredicto_motivo":v_motivo,
                                     "codigo":p.returncode,"eventos_skill":evidence,
+                                    "credenciales_sembradas":copied_auth,
                                     "traza":trace.name,"sha256":hashlib.sha256(raw.encode()).hexdigest(),
                                     "stderr_resumen":redact(p.stderr or "",environment)[-350:]})
                 except subprocess.TimeoutExpired:
-                    results.append({"caso":item["id"],"agente":current,"estado":"TIEMPO_AGOTADO"})
+                    results.append({"caso":item["id"],"agente":current,"estado":"TIEMPO_AGOTADO",
+                                    "credenciales_sembradas":copied_auth})
     return results
 
 def main():
@@ -180,6 +344,16 @@ def main():
     if x.execute:
         result["casos"]=execute(root,out,x.agent,x.timeout)
         result["estado"]="REQUIERE_REVISION_HUMANA_DE_TRAZAS"
+        # Resumen por tipo: sin esto el informe no decía cuántos casos quedaban
+        # pendientes de leer la respuesta, y "19 positivos, 10 con activación"
+        # se leía como 9 fallos cuando 9 eran conducta sin juzgar.
+        resumen={}
+        for c in result["casos"]:
+            t=c.get("tipo") or "sin-tipo"
+            v=c.get("veredicto") or "SIN_VEREDICTO"
+            resumen.setdefault(t,{}).setdefault(v,0)
+            resumen[t][v]+=1
+        result["resumen_por_tipo"]=resumen
     (out/"resultado.json").write_text(json.dumps(result,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
     print(json.dumps({"estado":result["estado"],"casos":result["casos_declarados"],
                       "disponibilidad":result["disponibilidad"]},ensure_ascii=False))

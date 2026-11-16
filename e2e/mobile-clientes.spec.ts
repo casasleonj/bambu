@@ -21,7 +21,7 @@ test.describe('Clientes en mobile', () => {
   test('lista de clientes se muestra sin error "no se pudieron cargar"', async ({ page }) => {
     await loginAs(page, 'admin')
     await page.goto('/clientes')
-    await page.waitForLoadState('networkidle')
+    await expect(page.locator('input[placeholder*="Buscar" i]')).toBeVisible()
     await page.waitForTimeout(500)
 
     // No debe aparecer el error "No se pudieron cargar"
@@ -54,7 +54,7 @@ test.describe('Clientes en mobile', () => {
     // La prueba no debe depender de datos previos: asegura al menos un cliente.
     await createCliente(page)
     await page.goto('/clientes')
-    await page.waitForLoadState('networkidle')
+    await expect(page.locator('input[placeholder*="Buscar" i]')).toBeVisible()
     await page.waitForTimeout(800)
 
     // Esperar a que la lista de clientes este renderizada.
@@ -83,7 +83,7 @@ test.describe('Clientes en mobile', () => {
     // La prueba no debe depender de datos previos: asegura al menos un cliente.
     await createCliente(page)
     await page.goto('/clientes')
-    await page.waitForLoadState('networkidle')
+    await expect(page.locator('input[placeholder*="Buscar" i]')).toBeVisible()
     await page.waitForTimeout(800)
 
     await expect(page.locator('input[placeholder*="Buscar" i]')).toBeVisible({ timeout: 5000 })

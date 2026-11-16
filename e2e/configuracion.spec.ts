@@ -1,6 +1,6 @@
 // @tests api/config
 import { test, expect } from '@playwright/test'
-import { resetDatabase, loginAs } from './fixtures'
+import { resetDatabase, loginAs, appMain } from './fixtures'
 
 const BASE_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
@@ -21,7 +21,7 @@ test.describe('Configuración', () => {
   test('page loads with tabs', async ({ page }) => {
     await login(page)
     await page.goto(`${BASE_URL}/configuracion`)
-    await page.waitForLoadState('networkidle')
+    await expect(appMain(page).locator('#empresa_nombre')).toBeVisible()
 
     await expect(page.locator('h1:has-text("Configuración")')).toBeVisible()
     await expect(page.locator('button:has-text("Datos de la Empresa")')).toBeVisible()
@@ -31,10 +31,10 @@ test.describe('Configuración', () => {
   test('auto-save persiste cambios', async ({ page }) => {
     await login(page)
     await page.goto(`${BASE_URL}/configuracion`)
-    await page.waitForLoadState('networkidle')
+    await expect(appMain(page).locator('#empresa_nombre')).toBeVisible()
 
     const uniqueName = `Test Empresa ${Date.now()}`
-    await page.fill('#empresa_nombre', uniqueName)
+    await appMain(page).locator('#empresa_nombre').fill(uniqueName)
 
     // Wait for auto-save debounce (800ms) + network roundtrip
     await page.waitForTimeout(2500)
@@ -44,17 +44,17 @@ test.describe('Configuración', () => {
 
     // Refresh and verify
     await page.reload()
-    await page.waitForLoadState('networkidle')
-    await expect(page.locator('#empresa_nombre')).toHaveValue(uniqueName)
+    await expect(appMain(page).locator('#empresa_nombre')).toBeVisible()
+    await expect(appMain(page).locator('#empresa_nombre')).toHaveValue(uniqueName)
   })
 
   test('tabs cambian sin perder estado', async ({ page }) => {
     await login(page)
     await page.goto(`${BASE_URL}/configuracion`)
-    await page.waitForLoadState('networkidle')
+    await expect(appMain(page).locator('#empresa_nombre')).toBeVisible()
 
     const uniqueName = `Tab Test ${Date.now()}`
-    await page.fill('#empresa_nombre', uniqueName)
+    await appMain(page).locator('#empresa_nombre').fill(uniqueName)
 
     // Switch to Operación tab
     await page.click('button:has-text("Parámetros de Operación")')
@@ -65,13 +65,13 @@ test.describe('Configuración', () => {
     await page.waitForTimeout(300)
 
     // Value should persist
-    await expect(page.locator('#empresa_nombre')).toHaveValue(uniqueName)
+    await expect(appMain(page).locator('#empresa_nombre')).toHaveValue(uniqueName)
   })
 
   test('validación evita guardar email inválido', async ({ page }) => {
     await login(page)
     await page.goto(`${BASE_URL}/configuracion`)
-    await page.waitForLoadState('networkidle')
+    await expect(appMain(page).locator('#empresa_nombre')).toBeVisible()
 
     await page.fill('#empresa_email', 'no-es-email')
     // Trigger blur to ensure validation runs after debounce
@@ -86,9 +86,9 @@ test.describe('Configuración', () => {
   test('dirección usa textarea', async ({ page }) => {
     await login(page)
     await page.goto(`${BASE_URL}/configuracion`)
-    await page.waitForLoadState('networkidle')
+    await expect(appMain(page).locator('#empresa_nombre')).toBeVisible()
 
-    const textarea = page.locator('textarea#empresa_direccion')
+    const textarea = appMain(page).locator('textarea#empresa_direccion')
     await expect(textarea).toBeVisible()
     await expect(textarea).toHaveAttribute('rows', '3')
   })
@@ -96,9 +96,9 @@ test.describe('Configuración', () => {
   test('beforeunload protege cambios sin guardar', async ({ page }) => {
     await login(page)
     await page.goto(`${BASE_URL}/configuracion`)
-    await page.waitForLoadState('networkidle')
+    await expect(appMain(page).locator('#empresa_nombre')).toBeVisible()
 
-    await page.fill('#empresa_nombre', 'Cambio sin guardar')
+    await appMain(page).locator('#empresa_nombre').fill('Cambio sin guardar')
 
     // Try to navigate away
     page.on('dialog', async dialog => {
