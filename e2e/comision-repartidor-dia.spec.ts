@@ -308,7 +308,13 @@ test.describe('Fecha real y reintentos de comisiones (#673)', () => {
     await skipBaseCaja(page)
     await applyCachedRoleAuth(page, 'admin')
   })
-  test.afterAll(async () => { await prisma.$disconnect() })
+  // (#822) Estas pruebas crean CierreDia y producción de «ayer» directo en la base. Sin restaurar
+  // la semilla, los specs siguientes del mismo turno (embarques) heredan ese cierre sin snapshot
+  // de inventario y fallan con STOCK_INSUFFICIENT al cargar PACA_AGUA.
+  test.afterAll(async () => {
+    await prisma.$disconnect()
+    resetTestDatabase()
+  })
 
   async function trabajoAyer(page: PaginaAdmin) {
     const t = await prisma.trabajador.create({ data: { nombre: 'Sellador fechas sintético', rol: 'SELLADOR', tipoPago: 'COMISION' } })
