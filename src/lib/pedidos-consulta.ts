@@ -40,6 +40,15 @@ export interface ResultadoConsultaPedidos {
   destacadas?: EntregaDestacada[];
   destacadasTotal?: number;
   destacadasRangoAmplio?: boolean;
+  /**
+   * #797: pendientes de días anteriores a la consulta, más antiguos primero.
+   * Es una lectura aparte: no altera `pedidos`, `total`, `resumen` ni la fecha
+   * de ningún pedido. Ausente cuando la consulta no incluye hoy.
+   */
+  arrastrados?: Pedido[];
+  arrastradosTotal?: number;
+  /** La lectura de arrastrados falló; la lista principal sigue siendo válida. */
+  arrastradosError?: boolean;
 }
 
 export type FechaConsulta = "pedido" | "creacion" | "entrega" | "cobro";
@@ -331,4 +340,51 @@ export function parametrosConsulta(f: FiltrosConsultaPedidos): URLSearchParams {
   p.set("page", String(f.page));
   p.set("pageSize", String(f.pageSize));
   return p;
+}
+
+/** #797: estados que cuentan como «pendiente de días anteriores». */
+export const ESTADOS_ARRASTRADOS = [
+  "PENDIENTE",
+  "EN_RUTA",
+  "NO_ENTREGADO",
+] as const;
+export const MAX_ARRASTRADOS = 5;
+
+function diaAnterior(dia: string): string {
+  const [a, m, d] = dia.split("-").map(Number);
+  return new Date(Date.UTC(a, m - 1, d - 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * #797: filtros de la lectura de pendientes de días anteriores, o `null` si no
+ * aplica. Solo con fecha de pedido, un rango que incluye hoy y registros
+ * activos. Conserva búsqueda, canal, origen, cliente y pago; ignora horas, que
+ * delimitan el día consultado, no los días previos.
+ */
+export function filtrosArrastrados(
+  f: FiltrosConsultaPedidos,
+  hoy = getTodayString(),
+): FiltrosConsultaPedidos | null {
+  if (f.fechaBase !== "pedido" || f.all || !f.desde) return null;
+  if (f.registro === "anulados") return null;
+  if (f.desde > hoy || (f.hasta && f.hasta < hoy)) return null;
+  const estadoEntrega = f.estadoEntrega.length
+    ? f.estadoEntrega.filter((e) =>
+        (ESTADOS_ARRASTRADOS as readonly string[]).includes(e),
+      )
+    : [...ESTADOS_ARRASTRADOS];
+  if (!estadoEntrega.length) return null;
+  return {
+    ...f,
+    desde: "",
+    desdeHora: "",
+    hasta: diaAnterior(f.desde),
+    hastaHora: "",
+    all: false,
+    registro: "activos",
+    estadoEntrega,
+    resumen: false,
+    page: 1,
+    pageSize: MAX_ARRASTRADOS,
+  };
 }

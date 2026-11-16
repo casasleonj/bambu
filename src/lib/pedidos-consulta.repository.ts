@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
+import { logger } from "./logger";
 import { condicionPalabra, palabrasDeBusqueda } from "./clientes-repo";
 import { leerExigibles } from "./entregas-exigibles-db";
 import { importesEntregaPedido } from "./valor-entregado-pedido";
@@ -22,6 +23,7 @@ import {
 } from "./entregas-consulta";
 import {
   parametrosConsulta,
+  filtrosArrastrados,
   rangoConsultaPedidos,
   type FiltrosConsultaPedidos,
   type ProductoConsulta,
@@ -169,11 +171,33 @@ const centavos = (v: unknown) => {
 };
 const dec = (v: unknown) => centavos(v) / 100;
 
-/** Una foto de la consulta completa, independiente de la página visible. */
+/**
+ * Una foto de la consulta completa, independiente de la página visible.
+ * #797: añade los pendientes de días anteriores como lectura aparte; su fallo
+ * no invalida la lista principal.
+ */
 export async function consultarPedidos(
   f: FiltrosConsultaPedidos,
   role: string | null,
   client = prisma,
+): Promise<ResultadoConsultaPedidos> {
+  const resultado = await leerConsultaPedidos(f, role, client);
+  const fa = filtrosArrastrados(f);
+  if (!fa) return resultado;
+  try {
+    const a = await leerConsultaPedidos(fa, role, client, true);
+    return { ...resultado, arrastrados: a.pedidos, arrastradosTotal: a.total };
+  } catch (error) {
+    logger.warn({ err: error }, "No se pudieron leer los pendientes de días anteriores");
+    return { ...resultado, arrastradosError: true };
+  }
+}
+
+async function leerConsultaPedidos(
+  f: FiltrosConsultaPedidos,
+  role: string | null,
+  client = prisma,
+  arrastre = false,
 ): Promise<ResultadoConsultaPedidos> {
   return client.$transaction(
     async (tx) => {
@@ -245,7 +269,9 @@ export async function consultarPedidos(
         tx.pedido.count({ where }),
         tx.pedido.findMany({
           where,
-          orderBy: [{ fecha: "desc" }, { numero: "desc" }, { id: "asc" }],
+          orderBy: arrastre
+            ? [{ fecha: "asc" }, { numero: "asc" }, { id: "asc" }]
+            : [{ fecha: "desc" }, { numero: "desc" }, { id: "asc" }],
           skip: (f.page - 1) * f.pageSize,
           take: f.pageSize,
           include: {
@@ -533,7 +559,7 @@ export async function consultarPedidos(
         pagado = dec(sumas?._sum.totalPagado),
         saldo = dec(sumas?._sum.saldo),
         fiado = [...(exigiblesConjunto?.values() ?? [])].reduce((s, monto) => s + centavos(monto), 0) / 100;
-      const consultaDestacadas = f.fechaBase === "pedido" && !f.all
+      const consultaDestacadas = !arrastre && f.fechaBase === "pedido" && !f.all
         ? await listarEntregasDestacadas(tx, whereConsultaPedidos({ ...f, fechaBase: "entrega", foco: f.foco === "entregaParcial" ? "" : f.foco }), rango, f.repartidorId, f.foco === "entregaParcial")
         : null;
       const [{ ahora }] = await tx.$queryRaw<

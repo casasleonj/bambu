@@ -6,6 +6,7 @@ import { useOnlineStatus } from "@/hooks/use-online-status";
 import type { EstadoGestionAdmin } from "@/hooks/use-gestion-admin";
 import {
   clavesConsultaPedidos,
+  filtrosArrastrados,
   leerFiltrosConsulta,
   parametrosConsulta,
   type FiltrosConsultaPedidos,
@@ -69,7 +70,7 @@ export function ConsultaPedidosHub(props: Props) {
   const { onTotal, onPedidos } = props;
   useEffect(() => {
     onTotal(datos?.total ?? 0);
-    onPedidos(datos?.pedidos ?? []);
+    onPedidos([...(datos?.pedidos ?? []), ...(datos?.arrastrados ?? [])]);
   }, [datos, onTotal, onPedidos]);
   const aplicar = useCallback(
     (f: FiltrosConsultaPedidos) => {
@@ -100,6 +101,49 @@ export function ConsultaPedidosHub(props: Props) {
     () => [...props.pendientes, ...(datos?.pedidos ?? [])],
     [props.pendientes, datos?.pedidos],
   );
+  const encabezado = (
+    <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+      <div>
+        <h2 className="text-lg font-bold text-slate-800">
+          {filtrosLeidos?.resumen
+            ? "Pedidos de la consulta"
+            : "Pedidos de hoy"}
+        </h2>
+        <p className="mt-1 text-xs text-slate-500">
+          {datos
+            ? `${datos.total} resultado(s) de toda la consulta`
+            : "Consultando…"}{" "}
+          · hora de Colombia
+        </p>
+      </div>
+      <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800">
+        {
+          {
+            pedido: "Fecha del pedido",
+            creacion: "Fecha de creación",
+            entrega: "Fecha de entrega",
+            cobro: "Fecha del cobro",
+          }[filtrosLeidos?.fechaBase ?? consulta.filtros.fechaBase]
+        }
+      </span>
+    </div>
+  );
+  const baseArrastrados = filtrosLeidos ?? consulta.filtros;
+  const aplicaArrastrados = !!filtrosArrastrados(baseArrastrados);
+  const verArrastrados = () => {
+    const fa = filtrosArrastrados(baseArrastrados);
+    if (fa) aplicar({ ...fa, resumen: true, pageSize: baseArrastrados.pageSize });
+  };
+  const arrastrados = aplicaArrastrados
+    ? {
+        pedidos: datos?.arrastrados ?? [],
+        total: datos?.arrastradosTotal ?? 0,
+        error: !!datos?.arrastradosError,
+        cargando: !hayDatos && pendiente,
+        onVerTodos: verArrastrados,
+        onReintentar: refresh,
+      }
+    : undefined;
   return (
     <div
       className="space-y-3 rounded-xl bg-[#f6f0e5] p-3 lg:p-4"
@@ -193,32 +237,10 @@ export function ConsultaPedidosHub(props: Props) {
             <ResumenConsulta resumen={datos.resumen} filtros={filtrosLeidos} />
           )}
           <section className="rounded-xl border border-stone-200 bg-white p-4">
-            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <h2 className="text-lg font-bold text-slate-800">
-                  {filtrosLeidos?.resumen
-                    ? "Pedidos de la consulta"
-                    : "Pedidos de hoy"}
-                </h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  {datos
-                    ? `${datos.total} resultado(s) de toda la consulta`
-                    : "Consultando…"}{" "}
-                  · hora de Colombia
-                </p>
-              </div>
-              <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800">
-                {
-                  {
-                    pedido: "Fecha del pedido",
-                    creacion: "Fecha de creación",
-                    entrega: "Fecha de entrega",
-                    cobro: "Fecha del cobro",
-                  }[filtrosLeidos?.fechaBase ?? consulta.filtros.fechaBase]
-                }
-              </span>
-            </div>
+            {encabezado}
             {datos && datos.total > 0 && datos.pedidos.length === 0 ? (
+              <>
+                {encabezado}
               <div className="p-5 text-center">
                 <p className="text-sm text-slate-600">
                   Esta página ya no tiene resultados. Hay {datos.total} pedidos
@@ -232,6 +254,7 @@ export function ConsultaPedidosHub(props: Props) {
                   Volver a la primera página
                 </button>
               </div>
+              </>
             ) : (
               <PedidoHub
                 pedidos={filas}
@@ -245,6 +268,8 @@ export function ConsultaPedidosHub(props: Props) {
                 onRetry={refresh}
                 onRefetch={refresh}
                 onPeekMovilChange={props.onPeekMovilChange}
+                arrastrados={arrastrados}
+                encabezadoLista={encabezado}
                 consulta={{
                   userRole: props.userRole,
                   gestionDirecta: props.gestion.activa && !gestionDesconocida,

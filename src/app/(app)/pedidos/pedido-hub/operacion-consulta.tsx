@@ -14,6 +14,7 @@ import {
 } from "./consulta-datos";
 import type { AccionKey, Pedido } from "./types";
 import { fechaConsulta } from "./fecha-consulta";
+import { etiquetaArrastre } from "./arrastrados";
 import { importesEntregaPedido } from "@/lib/valor-entregado-pedido";
 import styles from "./operacion-consulta.module.css";
 
@@ -67,7 +68,10 @@ export function OperacionConsulta({
   onAccion,
   onOpen,
   acciones,
+  arrastre = false,
 }: {
+  /** #797: muestra la fecha original y la antigüedad de cada pedido arrastrado. */
+  arrastre?: boolean;
   pedidos: Pedido[];
   viewport: "desktop" | "mobile";
   hoyBogota: string;
@@ -200,6 +204,14 @@ export function OperacionConsulta({
                   Pedido #{p.numero} ·{" "}
                   {p.negocioId ? `Negocio de ${p.nombreCli}` : "Persona"}
                 </p>
+                {arrastre && (
+                  <p
+                    className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"
+                    data-testid={`operacion-arrastre-${p.id}`}
+                  >
+                    {etiquetaArrastre(p.fecha, hoyBogota)}
+                  </p>
+                )}
                 <p
                   className={`${styles.meta} truncate`}
                   data-testid={`operacion-barrio-${p.id}`}

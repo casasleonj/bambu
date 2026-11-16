@@ -4,6 +4,8 @@ import {
   parametrosConsulta,
   rangoConsultaPedidos,
   FiltroPedidosError,
+  filtrosArrastrados,
+  MAX_ARRASTRADOS,
 } from "../pedidos-consulta";
 const leer = (s = "") =>
   leerFiltrosConsulta(new URLSearchParams(s), "2026-10-30");
@@ -66,5 +68,75 @@ describe("#516 — contrato de consulta", () => {
     expect(f.desde).toBe("");
     expect(f.hasta).toBe("");
     expect(f.resumen).toBe(false);
+  });
+});
+
+// #797: pendientes de días anteriores como lectura aparte.
+describe("#797 — filtros de pendientes de días anteriores", () => {
+  const hoy = "2026-10-30";
+  const fa = (s = "") => filtrosArrastrados(leer(s), hoy);
+  it("Hoy: lee pendientes anteriores al día, sin resumen y con tope", () => {
+    const r = fa()!;
+    expect(r.desde).toBe("");
+    expect(r.hasta).toBe("2026-10-29");
+    expect(r.estadoEntrega).toEqual(["PENDIENTE", "EN_RUTA", "NO_ENTREGADO"]);
+    expect(r.resumen).toBe(false);
+    expect(r.page).toBe(1);
+    expect(r.pageSize).toBe(MAX_ARRASTRADOS);
+    expect(r.fechaBase).toBe("pedido");
+    // El rango resultante es válido y termina al cerrar el día anterior.
+    expect(rangoConsultaPedidos(r).hasta.toISOString()).toBe(
+      "2026-10-30T05:00:00.000Z",
+    );
+  });
+  it("cruza el cambio de mes y de año al calcular el día anterior", () => {
+    expect(
+      filtrosArrastrados(leer("desde=2026-10-01&hasta=2026-10-30"), hoy)!.hasta,
+    ).toBe("2026-09-30");
+    expect(
+      filtrosArrastrados(
+        leerFiltrosConsulta(new URLSearchParams(), "2027-01-01"),
+        "2027-01-01",
+      )!.hasta,
+    ).toBe("2026-12-31");
+  });
+  it("las horas solo delimitan el día consultado, no los días previos", () => {
+    const r = fa("desdeHora=10:00&hastaHora=11:00")!;
+    expect(r.desdeHora).toBe("");
+    expect(r.hastaHora).toBe("");
+  });
+  it("conserva búsqueda, canal y cliente de la consulta", () => {
+    const r = fa("search=ana&canal=DOMICILIO&clienteId=c1")!;
+    expect(r.search).toBe("ana");
+    expect(r.canal).toEqual(["DOMICILIO"]);
+    expect(r.clienteId).toBe("c1");
+  });
+  it("respeta un filtro de estado, solo con los estados que cuentan", () => {
+    expect(fa("estadoEntrega=EN_RUTA")!.estadoEntrega).toEqual(["EN_RUTA"]);
+    expect(
+      fa("estadoEntrega=EN_RUTA&estadoEntrega=ENTREGADO")!.estadoEntrega,
+    ).toEqual(["EN_RUTA"]);
+  });
+  it.each([
+    ["solo entregados", "estadoEntrega=ENTREGADO"],
+    ["solo anulados", "registro=anulados"],
+    ["fecha de entrega", "fechaBase=entrega"],
+    ["fecha de cobro", "fechaBase=cobro"],
+    ["fecha de creación", "fechaBase=creacion"],
+    ["todas las fechas", "all=true"],
+    ["un día pasado", "desde=2026-10-20&hasta=2026-10-20"],
+    ["un día futuro", "desde=2026-11-02&hasta=2026-11-02"],
+    ["sin fecha de inicio", "hasta=2026-10-30"],
+  ])("no aplica con %s", (_nombre, query) => {
+    expect(fa(query)).toBeNull();
+  });
+  it("aplica si el rango incluye hoy aunque empiece antes", () => {
+    expect(fa("desde=2026-10-25&hasta=2026-10-30")!.hasta).toBe("2026-10-24");
+  });
+  it("no modifica la consulta original", () => {
+    const f = leer("search=ana");
+    const antes = JSON.stringify(f);
+    filtrosArrastrados(f, hoy);
+    expect(JSON.stringify(f)).toBe(antes);
   });
 });
