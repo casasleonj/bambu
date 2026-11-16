@@ -24,7 +24,8 @@ describe('F-N9: PAGAR usa updateMany atómico (no findUnique + update)', () => {
     expect(pagarBlock).toMatch(/estado:\s*['"]PENDIENTE['"]/)
     // Data setea PAGADA + fechaPago
     expect(pagarBlock).toMatch(/estado:\s*['"]PAGADA['"]/)
-    expect(pagarBlock).toMatch(/fechaPago:\s*new Date\(\)/)
+    // #673: la fecha del pago es el momento de la captura salvo que se indique otra (`fechaDelPago`, ver fecha-pago-efectiva.ts)
+    expect(pagarBlock).toMatch(/fechaPago:\s*(new Date\(\)|fechaDelPago)/)
   })
 
   it('FIX: el bloque PAGAR valida count === 0 para detectar doble pago', () => {
