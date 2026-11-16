@@ -22,9 +22,22 @@ export function resumenFiados(rows: Array<{ deuda: number; pedidos: unknown[] }>
   const centavos = rows.reduce((s, r) => s + Math.round(r.deuda * 100), 0)
   return { total: centavos / 100, clientes: rows.length, pedidos: rows.reduce((s, r) => s + r.pedidos.length, 0) }
 }
-interface FiadoRow {
+export interface FiadoRow {
   clienteId: string; nombreCli: string; apellidoCli?: string | null; telefonoCli: string
   negocioId?: string | null; nombreNegocioCli?: string | null; pedidos: Pedido[]; deuda: number; antigua: Date
+}
+/** Filas de la consulta de Fiados: una por cliente, solo deuda exigible de lo entregado. Fuente única del total (#613, #781). */
+export function filasFiados(pedidos: Pedido[], periodo: PeriodoFiltro): FiadoRow[] {
+  const grouped = new Map<string, FiadoRow>()
+  for (const p of filtrarPorPeriodo(pedidos, periodo)) {
+    if (['ANULADO', 'CANCELADO'].includes(p.estadoEntrega) || (p.exigible ?? (p.estadoEntrega === 'ENTREGADO' ? Number(p.saldo) : 0)) <= 0 || p.clienteId === 'CONSUMIDOR_FINAL') continue
+    const row = grouped.get(p.clienteId)
+    if (row) { row.pedidos.push(p); row.deuda += p.exigible ?? Number(p.saldo); if (new Date(p.fecha) < row.antigua) row.antigua = new Date(p.fecha) }
+    else grouped.set(p.clienteId, { clienteId: p.clienteId, nombreCli: p.nombreCli, apellidoCli: p.apellidoCli,
+      telefonoCli: p.telefonoCli, negocioId: p.negocioId, nombreNegocioCli: p.nombreNegocioCli,
+      pedidos: [p], deuda: p.exigible ?? Number(p.saldo), antigua: new Date(p.fecha) })
+  }
+  return [...grouped.values()]
 }
 interface Props extends AccesoDocumentosPedido {
   clientes: Cliente[]
@@ -58,18 +71,7 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
   const [guardandoDeuda, setGuardandoDeuda] = useState(false)
   const puedeCobrar = userRole === 'ADMIN' || userRole === 'ASISTENTE'
 
-  const rows = useMemo(() => {
-    const grouped = new Map<string, FiadoRow>()
-    for (const p of filtrarPorPeriodo(pedidos, periodo)) {
-      if (['ANULADO', 'CANCELADO'].includes(p.estadoEntrega) || (p.exigible ?? (p.estadoEntrega === 'ENTREGADO' ? Number(p.saldo) : 0)) <= 0 || p.clienteId === 'CONSUMIDOR_FINAL') continue
-      const row = grouped.get(p.clienteId)
-      if (row) { row.pedidos.push(p); row.deuda += p.exigible ?? Number(p.saldo); if (new Date(p.fecha) < row.antigua) row.antigua = new Date(p.fecha) }
-      else grouped.set(p.clienteId, { clienteId: p.clienteId, nombreCli: p.nombreCli, apellidoCli: p.apellidoCli,
-        telefonoCli: p.telefonoCli, negocioId: p.negocioId, nombreNegocioCli: p.nombreNegocioCli,
-        pedidos: [p], deuda: p.exigible ?? Number(p.saldo), antigua: new Date(p.fecha) })
-    }
-    return [...grouped.values()]
-  }, [pedidos, periodo])
+  const rows = useMemo(() => filasFiados(pedidos, periodo), [pedidos, periodo])
   // Primero aplicar ámbito financiero y filtros; después ordenar por coincidencia.
   // Los importes se calculan sobre los mismos deudores visibles, sin modificar deuda.
   const elegibles = rows.filter(row => {
