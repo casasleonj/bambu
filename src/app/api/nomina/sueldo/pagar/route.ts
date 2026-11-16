@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger'
 import { formatZodError } from '@/lib/utils'
 import { startOfDayBogota, todayStringBogota } from '@/lib/dates'
 import { sueldosPendientesAl } from '@/lib/sueldos-pendientes'
+import { FechaPagoError, resolverFechaPago } from '@/lib/fecha-pago-efectiva'
 import { nominaQueCubre } from '@/lib/nomina-cobertura'
 import { POST as crearNomina } from '@/app/api/nomina/route'
 import { PUT as accionNomina } from '@/app/api/nomina/[id]/route'
@@ -42,6 +43,13 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return apiError(formatZodError(parsed.error), 400)
   const { trabajadorId, fecha, metodo } = parsed.data
   if (fecha > todayStringBogota()) return apiError('No se puede pagar un sueldo de una fecha que no ha llegado', 422, { code: 'FECHA_FUTURA' })
+  // #673: se valida el día real del pago ANTES de crear nada; si no, un rechazo dejaría una nómina pendiente suelta.
+  try {
+    resolverFechaPago({ fecha: parsed.data.fechaPago, motivo: parsed.data.motivoFecha })
+  } catch (error) {
+    if (error instanceof FechaPagoError) return apiError(error.message, error.status, { code: error.code })
+    throw error
+  }
 
   try {
     const pendientes = await sueldosPendientesAl(prisma, fecha)

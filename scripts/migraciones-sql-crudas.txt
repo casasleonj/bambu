@@ -36,5 +36,3 @@
 20260729210000_fix_search_clientes_phone_negocio
 # #560: devolución del saldo a favor al cliente (CHECK).
 20261111_devolucion_saldo_favor
-# #673: fecha efectiva de caja de los pagos de comision y sus correcciones (CHECK).
-20261116_pago_comision_fecha_efectiva

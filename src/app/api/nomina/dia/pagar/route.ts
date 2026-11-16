@@ -9,7 +9,6 @@ import { formatZodError } from '@/lib/utils'
 import { startOfDayBogota, todayStringBogota } from '@/lib/dates'
 import { nominaQueCubre } from '@/lib/nomina-cobertura'
 import { comisionDiaConEstado, comisionSelladoresDia } from '@/lib/comision-pagada'
-import { FechaPagoError, resolverFechaPago } from '@/lib/fecha-pago-efectiva'
 
 /**
  * POST /api/nomina/dia/pagar — el ADMIN/CONTADOR marca que le pagó al repartidor la comisión
@@ -29,10 +28,6 @@ const PagarComisionSchema = z.object({
   // #645: REPARTO = comisión del repartidor por entregas; PRODUCCION = comisión del sellador por lo producido. Sin indicarlo se
   // busca primero como repartidor y luego como sellador (clientes anteriores).
   concepto: z.enum(['REPARTO', 'PRODUCCION']).optional(),
-  // #673: día en que realmente se entregó el dinero (YYYY-MM-DD, Bogotá). Sin indicarlo, o con hoy, es el pago normal. Un día
-  // anterior pide motivo y es la fecha de caja que lee el cierre; `fecha` sigue siendo el día del trabajo (nómina).
-  pagadoEl: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha del pago debe ser AAAA-MM-DD').optional(),
-  motivoFecha: z.string().max(500).optional(),
 })
 
 class PagoComisionError extends Error {
@@ -62,13 +57,6 @@ export async function POST(request: NextRequest) {
   const parsed = PagarComisionSchema.safeParse(body)
   if (!parsed.success) return apiError(formatZodError(parsed.error), 400)
   const { trabajadorId, fecha, offlineId, montoEsperado, metodo, concepto: conceptoPedido } = parsed.data
-  let fechaPago: ReturnType<typeof resolverFechaPago>
-  try {
-    fechaPago = resolverFechaPago({ fecha: parsed.data.pagadoEl, motivo: parsed.data.motivoFecha })
-  } catch (error) {
-    if (error instanceof FechaPagoError) return apiError(error.message, error.status, { code: error.code })
-    throw error
-  }
 
   const dia = startOfDayBogota(fecha)
   if (Number.isNaN(dia.getTime())) return apiError('Fecha inválida', 400)
@@ -107,7 +95,7 @@ export async function POST(request: NextRequest) {
       }
 
       const pago = await tx.pagoComisionRepartidor.create({
-        data: { trabajadorId, fecha: dia, monto: fila.pendiente, metodo, concepto, pagadoPorId: userId ?? null, offlineId, pagadoAt: fechaPago.instante },
+        data: { trabajadorId, fecha: dia, monto: fila.pendiente, metodo, concepto, pagadoPorId: userId ?? null, offlineId },
       })
       return { pago, deduped: false as const }
     }, 'nomina/dia/pagar')
@@ -117,11 +105,7 @@ export async function POST(request: NextRequest) {
         entidad: 'PagoComisionRepartidor',
         registroId: resultado.pago.id,
         accion: 'CREATE',
-        datos: {
-          trabajadorId, fecha, monto: Number(resultado.pago.monto), metodo: resultado.pago.metodo,
-          // #673: solo cuando se anotó con otra fecha de entrega; el motivo queda aquí y la fecha en el propio pago.
-          ...(fechaPago.esHoy ? {} : { entregadoEl: fechaPago.dia, motivoFecha: fechaPago.motivo }),
-        },
+        datos: { trabajadorId, fecha, monto: Number(resultado.pago.monto), metodo: resultado.pago.metodo },
         usuarioId: userId,
       }).catch(() => {})
     }

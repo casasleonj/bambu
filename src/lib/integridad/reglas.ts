@@ -324,7 +324,7 @@ export const REGLAS: readonly Regla[] = [
   {
     // #499: la comisión del repartidor pagada de la caja (`PagoComisionRepartidor`) debe
     // cuadrar en dos lugares. (1) El cierre de un día guarda cuánto salió de la caja por
-    // comisión de repartidores; si los pagos de ese día (por fecha efectiva de caja, #673) suman otra cosa,
+    // comisión de repartidores; si los pagos de ese día (por `createdAt`) suman otra cosa,
     // hubo un pago posterior al cierre o un cierre editado. (2) Una nómina descuenta lo que
     // se pagó de la caja en su período; si descuenta otra cifra, la comisión se pagaría dos
     // veces o se dejaría de pagar.
@@ -338,24 +338,9 @@ export const REGLAS: readonly Regla[] = [
           'pagosDelDia', COALESCE(p.s, 0)::float8) AS detalle
       FROM "CierreDia" c
       LEFT JOIN LATERAL (
-        -- #673: el cierre resta por la fecha EFECTIVA de caja (pagadoAt; NULL = createdAt). Se compara con la fecha efectiva
-        -- que el pago tenía CUANDO se hizo el cierre: una corrección posterior no descuadra un cierre que ya lo había visto.
-        SELECT SUM(x.monto) AS s FROM (
-          SELECT g.monto, g."createdAt",
-            COALESCE(
-              (SELECT k."fechaNueva" FROM "PagoComisionFechaCorreccion" k
-                WHERE k."pagoId" = g.id AND k."corregidoAt" <= c."createdAt" ORDER BY k."corregidoAt" DESC LIMIT 1),
-              (SELECT k."fechaAnterior" FROM "PagoComisionFechaCorreccion" k
-                WHERE k."pagoId" = g.id AND k."corregidoAt" > c."createdAt" ORDER BY k."corregidoAt" ASC LIMIT 1),
-              g."pagadoAt", g."createdAt") AS efectiva
-          FROM "PagoComisionRepartidor" g
-          WHERE g.metodo = 'EFECTIVO'
-        ) x
-        WHERE x.efectiva >= c.fecha AND x.efectiva < c.fecha + interval '1 day'
-          -- Un pago anotado DESPUÉS del cierre con la fecha de ese día cerrado (entrega retroactiva) queda explicado por su
-          -- propia fecha efectiva y su rastro; un pago normal hecho después del cierre sigue marcándose.
-          AND NOT (x."createdAt" > c."createdAt"
-            AND (x.efectiva AT TIME ZONE 'America/Bogota')::date <> (x."createdAt" AT TIME ZONE 'America/Bogota')::date)
+        SELECT SUM(g.monto) AS s FROM "PagoComisionRepartidor" g
+        WHERE g."createdAt" >= c.fecha AND g."createdAt" < c.fecha + interval '1 day'
+          AND g.metodo = 'EFECTIVO'
       ) p ON true
       WHERE c.reporte->'comisionesAuto'->>'pagadoRepartidores' IS NOT NULL
         AND ABS((c.reporte->'comisionesAuto'->>'pagadoRepartidores')::numeric - COALESCE(p.s, 0)) > 0.005

@@ -1,7 +1,7 @@
-// #673 punto 2 — fecha EFECTIVA de un pago al personal (cuándo salió el dinero), distinta de cuándo se anotó.
-// Reglas únicas para comisiones y sueldos: sin fecha o «hoy» es el pago normal; una fecha pasada necesita motivo y deja
-// rastro; una fecha futura se rechaza. Un día ya cerrado NO bloquea (el dinero salió ese día): el cierre guardado no se
-// reescribe y V16 lo ve como explicado.
+// #673 punto 2 — día REAL en que se pagó un sueldo, distinto de cuándo se anotó. Los sueldos se atrasan o se adelantan, por eso
+// es opcional: sin fecha o «hoy» es el pago normal; una fecha pasada necesita motivo y deja rastro; una futura se rechaza.
+// Un día ya cerrado NO bloquea (el dinero salió ese día): el cierre guardado no se reescribe. Las comisiones usan
+// `PagoComisionRepartidor.fechaPagoReal` (#770), no este módulo.
 
 import { dayInBogota, startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 
