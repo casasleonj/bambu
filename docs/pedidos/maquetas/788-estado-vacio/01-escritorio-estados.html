@@ -1,0 +1,49 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><title>#788 · Búsqueda en Pedidos · escritorio</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#eef1f6;color:#1f2937;padding:28px}
+h1{font-size:20px;margin-bottom:4px}.sub{font-size:13px;color:#4b5563;margin-bottom:18px;max-width:1100px;line-height:1.45}
+.grid{display:grid;gap:22px}.d{grid-template-columns:1fr 1fr}.m{grid-template-columns:repeat(3,390px)}
+.fw{display:flex;flex-direction:column;gap:8px}
+.tag{font-size:12px;font-weight:700;letter-spacing:.02em;color:#1d4ed8;background:#dbeafe;border-radius:999px;padding:4px 10px;align-self:flex-start}
+.tag.alt{color:#92400e;background:#fef3c7}
+.frame{background:#fbf7f1;border:1px solid #e5dccb;border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:12px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chip{border:1px solid #d1d5db;border-radius:999px;padding:7px 14px;font-weight:600;font-size:13px;background:#fff;color:#111827}
+.chip.on{background:#eaf2ff;border-color:#93b8ff;color:#1d4ed8}
+.lbl{font-size:12px;font-weight:600;color:#374151;margin-bottom:6px}
+.row{display:flex;gap:8px}
+.inp{flex:1;border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:14px;background:#fff;display:flex;justify-content:space-between;align-items:center;color:#111827}
+.inp .x{color:#6b7280;font-size:15px}
+.btnf{border:1px solid #d1d5db;border-radius:8px;padding:10px 14px;font-size:14px;background:#fff;white-space:nowrap}
+.hd{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px}
+.hd h3{font-size:17px}.pill{background:#e0e7ff;color:#3730a3;border-radius:999px;font-size:11px;font-weight:700;padding:4px 9px;white-space:nowrap}
+.muted{font-size:12px;color:#6b7280}
+.empty{text-align:center;padding:22px 8px 14px}
+.empty .ic{font-size:28px;margin-bottom:6px}.empty h4{font-size:16px;margin-bottom:6px}
+.empty p{font-size:13px;color:#4b5563;line-height:1.45;margin:0 auto 14px;max-width:420px}
+.btn{display:inline-block;border-radius:9px;padding:11px 18px;font-weight:700;font-size:14px;border:0}
+.btn.p{background:#1d4ed8;color:#fff}.btn.s{background:#fff;border:1px solid #d1d5db;color:#111827}
+.btn.dis{background:#93b3f5;color:#fff}.lnk{display:block;margin-top:10px;font-size:13px;color:#1d4ed8;font-weight:600}
+.sk{height:62px;border-radius:10px;background:linear-gradient(90deg,#eceff4,#f6f7fa,#eceff4);margin-bottom:10px}
+.err{background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px;color:#7f1d1d}
+.err h4{font-size:15px;margin-bottom:4px}.err p{font-size:13px;margin-bottom:12px;line-height:1.4}
+.info{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 12px;font-size:13px;color:#1e3a8a;display:flex;justify-content:space-between;gap:8px;margin-bottom:12px;align-items:center}
+.info b{font-weight:700}.info a{font-weight:700;color:#1d4ed8;white-space:nowrap}
+.res{border-top:1px solid #e5e7eb;padding:12px 0}.res:first-child{border-top:0;padding-top:2px}
+.res .n{font-weight:700;font-size:15px}.res .meta{font-size:12px;color:#6b7280;margin:3px 0 7px}
+.bd{display:inline-block;border-radius:999px;font-size:11px;font-weight:700;padding:3px 9px;margin-right:6px}
+.bd.o{background:#ffedd5;color:#9a3412}.bd.g{background:#dcfce7;color:#166534}.bd.y{background:#fef9c3;color:#854d0e}
+.note{margin-top:18px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;font-size:13px;line-height:1.55;max-width:1180px}
+.note b{color:#111827}.note ul{margin:6px 0 0 18px}
+</style></head><body><h1>#788 · Búsqueda en Pedidos · escritorio</h1><div class="sub">Propuesta para #788 · estado «sin resultados en el período». NO IMPLEMENTADO · pendiente de aprobación del PO. Estados: vacío, carga, error y resultado.</div><div class="grid d"><div class="fw"><span class="tag">A · Vacío por fecha (propuesta)</span><div class="frame"><div class="card"><div class="chips"><span class="chip on">Hoy</span><span class="chip">Ayer</span><span class="chip">Ayer y hoy</span><span class="chip">Todos</span><span class="chip">Elegir rango</span></div><div class="lbl">Buscar pedido, cliente, negocio o creador</div><div class="row"><div class="inp"><span>PUN</span><span class="x">✕</span></div><div class="btnf">Filtros ▾</div></div></div><div class="card"><div class="hd"><h3>Pedidos de hoy</h3><span class="pill">0 resultado(s)</span></div><div class="empty"><div class="ic">🔎</div><h4>Sin pedidos de hoy para «PUN»</h4><p>El cliente o negocio puede tener pedidos en otros días. Tu búsqueda se conserva.</p><span class="btn p">Ver todos los períodos</span><span class="lnk">Limpiar búsqueda</span></div></div></div></div><div class="fw"><span class="tag alt">A′ · Variante con conteo (alternativa)</span><div class="frame"><div class="card"><div class="chips"><span class="chip on">Hoy</span><span class="chip">Ayer</span><span class="chip">Ayer y hoy</span><span class="chip">Todos</span><span class="chip">Elegir rango</span></div><div class="lbl">Buscar pedido, cliente, negocio o creador</div><div class="row"><div class="inp"><span>PUN</span><span class="x">✕</span></div><div class="btnf">Filtros ▾</div></div></div><div class="card"><div class="hd"><h3>Pedidos de hoy</h3><span class="pill">0 resultado(s)</span></div><div class="empty"><div class="ic">🔎</div><h4>Sin pedidos de hoy para «PUN»</h4><p><b>Hay 2 pedidos con «PUN» en otros períodos.</b><br>Tu búsqueda se conserva.</p><span class="btn p">Ver esos 2 pedidos</span><span class="lnk">Limpiar búsqueda</span></div></div></div></div><div class="fw"><span class="tag">B · Cargando tras pulsar la acción</span><div class="frame"><div class="card"><div class="chips"><span class="chip">Hoy</span><span class="chip">Ayer</span><span class="chip">Ayer y hoy</span><span class="chip on">Todos</span><span class="chip">Elegir rango</span></div><div class="lbl">Buscar pedido, cliente, negocio o creador</div><div class="row"><div class="inp"><span>PUN</span><span class="x">✕</span></div><div class="btnf">Filtros ▾</div></div></div><div class="card"><div class="hd"><h3>Todos los períodos</h3><span class="pill">Buscando…</span></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div style="text-align:center;margin-top:6px"><span class="btn dis">Buscando pedidos…</span></div></div></div></div><div class="fw"><span class="tag">C · Error al buscar</span><div class="frame"><div class="card"><div class="chips"><span class="chip">Hoy</span><span class="chip">Ayer</span><span class="chip">Ayer y hoy</span><span class="chip on">Todos</span><span class="chip">Elegir rango</span></div><div class="lbl">Buscar pedido, cliente, negocio o creador</div><div class="row"><div class="inp"><span>PUN</span><span class="x">✕</span></div><div class="btnf">Filtros ▾</div></div></div><div class="card"><div class="hd"><h3>Todos los períodos</h3><span class="pill">Error</span></div><div class="err"><h4>No se pudo buscar</h4><p>Revisa tu conexión e inténtalo de nuevo. Tu búsqueda «PUN» sigue escrita y no se perdió nada.</p><span class="btn p">Reintentar</span> &nbsp; <span class="btn s">Volver a Hoy</span></div></div></div></div><div class="fw"><span class="tag">D · Resultado y confirmación de lo que se está viendo</span><div class="frame"><div class="card"><div class="chips"><span class="chip">Hoy</span><span class="chip">Ayer</span><span class="chip">Ayer y hoy</span><span class="chip on">Todos</span><span class="chip">Elegir rango</span></div><div class="lbl">Buscar pedido, cliente, negocio o creador</div><div class="row"><div class="inp"><span>PUN</span><span class="x">✕</span></div><div class="btnf">Filtros ▾</div></div></div><div class="info"><span>Mostrando <b>todos los períodos</b> para «PUN».</span><a>Volver a Hoy</a></div><div class="card"><div class="hd"><h3>Todos los períodos</h3><span class="pill">2 resultado(s)</span></div><div class="res"><div class="n">👤 Carlos Duarte · Punti Frío</div><div class="meta">Pedido #471 · Ayer, 15 nov · Domicilio</div><span class="bd o">Por entregar</span><span class="bd y">Sin pago registrado</span></div><div class="res"><div class="n">👤 Carlos Duarte · Punti Frío</div><div class="meta">Pedido #455 · 12 nov · Domicilio</div><span class="bd g">Entregado</span><span class="bd g">Pagado</span></div></div></div></div></div><div class="note"><b>Qué hace cada acción</b><ul>
+<li><b>Ver todos los períodos:</b> cambia solo el rango a «Todos» y <b>conserva lo escrito</b>. No borra filtros de estado ni de canal.</li>
+<li><b>Volver a Hoy:</b> restaura el rango anterior; la búsqueda sigue escrita.</li>
+<li><b>Reintentar:</b> repite la misma consulta; no crea ni cambia ningún pedido.</li></ul>
+<b style="display:block;margin-top:10px">Qué NO cambia</b><ul>
+<li>La lista abre <b>en «Hoy»</b> como hoy: el rango nunca se amplía solo.</li>
+<li>Permisos, totales, estados, pagos y paginación. Buscar no ejecuta cobros, entregas ni asignaciones.</li>
+<li>El diseño actual (chips, tarjetas, colores). Solo se añade este mensaje y su botón.</li></ul>
+<b style="display:block;margin-top:10px">Para decidir</b><ul>
+<li><b>A frente a A′:</b> A′ muestra cuántos pedidos hay en otros períodos, pero exige <b>una consulta extra de conteo</b> cada vez que la búsqueda da vacío.</li>
+<li>Datos de las maquetas: nombres y números sintéticos.</li></ul></div></body></html>
