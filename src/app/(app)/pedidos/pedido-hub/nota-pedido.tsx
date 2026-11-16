@@ -6,6 +6,7 @@ import { useId, useState } from "react";
  * - Ratón: al pasar el cursor por «📝 Nota» (o su aviso) se lee la nota; al salir se oculta.
  * - Teclado: al enfocar el botón con Tab también se ve.
  * - Táctil o clic: el botón fija o suelta la nota; sirve donde no hay cursor.
+ * - Móvil (<640 px): la nota sale como tarjeta fija a todo el ancho, para que nunca se corte por el borde; un toque la cierra.
  * - Escape cierra. El aviso flota, así la lista no se mueve al pasar el cursor.
  */
 export function NotaPedido({ obs, numero }: { obs: string; numero: number }) {
@@ -50,7 +51,8 @@ export function NotaPedido({ obs, numero }: { obs: string; numero: number }) {
           id={id}
           role="tooltip"
           data-testid={`operacion-nota-texto-${numero}`}
-          className="absolute left-0 top-full z-30 mt-1 w-64 max-w-[80vw] whitespace-pre-wrap break-words rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs font-normal text-amber-950 shadow-lg"
+          onClick={cerrar}
+          className="z-30 whitespace-pre-wrap break-words rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs font-normal text-amber-950 shadow-lg max-sm:fixed max-sm:inset-x-3 max-sm:bottom-24 max-sm:text-sm sm:absolute sm:left-0 sm:top-full sm:mt-1 sm:w-64"
         >
           {obs}
         </p>
