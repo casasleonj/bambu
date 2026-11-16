@@ -63,6 +63,8 @@ test.describe("#797 — Pendientes de días anteriores en Hoy", () => {
       // El de hoy NO está en la sección y sí en la lista principal.
       await expect(seccion.getByTestId("operacion-row-" + deHoy.p.id)).toHaveCount(0);
       await expect(app.getByTestId("operacion-row-" + deHoy.p.id)).toBeVisible();
+      // El título de la lista principal aparece una sola vez (QA: se duplicó al mover el encabezado).
+      await expect(app.getByRole("heading", { name: "Pedidos de hoy", level: 2 })).toHaveCount(1);
       // Una sola fila por pedido en toda la pantalla: no se duplica.
       await expect(app.getByTestId("operacion-row-" + ayer.p.id)).toHaveCount(1);
       // La fecha del pedido sigue siendo la de ayer.

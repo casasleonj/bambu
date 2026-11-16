@@ -237,7 +237,6 @@ export function ConsultaPedidosHub(props: Props) {
             <ResumenConsulta resumen={datos.resumen} filtros={filtrosLeidos} />
           )}
           <section className="rounded-xl border border-stone-200 bg-white p-4">
-            {encabezado}
             {datos && datos.total > 0 && datos.pedidos.length === 0 ? (
               <>
                 {encabezado}
