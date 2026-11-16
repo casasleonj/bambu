@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import { esCreditoAplicado } from '@/lib/cobro-naturaleza'
 
 export class CobrosSinConciliarError extends Error {
   readonly code = 'COBROS_PENDIENTES_CONCILIACION'
@@ -170,8 +171,12 @@ export async function resumirAbonosDelDia(
   for (const a of cobros) {
     const clase = clasificarCobroCartera(a)
     if (clase === 'INDEPENDIENTE') {
-      independientes += Math.round(Number(a.monto) * 100)
-      reversiones += Math.round(Number(a.reversion) * 100)
+      // #745: un Abono en BONO aplica crédito anterior. Es histórico/informativo,
+      // no un segundo ingreso ni una devolución de dinero si se corrige.
+      if (!esCreditoAplicado(a.metodoPago)) {
+        independientes += Math.round(Number(a.monto) * 100)
+        reversiones += Math.round(Number(a.reversion) * 100)
+      }
       abonosDetalle.push({
         abonoId: a.id, numero: a.numero, cliente: a.clienteNombre ?? 'Sin cliente', factura: a.facturaNumero ?? null,
         pedidoId: a.pedidoId ?? null, pedidoNumero: a.pedidoNumero ?? null, metodo: a.metodoPago,
@@ -200,7 +205,10 @@ export async function resumirAbonosDelDia(
       a.pagoFecha >= desde &&
       a.pagoFecha < hasta
     ) {
-      reversiones += Math.round(Number(a.reversion) * 100)
+      // El espejo de un Pago BONO no revirtió dinero nuevo: solo crédito aplicado.
+      if (!esCreditoAplicado(a.pagoMetodo ?? '')) {
+        reversiones += Math.round(Number(a.reversion) * 100)
+      }
       if (Number(a.reversion) > 0) abonosConCorreccion.push(a.id)
       if (a.pagoMetodo === 'EFECTIVO') {
         reversionesEfectivo += Math.round(Number(a.reversion) * 100)

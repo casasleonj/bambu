@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import { clasificarCobroCartera, leerAbonosDelPeriodo } from './cobro-cartera'
 import { isConsumidorFinalCanonical } from './cliente-canonical'
+import { esCreditoAplicado } from './cobro-naturaleza'
 
 /** Read-only facts. Canal comercial, recepción y confirmación son dimensiones distintas. */
 export interface CobroPeriodo {
@@ -257,7 +258,7 @@ export async function leerCobrosPeriodo(
         encontrado = true
         desglosado += centavos(medio.saldoFavor)
         // El sobrante de crédito aplicado tampoco representa dinero nuevo.
-        if (medio.metodo === 'BONO') continue
+        if (esCreditoAplicado(medio.metodo)) continue
         // Ya tiene su ingreso propio (cuenta en medios y en el cierre): nada que conciliar.
         if (registrados.has(`${h.id}:${medio.metodo}`)) continue
         pendientesSobrante.push({
@@ -332,7 +333,7 @@ export function resumirCobrosPeriodo(
   let subtotal = 0,
     credito = 0
   for (const m of identificados) {
-    if (m.metodo === 'BONO') {
+    if (esCreditoAplicado(m.metodo)) {
       credito += centavos(m.neto)
       continue
     }
@@ -364,7 +365,7 @@ export function resumirCobrosPeriodo(
   // confirmación no se conoce, así que no se inventa (queda en «sin estado verificable»).
   for (const i of ingresosSaldoFavor) {
     const monto = centavos(i.monto)
-    if (!Number.isSafeInteger(monto) || monto <= 0 || i.metodo === 'BONO') continue
+    if (!Number.isSafeInteger(monto) || monto <= 0 || esCreditoAplicado(i.metodo)) continue
     subtotal += monto
     const g = grupos.get(i.metodo) ?? {
       metodo: i.metodo,
@@ -385,7 +386,7 @@ export function resumirCobrosPeriodo(
     grupos.set(i.metodo, g)
   }
   for (const p of porConciliar) {
-    if (p.metodo === 'BONO') continue
+    if (esCreditoAplicado(p.metodo ?? '')) continue
     const metodo = p.metodo ?? 'SIN_IDENTIFICAR'
     const g = grupos.get(metodo) ?? {
       metodo,
