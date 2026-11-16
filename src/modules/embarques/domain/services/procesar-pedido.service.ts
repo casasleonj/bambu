@@ -1,3 +1,4 @@
+import { importeEntregaCentavos } from '@/shared/domain/unit-price'
 import { registrarEntregaExigible } from '@/lib/entregas-exigibles-db'
 /**
  * ProcesarPedido Domain Service.
@@ -192,6 +193,19 @@ function validarEntregaCompleta(pedido: PedidoRawInput, entProd: ProductosEntreg
   }
 }
 
+/** #795: mismo redondeo acumulado que la entrega directa y la deuda exigible. */
+function valorEntregaCierre(precios: PreciosPedido, pedido: PedidoRawInput, entrega: ProductosEntregados): number {
+  const lineas = [
+    [precios.pacaAgua, entrega.cPacaAguaEnt || 0, pedido.cPacaAguaEnt],
+    [precios.pacaHielo, entrega.cPacaHieloEnt || 0, pedido.cPacaHieloEnt],
+    [precios.botellonFab, entrega.cBotellonFabEnt || 0, pedido.cBotellonFabEnt || 0],
+    [precios.botellonDom, entrega.cBotellonDomEnt || 0, pedido.cBotellonDomEnt || 0],
+    [precios.bolsaAgua, entrega.cBolsaAguaEnt || 0, pedido.cBolsaAguaEnt],
+    [precios.bolsaHielo, entrega.cBolsaHieloEnt || 0, pedido.cBolsaHieloEnt],
+  ]
+  return lineas.reduce((sum, [precio, cantidad, previa]) => sum + importeEntregaCentavos(precio, cantidad, previa), 0) / 100
+}
+
 /** Delta físico entregado por un pedido en el cierre (PR-1C). */
 export interface EntregaDelCierre {
   pedidoId: string
@@ -303,13 +317,7 @@ export class ProcesarPedidoService {
 
     // Valor entregado EN ESTE cierre (comisión / totalVentas / auditoría de
     // precio). NO es la obligación económica del pedido — ver más abajo.
-    const totalReal =
-      precios.pacaAgua * (entProd.cPacaAguaEnt || 0) +
-      precios.pacaHielo * (entProd.cPacaHieloEnt || 0) +
-      precios.botellonFab * (entProd.cBotellonFabEnt || 0) +
-      precios.botellonDom * (entProd.cBotellonDomEnt || 0) +
-      precios.bolsaAgua * (entProd.cBolsaAguaEnt || 0) +
-      precios.bolsaHielo * (entProd.cBolsaHieloEnt || 0)
+    const totalReal = valorEntregaCierre(precios, pedido, entProd)
 
     // PR-1: la obligación económica del pedido NO se recalcula desde lo
     // entregado. `total` se conserva; `saldo = total - totalPagado`.
@@ -569,7 +577,9 @@ export class ProcesarPedidoService {
         entregadoAt: new Date(),
         lineas: construirEntregasAValidar(pedido, entProd).map(e => ({ producto: e.producto,
           cantidad: e.cantidadAEntregar,
-          precioCents: Math.round((precioPorProducto[e.producto] ?? 0) * 100) })),
+          precioCents: Math.round((precioPorProducto[e.producto] ?? 0) * 100),
+          precioUnitario: precioPorProducto[e.producto] ?? 0,
+          cantidadPrevia: e.cantEntregaActual })),
         pedido: { total: Number(pedido.total), totalPagado: Number(pedido.totalPagado), saldo: Math.max(0, toNumber(pedido.total) - toNumber(pedido.totalPagado)) },
       })
     await tx.pedido.update({
@@ -667,13 +677,11 @@ export class ProcesarPedidoService {
     pedidosActualizados.push({ id: pedido.id, estado: completo ? 'ENTREGADO' : 'PENDIENTE' })
 
     // Comisión / totalVentas: solo el valor entregado EN ESTE cierre.
-    const valorEntregadoEnCierre =
-      toNumber(pedido.precioPacaAgua) * (entProd.cPacaAguaEnt || 0) +
-      toNumber(pedido.precioPacaHielo) * (entProd.cPacaHieloEnt || 0) +
-      toNumber(pedido.precioBotellonFab) * (entProd.cBotellonFabEnt || 0) +
-      toNumber(pedido.precioBotellonDom) * (entProd.cBotellonDomEnt || 0) +
-      toNumber(pedido.precioBolsaAgua) * (entProd.cBolsaAguaEnt || 0) +
-      toNumber(pedido.precioBolsaHielo) * (entProd.cBolsaHieloEnt || 0)
+    const valorEntregadoEnCierre = valorEntregaCierre({
+      pacaAgua: toNumber(pedido.precioPacaAgua), pacaHielo: toNumber(pedido.precioPacaHielo),
+      botellonFab: toNumber(pedido.precioBotellonFab), botellonDom: toNumber(pedido.precioBotellonDom),
+      bolsaAgua: toNumber(pedido.precioBolsaAgua), bolsaHielo: toNumber(pedido.precioBolsaHielo),
+    }, pedido, entProd)
 
     // B-11 (revisión de PR-1A): un cambio de precio unitario con autoridad se
     // audita también en la entrega PARCIAL (antes solo la rama COMPLETO lo hacía,

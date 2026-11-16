@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { fechaConsulta } from "../fecha-consulta";
+import { describe, it, expect, vi } from "vitest";
+import { fechaConsulta, fechaLecturaConsulta } from "../fecha-consulta";
 
 const HOY = "2026-10-29";
 
@@ -26,4 +26,25 @@ describe("fechaConsulta (24 h, Bogotá)", () => {
     expect(fechaConsulta(null, HOY)).toBe("Sin fecha registrada");
     expect(fechaConsulta("no-fecha", HOY)).toBe("Sin fecha registrada");
   });
+});
+
+describe("#779 — lectura idéntica entre ICU de servidor y navegador", () => {
+  it.each([" ", "\u00a0", "\u202f"])(
+    "un espacio %j en el período de la hora no provoca diferencias de hidratación",
+    (espacio) => {
+      // Variantes reales permitidas por Intl: el CDP mostró U+0020 en
+      // el HTML y U+00A0 en el texto que React esperaba en Chromium.
+      const formatter = new Intl.DateTimeFormat("es-CO");
+      Object.defineProperty(formatter, "format", {
+        value: () => `11/11/26, 10:16:38 p.${espacio}m.`,
+      });
+      const format = vi.spyOn(Intl, "DateTimeFormat").mockReturnValue(formatter);
+      try {
+        expect(fechaLecturaConsulta("2026-11-12T03:16:38Z"))
+          .toBe("11/11/26, 10:16:38 p. m.");
+      } finally {
+        format.mockRestore();
+      }
+    },
+  );
 });

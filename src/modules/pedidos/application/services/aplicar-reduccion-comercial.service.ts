@@ -1,3 +1,4 @@
+import { importeLinea } from '@/shared/domain/unit-price'
 /**
  * Aplica una reducción comercial ya autorizada (#451, ADR-REDUCCION-COMERCIAL-001).
  *
@@ -81,7 +82,7 @@ export async function aplicarReduccionComercial(
   }
   const item = pedido.items.find((i) => i.producto === r.producto)
   if (!item) throw new Error('LINEA_NO_ENCONTRADA: el pedido ya no tiene esa línea.')
-  if (item.cantPedido !== r.cantPedidoAntes || redondear(num(item.precio)) !== redondear(num(r.precio))) {
+  if (item.cantPedido !== r.cantPedidoAntes || num(item.precio) !== num(r.precio)) {
     throw new Error('REDUCCION_OBSOLETA: la línea cambió desde que se solicitó. Solicita la reducción de nuevo.')
   }
 
@@ -112,7 +113,7 @@ export async function aplicarReduccionComercial(
     where: { id: item.id },
     data: {
       cantPedido: calculo.cantPedidoNueva,
-      subtotal: redondear(num(item.precio) * calculo.cantPedidoNueva),
+      subtotal: importeLinea(num(item.precio), calculo.cantPedidoNueva),
     },
   })
 

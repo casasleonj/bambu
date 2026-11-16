@@ -9,7 +9,7 @@ import type { Trabajador, TrabajadorFormData, TrabajadoresClientProps } from './
 import { rolLabels } from './types'
 import { TrabajadorCard } from './trabajador-card'
 import { TrabajadorFormModal } from './trabajador-form-modal'
-import { normalizarTelefono } from '@/lib/telefono'
+import { buscarDifuso } from '@/lib/busqueda-fuzzy'
 import { DeudaDetalleDialog } from '@/components/deudas-trabajador/deuda-detalle-dialog'
 
 const EMPTY_FORM: TrabajadorFormData = {
@@ -59,20 +59,11 @@ export default function TrabajadoresClient({ initialTrabajadores, soloLectura = 
     fetchTrabajadores()
   }, 60_000)
 
-  const trabajadoresFiltrados = trabajadores.filter((t) => {
-    const term = search.toLowerCase()
-    const termTelefono = normalizarTelefono(term)
-    const matchTelefono = termTelefono.length > 0
-      ? normalizarTelefono(t.telefono ?? '').includes(termTelefono)
-      : false
-    return (
-      t.nombre.toLowerCase().includes(term) ||
-      t.rol.toLowerCase().includes(term) ||
-      matchTelefono ||
-      t.tipoPago.toLowerCase().includes(term)
-    )
-  })
-
+  const trabajadoresFiltrados = buscarDifuso(trabajadores, search, (t) => ({
+    textos: [t.nombre, t.rol, t.tipoPago],
+    pesosTexto: [3, 2, 1],
+    telefonos: [t.telefono],
+  }), (t) => t.id)
   function openCreateModal() {
     setFormData(EMPTY_FORM)
     setIsEdit(false)

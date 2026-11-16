@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { pedidosV2Enabled } from '@/lib/flags'
+import { buscarDifuso } from '@/lib/busqueda-fuzzy'
 import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { vueltaAPedidos } from '@/lib/pedidos-contexto'
@@ -90,14 +91,14 @@ export default function RecurrentesClient({
     return () => abort.current?.abort()
   }, [cargar, initialRecurrentes])
   usePollingRefetch(cargar, 60000)
-  const q = search.trim().toLocaleLowerCase('es')
-  const visibles = recurrentes?.filter(
-    (r) =>
-      (filtro === 'todos' || (filtro === 'activos' ? r.activo : !r.activo)) &&
-      `${r.negocio?.nombre ?? ''} ${r.cliente?.nombre ?? ''} ${r.negocio?.cliente?.nombre ?? ''}`
-        .toLocaleLowerCase('es')
-        .includes(q),
+  const habilitados = recurrentes?.filter(
+    (r) => filtro === 'todos' || (filtro === 'activos' ? r.activo : !r.activo),
   )
+  const visibles = habilitados && buscarDifuso(habilitados, search, (r) => ({
+    textos: [r.negocio?.nombre, r.cliente?.nombre, r.negocio?.cliente?.nombre, r.notas],
+    pesosTexto: [3, 3, 3, 1],
+    telefonos: [r.cliente?.telefono],
+  }), (r) => r.id)
   return (
     <div
       className="mx-auto max-w-6xl space-y-4 pb-8"

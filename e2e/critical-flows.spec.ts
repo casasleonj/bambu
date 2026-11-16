@@ -1,6 +1,6 @@
 // @tests api/cliente, api/pedido
 import { test, expect, type Page } from '@playwright/test'
-import { handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile, loginAs, createCliente } from './fixtures'
+import { handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile, loginAs, createCliente, waitForAuthenticatedShell } from './fixtures'
 
 const BASE_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
@@ -33,7 +33,7 @@ async function searchAndSelectCliente(page: Page, nombre: string) {
     }
     if (attempt < maxAttempts - 1) {
       await page.reload()
-      await page.waitForLoadState('networkidle')
+      await waitForAuthenticatedShell(page)
       await handleBaseCaja(page)
       await openFabPedidoEnvio(page)
       await page.waitForTimeout(800)
@@ -50,7 +50,7 @@ test.describe('Flujos críticos de negocio', () => {
     await handleBaseCaja(page)
 
     await page.goto(`${BASE_URL}/clientes`)
-    await page.waitForLoadState('networkidle')
+    await waitForAuthenticatedShell(page)
     await handleBaseCaja(page)
 
     // Intercept API response
@@ -86,11 +86,10 @@ test.describe('Flujos críticos de negocio', () => {
 
     // Refresh page and verify client appears
     await page.reload()
-    await page.waitForLoadState('networkidle')
+    await waitForAuthenticatedShell(page)
     await handleBaseCaja(page)
 
-    const bodyText = await page.locator('body').innerText()
-    expect(bodyText).toContain('Cliente E2E Test')
+    await expect(page.locator('body')).toContainText('Cliente E2E Test')
   })
 
   test('Crear un pedido con pago via items array', async ({ page }) => {
@@ -100,7 +99,7 @@ test.describe('Flujos críticos de negocio', () => {
     await createCliente(page, { nombre: nombreCliente })
 
     await page.goto(`${BASE_URL}/pedidos`)
-    await page.waitForLoadState('networkidle')
+    await waitForAuthenticatedShell(page)
     await handleBaseCaja(page)
 
     // Intercept API request to verify items array
@@ -162,7 +161,7 @@ test.describe('Flujos críticos de negocio', () => {
     await handleBaseCaja(page)
 
     // Wait for dashboard to fully load
-    await page.waitForLoadState('networkidle')
+    await waitForAuthenticatedShell(page)
     await expect(page.locator('body')).toContainText('Ventas por Precio', { timeout: 10000 })
     await expect(page.locator('body')).toContainText('Acciones Rápidas')
     await expect(page.locator('body')).toContainText('Inventario')
@@ -186,7 +185,7 @@ test.describe('Flujos críticos de negocio', () => {
     await createCliente(page, { nombre: nombreCliente })
 
     await page.goto(`${BASE_URL}/pedidos`)
-    await page.waitForLoadState('networkidle')
+    await waitForAuthenticatedShell(page)
     await handleBaseCaja(page)
 
     // Intercept to verify items array

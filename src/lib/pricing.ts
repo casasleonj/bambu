@@ -1,3 +1,4 @@
+import { importeLinea, sumarPreciosUnitarios } from '@/shared/domain/unit-price'
 import { prisma } from '@/lib/prisma'
 import type { PrismaClient } from '@prisma/client'
 
@@ -113,7 +114,7 @@ export async function resolverPrecio(
   const basePrice = Number(producto?.precioBase) || 0
   if (basePrice > 0) {
     const recargo = canal === 'DOMICILIO' && producto?.aplicaDomicilio ? Number(producto.sobreCostoDomicilio) : 0
-    return { precio: basePrice + recargo, origen: 'base' }
+    return { precio: sumarPreciosUnitarios(basePrice, recargo), origen: 'base' }
   }
 
   return { precio: 0, origen: 'base' }
@@ -245,7 +246,7 @@ export function resolverPreciosConContexto(
     if (canal === 'DOMICILIO' && precio > 0 && origen === 'base') {
       const prodConfig = productosByCode[item.codigo]
       if (prodConfig?.aplicaDomicilio) {
-        precio += prodConfig.sobreCostoDomicilio
+        precio = sumarPreciosUnitarios(precio, prodConfig.sobreCostoDomicilio)
       }
     }
 
@@ -253,7 +254,7 @@ export function resolverPreciosConContexto(
       codigo: item.codigo,
       precio,
       cantidad: item.cantidad,
-      subtotal: precio * item.cantidad,
+      subtotal: importeLinea(precio, item.cantidad),
       origen,
     })
   }

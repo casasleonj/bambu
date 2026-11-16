@@ -14,8 +14,40 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { matchCliente, meetsMinSearchLength, scoreCliente } from '@/lib/cliente-search'
+import { meetsMinSearchLength, scoreCliente } from '@/lib/cliente-search'
+import { buscarDifuso, evaluarBusqueda, type RegistroBuscable } from '@/lib/busqueda-fuzzy'
 import type { Cliente } from '@/components/pedido-form-unified/types'
+
+/**
+ * Comparte la misma clasificación que /clientes, sin sacrificar búsqueda local
+ * cuando el servidor no responde (#376 + #789).
+ */
+function camposClientePedido(cliente: Cliente): RegistroBuscable {
+  const contactos = cliente.contactos ?? []
+  const negocios = cliente.negocios ?? []
+  // Peso de los campos: nombre/apellido > negocio/ubicación > notas.
+  // Sin esto, un token en notas empataba con otro en el nombre (#789).
+  const textos = [
+    cliente.nombre, cliente.apellido,
+    ...negocios.map((n) => n.nombre),
+    ...contactos.map((c) => c.nombre),
+    cliente.barrio, cliente.direccion, cliente.notas, cliente.fuente,
+    ...contactos.map((c) => c.relacion),
+    ...negocios.flatMap((n) => [n.tipoNegocio, n.barrio, n.direccion, n.referencia]),
+  ]
+  return {
+    textos,
+    pesosTexto: [
+      3, 3,
+      ...negocios.map(() => 2),
+      ...contactos.map(() => 1),
+      2, 2, 1, 1,
+      ...contactos.map(() => 1),
+      ...negocios.flatMap(() => [2, 2, 2, 2]),
+    ],
+    telefonos: [cliente.telefono, ...contactos.map((c) => c.telefono)],
+  }
+}
 
 export const LIMITE_RESULTADOS = 8
 export const DEBOUNCE_MS = 300
@@ -85,7 +117,7 @@ export function useClienteSearch(searchTerm: string, clientes: Cliente[]): UseCl
   }, [term, valido, intento])
 
   const locales = useMemo(
-    () => (valido ? clientes.filter((c) => matchCliente(c, term)) : []),
+    () => (valido ? buscarDifuso(clientes, term, camposClientePedido, (c) => c.id) : []),
     [valido, term, clientes],
   )
 
@@ -104,7 +136,7 @@ export function useClienteSearch(searchTerm: string, clientes: Cliente[]): UseCl
     for (const c of locales) porId.set(c.id, c)
     for (const c of remoto.items) porId.set(c.id, c)
     return [...porId.values()]
-      .map((c, i) => ({ c, i, score: scoreCliente(c, term) }))
+      .map((c, i) => ({ c, i, score: evaluarBusqueda(camposClientePedido(c), term)?.puntuacion ?? scoreCliente(c, term) }))
       .sort((a, b) => b.score - a.score || a.i - b.i)
       .map((x) => x.c)
   }, [respondio, locales, remoto, term])

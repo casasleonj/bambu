@@ -247,3 +247,59 @@ describe("#516 — productos, acciones y navegación", () => {
     ).toBeNull();
   });
 });
+
+describe("#608 barrio y #635 notas en la fila", () => {
+  it.each(["desktop", "mobile"] as const)("%s: muestra solo el barrio (sin dirección) y «Sin barrio» si falta", (viewport) => {
+    const conBarrio: Pedido = { ...base, id: "b1", barrioCli: "Laureles", zonaCli: "Cra 80 # 45-12" };
+    const sinBarrio: Pedido = { ...base, id: "b2", numero: 902, barrioCli: "  ", zonaCli: "Calle 1" };
+    render(<OperacionList pedidos={[conBarrio, sinBarrio]} viewport={viewport} hoyBogota="2026-10-29" onAccion={vi.fn()} onOpen={vi.fn()} consulta={{ userRole: "ADMIN", gestionDirecta: true, volver: "/pedidos", onVerPedido: vi.fn(), onVerFactura: vi.fn() }} />);
+    expect(screen.getByTestId("operacion-barrio-b1")).toHaveTextContent("Laureles");
+    expect(screen.getByTestId("operacion-barrio-b2")).toHaveTextContent("Sin barrio");
+    expect(screen.queryByText(/Cra 80/)).toBeNull();
+  });
+  it("un pedido con observación muestra «Nota»; al tocarla se fija, sin abrir el pedido, y al tocar otra vez se suelta", () => {
+    const { onOpen } = montar({ pedido: { ...base, obs: "Dejar con el portero\nLlamar antes" } });
+    const boton = screen.getByRole("button", { name: "Observaciones del pedido #901" });
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("operacion-nota-texto-901")).toBeNull();
+    fireEvent.click(boton);
+    expect(boton).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("operacion-nota-texto-901").textContent).toContain("Dejar con el portero");
+    expect(onOpen).not.toHaveBeenCalled();
+    fireEvent.click(boton);
+    expect(screen.queryByTestId("operacion-nota-texto-901")).toBeNull();
+  });
+  it("#780: al pasar el cursor por el icono se lee la nota sin pulsar, y al salir se oculta", () => {
+    const { onOpen } = montar({ pedido: { ...base, obs: "Dejar con el portero" } });
+    const boton = screen.getByRole("button", { name: "Observaciones del pedido #901" });
+    fireEvent.pointerEnter(boton.parentElement!, { pointerType: "mouse" });
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Dejar con el portero");
+    expect(boton).toHaveAttribute("aria-describedby", screen.getByRole("tooltip").id);
+    fireEvent.pointerLeave(boton.parentElement!, { pointerType: "mouse" });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+  it("#780: un toque (no ratón) no deja la nota abierta por hover; solo el clic la fija", () => {
+    montar({ pedido: { ...base, obs: "Dejar con el portero" } });
+    const boton = screen.getByRole("button", { name: "Observaciones del pedido #901" });
+    fireEvent.pointerEnter(boton.parentElement!, { pointerType: "touch" });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.click(boton);
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+  });
+  it("#780: con el cursor encima, un clic fija la nota y sigue visible al salir; Escape la cierra", () => {
+    montar({ pedido: { ...base, obs: "Dejar con el portero" } });
+    const boton = screen.getByRole("button", { name: "Observaciones del pedido #901" });
+    const caja = boton.parentElement!;
+    fireEvent.pointerEnter(caja, { pointerType: "mouse" });
+    fireEvent.click(boton);
+    fireEvent.pointerLeave(caja, { pointerType: "mouse" });
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    fireEvent.keyDown(boton, { key: "Escape" });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+  it("sin observación o con solo espacios no hay indicador", () => {
+    montar({ pedido: { ...base, obs: "   " } });
+    expect(screen.queryByTestId("operacion-nota-901")).toBeNull();
+  });
+});

@@ -14,6 +14,7 @@ import {
 } from "./consulta-datos";
 import type { AccionKey, Pedido } from "./types";
 import { fechaConsulta } from "./fecha-consulta";
+import { NotaPedido } from "./nota-pedido";
 import { importesEntregaPedido } from "@/lib/valor-entregado-pedido";
 import styles from "./operacion-consulta.module.css";
 
@@ -174,11 +175,19 @@ export function OperacionConsulta({
                   Pedido #{p.numero} ·{" "}
                   {p.negocioId ? `Negocio de ${p.nombreCli}` : "Persona"}
                 </p>
+                <p
+                  className={`${styles.meta} truncate`}
+                  data-testid={`operacion-barrio-${p.id}`}
+                  title={p.barrioCli || undefined}
+                >
+                  📍 {p.barrioCli?.trim() || "Sin barrio"}
+                </p>
                 <span
                   className={`${styles.canal} ${p.canal === "PUNTO" ? "bg-amber-100 text-amber-900" : "bg-violet-100 text-violet-800"}`}
                 >
                   {p.canal === "PUNTO" ? "🏪 Punto" : "🚚 Domicilio"}
                 </span>
+                {p.obs?.trim() && <NotaPedido obs={p.obs} numero={p.numero} />}
               </div>
             </div>
             <div className={styles.productos}>

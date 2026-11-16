@@ -51,6 +51,11 @@ export default defineConfig({
       // para que NO corran en paralelo durante la suite normal.
       'src/lib/__tests__/integration/**',
       'prisma/__tests__/**',
+      // Suite de `node --test` (sin dependencias) que corre en el job
+      // `detect-changes` para clasificar el diff. Vitest la recoge por el
+      // patrón `*.test.mjs` y falla con "No test suite found", porque usa
+      // `node:test` en vez de `describe/it`. Cada runner tiene su archivo.
+      'scripts/ci/__tests__/*.node.test.mjs',
     ],
     coverage: {
       provider: 'v8',

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { proyectarEntregaHistorial, type PedidoParaHistorial, type HechoEntregaHistorico } from "../pedidos-entregas-historial";
+import { proyectarEntregaHistorial, esVentaRapidaCompletaDelDiaSinHitos, type PedidoParaHistorial, type HechoEntregaHistorico } from "../pedidos-entregas-historial";
 
 const pedido: PedidoParaHistorial = {
   id: "p-escenario", numero: 901, nombre: "Cliente de prueba",
@@ -102,5 +102,90 @@ describe("#763 — clasificación histórica de entregas", () => {
     expect(proyectarEntregaHistorial(pedido, [eMiercoles], lunes)).toBeNull();
     const r = proyectarEntregaHistorial(pedido, [evento("x", "2026-11-09T14:00:00Z", 7)], lunes);
     expect(r?.estadoAlCorte).toBe("POR_CONCILIAR");
+  });
+});
+
+describe("#786 — ventas rápidas vs entregas históricas por conciliar", () => {
+  const unaVenta = {
+    origen: "VENTA_RAPIDA",
+    estadoEntrega: "ENTREGADO",
+    fecha: pedido.fecha,
+    entregadoAt: new Date("2026-11-09T16:00:00Z"),
+    solicitadas: [{ producto: "PACA_AGUA", cantidad: 4 }],
+    entregadas: [{ producto: "PACA_AGUA", cantidad: 4 }],
+    tieneAjuste: false,
+  };
+  const sintetico = {
+    id: "historico:p-escenario",
+    fecha: new Date("2026-11-09T16:00:00Z"),
+    cantidades: null,
+    incompleto: true,
+    fuente: "HISTORICO",
+  };
+  const vistaDelDia = proyectarEntregaHistorial(
+    { ...pedido, solicitadas: unaVenta.solicitadas },
+    [sintetico],
+    lunes,
+  );
+  if (!vistaDelDia) throw new Error("Debe existir proyección sintética por conciliar");
+
+  it("excluye SOLO una venta rápida completa de hoy sin evento granular", () => {
+    expect(vistaDelDia.estadoAlCorte).toBe("POR_CONCILIAR");
+    expect(esVentaRapidaCompletaDelDiaSinHitos(unaVenta, [sintetico], vistaDelDia)).toBe(true);
+  });
+
+  it("conserva venta rápida con cantidades pendientes, excesivas o de producto diferente", () => {
+    for (const entregadas of [
+      [{ producto: "PACA_AGUA", cantidad: 3 }],
+      [{ producto: "PACA_AGUA", cantidad: 5 }],
+      [{ producto: "PACA_HIELO", cantidad: 4 }],
+      [],
+    ]) {
+      expect(esVentaRapidaCompletaDelDiaSinHitos(
+        { ...unaVenta, entregadas }, [sintetico], vistaDelDia,
+      )).toBe(false);
+    }
+  });
+
+  it("no oculta un pedido normal ni una venta rápida aún pendiente o corregida", () => {
+    expect(esVentaRapidaCompletaDelDiaSinHitos(
+      { ...unaVenta, origen: "PEDIDO" }, [sintetico], vistaDelDia,
+    )).toBe(false);
+    expect(esVentaRapidaCompletaDelDiaSinHitos(
+      { ...unaVenta, estadoEntrega: "PARCIAL" }, [sintetico], vistaDelDia,
+    )).toBe(false);
+    expect(esVentaRapidaCompletaDelDiaSinHitos(
+      { ...unaVenta, tieneAjuste: true }, [sintetico], vistaDelDia,
+    )).toBe(false);
+  });
+
+  it("conserva entregas de días distintos y los pedidos anteriores", () => {
+    expect(esVentaRapidaCompletaDelDiaSinHitos(
+      { ...unaVenta, entregadoAt: new Date("2026-11-10T16:00:00Z") },
+      [sintetico], vistaDelDia,
+    )).toBe(false);
+    const vistaAnterior = proyectarEntregaHistorial(
+      { ...pedido, solicitadas: unaVenta.solicitadas },
+      [{ ...sintetico, fecha: new Date("2026-11-10T16:00:00Z") }],
+      martes,
+    );
+    if (!vistaAnterior) throw new Error("Debe existir el histórico de otro día");
+    expect(vistaAnterior.pedidoAnterior).toBe(true);
+    expect(esVentaRapidaCompletaDelDiaSinHitos(
+      { ...unaVenta, entregadoAt: new Date("2026-11-10T16:00:00Z") },
+      [sintetico], vistaAnterior,
+    )).toBe(false);
+  });
+
+  it("no silencia auditorías, movimientos o eventos múltiples sin conciliar", () => {
+    expect(esVentaRapidaCompletaDelDiaSinHitos(
+      unaVenta, [{ ...sintetico, fuente: "AUDITORIA" }], vistaDelDia,
+    )).toBe(false);
+    expect(esVentaRapidaCompletaDelDiaSinHitos(
+      unaVenta, [{ ...sintetico, incompleto: false }], vistaDelDia,
+    )).toBe(false);
+    expect(esVentaRapidaCompletaDelDiaSinHitos(
+      unaVenta, [sintetico, { ...sintetico, id: "otro-evento" }], vistaDelDia,
+    )).toBe(false);
   });
 });

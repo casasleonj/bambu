@@ -29,7 +29,13 @@ export interface ResultadoConsultaPedidos {
   pageSize: number;
   leidoAt: string;
   resumen: ResumenConsultaPedidos | null;
-  repartidores: Array<{ id: string; nombre: string; activo: boolean }>;
+  repartidores: Array<{
+    id: string;
+    nombre: string;
+    activo: boolean;
+    /** Atributo propio del trabajador (#633), no derivado de asignaciones ni del rol. */
+    usaMoto: boolean;
+  }>;
   /** Actividad física destacada, independiente del listado por fecha del pedido. */
   destacadas?: EntregaDestacada[];
   destacadasTotal?: number;

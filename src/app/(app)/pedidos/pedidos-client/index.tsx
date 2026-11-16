@@ -25,9 +25,11 @@ import { AlertasTable } from './alertas-table'
 import { FacturaConsultaModal } from './factura-consulta-modal'
 import { CobroFiadoDialog } from './cobro-fiado-dialog'
 import { ConsultaPedidosHub } from '../pedido-hub/consulta-pedidos-hub'
+import { PedidoHub } from '../pedido-hub'
 import type { ResultadoConsultaPedidos } from '@/lib/pedidos-consulta'
 import { EstoSeRepite, type EstoSeRepiteContexto } from '../pedido-hub/esto-se-repite'
 import { PedidosWorkspace, type WorkspacePedidoInicial } from '@/components/pedido-workspace'
+import { resumenCobro, textoAvisoCobro, type AyudaCaja } from '@/components/pedido-workspace/cobro-aviso'
 import { pedidosV2Enabled } from '@/lib/flags'
 
 import type { Pedido, Embarque, Cliente } from './types'
@@ -59,6 +61,7 @@ import { resolverEntrega } from '@/lib/entrega-quien'
 import { isWithinDeliveryRadius } from '@/lib/gps'
 import { loadClienteDetail } from '@/lib/cliente-detail-cache'
 import { avisarUbicacionGuardada } from '@/lib/geo/aviso-ubicacion-guardada'
+import { coincideContactoPedido, coincidePedidoBusqueda } from '@/lib/pedido-busqueda-local'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
 import type { PedidoInicial, PedidoUnifiedData } from '@/components/pedido-form-unified'
@@ -1063,7 +1066,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
     return (data.entregaLat ?? null) !== (actual?.entregaLat ?? null) || (data.entregaLng ?? null) !== (actual?.entregaLng ?? null)
   }
 
-  async function handlePedidoSubmit(data: PedidoUnifiedData): Promise<boolean> {
+  async function handlePedidoSubmit(data: PedidoUnifiedData, ayudaCaja?: AyudaCaja): Promise<boolean> {
     try {
       const isEdit = data.isEdit && data.pedidoId
       if (isEdit) {
@@ -1177,6 +1180,18 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
           // Reintento de un envío que sí había llegado: es el MISMO pedido.
           const numero = (result.pedido as { numero?: number } | null)?.numero
           toast.info(numero != null ? `Esta venta ya estaba registrada (#${numero}). No se duplicó.` : 'Esta venta ya estaba registrada. No se duplicó.')
+        } else if (data.origen === 'VENTA_RAPIDA' && (data.pagos?.length ?? 0) > 0) {
+          // #828: el aviso de cobro dice qué pedido es, el importe, lo recibido y el cambio.
+          // Solo se muestra: el cambio y el efectivo recibido no se envían ni se guardan.
+          const creado = result.pedido as { numero?: number; total?: number | string } | null
+          const total = Number(creado?.total)
+          const entregaPendiente = data.entregado === false ? ' — entrega pendiente' : ''
+          if (Number.isFinite(total)) {
+            const { titulo, detalle } = textoAvisoCobro(creado?.numero ?? null, resumenCobro(total, data.pagos ?? [], ayudaCaja))
+            toast.success(titulo + entregaPendiente, { description: detalle })
+          } else {
+            toast.success(msg)
+          }
         } else {
           toast.success(msg)
         }
@@ -1221,13 +1236,10 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
   }, [pedidosSource, allFromUrl, desdeUrl, hastaUrl, clienteIdFromUrl, filtroCanal, filtroOrigen, conRecurrenciaFromUrl, filtroEstadoEntrega, filtroEstadoPago])
 
   const pedidosVisibles = useMemo(() => {
-    if (!search) return pedidosSinSearch
-    const term = search.toLowerCase()
-    return pedidosSinSearch.filter((p) =>
-      p.nombreCli?.toLowerCase().includes(term) ||
-      p.telefonoCli?.includes(search) ||
-      p.numero.toString().includes(term)
-    )
+    // Una búsqueda en blanco equivale a no buscar (no filtra ni vacía la lista).
+    if (!search.trim()) return pedidosSinSearch
+    // #788: sin tildes, por fragmento y por negocio; teléfono y #pedido siguen literales.
+    return pedidosSinSearch.filter((p) => coincidePedidoBusqueda(p, search))
   }, [pedidosSinSearch, search])
 
   // Filas pendientes (offline, aun en requestQueue) filtradas por el mismo
@@ -1236,11 +1248,8 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
   // filtros de fecha/tipo/estado y un pending item no tiene esos campos
   // reales — se agregan después de todo el filtrado, como en clientes.
   const pendingPedidosVisibles = useMemo(() => {
-    if (!search) return pendingPedidos
-    const term = search.toLowerCase()
-    return pendingPedidos.filter((p) =>
-      p.nombreCli?.toLowerCase().includes(term) || p.telefonoCli?.includes(search)
-    )
+    if (!search.trim()) return pendingPedidos
+    return pendingPedidos.filter((p) => coincideContactoPedido(p, search))
   }, [pendingPedidos, search])
 
   const pedidosVisiblesConPendientes = useMemo(
@@ -2170,6 +2179,31 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
         const vistaLoading = atrasadosParam ? loadingAtrasados : loadingEnRiesgo
         const vistaError = atrasadosParam ? errorAtrasados : errorEnRiesgo
         const vistaPedidos = atrasadosParam ? pedidosAtrasados : pedidosEnRiesgo
+        // #605: con el Hub activo, «Verlos» usa la misma lista (y el mismo panel
+        // de detalle) que Pedidos; solo cambia el conjunto de pedidos.
+        if (hubMode) {
+          return (
+            <PedidoHub
+              pedidos={vistaPedidos}
+              counts={{ porPlanificarCount, atrasadosCount, enRutaCount, esperandoPagoCount, esperandoPagoTotal, pendientesN2Count }}
+              loading={vistaLoading}
+              error={vistaError}
+              userRole={userRole}
+              onAccion={handleHubAccion}
+              onNuevaOperacion={puedeCrear ? () => setShowModal(true) : undefined}
+              onRetry={() => (atrasadosParam ? refetchAtrasados() : refetchEnRiesgo())}
+              onRefetch={() => { if (atrasadosParam) refetchAtrasados(); else refetchEnRiesgo(); refetchCounts() }}
+              onPeekMovilChange={setHojaMovilAbierta}
+              consulta={{
+                userRole,
+                gestionDirecta: gestionAdmin.activa && !(userRole === 'ADMIN' && gestionAdmin.estadoConsulta && gestionAdmin.estadoConsulta !== 'verificado'),
+                volver: `/pedidos?${shallowParams.toString()}`,
+                onVerPedido: id => abrirDocumentoPedido(id, 'Volver a Pedidos'),
+                onVerFactura: p => p.factura && setFacturaConsulta({ id: p.factura.id, volver: 'Volver a Pedidos', pedidoId: p.id, pedidoNumero: p.numero, consulta: `/pedidos?${shallowParams.toString()}` }),
+              }}
+            />
+          )
+        }
         if (vistaLoading && vistaPedidos.length === 0) {
           return (
             <div className="space-y-4">

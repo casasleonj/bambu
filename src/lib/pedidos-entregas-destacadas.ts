@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { leerEntregasConsulta } from "./entregas-consulta";
 import {
   proyectarEntregaHistorial,
+  esVentaRapidaCompletaDelDiaSinHitos,
   type CantidadEntrega,
   type EntregaDestacada,
 } from "./pedidos-entregas-historial";
@@ -41,15 +42,24 @@ export async function listarEntregasDestacadas(
       id: true,
       numero: true,
       fecha: true,
+      origen: true,
+      estadoEntrega: true,
+      entregadoAt: true,
       cliente: { select: { nombre: true, apellido: true } },
       negocio: { select: { nombre: true } },
-      items: { select: { producto: true, cantPedido: true } },
+      items: { select: { producto: true, cantPedido: true, cantEntrega: true } },
       cPacaAguaPed: true,
+      cPacaAguaEnt: true,
       cPacaHieloPed: true,
+      cPacaHieloEnt: true,
       cBotellonFabPed: true,
+      cBotellonFabEnt: true,
       cBotellonDomPed: true,
+      cBotellonDomEnt: true,
       cBolsaAguaPed: true,
+      cBolsaAguaEnt: true,
       cBolsaHieloPed: true,
+      cBolsaHieloEnt: true,
     },
   });
   if (!pedidos.length) return { destacadas: [], destacadasTotal: 0, rangoAmplio: false };
@@ -86,6 +96,16 @@ export async function listarEntregasDestacadas(
           { producto: "BOLSA_AGUA", cantidad: p.cBolsaAguaPed },
           { producto: "BOLSA_HIELO", cantidad: p.cBolsaHieloPed },
         ].filter((l) => l.cantidad > 0);
+    const entregadas: CantidadEntrega[] = p.items.length
+      ? p.items.map((i) => ({ producto: i.producto, cantidad: i.cantEntrega }))
+      : [
+          { producto: "PACA_AGUA", cantidad: p.cPacaAguaEnt },
+          { producto: "PACA_HIELO", cantidad: p.cPacaHieloEnt },
+          { producto: "BOTELLON", cantidad: p.cBotellonFabEnt + p.cBotellonDomEnt },
+          { producto: "BOLSA_AGUA", cantidad: p.cBolsaAguaEnt },
+          { producto: "BOLSA_HIELO", cantidad: p.cBolsaHieloEnt },
+        ].filter((l) => l.cantidad > 0);
+    const hechosPedido = hechosPorPedido.get(p.id) ?? [];
     const vista = proyectarEntregaHistorial(
       {
         id: p.id,
@@ -95,13 +115,24 @@ export async function listarEntregasDestacadas(
         solicitadas: pedidas,
         ajustePosterior: ajustados.has(p.id),
       },
-      hechosPorPedido.get(p.id) ?? [],
+      hechosPedido,
       rango,
       repartidores.length ? idsVisibles : undefined,
     );
     // Las completas creadas y entregadas el mismo día siguen únicamente
     // en la lista normal. Las parciales y las de días anteriores se destacan.
     if (!vista || (!vista.pedidoAnterior && vista.estadoAlCorte === "COMPLETADO")) return [];
+    // #786: no confundir ventas rápidas normales con parciales históricas.
+    // Conserva los avisos cuando haya cantidades discordantes o hechos adicionales.
+    if (esVentaRapidaCompletaDelDiaSinHitos({
+      origen: p.origen,
+      estadoEntrega: p.estadoEntrega,
+      fecha: p.fecha,
+      entregadoAt: p.entregadoAt,
+      solicitadas: pedidas,
+      entregadas,
+      tieneAjuste: ajustados.has(p.id),
+    }, hechosPedido, vista)) return [];
     if (clasificarParcialHistorica && vista.estadoAlCorte !== "PARCIAL") return [];
     return [vista];
   });

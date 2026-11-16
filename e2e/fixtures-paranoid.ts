@@ -2,7 +2,7 @@ import { test, expect, type Page, type APIRequestContext } from '@playwright/tes
 import { PrismaClient } from '@prisma/client'
 import { execSync } from 'child_process'
 import { resolve } from 'path'
-import { applyCachedRoleAuth } from './fixtures'
+import { loginAs as loginRole } from './fixtures'
 
 declare global {
   interface Window {
@@ -77,9 +77,7 @@ const USERNAME_TO_ROLE: Record<string, Role> = {
  * the same per-worker, per-role session as the main fixtures module. */
 export async function loginAs(page: Page, role: Role) {
   await skipBaseCajaParanoid(page)
-  await applyCachedRoleAuth(page, role)
-  await page.goto(`${BASE}/dashboard`, { timeout: LOGIN_TIMEOUT })
-  await page.waitForLoadState('networkidle')
+  await loginRole(page, role)
 }
 
 export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {

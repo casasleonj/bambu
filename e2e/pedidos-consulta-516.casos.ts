@@ -110,16 +110,12 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
       app.getByRole("heading", { level: 1, name: /Pedidos de hoy/i }),
     ).toBeVisible();
     await expect(app.getByTestId("consulta-resumen")).toHaveCount(0);
-    await app
-      .getByLabel("Canal de venta", { exact: true })
-      .selectOption("PUNTO");
     await app.getByPlaceholder("Nombre, teléfono o #pedido").fill(c.nombre);
-    await app.getByRole("button", { name: "Más filtros", exact: true }).click();
+    await app.getByRole("button", { name: /^Filtros/ }).click();
+    // Los filtros se aplican solos: quitar «Domicilio» deja solo «Punto».
+    await app.getByRole("button", { name: "🚚 Domicilio", exact: true }).click();
     await app.getByLabel("Desde la hora", { exact: true }).fill("10:00");
     await app.getByLabel("Hasta la hora", { exact: true }).fill("11:00");
-    await app
-      .getByRole("button", { name: "Aplicar filtros", exact: true })
-      .click();
     const resumen = app.getByTestId("consulta-resumen");
     await expect(resumen).toContainText(/\$\s*20\.000/);
     await expect(resumen).toContainText(/\$\s*10\.000/);
@@ -129,7 +125,7 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
       "4 pedidas",
     );
     await expect(app.getByText(/Creado por/).first()).toBeVisible();
-    await app.getByRole("button", { name: "Más filtros", exact: true }).click();
+    await app.getByRole("button", { name: /^Filtros/ }).click();
     await page.screenshot({
       path: info.outputPath("consulta-v6.png"),
       fullPage: true,
@@ -161,9 +157,9 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
     await expect(app.getByTestId("consulta-resumen")).toHaveCount(0);
     await page.goBack();
     await expect(resumen).toContainText(/\$\s*20\.000/);
-    await expect(app.getByLabel("Canal de venta", { exact: true })).toHaveValue(
-      "PUNTO",
-    );
+    await expect(
+      app.getByRole("button", { name: "Quitar filtro Canal: Punto" }),
+    ).toBeVisible();
   });
 
   test("varios repartidores y horario de entrega suman deltas, no el acumulado ni pedidos duplicados", async ({
@@ -195,23 +191,22 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
     await loginAs(page, "admin");
     await goto(page, `/pedidos?clienteId=${c.id}`);
     const app = appMain(page);
-    await app.getByRole("button", { name: "Más filtros", exact: true }).click();
+    await app.getByRole("button", { name: /^Filtros/ }).click();
     await app
       .getByLabel("Usar la fecha y hora de", { exact: true })
       .selectOption("entrega");
     await app.getByLabel("Desde la hora", { exact: true }).fill("10:20");
     await app.getByLabel("Hasta la hora", { exact: true }).fill("10:20");
     await app.getByTestId("consulta-repartidores").click();
-    await app.getByLabel(r1.nombre, { exact: true }).check();
-    await app.getByLabel(r2.nombre, { exact: true }).check();
     const respuesta = page.waitForResponse(
       (r) =>
         r.url().includes("/api/pedidos/consulta?") &&
-        r.url().includes("fechaBase=entrega"),
+        r.url().includes("fechaBase=entrega") &&
+        r.url().includes(`repartidorId=${r1.id}`) &&
+        r.url().includes(`repartidorId=${r2.id}`),
     );
-    await app
-      .getByRole("button", { name: "Aplicar filtros", exact: true })
-      .click();
+    await app.getByLabel(r1.nombre).check();
+    await app.getByLabel(r2.nombre).check();
     expect((await respuesta).status()).toBe(200);
     await expect(app.getByTestId("consulta-productos-resumen")).toContainText(
       "1 entregadas en el rango",
@@ -366,9 +361,6 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
     await app
       .getByPlaceholder("Nombre, teléfono o #pedido")
       .fill("consulta nueva");
-    await app
-      .getByRole("button", { name: "Aplicar filtros", exact: true })
-      .click();
     await expect(app.getByTestId("pedido-hub-error-datos")).toBeVisible();
     await expect(app.getByTestId("consulta-resumen")).toContainText(
       /\$\s*20\.000/,
@@ -448,23 +440,17 @@ test.describe("Consulta V6 de Pedidos (#516)", () => {
     await goto(page, `/pedidos?clienteId=${c.id}`);
     const app = appMain(page);
     await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(1);
-    await app.getByRole("button", { name: "Más filtros", exact: true }).click();
+    await app.getByRole("button", { name: /^Filtros/ }).click();
     await app
       .getByRole("group", { name: "Estado del registro", exact: true })
       .getByRole("button", { name: "Todos", exact: true })
-      .click();
-    await app
-      .getByRole("button", { name: "Aplicar filtros", exact: true })
       .click();
     await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(3);
     await expect(app.getByTestId("consulta-resumen")).toContainText(
       /\$\s*20\.000/,
     );
-    await app.getByLabel("Entrega", { exact: true }).selectOption("PENDIENTE");
+    await app.getByRole("button", { name: "Por entregar", exact: true }).click();
     await app.getByRole("button", { name: "Anulados", exact: true }).click();
-    await app
-      .getByRole("button", { name: "Aplicar filtros", exact: true })
-      .click();
     await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(1);
     await expect(app.getByTestId(`operacion-row-${a.p.id}`)).toBeVisible();
     await expect(app.getByTestId("consulta-resumen")).not.toContainText(

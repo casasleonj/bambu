@@ -249,6 +249,30 @@ describe('PedidosWorkspace (Composición)', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ origen: 'VENTA_RAPIDA', clienteId: 'CONSUMIDOR_FINAL' }))
   })
 
+  it('#828: el efectivo anotado viaja como ayuda de caja (segundo argumento), nunca dentro de los datos de la venta', async () => {
+    const onSubmit = vi.fn()
+    render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={onSubmit} />)
+    for (let i = 0; i < 3; i++) fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByTestId('dinero-pagar-completo-EFECTIVO'))
+    fireEvent.change(await screen.findByTestId('dinero-recibido'), { target: { value: '20000' } })
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    const [datos, ayuda] = onSubmit.mock.calls[0]
+    expect(ayuda).toEqual({ recibidoEfectivo: 20000 })
+    expect(JSON.stringify(datos)).not.toMatch(/recibido|cambio/i) // el cambio no se envía ni se guarda
+  })
+
+  it('#828: sin efectivo anotado no viaja ninguna ayuda de caja', async () => {
+    const onSubmit = vi.fn()
+    render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={onSubmit} />)
+    for (let i = 0; i < 3; i++) fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(onSubmit.mock.calls[0]).toHaveLength(1)
+  })
+
   it('P1-2: la venta rápida nace en PUNTO (sin zona de entrega); DOMICILIO es una elección explícita', () => {
     render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={vi.fn()} />)
     expect(screen.queryByTestId('workspace-entrega')).not.toBeInTheDocument()
@@ -544,6 +568,30 @@ describe('PedidosWorkspace (Composición)', () => {
       items: [{ producto: 'PACA_AGUA', cantidad: 4, precioManual: undefined }],
       obs: 'urgente',
     }))
+  })
+
+  it('#635: el campo «Observaciones» se ve al editar y su cambio viaja al guardar; la venta rápida no lo muestra', async () => {
+    const onSubmit = vi.fn()
+    const { unmount } = render(
+      <PedidosWorkspace
+        clientes={clientes}
+        onSubmit={onSubmit}
+        pedidoInicial={{
+          id: 'ped-9', numero: 42, clienteId: 'c1', clienteNombre: 'Tienda X', clienteTelefono: '3001112222',
+          clienteDireccion: 'Cra 1', clienteBarrio: 'Centro', negocioId: null, canal: 'DOMICILIO', origen: 'PEDIDO',
+          items: [{ producto: 'PACA_AGUA', cantidad: 4 }], obs: 'urgente',
+        }}
+      />,
+    )
+    const campo = screen.getByLabelText(/Observaciones/) as HTMLTextAreaElement
+    expect(campo.value).toBe('urgente')
+    fireEvent.change(campo, { target: { value: 'dejar con el portero' } })
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ isEdit: true, obs: 'dejar con el portero' }))
+    unmount()
+    render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={vi.fn()} />)
+    expect(screen.queryByTestId('workspace-observaciones')).not.toBeInTheDocument()
   })
 
   it('modo edición: el origen se toma de pedidoInicial, NO se re-deriva del cliente', async () => {

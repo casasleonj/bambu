@@ -33,7 +33,7 @@ describe('PedidoPricingSummary', () => {
 
   it('muestra el total siempre, formateado con separador de miles', () => {
     render(<PedidoPricingSummary lineas={[]} total={125000} totalPagado={0} saldoPendiente={0} />)
-    expect(screen.getByText('$125,000')).toBeInTheDocument()
+    expect(screen.getByText('$125.000,00')).toBeInTheDocument()
   })
 
   it('oculta la fila de "Pagado" cuando totalPagado es 0', () => {
@@ -44,9 +44,9 @@ describe('PedidoPricingSummary', () => {
   it('muestra "Pagado" y "Saldo" cuando ambos son mayores a 0 (pago parcial)', () => {
     render(<PedidoPricingSummary lineas={[]} total={10000} totalPagado={4000} saldoPendiente={6000} />)
     expect(screen.getByText('Pagado:')).toBeInTheDocument()
-    expect(screen.getByText('$4,000')).toBeInTheDocument()
+    expect(screen.getByText('$4.000,00')).toBeInTheDocument()
     expect(screen.getByText('Saldo:')).toBeInTheDocument()
-    expect(screen.getByText('$6,000')).toBeInTheDocument()
+    expect(screen.getByText('$6.000,00')).toBeInTheDocument()
   })
 
   it('oculta la fila de "Saldo" cuando el pedido está pagado completo', () => {

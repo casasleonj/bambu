@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/modal'
-import { formatCurrency } from '@/lib/utils'
+import { formatImportePedido as formatCurrency, formatPrecioUnitario, importeLineaEditable } from '@/lib/precio-formato'
 import { generateUUID } from '@/lib/uuid'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { topeReduccion } from '@/modules/pedidos/domain/services/reduccion-comercial.service'
@@ -145,7 +145,7 @@ export function ReduccionComercialPanel({ pedidoId, lineas, userRole, reducible,
   const conPendiente = topes.filter((l) => l.pendiente > 0)
   const linea = reducibles.find((l) => l.producto === producto) ?? reducibles[0]
   const cantEfectiva = linea ? Math.min(Math.max(1, cantidad ?? linea.tope), linea.tope) : 0
-  const montoC = linea ? centavos(linea.precio) * cantEfectiva : 0
+  const montoC = linea ? Math.round(importeLineaEditable(linea.precio, linea.cantPedido) * 100) - Math.round(importeLineaEditable(linea.precio, linea.cantPedido - cantEfectiva) * 100) : 0
   const totalNuevoC = centavos(total) - montoC
   const topeBajoPendiente = Boolean(linea && linea.tope < linea.pendiente)
 
@@ -265,7 +265,7 @@ export function ReduccionComercialPanel({ pedidoId, lineas, userRole, reducible,
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status" data-testid="reduccion-tope-aviso">
               El cliente ya pagó {formatCurrency(totalPagado)}. Como máximo puedes quitar {linea.tope}{' '}
               {linea.tope === 1 ? 'unidad' : 'unidades'}: con {linea.pendiente} el pedido costaría{' '}
-              {formatCurrency((centavos(total) - centavos(linea.precio) * linea.pendiente) / 100)}, menos de lo pagado, y eso requiere reversar un pago primero.
+              {formatCurrency((centavos(total) - (Math.round(importeLineaEditable(linea.precio, linea.cantPedido) * 100) - Math.round(importeLineaEditable(linea.precio, linea.cantPedido - linea.pendiente) * 100))) / 100)}, menos de lo pagado, y eso requiere reversar un pago primero.
             </p>
           )}
           {errorEnvio && (
@@ -343,13 +343,13 @@ export function ReduccionComercialPanel({ pedidoId, lineas, userRole, reducible,
           </div>
 
           <p className="rounded-lg border bg-gray-50 p-3 text-sm text-gray-900" role="status" data-testid="reduccion-efecto">
-            El total baja <b className="tabular-nums">{formatCurrency(montoC / 100)}</b> ({cantEfectiva} × {formatCurrency(linea.precio)}) y queda en{' '}
+            El total baja <b className="tabular-nums">{formatCurrency(montoC / 100)}</b> ({cantEfectiva} × {formatPrecioUnitario(linea.precio)}) y queda en{' '}
             <b className="tabular-nums">{formatCurrency(totalNuevoC / 100)}</b>. Se emite una nota de crédito por ese valor.
           </p>
 
           <div className="grid gap-0.5 rounded-lg border bg-gray-50 p-3 text-sm" data-testid="reduccion-auto">
             <span><span className="text-gray-500">Se registra a nombre de</span> {ctx?.yo.nombre || 'tu usuario'} (tú)</span>
-            <span><span className="text-gray-500">Fecha</span> {fechaCorta(new Date().toISOString())} · <span className="text-gray-500">Precio</span> {formatCurrency(linea.precio)} c/u</span>
+            <span><span className="text-gray-500">Fecha</span> {fechaCorta(new Date().toISOString())} · <span className="text-gray-500">Precio</span> {formatPrecioUnitario(linea.precio)} c/u</span>
           </div>
 
           {faltan.length > 0 && (

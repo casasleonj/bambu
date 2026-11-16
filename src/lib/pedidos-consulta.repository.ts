@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
+import { logger } from "./logger";
+import { condicionPalabra, palabrasDeBusqueda } from "./clientes-repo";
 import { leerExigibles } from "./entregas-exigibles-db";
 import { importesEntregaPedido } from "./valor-entregado-pedido";
 import { canReadFacturas } from "./permissions";
@@ -27,8 +29,11 @@ import {
   type ResultadoConsultaPedidos,
 } from "./pedidos-consulta";
 
+type CoincidenciasBusquedaPedidos = { clientes: string[]; negocios: string[] };
+
 export function whereConsultaPedidos(
   f: FiltrosConsultaPedidos,
+  coincidencias?: CoincidenciasBusquedaPedidos,
 ): Prisma.PedidoWhereInput {
   const and: Prisma.PedidoWhereInput[] = [];
   if (f.registro === "activos")
@@ -95,27 +100,29 @@ export function whereConsultaPedidos(
     );
   }
   if (f.search) {
-    const literal = f.search.replace(/[\\%_]/g, "\\$&");
-    const text = { contains: literal, mode: "insensitive" as const };
-    const or: Prisma.PedidoWhereInput[] = [
-      {
-        cliente: {
-          is: {
-            OR: [{ nombre: text }, { apellido: text }, { telefono: text }],
-          },
-        },
-      },
-      { negocio: { is: { nombre: text } } },
-      { createdBy: { is: { nombre: text } } },
-    ];
     const n = f.search.replace(/^#/, "");
-    if (
-      /^\d+$/.test(n) &&
-      Number.isSafeInteger(Number(n)) &&
-      Number(n) <= 2147483647
-    )
-      or.push({ numero: Number(n) });
-    and.push({ OR: or });
+    const numeroSeguro = /^\d+$/.test(n) &&
+      Number.isSafeInteger(Number(n)) && Number(n) <= 2147483647;
+    // Con # se busca exclusivamente el identificador exacto.
+    if (f.search.startsWith("#") && numeroSeguro) {
+      and.push({ numero: Number(n) });
+    } else {
+      const literal = f.search.replace(/[\\%_]/g, "\\$&");
+      const text = { contains: literal, mode: "insensitive" as const };
+      const or: Prisma.PedidoWhereInput[] = [
+        { cliente: { is: { OR: [
+          { nombre: text }, { apellido: text }, { telefono: text },
+        ] } } },
+        { negocio: { is: { nombre: text } } },
+        { createdBy: { is: { nombre: text } } },
+      ];
+      if (numeroSeguro) or.push({ numero: Number(n) });
+      if (coincidencias?.clientes.length)
+        or.push({ clienteId: { in: coincidencias.clientes } });
+      if (coincidencias?.negocios.length)
+        or.push({ negocioId: { in: coincidencias.negocios } });
+      and.push({ OR: or });
+    }
   }
   return { AND: and };
 }
@@ -124,6 +131,56 @@ const validoFinanciero: Prisma.PedidoWhereInput = {
   estado: { notIn: ["ANULADO", "CANCELADO"] },
   estadoPago: { not: "ANULADO" },
 };
+/**
+ * Tope de ids por tipo (clientes y negocios) que alimenta el `IN (...)` de la consulta.
+ * Entre ambos pueden sumar 10.000 parámetros, cerca de un tercio del límite de Prisma (32.767).
+ */
+const MAX_COINCIDENCIAS_PEDIDOS = 5000;
+
+/** Resolución previa a conteos y paginación, sin excluir clientes históricos. */
+export async function resolverCoincidenciasPedidos(
+  tx: Prisma.TransactionClient,
+  search: string,
+): Promise<CoincidenciasBusquedaPedidos> {
+  const palabras = palabrasDeBusqueda(search);
+  // La resolución aproximada solo aplica a nombres escritos con letras.
+  // % y _ son datos literales, NO comodines ni tokens fuzzy. Los números
+  // de pedido/factura y códigos con dígitos siguen la ruta exacta (Prisma).
+  // Evita que "50%_516" también encuentre "50X516" (#789).
+  const soloNombre = /^[\p{L}\p{M}\s]+$/u.test(search);
+  if (!palabras.length || !soloNombre || search.length < 2)
+    return { clientes: [], negocios: [] };
+
+  const acentos = "áàäâãéèëêíìïîóòöôõúùüûñçÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ";
+  const reemplazos = "aaaaaeeeeiiiiooooouuuuncaaaaaeeeeiiiiooooouuuunc";
+  const condicionNegocio = Prisma.join(palabras.map((p) =>
+    Prisma.sql`lower(translate(n.nombre, ${acentos}, ${reemplazos})) LIKE ${"%" + p.replace(/[\\%_]/g, "\\$&") + "%"}`),
+    " AND ");
+  // #824: el tope era 500 y, con más candidatos, dejaba fuera al cliente buscado. Se
+  // sube a 5.000. NO se ordena: medido sobre 30.000 clientes con contactos y
+  // negocios, un ORDER BY por relevancia costaba 600-800 ms frente a 250-430 ms
+  // sin él, porque obliga a recorrer todo el catálogo; y con coincidencias
+  // iguales el desempate tampoco garantizaba conservar al buscado.
+  const [c, n] = await Promise.all([
+    tx.$queryRaw<Array<{ id: string }>>`
+      SELECT c.id FROM "Cliente" c
+      WHERE (${Prisma.join(palabras.map(condicionPalabra), " AND ")})
+         OR ${search} <% c.nombre OR ${search} <% COALESCE(c.apellido, '')
+      LIMIT ${MAX_COINCIDENCIAS_PEDIDOS}`,
+    tx.$queryRaw<Array<{ id: string }>>`
+      SELECT n.id FROM "Negocio" n
+      WHERE (${condicionNegocio}) OR ${search} <% n.nombre
+      LIMIT ${MAX_COINCIDENCIAS_PEDIDOS}`,
+  ]);
+  if (c.length >= MAX_COINCIDENCIAS_PEDIDOS || n.length >= MAX_COINCIDENCIAS_PEDIDOS) {
+    // Más de 5.000 fichas con el mismo término: el corte vuelve a ser arbitrario.
+    logger.warn(
+      { clientes: c.length, negocios: n.length, tope: MAX_COINCIDENCIAS_PEDIDOS },
+      "Búsqueda de Pedidos truncada por el tope de coincidencias (#824)",
+    );
+  }
+  return { clientes: c.map((x) => x.id), negocios: n.map((x) => x.id) };
+}
 const centavos = (v: unknown) => {
   const n = Math.round(Number(v ?? 0) * 100);
   if (!Number.isSafeInteger(n)) throw new Error("Importe no verificable");
@@ -139,8 +196,11 @@ export async function consultarPedidos(
 ): Promise<ResultadoConsultaPedidos> {
   return client.$transaction(
     async (tx) => {
+      const coincidencias = f.search
+        ? await resolverCoincidenciasPedidos(tx, f.search)
+        : undefined;
       const rango = rangoConsultaPedidos(f),
-        where = whereConsultaPedidos(f);
+        where = whereConsultaPedidos(f, coincidencias);
       const and = where.AND as Prisma.PedidoWhereInput[];
       let cobros: CobrosPeriodo | null = null,
         entregas: EntregaConsulta[] | null = null;
@@ -251,7 +311,7 @@ export async function consultarPedidos(
               { pedidosEntregados: { some: {} } },
             ],
           },
-          select: { id: true, nombre: true, activo: true },
+          select: { id: true, nombre: true, activo: true, usaMoto: true },
           orderBy: [{ nombre: "asc" }, { id: "asc" }],
         }),
         f.resumen
