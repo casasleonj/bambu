@@ -102,6 +102,15 @@ describe('#673 — fecha real de desembolso de comisiones', () => {
     expect(await db.cierreDia.findUniqueOrThrow({ where: { id: c.id } })).toEqual(c)
   })
 
+  it('un trabajo de un día ya cerrado se puede pagar con efectivo de un día abierto sin tocar su snapshot (decisión PO: conciliación aparte)', async () => {
+    const id = await trabajador()
+    const c = await db.cierreDia.create({ data: { fecha: dia(-2), comisiones: 3300, reporte: { _version: '2.2', evidencia: 'conservar' } } })
+    const res = await pagar(id, { fechaPagoReal: fecha(0) })
+    expect(res.status).toBe(201)
+    expect(await comisionPagadaEnCaja(db, dia(0), dia(1))).toBe(3300)
+    expect(await db.cierreDia.findUniqueOrThrow({ where: { id: c.id } })).toEqual(c)
+  })
+
   it('repite el pago aceptado aun después del cierre, pero rechaza reutilizar su clave para otra fecha o medio', async () => {
     const id = await trabajador(), offlineId = randomUUID()
     expect((await pagar(id, { offlineId })).status).toBe(201)
