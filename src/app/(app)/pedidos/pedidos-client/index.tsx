@@ -1223,8 +1223,9 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
   }, [pedidosSource, allFromUrl, desdeUrl, hastaUrl, clienteIdFromUrl, filtroCanal, filtroOrigen, conRecurrenciaFromUrl, filtroEstadoEntrega, filtroEstadoPago])
 
   const pedidosVisibles = useMemo(() => {
-    if (!search) return pedidosSinSearch
-    // #788: sin tildes, por prefijo y por negocio; teléfono y #pedido siguen literales.
+    // Una búsqueda en blanco equivale a no buscar (no filtra ni vacía la lista).
+    if (!search.trim()) return pedidosSinSearch
+    // #788: sin tildes, por fragmento y por negocio; teléfono y #pedido siguen literales.
     return pedidosSinSearch.filter((p) => coincidePedidoBusqueda(p, search))
   }, [pedidosSinSearch, search])
 
@@ -1234,7 +1235,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
   // filtros de fecha/tipo/estado y un pending item no tiene esos campos
   // reales — se agregan después de todo el filtrado, como en clientes.
   const pendingPedidosVisibles = useMemo(() => {
-    if (!search) return pendingPedidos
+    if (!search.trim()) return pendingPedidos
     return pendingPedidos.filter((p) => coincideContactoPedido(p, search))
   }, [pendingPedidos, search])
 

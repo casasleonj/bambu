@@ -1,8 +1,9 @@
 // @tests #824 — la resolución de coincidencias de Pedidos no omite fichas reales por un corte arbitrario.
 // PostgreSQL real con datos sintéticos; ninguna base de producción.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { disconnect, resetAndSeed, testPrisma } from './setup'
 import { resolverCoincidenciasPedidos } from '@/lib/pedidos-consulta.repository'
+import { logger } from '@/lib/logger'
 
 // Más que el antiguo tope de 500: obliga a que el corte, si existe, decida quién queda fuera.
 const FILLERS_CLIENTES = 800
@@ -52,14 +53,34 @@ describe('#824 resolverCoincidenciasPedidos con muchos candidatos', () => {
     expect(r.clientes).toEqual([objetivoClienteId])
   })
 
-  it('el resultado es determinista: dos consultas iguales devuelven el mismo orden', async () => {
-    const a = await resolverCoincidenciasPedidos(testPrisma, 'maria')
-    const b = await resolverCoincidenciasPedidos(testPrisma, 'maria')
-    expect(b.clientes).toEqual(a.clientes)
-  })
-
   it('una búsqueda con dígitos o símbolos no se aproxima (contrato #789)', async () => {
     const r = await resolverCoincidenciasPedidos(testPrisma, '50%_516')
     expect(r).toEqual({ clientes: [], negocios: [] })
+  })
+})
+
+describe('#824 cuando el tope sí actúa', () => {
+  const TOPE = 5000
+  beforeAll(async () => {
+    await testPrisma.cliente.createMany({
+      data: Array.from({ length: TOPE + 100 }, (_, i) => ({
+        nombre: `Zorrillo Tope ${i}`, telefono: `31${String(i).padStart(8, '0')}`, direccion: 'Calle sintética', activo: true,
+      })),
+    })
+  }, 120_000)
+
+  it('devuelve exactamente el tope y deja un aviso en el log', async () => {
+    const aviso = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+    const r = await resolverCoincidenciasPedidos(testPrisma, 'zorrillo')
+    expect(r.clientes).toHaveLength(TOPE)
+    expect(aviso).toHaveBeenCalledTimes(1)
+    aviso.mockRestore()
+  })
+
+  it('por debajo del tope no avisa', async () => {
+    const aviso = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+    await resolverCoincidenciasPedidos(testPrisma, 'maria')
+    expect(aviso).not.toHaveBeenCalled()
+    aviso.mockRestore()
   })
 })

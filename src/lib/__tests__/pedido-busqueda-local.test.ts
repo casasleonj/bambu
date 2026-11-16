@@ -54,6 +54,19 @@ describe('#788 coincidePedidoBusqueda', () => {
 
   it('una búsqueda vacía o solo espacios no coincide con todo por accidente en el contacto', () => {
     expect(coincideContactoPedido(maximo, '   ')).toBe(false)
+    expect(coincidePedidoBusqueda(maximo, '   ')).toBe(false)
+  })
+
+  it('espacios al pegar o escribir no rompen teléfono ni número de pedido', () => {
+    expect(coincidePedidoBusqueda(carlos, '3101110002 ')).toBe(true)
+    expect(coincidePedidoBusqueda(carlos, ' 3101110002')).toBe(true)
+    expect(coincidePedidoBusqueda(maximo, ' 1042 ')).toBe(true)
+    expect(coincidePedidoBusqueda(maximo, ' maximo ')).toBe(true)
+  })
+
+  it('un fragmento coincide en cualquier posición del nombre, como en el Hub', () => {
+    // Documenta el contrato: es coincidencia por fragmento, no solo por prefijo.
+    expect(coincidePedidoBusqueda({ nombreCli: 'Mariana' }, 'ana')).toBe(true)
   })
 })
 

@@ -133,7 +133,7 @@ const validoFinanciero: Prisma.PedidoWhereInput = {
 };
 /**
  * Tope de ids por tipo (clientes y negocios) que alimenta el `IN (...)` de la consulta.
- * Muy por debajo del límite de parámetros de Prisma (32 767) aun usado en varias consultas.
+ * Entre ambos pueden sumar 10.000 parámetros, cerca de un tercio del límite de Prisma (32.767).
  */
 const MAX_COINCIDENCIAS_PEDIDOS = 5000;
 
@@ -156,28 +156,24 @@ export async function resolverCoincidenciasPedidos(
   const condicionNegocio = Prisma.join(palabras.map((p) =>
     Prisma.sql`lower(translate(n.nombre, ${acentos}, ${reemplazos})) LIKE ${"%" + p.replace(/[\\%_]/g, "\\$&") + "%"}`),
     " AND ");
-  const condicionCliente = Prisma.join(palabras.map(condicionPalabra), " AND ");
-  // #824: sin ORDER BY el corte seguía el orden físico de la tabla y podía dejar
-  // fuera al cliente buscado. Se ordena por relevancia (palabras completas
-  // primero, luego parecido) con desempate por id, y el tope se sube muy por
-  // encima del catálogo esperable.
+  // #824: el tope era 500 y, con más candidatos, dejaba fuera al cliente buscado. Se
+  // sube a 5.000. NO se ordena: medido sobre 30.000 clientes con contactos y
+  // negocios, un ORDER BY por relevancia costaba 600-800 ms frente a 250-430 ms
+  // sin él, porque obliga a recorrer todo el catálogo; y con coincidencias
+  // iguales el desempate tampoco garantizaba conservar al buscado.
   const [c, n] = await Promise.all([
     tx.$queryRaw<Array<{ id: string }>>`
       SELECT c.id FROM "Cliente" c
-      WHERE (${condicionCliente})
+      WHERE (${Prisma.join(palabras.map(condicionPalabra), " AND ")})
          OR ${search} <% c.nombre OR ${search} <% COALESCE(c.apellido, '')
-      ORDER BY (${condicionCliente}) DESC,
-        GREATEST(word_similarity(${search}, c.nombre),
-                 word_similarity(${search}, COALESCE(c.apellido, ''))) DESC,
-        c.id
       LIMIT ${MAX_COINCIDENCIAS_PEDIDOS}`,
     tx.$queryRaw<Array<{ id: string }>>`
       SELECT n.id FROM "Negocio" n
       WHERE (${condicionNegocio}) OR ${search} <% n.nombre
-      ORDER BY (${condicionNegocio}) DESC, word_similarity(${search}, n.nombre) DESC, n.id
       LIMIT ${MAX_COINCIDENCIAS_PEDIDOS}`,
   ]);
   if (c.length >= MAX_COINCIDENCIAS_PEDIDOS || n.length >= MAX_COINCIDENCIAS_PEDIDOS) {
+    // Más de 5.000 fichas con el mismo término: el corte vuelve a ser arbitrario.
     logger.warn(
       { clientes: c.length, negocios: n.length, tope: MAX_COINCIDENCIAS_PEDIDOS },
       "Búsqueda de Pedidos truncada por el tope de coincidencias (#824)",
