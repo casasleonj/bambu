@@ -71,6 +71,15 @@ describe('#673 — fecha real de desembolso de comisiones', () => {
     expect(await pagadoComisionDia(db, id, fecha(-2))).toBe(3300)
   })
 
+  it('rechaza un día de entrega anterior al trabajo y no guarda nada', async () => {
+    const id = await trabajador()
+    const res = await pagar(id, { fechaPagoReal: fecha(-3) })
+    expect(res.status).toBe(422)
+    expect(await res.json()).toMatchObject({ error: { code: 'FECHA_PAGO_ANTERIOR_AL_TRABAJO' } })
+    expect(await db.pagoComisionRepartidor.count({ where: { trabajadorId: id } })).toBe(0)
+    expect((await pagar(id, { fechaPagoReal: fecha(-2) })).status).toBe(201)
+  })
+
   it('no afirma una fecha física para un pago nuevo que no la proporciona', async () => {
     const res = await pagar(await trabajador(), { fechaPagoReal: undefined })
     expect(res.status).toBe(422)

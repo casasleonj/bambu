@@ -67,6 +67,8 @@ export async function POST(request: NextRequest) {
   if (Number.isNaN(dia.getTime())) return apiError('Fecha inválida', 400)
   if (fecha > todayStringBogota()) return apiError('No se puede pagar la comisión de un día que no ha llegado', 422, { code: 'FECHA_FUTURA' })
   if (fechaPagoReal && fechaPagoReal > todayStringBogota()) return apiError('El día en que se entregó el dinero no puede ser futuro', 422, { code: 'FECHA_PAGO_FUTURA' })
+  // El dinero no puede entregarse antes del trabajo que paga; sin esta cota se podía atribuir efectivo a un día arbitrario del pasado.
+  if (fechaPagoReal && fechaPagoReal < fecha) return apiError('El día en que se entregó el dinero no puede ser anterior al día trabajado', 422, { code: 'FECHA_PAGO_ANTERIOR_AL_TRABAJO' })
 
   const userId = (authResult.user as { id?: string } | undefined)?.id
 
