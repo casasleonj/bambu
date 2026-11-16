@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useShallowSearchParams } from "@/hooks/use-shallow-search-params";
 import { useConsultaPedidos } from "@/hooks/use-consulta-pedidos";
 import { useOnlineStatus } from "@/hooks/use-online-status";
@@ -17,6 +17,12 @@ import { EntregasDestacadas } from "./entregas-destacadas";
 import { ResumenConsulta } from "./resumen-consulta";
 import { RecurrentesDelDia } from "./recurrentes-del-dia";
 import { fechaLecturaConsulta } from "./fecha-consulta";
+import { getTodayString } from "@/lib/dates";
+import {
+  derivarEstadoBusqueda,
+  textoVolver,
+  tituloVacio,
+} from "./busqueda-sin-resultados";
 import type { AccionKey, Pedido } from "./types";
 
 interface Props {
@@ -100,6 +106,51 @@ export function ConsultaPedidosHub(props: Props) {
     () => [...props.pendientes, ...(datos?.pedidos ?? [])],
     [props.pendientes, datos?.pedidos],
   );
+  // #788: rango que había antes de pulsar «Ver todos los períodos» (solo se honra
+  // mientras la búsqueda sea la misma que lo originó).
+  const [filtrosPrevios, setFiltrosPrevios] =
+    useState<FiltrosConsultaPedidos | null>(null);
+  const estadoBusqueda = derivarEstadoBusqueda({
+    filtrosUrl: consulta.filtros,
+    lectura: lectura
+      ? { filtros: lectura.filtros, total: lectura.datos.total }
+      : null,
+    cambiando,
+    hayError: !!error,
+    filasVisibles: filas.length,
+    filtrosPrevios:
+      filtrosPrevios &&
+      filtrosPrevios.search.trim() === consulta.filtros.search.trim()
+        ? filtrosPrevios
+        : null,
+    hoy: getTodayString(),
+  });
+  // Mismo cambio de rango que el chip «Todos»; el texto buscado se conserva.
+  const verTodosLosPeriodos = () => {
+    setFiltrosPrevios(consulta.filtros);
+    aplicar({
+      ...consulta.filtros,
+      desde: "",
+      hasta: "",
+      desdeHora: "",
+      hastaHora: "",
+      all: true,
+      page: 1,
+    });
+  };
+  const volverAlPeriodo = () => {
+    const previos = filtrosPrevios;
+    setFiltrosPrevios(null);
+    if (previos)
+      aplicar({ ...previos, search: consulta.filtros.search, page: 1 });
+  };
+  const limpiarBusqueda = () =>
+    aplicar({ ...consulta.filtros, search: "", page: 1 });
+  const enExpansion =
+    estadoBusqueda.tipo === "cargando" ||
+    estadoBusqueda.tipo === "error" ||
+    estadoBusqueda.tipo === "resultado" ||
+    estadoBusqueda.tipo === "sin-resultados-en-todos";
   return (
     <div
       className="space-y-3 rounded-xl bg-[#f6f0e5] p-3 lg:p-4"
@@ -167,7 +218,7 @@ export function ConsultaPedidosHub(props: Props) {
         </div>
       ) : (
         <>
-          {cambiando && (
+          {cambiando && !enExpansion && (
             <p
               role="status"
               className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900"
@@ -192,18 +243,44 @@ export function ConsultaPedidosHub(props: Props) {
           {datos?.resumen && filtrosLeidos && (
             <ResumenConsulta resumen={datos.resumen} filtros={filtrosLeidos} />
           )}
+          {(estadoBusqueda.tipo === "resultado" ||
+            estadoBusqueda.tipo === "sin-resultados-en-todos") && (
+            <div
+              role="status"
+              data-testid="busqueda-todos-periodos"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900"
+            >
+              <span>
+                Mostrando <strong>todos los períodos</strong> para «
+                {estadoBusqueda.busqueda}».
+              </span>
+              <button
+                type="button"
+                onClick={volverAlPeriodo}
+                className="min-h-11 rounded border border-blue-300 bg-white px-3 font-semibold"
+              >
+                {textoVolver(estadoBusqueda.volver)}
+              </button>
+            </div>
+          )}
           <section className="rounded-xl border border-stone-200 bg-white p-4">
             <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h2 className="text-lg font-bold text-slate-800">
-                  {filtrosLeidos?.resumen
-                    ? "Pedidos de la consulta"
-                    : "Pedidos de hoy"}
+                  {enExpansion
+                    ? "Todos los períodos"
+                    : filtrosLeidos?.resumen
+                      ? "Pedidos de la consulta"
+                      : "Pedidos de hoy"}
                 </h2>
                 <p className="mt-1 text-xs text-slate-500">
-                  {datos
-                    ? `${datos.total} resultado(s) de toda la consulta`
-                    : "Consultando…"}{" "}
+                  {estadoBusqueda.tipo === "cargando"
+                    ? "Buscando…"
+                    : estadoBusqueda.tipo === "error"
+                      ? "No se pudo buscar"
+                      : datos
+                        ? `${datos.total} resultado(s) de toda la consulta`
+                        : "Consultando…"}{" "}
                   · hora de Colombia
                 </p>
               </div>
@@ -230,6 +307,100 @@ export function ConsultaPedidosHub(props: Props) {
                   onClick={() => aplicar({ ...consulta.filtros, page: 1 })}
                 >
                   Volver a la primera página
+                </button>
+              </div>
+            ) : estadoBusqueda.tipo === "vacio" ? (
+              <div
+                className="p-5 text-center"
+                data-testid="busqueda-sin-resultados"
+              >
+                <div className="text-3xl" aria-hidden="true">
+                  🔎
+                </div>
+                <h3 className="mt-2 text-base font-bold text-slate-800">
+                  {tituloVacio(estadoBusqueda.periodo, estadoBusqueda.busqueda)}
+                </h3>
+                <p className="mx-auto mt-1 max-w-md text-sm text-slate-600">
+                  El cliente o negocio puede tener pedidos en otros días. Tu
+                  búsqueda se conserva.
+                </p>
+                <button
+                  type="button"
+                  onClick={verTodosLosPeriodos}
+                  className="mt-3 min-h-11 rounded-lg bg-blue-700 px-4 font-bold text-white"
+                >
+                  Ver todos los períodos
+                </button>
+                <button
+                  type="button"
+                  onClick={limpiarBusqueda}
+                  className="mx-auto mt-2 block min-h-11 px-3 text-sm font-semibold text-blue-700"
+                >
+                  Limpiar búsqueda
+                </button>
+              </div>
+            ) : estadoBusqueda.tipo === "cargando" ? (
+              <div
+                role="status"
+                aria-live="polite"
+                className="animate-pulse space-y-2"
+                data-testid="busqueda-cargando"
+              >
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-14 rounded-lg bg-gray-100" />
+                ))}
+                <div className="pt-1 text-center">
+                  <button
+                    type="button"
+                    disabled
+                    className="min-h-11 rounded-lg bg-blue-300 px-4 font-bold text-white"
+                  >
+                    Buscando pedidos…
+                  </button>
+                </div>
+              </div>
+            ) : estadoBusqueda.tipo === "error" ? (
+              <div
+                role="alert"
+                data-testid="busqueda-error"
+                className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+              >
+                <h3 className="font-bold">No se pudo buscar</h3>
+                <p className="mt-1">
+                  Revisa tu conexión e inténtalo de nuevo. Tu búsqueda «
+                  {estadoBusqueda.busqueda}» sigue escrita y no se perdió nada.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={refresh}
+                    className="min-h-11 rounded-lg bg-blue-700 px-4 font-bold text-white"
+                  >
+                    Reintentar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={volverAlPeriodo}
+                    className="min-h-11 rounded-lg border bg-white px-4 font-semibold text-slate-800"
+                  >
+                    {textoVolver(estadoBusqueda.volver)}
+                  </button>
+                </div>
+              </div>
+            ) : estadoBusqueda.tipo === "sin-resultados-en-todos" ? (
+              <div
+                className="p-5 text-center"
+                data-testid="busqueda-sin-resultados-todos"
+              >
+                <h3 className="text-base font-bold text-slate-800">
+                  Sin pedidos para «{estadoBusqueda.busqueda}» en ningún período
+                </h3>
+                <button
+                  type="button"
+                  onClick={limpiarBusqueda}
+                  className="mx-auto mt-2 block min-h-11 px-3 text-sm font-semibold text-blue-700"
+                >
+                  Limpiar búsqueda
                 </button>
               </div>
             ) : (
