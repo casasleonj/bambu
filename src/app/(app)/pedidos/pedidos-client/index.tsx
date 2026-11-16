@@ -61,6 +61,7 @@ import { resolverEntrega } from '@/lib/entrega-quien'
 import { isWithinDeliveryRadius } from '@/lib/gps'
 import { loadClienteDetail } from '@/lib/cliente-detail-cache'
 import { avisarUbicacionGuardada } from '@/lib/geo/aviso-ubicacion-guardada'
+import { coincideContactoPedido, coincidePedidoBusqueda } from '@/lib/pedido-busqueda-local'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
 import type { PedidoInicial, PedidoUnifiedData } from '@/components/pedido-form-unified'
@@ -1235,13 +1236,10 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
   }, [pedidosSource, allFromUrl, desdeUrl, hastaUrl, clienteIdFromUrl, filtroCanal, filtroOrigen, conRecurrenciaFromUrl, filtroEstadoEntrega, filtroEstadoPago])
 
   const pedidosVisibles = useMemo(() => {
-    if (!search) return pedidosSinSearch
-    const term = search.toLowerCase()
-    return pedidosSinSearch.filter((p) =>
-      p.nombreCli?.toLowerCase().includes(term) ||
-      p.telefonoCli?.includes(search) ||
-      p.numero.toString().includes(term)
-    )
+    // Una búsqueda en blanco equivale a no buscar (no filtra ni vacía la lista).
+    if (!search.trim()) return pedidosSinSearch
+    // #788: sin tildes, por fragmento y por negocio; teléfono y #pedido siguen literales.
+    return pedidosSinSearch.filter((p) => coincidePedidoBusqueda(p, search))
   }, [pedidosSinSearch, search])
 
   // Filas pendientes (offline, aun en requestQueue) filtradas por el mismo
@@ -1250,11 +1248,8 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
   // filtros de fecha/tipo/estado y un pending item no tiene esos campos
   // reales — se agregan después de todo el filtrado, como en clientes.
   const pendingPedidosVisibles = useMemo(() => {
-    if (!search) return pendingPedidos
-    const term = search.toLowerCase()
-    return pendingPedidos.filter((p) =>
-      p.nombreCli?.toLowerCase().includes(term) || p.telefonoCli?.includes(search)
-    )
+    if (!search.trim()) return pendingPedidos
+    return pendingPedidos.filter((p) => coincideContactoPedido(p, search))
   }, [pendingPedidos, search])
 
   const pedidosVisiblesConPendientes = useMemo(
