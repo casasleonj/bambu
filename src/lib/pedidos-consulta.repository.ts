@@ -132,8 +132,14 @@ const validoFinanciero: Prisma.PedidoWhereInput = {
   estado: { notIn: ["ANULADO", "CANCELADO"] },
   estadoPago: { not: "ANULADO" },
 };
+/**
+ * Tope de ids por tipo (clientes y negocios) que alimenta el `IN (...)` de la consulta.
+ * Entre ambos pueden sumar 10.000 parámetros, cerca de un tercio del límite de Prisma (32.767).
+ */
+const MAX_COINCIDENCIAS_PEDIDOS = 5000;
+
 /** Resolución previa a conteos y paginación, sin excluir clientes históricos. */
-async function resolverCoincidenciasPedidos(
+export async function resolverCoincidenciasPedidos(
   tx: Prisma.TransactionClient,
   search: string,
 ): Promise<CoincidenciasBusquedaPedidos> {
@@ -151,17 +157,29 @@ async function resolverCoincidenciasPedidos(
   const condicionNegocio = Prisma.join(palabras.map((p) =>
     Prisma.sql`lower(translate(n.nombre, ${acentos}, ${reemplazos})) LIKE ${"%" + p.replace(/[\\%_]/g, "\\$&") + "%"}`),
     " AND ");
+  // #824: el tope era 500 y, con más candidatos, dejaba fuera al cliente buscado. Se
+  // sube a 5.000. NO se ordena: medido sobre 30.000 clientes con contactos y
+  // negocios, un ORDER BY por relevancia costaba 600-800 ms frente a 250-430 ms
+  // sin él, porque obliga a recorrer todo el catálogo; y con coincidencias
+  // iguales el desempate tampoco garantizaba conservar al buscado.
   const [c, n] = await Promise.all([
     tx.$queryRaw<Array<{ id: string }>>`
       SELECT c.id FROM "Cliente" c
       WHERE (${Prisma.join(palabras.map(condicionPalabra), " AND ")})
          OR ${search} <% c.nombre OR ${search} <% COALESCE(c.apellido, '')
-      LIMIT 500`,
+      LIMIT ${MAX_COINCIDENCIAS_PEDIDOS}`,
     tx.$queryRaw<Array<{ id: string }>>`
       SELECT n.id FROM "Negocio" n
       WHERE (${condicionNegocio}) OR ${search} <% n.nombre
-      LIMIT 500`,
+      LIMIT ${MAX_COINCIDENCIAS_PEDIDOS}`,
   ]);
+  if (c.length >= MAX_COINCIDENCIAS_PEDIDOS || n.length >= MAX_COINCIDENCIAS_PEDIDOS) {
+    // Más de 5.000 fichas con el mismo término: el corte vuelve a ser arbitrario.
+    logger.warn(
+      { clientes: c.length, negocios: n.length, tope: MAX_COINCIDENCIAS_PEDIDOS },
+      "Búsqueda de Pedidos truncada por el tope de coincidencias (#824)",
+    );
+  }
   return { clientes: c.map((x) => x.id), negocios: n.map((x) => x.id) };
 }
 const centavos = (v: unknown) => {
