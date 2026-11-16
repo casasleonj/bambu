@@ -257,7 +257,7 @@ describe("#608 barrio y #635 notas en la fila", () => {
     expect(screen.getByTestId("operacion-barrio-b2")).toHaveTextContent("Sin barrio");
     expect(screen.queryByText(/Cra 80/)).toBeNull();
   });
-  it("un pedido con observación muestra «Nota»; al tocarla se lee sin abrir el pedido", () => {
+  it("un pedido con observación muestra «Nota»; al tocarla se fija, sin abrir el pedido, y al tocar otra vez se suelta", () => {
     const { onOpen } = montar({ pedido: { ...base, obs: "Dejar con el portero\nLlamar antes" } });
     const boton = screen.getByRole("button", { name: "Observaciones del pedido #901" });
     expect(boton).toHaveAttribute("aria-expanded", "false");
@@ -268,6 +268,35 @@ describe("#608 barrio y #635 notas en la fila", () => {
     expect(onOpen).not.toHaveBeenCalled();
     fireEvent.click(boton);
     expect(screen.queryByTestId("operacion-nota-texto-901")).toBeNull();
+  });
+  it("#780: al pasar el cursor por el icono se lee la nota sin pulsar, y al salir se oculta", () => {
+    const { onOpen } = montar({ pedido: { ...base, obs: "Dejar con el portero" } });
+    const boton = screen.getByRole("button", { name: "Observaciones del pedido #901" });
+    fireEvent.pointerEnter(boton.parentElement!, { pointerType: "mouse" });
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Dejar con el portero");
+    expect(boton).toHaveAttribute("aria-describedby", screen.getByRole("tooltip").id);
+    fireEvent.pointerLeave(boton.parentElement!, { pointerType: "mouse" });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+  it("#780: un toque (no ratón) no deja la nota abierta por hover; solo el clic la fija", () => {
+    montar({ pedido: { ...base, obs: "Dejar con el portero" } });
+    const boton = screen.getByRole("button", { name: "Observaciones del pedido #901" });
+    fireEvent.pointerEnter(boton.parentElement!, { pointerType: "touch" });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.click(boton);
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+  });
+  it("#780: con el cursor encima, un clic fija la nota y sigue visible al salir; Escape la cierra", () => {
+    montar({ pedido: { ...base, obs: "Dejar con el portero" } });
+    const boton = screen.getByRole("button", { name: "Observaciones del pedido #901" });
+    const caja = boton.parentElement!;
+    fireEvent.pointerEnter(caja, { pointerType: "mouse" });
+    fireEvent.click(boton);
+    fireEvent.pointerLeave(caja, { pointerType: "mouse" });
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    fireEvent.keyDown(boton, { key: "Escape" });
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
   it("sin observación o con solo espacios no hay indicador", () => {
     montar({ pedido: { ...base, obs: "   " } });

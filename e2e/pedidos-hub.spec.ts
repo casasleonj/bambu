@@ -1164,6 +1164,12 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     expect((await ventana('60')).ok()).toBe(true) // por defecto el aviso va apagado en la base de pruebas
     try {
     const cargarVenta = async () => {
+      // Causa medida (#828): el aviso «Venta cobrada» de la venta anterior (sonner, abajo a la derecha)
+      // queda justo sobre el botón «+». Al abrirse el menú, el cursor pasa al aviso, el contenedor recibe
+      // `mouseleave` y el menú se cierra; y como el cursor sigue encima, el aviso no se descarta solo y
+      // el fallo se repite. Se aparta el cursor y se espera a que no haya avisos antes de abrir el menú.
+      await page.mouse.move(5, 5)
+      await expect(page.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 15_000 })
       await app.getByTestId('fab-main').click()
       await page.getByTestId('fab-venta-rapida').click()
       await expect(page.getByTestId('workspace-venta-rapida')).toBeVisible()
