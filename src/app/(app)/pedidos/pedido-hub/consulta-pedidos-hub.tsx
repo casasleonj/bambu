@@ -206,6 +206,25 @@ export function ConsultaPedidosHub(props: Props) {
         onReintentar: refresh,
       }
     : undefined;
+  // #841: las entregas de pedidos anteriores van plegadas, después de los pendientes.
+  const hoyEntregas = getTodayString();
+  const entregasNode =
+    datos && filtrosLeidos?.fechaBase === "pedido" && !filtrosLeidos.all ? (
+      <EntregasDestacadas
+        entregas={datos.destacadas ?? []}
+        total={datos.destacadasTotal ?? 0}
+        rangoAmplio={!!datos.destacadasRangoAmplio}
+        hasta={filtrosLeidos.hasta}
+        plegable
+        periodo={
+          filtrosLeidos.desde === hoyEntregas && filtrosLeidos.hasta === hoyEntregas
+            ? "hoy"
+            : "en el período"
+        }
+        onVerPedido={props.onVerPedido}
+        onVerTodas={() => aplicar({ ...filtrosLeidos, fechaBase: "entrega", resumen: true, page: 1 })}
+      />
+    ) : null;
   return (
     <div
       className="space-y-3 rounded-xl bg-[#f6f0e5] p-3 lg:p-4"
@@ -285,16 +304,7 @@ export function ConsultaPedidosHub(props: Props) {
               respuesta completa.
             </p>
           )}
-          {datos && filtrosLeidos?.fechaBase === "pedido" && !filtrosLeidos.all && (
-            <EntregasDestacadas
-              entregas={datos.destacadas ?? []}
-              total={datos.destacadasTotal ?? 0}
-              rangoAmplio={!!datos.destacadasRangoAmplio}
-              hasta={filtrosLeidos.hasta}
-              onVerPedido={props.onVerPedido}
-              onVerTodas={() => aplicar({ ...filtrosLeidos, fechaBase: "entrega", resumen: true, page: 1 })}
-            />
-          )}
+          {!muestraHub && entregasNode}
           {datos?.resumen && filtrosLeidos && (
             <ResumenConsulta resumen={datos.resumen} filtros={filtrosLeidos} />
           )}
@@ -443,6 +453,7 @@ export function ConsultaPedidosHub(props: Props) {
                 onPeekMovilChange={props.onPeekMovilChange}
                 arrastrados={arrastrados}
                 encabezadoLista={encabezado}
+                entregasSlot={entregasNode}
                 consulta={{
                   userRole: props.userRole,
                   gestionDirecta: props.gestion.activa && !gestionDesconocida,

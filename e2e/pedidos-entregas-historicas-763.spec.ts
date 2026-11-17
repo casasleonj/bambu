@@ -83,6 +83,8 @@ test.describe("#763 — Pedidos y entregas efectivas de otros días", () => {
       await goto(page, "/pedidos?clienteId=" + cliente.id);
       const app = appMain(page);
       const bloque = app.getByTestId("entregas-historicas-763");
+      // #841: la sección empieza plegada en una línea; se despliega para ver el detalle.
+      await bloque.getByTestId("entregas-historicas-toggle").click();
       const tarjeta = bloque.getByTestId("entrega-historica-" + pedido.numero);
       await expect(bloque).toBeVisible();
       await expect(tarjeta).toContainText("Completado tras parcial");
@@ -98,6 +100,7 @@ test.describe("#763 — Pedidos y entregas efectivas de otros días", () => {
       await expect(page.getByText("Pedido #" + pedido.numero).first()).toBeVisible();
       // La consulta histórica no se reetiqueta retrospectivamente como completada.
       await goto(page, "/pedidos?clienteId=" + cliente.id + "&desde=" + diaAyer + "&hasta=" + diaAyer);
+      await appMain(page).getByTestId("entregas-historicas-toggle").click();
       const anterior = appMain(page).getByTestId("entrega-historica-" + pedido.numero);
       await expect(anterior).toContainText("Parcial en la fecha");
       await expect(anterior).toContainText("Completado posteriormente:");
