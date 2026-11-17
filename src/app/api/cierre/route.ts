@@ -19,7 +19,7 @@ import { calcularNetoCierre, calcularEfectivoEsperado } from '@/lib/cierre-total
 import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
 import { diasObligatoriosAntesDe, type DiaHueco } from '@/lib/cierre-huecos'
 import { exigirBaseVigente, BaseCambioError, BaseFaltanteError } from '@/lib/base-caja-dia'
-import { leerPagosComisionCaja } from '@/lib/comision-pagada'
+import { leerPagosComisionCaja, leerCorreccionesPosterioresAlCierre } from '@/lib/comision-pagada'
 
 /** #306: hay días anteriores sin cerrar que tuvieron operación (o son demasiados para revisarlos). */
 class HuecoConOperacionError extends Error {
@@ -146,6 +146,8 @@ export async function GET(request: NextRequest) {
         original: comisionGuardada, actual: pagosComisionActuales.efectivo,
         diferencia: Math.round((pagosComisionActuales.efectivo - comisionGuardada) * 100) / 100,
         pagosCaja: pagosComisionActuales.pagos, sinFechaVerificada: pagosComisionActuales.sinFechaVerificada,
+        // #834: correcciones de día real hechas después de este cierre; explican la diferencia y no se suman a nada.
+        correccionesPosteriores: await leerCorreccionesPosterioresAlCierre(prisma, { fecha: startOfDay, createdAt: cierreExistente.createdAt }),
       }
       return apiSuccess({
         status: 'CERRADO',

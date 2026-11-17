@@ -74,3 +74,33 @@ El desglose muestra, dentro de cada embarque o pedido sin embarque, la lista de 
 **Ejemplo sintético:** se trabajan diez pacas el lunes y se entregan $3.300 el martes; el registro se hace el miércoles. Nómina reconoce el pago del trabajo del lunes, la caja del martes descuenta $3.300 y el historial conserva la captura del miércoles. Reintentar no crea otros $3.300. Si el martes ya está cerrado, el formulario explica la necesidad de conciliación en vez de alterar ese cierre.
 
 **Pruebas:** `integration/comision-fecha-real-673.test.ts`, componentes de cierre y `e2e/comision-repartidor-dia.spec.ts`: fechas, legado, roles, reintentos, auditoría atómica, caja por medio, concurrencia con cierre, conservación histórica y versión de snapshot. La validación local o un PR no prueban que la migración o una conciliación se hayan aplicado en producción; cada liberación debe registrar su evidencia y autorización.
+
+## Corrección del día de caja de un pago (#834)
+
+#770 atribuye cada pago a su **día real** (`PagoComisionRepartidor.fechaPagoReal`) y rechaza un pago nuevo en un día ya cerrado
+(`DIA_CERRADO`: «requiere conciliación»). #834 es esa conciliación: un **ADMIN** puede cambiar el día real de un pago ya registrado, o
+fijarlo si estaba «sin verificar».
+
+- **Endpoint:** `POST /api/nomina/pagos-comision/[id]/corregir-fecha` con `{ fechaPagoReal: 'AAAA-MM-DD', motivo, offlineId? }`. Solo ADMIN.
+  Motivo de 3 letras o más. El día debe estar entre el día trabajado y hoy (`FECHA_PAGO_ANTERIOR_AL_TRABAJO`, `FECHA_PAGO_FUTURA`,
+  `FECHA_PAGO_INVALIDA`) y ser distinto del actual (`SIN_CAMBIO`). Un reintento con la misma clave devuelve 200 sin duplicar; la misma
+  clave con otra fecha o pago da 409 `OFFLINE_ID_EN_USO`.
+- **Qué cambia y qué no:** solo `fechaPagoReal`. `createdAt` (captura), `fecha` (día trabajado, de la nómina) y el importe no cambian.
+- **Rastro:** tabla `PagoComisionFechaCorreccion`, que solo añade filas (día real anterior —`NULL` = sin verificar—, día nuevo, motivo,
+  quién, cuándo) y un registro en el historial. Sin UPDATE ni DELETE (`GRANT SELECT, INSERT`).
+- **Días cerrados:** se permiten y **no reescriben el cierre guardado**. La respuesta lista `diasCerrados`. Se usa el mismo bloqueo por día
+  del cierre (`CIERRE`) y transacción serializable que el pago.
+- **V16:** compara cada cierre con el día real que cada pago tenía **cuando se hizo el cierre** (la última corrección anterior al cierre o,
+  si solo hay posteriores, el día anterior a la primera). Una corrección posterior no marca como error un cierre que estaba bien; un pago
+  normal hecho después del cierre sigue marcándose.
+- **Pantalla (solo ADMIN):** en el bloque «Pagos atribuidos a esta caja» aparece «Cambiar el día de caja» (o «Fijar el día real»), tanto en
+  el cierre del día como en un día ya cerrado. En un día cerrado, el bloque «Cierre histórico conservado» lista las **correcciones de fecha
+  posteriores al cierre** que explican la diferencia; no se suman a ninguna cifra. El reporte para imprimir las muestra, sin enlaces.
+
+### Límites
+- La ventana avisa siempre, con un texto general, que un cierre ya hecho no cambia; la maqueta mostraba el aviso solo cuando el día elegido
+  ya estaba cerrado (la pantalla no conoce qué días están cerrados sin otra consulta). La respuesta sí lista los cierres afectados y el aviso final
+  los nombra.
+- No hay «anular» un pago: un error se corrige con otra fecha y motivo.
+- La migración `20261117_pago_comision_fecha_correccion` es aditiva e idempotente: se aplica en producción **antes** del merge, con
+  autorización y verificación de solo lectura. `git revert` no revierte la tabla.

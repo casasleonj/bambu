@@ -110,21 +110,80 @@ export interface PagoComisionCaja {
   fechaTrabajo: string
   fechaPagoReal: string | null
   registradoAt: string
+  /** #834: última corrección administrativa del día real, si la hubo. */
+  correccion?: { por: string; at: string; motivo: string; anterior: string | null; nueva: string } | null
 }
 
 /** Una sola lectura atribuida por día para suma, detalle y advertencia de legado. No modifica pagos. */
 export async function leerPagosComisionCaja(tx: Pick<Prisma.TransactionClient, 'pagoComisionRepartidor'>, desde: Date, hasta: Date) {
   const filas = await tx.pagoComisionRepartidor.findMany({
     where: whereFechaPagoComision(desde, hasta), orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    include: { trabajador: { select: { nombre: true } } },
+    include: {
+      trabajador: { select: { nombre: true } },
+      correcciones: { orderBy: { corregidoAt: 'desc' }, take: 1, include: { corregidoPor: { select: { nombre: true, username: true } } } },
+    },
   })
-  const pagos: PagoComisionCaja[] = filas.map(p => ({
-    id: p.id, trabajadorId: p.trabajadorId, nombre: p.trabajador.nombre, monto: num(p.monto), metodo: p.metodo,
-    fechaTrabajo: dayInBogota(p.fecha), fechaPagoReal: p.fechaPagoReal ? dayInBogota(p.fechaPagoReal) : null,
-    registradoAt: p.createdAt.toISOString(),
-  }))
+  const pagos: PagoComisionCaja[] = filas.map(p => {
+    const c = p.correcciones[0]
+    return {
+      id: p.id, trabajadorId: p.trabajadorId, nombre: p.trabajador.nombre, monto: num(p.monto), metodo: p.metodo,
+      fechaTrabajo: dayInBogota(p.fecha), fechaPagoReal: p.fechaPagoReal ? dayInBogota(p.fechaPagoReal) : null,
+      registradoAt: p.createdAt.toISOString(),
+      correccion: c ? {
+        por: c.corregidoPor.nombre || c.corregidoPor.username, at: c.corregidoAt.toISOString(), motivo: c.motivo,
+        anterior: c.fechaRealAnterior ? dayInBogota(c.fechaRealAnterior) : null, nueva: dayInBogota(c.fechaRealNueva),
+      } : null,
+    }
+  })
   const suma = (efectivo: boolean) => pagos.reduce((s, p) => s + ((p.metodo === 'EFECTIVO') === efectivo ? Math.round(p.monto * 100) : 0), 0) / 100
   return { pagos, efectivo: suma(true), otrosMedios: suma(false), sinFechaVerificada: pagos.filter(p => p.fechaPagoReal === null).length }
+}
+
+/** #834: una corrección de día real hecha DESPUÉS de cerrar un día, que sacó un pago de él o lo metió en él. */
+export interface CorreccionPosteriorAlCierre {
+  pagoId: string
+  trabajador: string
+  monto: number
+  /** Día real antes de corregir; `null` = estaba «sin verificar» (la caja contaba la captura). */
+  anterior: string | null
+  nueva: string
+  por: string
+  at: string
+  motivo: string
+  /** `sale`: el pago estaba en este día y se movió a otro; `entra`: venía de otro día y ahora es de este. */
+  efecto: 'sale' | 'entra'
+}
+
+/**
+ * Correcciones hechas después del cierre de `cierre.fecha` que cambian qué pagos en efectivo pertenecen a ese día. Explican la
+ * «diferencia por conciliar» sin reescribir el cierre guardado; no se suman a ninguna cifra.
+ */
+export async function leerCorreccionesPosterioresAlCierre(
+  tx: Pick<Prisma.TransactionClient, 'pagoComisionFechaCorreccion'>,
+  cierre: { fecha: Date; createdAt: Date },
+): Promise<CorreccionPosteriorAlCierre[]> {
+  const dia = dayInBogota(cierre.fecha)
+  const filas = await tx.pagoComisionFechaCorreccion.findMany({
+    where: { corregidoAt: { gt: cierre.createdAt }, pago: { metodo: 'EFECTIVO' } },
+    orderBy: { corregidoAt: 'asc' },
+    include: {
+      pago: { select: { monto: true, createdAt: true, trabajador: { select: { nombre: true } } } },
+      corregidoPor: { select: { nombre: true, username: true } },
+    },
+  })
+  const resultado: CorreccionPosteriorAlCierre[] = []
+  for (const f of filas) {
+    const antes = f.fechaRealAnterior ? dayInBogota(f.fechaRealAnterior) : dayInBogota(f.pago.createdAt)
+    const despues = dayInBogota(f.fechaRealNueva)
+    if ((antes === dia) === (despues === dia)) continue
+    resultado.push({
+      pagoId: f.pagoId, trabajador: f.pago.trabajador.nombre, monto: num(f.pago.monto),
+      anterior: f.fechaRealAnterior ? dayInBogota(f.fechaRealAnterior) : null, nueva: despues,
+      por: f.corregidoPor.nombre || f.corregidoPor.username, at: f.corregidoAt.toISOString(), motivo: f.motivo,
+      efecto: antes === dia ? 'sale' : 'entra',
+    })
+  }
+  return resultado
 }
 
 export async function comisionPagadaEnCaja(tx: Pick<Prisma.TransactionClient, 'pagoComisionRepartidor'>, desde: Date, hasta: Date): Promise<number> {
