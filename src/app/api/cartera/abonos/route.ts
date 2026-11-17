@@ -79,6 +79,13 @@ export async function GET(request: NextRequest) {
       for (const a of ligeros) {
         const clasif = clasificados.porCobro.get(a.pagoOrigenId ?? claveAbonoIndependiente(a.id))
         if (!clasif) continue
+        // Solo un espejo verificado (con su Pago de origen) puede esconderse como cobro del día. Un abono independiente
+        // o de origen desconocido es un registro explícito (cuenta en el Cierre como abono, o está «Por conciliar»):
+        // se lista siempre, completo, sin etiqueta.
+        if (a.pagoOrigenId === null) {
+          carteraCentavos += Math.round((Number(a.monto) - a.correcciones.reduce((t, c) => t + Number(c.montoRevertido), 0)) * 100)
+          continue
+        }
         const tipo = tipoDeCobro(clasif)
         clasificacion.set(a.id, { tipo, aproximado: clasif.aproximado, clasif })
         if (tipo === 'COBRO_DEL_DIA') idsDelDia.push(a.id)
