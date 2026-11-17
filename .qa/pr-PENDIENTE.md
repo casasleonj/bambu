@@ -1,0 +1,21 @@
+# QA · #827 · chip «Invalid Date»
+
+### QA en navegador
+
+- Estado: PASÓ (local, datos sintéticos; preview, otros roles y entorno desplegado NO verificados)
+- Fecha: 17-11-2026.
+- Entorno: `next dev` local (puerto 3001) en MODO HEREDADO (`NEXT_PUBLIC_PEDIDOS_V2` sin definir),
+  PostgreSQL 16 descartable. Producción usa Hub, donde `SmartDateFilter` no se muestra: este
+  defecto solo afectaba la pantalla heredada.
+- Herramienta: Playwright autónomo con Chromium preinstalado. Rol ADMIN por login real. Escritorio 1280×800.
+
+### Recorridos (6/6)
+
+- C0 `/pedidos` sin parámetros: «Filtrado: Hoy», Hoy resaltado.
+- C1 carga directa `?desde=hoy&hasta=hoy`: «Filtrado: Hoy» (antes: «Invalid Date → Invalid Date»).
+- C2 recarga con parámetros: «Filtrado: Hoy».
+- C3 carga directa con ayer: «Filtrado: Ayer», «← Ayer» resaltado.
+- C4 pulsar «Hoy»: sigue sincronizando.
+- C5 rango personalizado 01–10 nov: «Filtrado: 1 de nov → 10 de nov», ningún preset resaltado.
+
+No verificado: móvil (el cambio no toca layout), otros roles.

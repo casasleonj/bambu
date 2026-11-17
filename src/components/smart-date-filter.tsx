@@ -82,9 +82,13 @@ export function SmartDateFilter({ onDateChange,defaultPreset='turno',turnoLabel=
   // Sincroniza el estado local desde la URL durante el render cuando
   // cambian los params relevantes, en vez de en un efecto — syncFromUrl
   // solo llama setState local, no tiene otros side effects.
-  const [prevDesdeUrl, setPrevDesdeUrl] = useState(desdeUrl)
-  const [prevHastaUrl, setPrevHastaUrl] = useState(hastaUrl)
-  const [prevAllUrl, setPrevAllUrl] = useState(allUrl)
+  // #827: los valores previos arrancan en `undefined` (distinto de cualquier valor posible de la
+  // URL) para que la PRIMERA lectura también sincronice. Antes se inicializaban con el valor
+  // actual, así que al abrir la página ya filtrada (recarga, enlace compartido, volver atrás)
+  // el estado quedaba vacío y el chip decía «Invalid Date → Invalid Date».
+  const [prevDesdeUrl, setPrevDesdeUrl] = useState<string | null | undefined>(undefined)
+  const [prevHastaUrl, setPrevHastaUrl] = useState<string | null | undefined>(undefined)
+  const [prevAllUrl, setPrevAllUrl] = useState<boolean | undefined>(undefined)
   if (desdeUrl !== prevDesdeUrl || hastaUrl !== prevHastaUrl || allUrl !== prevAllUrl) {
     setPrevDesdeUrl(desdeUrl)
     setPrevHastaUrl(hastaUrl)
