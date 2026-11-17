@@ -8,6 +8,12 @@ import { canReadFacturas } from "./permissions";
 import { getAnonymousClientDisplayName } from "./cliente-canonical";
 import { pickCoords } from "./geo/pedido-coords";
 import { pickDireccionTexto } from "./geo/pedido-direccion";
+import {
+  construirCatalogoBarrios,
+  ordenarGrupos,
+  resolverGrupoBarrio,
+  type GrupoBarrio,
+} from "./barrios/grupo-barrio";
 import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
 import { listarEntregasDestacadas } from "./pedidos-entregas-destacadas";
@@ -28,6 +34,7 @@ import {
   esFocoCompromiso,
   rangoConsultaPedidos,
   type FiltrosConsultaPedidos,
+  type GrupoBarrioConsulta,
   type ProductoConsulta,
   type ResultadoConsultaPedidos,
 } from "./pedidos-consulta";
@@ -309,16 +316,63 @@ async function leerConsultaPedidos(
       const exigiblesConjunto = f.resumen || soloFiados
         ? await leerExigibles(tx, { AND: [where, validoFinanciero] }) : null;
       if (soloFiados) and.push({ id: { in: [...exigiblesConjunto!].filter(([, monto]) => monto > 0).map(([id]) => id) } });
+      // #836 F3: agrupar por barrio efectivo sobre TODO el conjunto filtrado (no sobre la página).
+      // Lee solo las columnas necesarias para clasificar; la página real se trae después.
+      let grupos: GrupoBarrioConsulta[] | undefined;
+      let ordenPagina: string[] | null = null;
+      let grupoPorId: Map<string, GrupoBarrio> | null = null;
+      if (f.agrupar === "barrio" || f.grupoBarrio) {
+        const canonico = { select: { id: true, nombre: true } } as const;
+        const [candidatos, barrios] = await Promise.all([
+          tx.pedido.findMany({
+            where,
+            select: {
+              id: true, fecha: true, numero: true, direccionEntrega: true, barrioEntrega: true,
+              cliente: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
+              negocio: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
+            },
+          }),
+          tx.barrio.findMany({
+            select: { id: true, nombre: true, nombreNormalizado: true, aliases: { select: { textoNormalizado: true } } },
+          }),
+        ]);
+        const catalogo = construirCatalogoBarrios(barrios);
+        const porGrupo = new Map<string, { g: GrupoBarrio; items: typeof candidatos }>();
+        grupoPorId = new Map();
+        for (const c of candidatos) {
+          const g = resolverGrupoBarrio(
+            { overrideDireccion: c.direccionEntrega, overrideBarrio: c.barrioEntrega, cliente: c.cliente, negocio: c.negocio },
+            catalogo,
+          );
+          grupoPorId.set(c.id, g);
+          const e = porGrupo.get(g.clave) ?? { g, items: [] };
+          e.items.push(c);
+          porGrupo.set(g.clave, e);
+        }
+        grupos = ordenarGrupos([...porGrupo.values()].map(({ g, items }) => ({ ...g, total: items.length })));
+        const elegibles = f.grupoBarrio ? (porGrupo.get(f.grupoBarrio)?.items ?? []) : candidatos;
+        if (f.grupoBarrio) and.push({ id: { in: elegibles.map((c) => c.id) } });
+        if (f.agrupar === "barrio") {
+          const posGrupo = new Map(grupos.map((g, i) => [g.clave, i]));
+          ordenPagina = [...elegibles]
+            .sort((a, b) =>
+              (posGrupo.get(grupoPorId!.get(a.id)!.clave)! - posGrupo.get(grupoPorId!.get(b.id)!.clave)!) ||
+              (b.fecha.getTime() - a.fecha.getTime()) ||
+              (b.numero - a.numero) ||
+              (a.id < b.id ? -1 : 1))
+            .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
+            .map((c) => c.id);
+        }
+      }
       const fin: Prisma.PedidoWhereInput = { AND: [where, validoFinanciero] };
-      const [total, rows, repartidores, sumas, parciales] = await Promise.all([
+      const [total, rowsSinOrden, repartidores, sumas, parciales] = await Promise.all([
         tx.pedido.count({ where }),
         tx.pedido.findMany({
-          where,
+          where: ordenPagina ? { AND: [where, { id: { in: ordenPagina } }] } : where,
           orderBy: arrastre
             ? [{ fecha: "asc" }, { numero: "asc" }, { id: "asc" }]
             : [{ fecha: "desc" }, { numero: "desc" }, { id: "asc" }],
-          skip: (f.page - 1) * f.pageSize,
-          take: f.pageSize,
+          ...(ordenPagina ? {} : { skip: (f.page - 1) * f.pageSize, take: f.pageSize }),
           include: {
             items: true,
             pagos: true,
@@ -377,6 +431,11 @@ async function leerConsultaPedidos(
           select: { id: true, total: true, totalPagado: true, saldo: true, estadoEntrega: true, items: { select: { cantEntrega: true, precio: true } } },
         }) : [],
       ]);
+      // #836 F3: con agrupación, la página se trajo por ids; se devuelve en orden de grupo.
+      const posicion = ordenPagina ? new Map(ordenPagina.map((id, i) => [id, i])) : null;
+      const rows = posicion
+        ? [...rowsSinOrden].sort((a, b) => posicion.get(a.id)! - posicion.get(b.id)!)
+        : rowsSinOrden;
       let productos: ProductoConsulta[] = [],
         entregasPorConciliar = 0;
       const idsPagina = rows.map((p) => p.id);
@@ -550,6 +609,7 @@ async function leerConsultaPedidos(
           nombreNegocioCli: raw.negocio?.nombre ?? null,
           zonaCli: direccion.direccion ?? "",
           barrioCli: direccion.barrio ?? "",
+          ...(grupoPorId?.get(raw.id) ? { grupoBarrio: grupoPorId.get(raw.id) } : {}),
           rutaNombre:
             raw.negocio?.ruta?.nombre ?? raw.cliente.ruta?.nombre ?? null,
           lat: coords?.lat ?? null,
@@ -618,6 +678,7 @@ async function leerConsultaPedidos(
         pageSize: f.pageSize,
         leidoAt: ahora.toISOString(),
         repartidores,
+        ...(grupos ? { grupos } : {}),
         ...(consultaDestacadas ? {
           destacadas: consultaDestacadas.destacadas,
           destacadasTotal: consultaDestacadas.destacadasTotal,
