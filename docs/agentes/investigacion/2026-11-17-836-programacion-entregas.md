@@ -76,3 +76,11 @@ Fuera: crear otro embarque, cambiar `Pedido.fecha`/`createdAt`, el Contexto Maes
 ## 6. Gates pendientes
 
 Maquetas F1 y F3 (escritorio y móvil, con confirmación, carga y error): `docs/agentes/maquetas/836-programacion-entregas/`, **PENDIENTE DE APROBACIÓN**. Sin aprobación del PO: no hay rama de implementación. Migraciones: aditivas, con plan de compatibilidad y verificación previa en producción **solo con autorización**.
+
+## 7. Fase 1: decisiones del PO y verificación en producción (17-nov-2026)
+
+- **Pestañas con contadores (maqueta 1) — `DECISIÓN` (PO, «decide tú»):** se mantienen las dos vistas como opciones de filtro («Entrega prevista hoy o atrasada», «Programados») con etiqueta en cada fila, sin pestañas ni contadores. Motivo: no alterar la pantalla de «Hoy» de #797 y #841. Los contadores quedan como mejora opcional posterior.
+- **Hub activo en producción — `HECHO` (verificado por solo lectura en Vercel):** `NEXT_PUBLIC_PEDIDOS_V2 = "true"` en Production (activación 2026-10-26). Sin descifrar ningún valor.
+- **Migración `20261118_pedido_reprogramacion` — verificación previa AUTORIZADA por el PO (solo lectura), realizada:** la tabla no existe aún en producción; `Pedido.id` y `User.id` son `text` (coinciden con las FK); el código desplegado no conoce la tabla, así que aplicarla antes del merge es compatible. SQL probado en PostgreSQL 16 local (idempotente, sin diferencias contra el esquema); producción es PostgreSQL 17.
+- **`BRECHA` previa, ajena a #836:** `_prisma_migrations` de producción no registra 5 migraciones cuyos objetos sí existen (`20261111162455_fecha_pago_real_comision`, `20261111_devolucion_saldo_favor`, `20261112_user_puede_confirmar_pagos`, `20261113_precio_unitario_precision_795`, `20261117_pago_comision_fecha_correccion`). Requiere decisión aparte (#409). No se tocó.
+- **Pendiente de autorización expresa:** aplicar y registrar la migración en producción (escritura). No se ha hecho.
