@@ -16,6 +16,8 @@ export const ESTADOS_ENTREGA = [
   ["ANULADO", "Anulado"],
 ] as const;
 export const FOCOS = [
+  ["paraHoy", "Entrega prevista hoy o atrasada"],
+  ["programados", "Programados · entrega futura"],
   ["entregaParcial", "Entrega parcial"],
   ["porPlanificar", "Por planificar · sin embarque"],
   ["enRuta", "Gestión · en ruta"],
