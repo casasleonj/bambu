@@ -9,6 +9,7 @@ import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { FocoStrip } from './foco-strip'
 import { RecurrentesDelDia } from './recurrentes-del-dia'
 import { OperacionList } from './operacion-list'
+import { PendientesAnteriores } from './pendientes-anteriores'
 import { PeekPanel } from './peek-panel'
 import { PedidoCommandMenu } from './command-menu'
 import { deriveOperacion } from './derive-operacion'
@@ -55,6 +56,17 @@ interface PedidoHubProps {
   consulta?: AccionesConsulta
   /** #538: avisa si la hoja de detalle móvil está abierta (el botón «+» se oculta mientras tanto). */
   onPeekMovilChange?: (abierta: boolean) => void
+  /** #797: pendientes de días anteriores; comparten el detalle y las acciones de la lista. */
+  arrastrados?: {
+    pedidos: Pedido[]
+    total: number
+    error: boolean
+    cargando: boolean
+    onVerTodos: () => void
+    onReintentar?: () => void
+  }
+  /** #797: título de la lista principal; va después de los pendientes anteriores. */
+  encabezadoLista?: ReactNode
 }
 
 function useViewport(): 'desktop' | 'mobile' {
@@ -70,7 +82,7 @@ function useViewport(): 'desktop' | 'mobile' {
 }
 
 export function PedidoHub({
-  pedidos, counts, loading, refetching = false, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch, consulta, onPeekMovilChange,
+  pedidos, counts, loading, refetching = false, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch, consulta, onPeekMovilChange, arrastrados, encabezadoLista,
 }: PedidoHubProps) {
   const isOnline = useOnlineStatus()
   const viewport = useViewport()
@@ -113,7 +125,11 @@ export function PedidoHub({
     return pedidos.filter((p) => focosByPedido.get(p.id)?.includes(activeFoco))
   }, [pedidos, activeFoco, focosByPedido, consulta])
 
-  const peek = usePeek(pedidosFiltrados)
+  const pedidosConArrastrados = useMemo(
+    () => (arrastrados ? [...pedidosFiltrados, ...arrastrados.pedidos] : pedidosFiltrados),
+    [pedidosFiltrados, arrastrados],
+  )
+  const peek = usePeek(pedidosConArrastrados)
 
   // #538: la hoja móvil cubre la pantalla; el «+» flotante no debe quedar encima ni interceptar toques.
   const hojaMovilAbierta = viewport === 'mobile' && Boolean(peek.activeId && peek.layer1)
@@ -173,6 +189,30 @@ export function PedidoHub({
     <OperacionList pedidos={pedidosFiltrados} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={peek.open} consulta={consulta} />
   )
 
+  const listaCompleta = (
+    <>
+      {consulta && arrastrados && (
+        <div className="mb-3">
+          <PendientesAnteriores
+            pedidos={arrastrados.pedidos}
+            total={arrastrados.total}
+            error={arrastrados.error}
+            cargando={arrastrados.cargando}
+            viewport={viewport}
+            hoyBogota={hoyBogota}
+            consulta={consulta}
+            onAccion={onAccion}
+            onOpen={peek.open}
+            onVerTodos={arrastrados.onVerTodos}
+            onReintentar={arrastrados.onReintentar}
+          />
+        </div>
+      )}
+      {encabezadoLista}
+      {listNode}
+    </>
+  )
+
   const peekNode = peek.activeId && peek.layer1 ? (
     <PeekPanel
       pedido={peek.layer1}
@@ -187,14 +227,14 @@ export function PedidoHub({
       onAccion={onAccion}
       acciones={consulta}
       onOpenVinculado={(id) => {
-        const target = pedidos.find((p) => p.id === id)
+        const target = pedidosConArrastrados.find((p) => p.id === id)
         if (target) peek.open(target)
       }}
       onMutadoN2={() => {
         // tras una mutación N2: recargar el peek + refetch de lista/counts.
         if (peek.activeId) {
           invalidatePeek(peek.activeId)
-          const p = pedidos.find((x) => x.id === peek.activeId)
+          const p = pedidosConArrastrados.find((x) => x.id === peek.activeId)
           if (p) peek.open(p)
         }
         onRefetch?.()
@@ -254,12 +294,12 @@ export function PedidoHub({
       {/* desktop: lista + peek lado a lado; mobile: lista + peek como bottom sheet */}
       {viewport === 'desktop' && peekNode ? (
         <div className={consulta ? 'grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]' : 'grid grid-cols-[1fr_24rem] gap-3'}>
-          <div>{listNode}</div>
+          <div>{listaCompleta}</div>
           <div className="sticky top-4 self-start">{peekNode}</div>
         </div>
       ) : (
         <>
-          {listNode}
+          {listaCompleta}
           {peekNode}
         </>
       )}
