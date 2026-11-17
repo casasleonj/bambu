@@ -324,7 +324,7 @@ export const REGLAS: readonly Regla[] = [
   {
     // #499: la comisión del repartidor pagada de la caja (`PagoComisionRepartidor`) debe
     // cuadrar en dos lugares. (1) El cierre de un día guarda cuánto salió de la caja por
-    // comisión de repartidores; si los pagos de ese día (por `createdAt`) suman otra cosa,
+    // comisión de repartidores; si los pagos de ese día (real o captura legacy identificada) suman otra cosa,
     // hubo un pago posterior al cierre o un cierre editado. (2) Una nómina descuenta lo que
     // se pagó de la caja en su período; si descuenta otra cifra, la comisión se pagaría dos
     // veces o se dejaría de pagar.
@@ -339,7 +339,8 @@ export const REGLAS: readonly Regla[] = [
       FROM "CierreDia" c
       LEFT JOIN LATERAL (
         SELECT SUM(g.monto) AS s FROM "PagoComisionRepartidor" g
-        WHERE g."createdAt" >= c.fecha AND g."createdAt" < c.fecha + interval '1 day'
+        WHERE COALESCE(g."fechaPagoReal", g."createdAt") >= c.fecha
+          AND COALESCE(g."fechaPagoReal", g."createdAt") < c.fecha + interval '1 day'
           AND g.metodo = 'EFECTIVO'
       ) p ON true
       WHERE c.reporte->'comisionesAuto'->>'pagadoRepartidores' IS NOT NULL
@@ -379,7 +380,7 @@ export const REGLAS: readonly Regla[] = [
   },
   {
     id: 'V18',
-    titulo: 'Snapshot de cierre 2.1/2.2 distinto de sus columnas financieras canónicas',
+    titulo: 'Snapshot de cierre 2.1/2.2/2.3 distinto de sus columnas financieras canónicas',
     severidad: 'CRITICA',
     consulta: () => Prisma.sql`
       SELECT c.id AS ref, NULL::int AS numero,
@@ -390,7 +391,7 @@ export const REGLAS: readonly Regla[] = [
         ('efectivo', c.efectivo), ('transferencia', c.transferencia), ('nequi', c.nequi),
         ('daviplata', c.daviplata), ('bono', c.bono), ('totalGastos', c.gastos), ('netoCaja', c."netoCaja")
       ) v(campo, canonico)
-      WHERE c.reporte->>'_version' IN ('2.1', '2.2')
+      WHERE c.reporte->>'_version' IN ('2.1', '2.2', '2.3')
         AND (CASE WHEN jsonb_typeof(c.reporte->v.campo) = 'number'
           THEN (c.reporte->>v.campo)::numeric END) IS DISTINCT FROM v.canonico
       ORDER BY c.id, v.campo`,
