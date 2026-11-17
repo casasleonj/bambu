@@ -51,6 +51,15 @@
 | D4 | Domingo/cierre: se acepta con aviso «negocio cerrado ese día» y confirmación; sin autorreprogramar ni inventar fecha. Calendario de empresa, fuera de v1. | `DECISIÓN` (delegada) |
 | D5 | Orden: **F1** compromiso + «Hoy / Programados» + historial · **F2** horario y restricciones · **F3** barrio (independiente). Un PR por fase, tras #843. | `DECISIÓN` (delegada) |
 
+### Fase 2 · horario de atención en Negocios (respuestas del PO, 17-nov-2026)
+
+- **P1 · horario por negocio, no por cliente:** `DECISIÓN` (PO). Un cliente con dos negocios tiene dos horarios; un cliente sin negocio no tiene horario.
+- **P2 · solo horario semanal; excepciones por fecha después:** `DECISIÓN` (PO, «tu recomendación»).
+- **Superficies a tocar (HECHO, a `2e3bad2`):** `src/components/negocio-form.tsx` (campo único `horaApertura`), `negocio-detail-modal.tsx:186-193`, `POST /api/negocios` (zod, `route.ts:26`), `GET /api/clientes/[id]:104`, `src/types/index.ts:54`, OpenAPI; el formulario se usa desde `clientes/clientes-client/index.tsx`.
+- **Datos:** tabla aditiva `NegocioHorario` (negocio, día, desde, hasta; varias filas por día). `horaApertura` queda de solo lectura; no se convierte el texto libre automáticamente.
+- **Consumidores:** formulario y lista de pedidos solo **avisan** «negocio cerrado ese día» / «fuera de horario»; nunca bloquean ni ocultan el pedido.
+- **Maquetas:** `docs/agentes/maquetas/836-programacion-entregas/03-negocio-horario-*.html`, `PENDIENTE DE APROBACIÓN`.
+
 ## 4. Cobertura de la matriz A01–A30
 
 Certeza: `PROPUESTO`; ninguno `PROBADO`.
