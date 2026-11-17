@@ -64,3 +64,7 @@
 
 ## No tocar
 Cierres guardados, cantidades y pagos originales, trazabilidad (`Abono` espejo, `Historial`), fechas de inventario y comisiones (#673), reglas de #840.
+
+## Reemplazo de decisión (17-nov-2026, PO)
+La maqueta aprobada de Cartera conservaba el cobro del día en la lista con la etiqueta «Cobro del día». **El PO lo reemplaza:** un pago recibido el día de la entrega no debe entrar a Cartera; solo es fiado si al cierre sigue sin pagarse. Se listan únicamente cobros de entregas anteriores. Los cobros del día no se borran (siguen en la base y en el Cierre; `incluirCobrosDelDia=true` los devuelve para auditoría). Lectura de producción: de 132 abonos, 97 son espejos (22 del día de la creación), 25 antiguos sin origen y 10 independientes (ninguno del día de la creación), así que el cambio afecta a espejos y registros antiguos, no a abonos registrados a mano.
+**Riesgo conocido:** un cobro del día ya no se puede corregir desde Cartera (el botón «Corregir» estaba en esa fila). La corrección sigue disponible vía API y la regla del Cierre no cambia.

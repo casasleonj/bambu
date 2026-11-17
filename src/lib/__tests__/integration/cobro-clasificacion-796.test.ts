@@ -94,41 +94,43 @@ describe('#796 clasificación de cobros', () => {
     }
   })
 
-  it('GET /api/cartera/abonos etiqueta cada abono y separa los totales sin ocultar filas', async () => {
+  const listar = async (qs = 'pageSize=50') => {
     const { GET } = await import('@/app/api/cartera/abonos/route')
-    const res = await GET(req('pageSize=50'))
-    const json = await res.json()
+    const json = await (await GET(req(qs))).json()
     const body = json.data ?? json
-    const filas: Array<{ id: string; tipoCobro: string | null; fechaAproximada: boolean; montoNeto: number }> = body.data ?? body
-    const por = (k: string) => filas.find((f) => f.id === ids[k].abono)
-    expect(por('A')?.tipoCobro).toBe('COBRO_DEL_DIA')
-    expect(por('C')?.tipoCobro).toBe('CARTERA')
-    expect(por('E')?.tipoCobro).toBe('COBRO_DEL_DIA')
-    expect(filas).toHaveLength(3) // los tres abonos espejo siguen visibles
-    const totales = body.totales ?? json.totales
-    expect(totales).toMatchObject({ clasificacionDisponible: true, carteraRecuperada: 10000, cobrosDelDia: 27000 })
-    expect(totales.carteraRecuperada + totales.cobrosDelDia).toBe(totales.totalNeto)
-  })
+    return {
+      filas: (body.data ?? body) as Array<{ id: string; tipoCobro: string | null; fechaAproximada: boolean; montoNeto: number }>,
+      totales: (body.totales ?? json.totales) as {
+        totalNeto: number; clasificacionDisponible: boolean; carteraRecuperada: number | null
+        cobrosDelDiaNoListados: { cantidad: number; monto: number } | null
+      },
+    }
+  }
 
-  it('el filtro tipo=CARTERA deja solo la cartera anterior', async () => {
-    const { GET } = await import('@/app/api/cartera/abonos/route')
-    const json = await (await GET(req('pageSize=50&tipo=CARTERA'))).json()
-    const body = json.data ?? json
-    const filas: Array<{ id: string }> = body.data ?? body
+  it('GET /api/cartera/abonos NO lista el cobro del día: solo la cartera de entregas anteriores', async () => {
+    const { filas, totales } = await listar()
     expect(filas.map((f) => f.id)).toEqual([ids.C.abono])
+    expect(filas[0]).toMatchObject({ tipoCobro: 'CARTERA', montoNeto: 10000 })
+    expect(totales).toMatchObject({ clasificacionDisponible: true, carteraRecuperada: 10000, totalNeto: 10000 })
+    expect(totales.cobrosDelDiaNoListados).toEqual({ cantidad: 2, monto: 27000 })
   })
 
-  it('una corrección posterior baja el neto y no cambia el tipo', async () => {
-    const adminId = authUser.id
+  it('los cobros del día no se borran: siguen en la base y salen con incluirCobrosDelDia=true', async () => {
+    expect(await testPrisma.abono.count({ where: { id: { in: [ids.A.abono!, ids.E.abono!] } } })).toBe(2)
+    const { filas, totales } = await listar('pageSize=50&incluirCobrosDelDia=true')
+    expect(filas).toHaveLength(3)
+    expect(filas.find((f) => f.id === ids.A.abono)?.tipoCobro).toBe('COBRO_DEL_DIA')
+    expect(filas.find((f) => f.id === ids.E.abono)?.tipoCobro).toBe('COBRO_DEL_DIA')
+    expect(totales.cobrosDelDiaNoListados).toBeNull()
+  })
+
+  it('una corrección sobre un cobro del día baja lo no listado y no mueve la cartera', async () => {
     await testPrisma.correccionAbono.create({
-      data: { numero: `COR-${uniqueId('c').slice(0, 8)}`, abonoId: ids.A.abono!, tipo: 'MONTO', montoRevertido: 3000, motivo: 'prueba', autorizadoPorId: adminId },
+      data: { numero: `COR-${uniqueId('c').slice(0, 8)}`, abonoId: ids.A.abono!, tipo: 'MONTO', montoRevertido: 3000, motivo: 'prueba', autorizadoPorId: authUser.id },
     })
-    const { GET } = await import('@/app/api/cartera/abonos/route')
-    const json = await (await GET(req('pageSize=50'))).json()
-    const body = json.data ?? json
-    const filas: Array<{ id: string; tipoCobro: string | null; montoNeto: number }> = body.data ?? body
-    const a = filas.find((f) => f.id === ids.A.abono)
-    expect(a).toMatchObject({ tipoCobro: 'COBRO_DEL_DIA', montoNeto: 20000 })
-    expect((body.totales ?? json.totales).cobrosDelDia).toBe(24000)
+    const { filas, totales } = await listar()
+    expect(filas).toHaveLength(1)
+    expect(totales.carteraRecuperada).toBe(10000)
+    expect(totales.cobrosDelDiaNoListados).toEqual({ cantidad: 2, monto: 24000 })
   })
 })

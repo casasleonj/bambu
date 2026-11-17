@@ -16,11 +16,13 @@ import { tipoDeCobro, type ClasificacionCobro, type TipoCobro } from '@/lib/cobr
  * Roles: ADMIN + CONTADOR (`view:cartera`).
  *
  * Filtros: `clienteId`, `facturaId`, `metodo`, `desde`/`hasta` (YYYY-MM-DD),
- * `estado` = `corregido` | `sin-corregir`, `tipo` = `COBRO_DEL_DIA` | `CARTERA` (#796).
+ * `estado` = `corregido` | `sin-corregir`.
  *
- * #796: cada abono se clasifica por la fecha de ENTREGA de lo que cubre: el cobro de una entrega de la misma
- * jornada es «cobro del día» (ya está en las ventas de hoy), el de una entrega anterior es cartera recuperada.
- * El abono espejo de un Pago se clasifica como ese Pago. No se oculta ni se borra ninguna fila.
+ * #796 (decisión del PO): un pago recibido el mismo día de la entrega NO es cartera: es la venta de ese día
+ * cobrada, y solo pasa a fiado si al cierre sigue sin pagarse. Por eso esta lista solo trae cobros de cartera
+ * (entregas de días anteriores). Cada abono se clasifica por la fecha de ENTREGA de lo que cubre; el espejo de
+ * un Pago se clasifica como ese Pago. Los cobros del día no se borran (siguen en la base y en el Cierre): solo
+ * no se listan aquí. `incluirCobrosDelDia=true` los devuelve para auditoría.
  */
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -37,8 +39,7 @@ export async function GET(request: NextRequest) {
     const estado = sp.get('estado')
     const q = sp.get('q')?.trim()
     const dateFilter = buildDateRangeFilter(sp.get('desde'), sp.get('hasta'))
-    const tipoParam = sp.get('tipo')
-    const tipoFiltro: 'COBRO_DEL_DIA' | 'CARTERA' | null = tipoParam === 'COBRO_DEL_DIA' || tipoParam === 'CARTERA' ? tipoParam : null
+    const incluirCobrosDelDia = sp.get('incluirCobrosDelDia') === 'true'
 
     const where: Prisma.AbonoWhereInput = {}
     if (clienteId) where.clienteId = clienteId
@@ -58,7 +59,9 @@ export async function GET(request: NextRequest) {
 
     // #796: clasificar TODOS los abonos del filtro (ligero) para filtrar por tipo y totalizar; si falla, la lista sigue sin tipo.
     const clasificacion = new Map<string, { tipo: TipoCobro; aproximado: boolean; clasif: ClasificacionCobro }>()
-    const carteraYDia = { carteraCentavos: 0, ventaDiaCentavos: 0 }
+    let carteraCentavos = 0
+    let delDiaCentavos = 0
+    const idsDelDia: string[] = []
     let clasificacionDisponible = true
     try {
       const ligeros = await prisma.abono.findMany({
@@ -78,23 +81,25 @@ export async function GET(request: NextRequest) {
         if (!clasif) continue
         const tipo = tipoDeCobro(clasif)
         clasificacion.set(a.id, { tipo, aproximado: clasif.aproximado, clasif })
-        // Neto del abono repartido en la misma proporción que su cobro (centavos; el resto va a cartera).
+        if (tipo === 'COBRO_DEL_DIA') idsDelDia.push(a.id)
+        // Neto del abono en centavos. Un cobro del día completo no cuenta como cartera; uno mixto aporta su parte de cartera.
         const neto = Math.round((Number(a.monto) - a.correcciones.reduce((t, c) => t + Number(c.montoRevertido), 0)) * 100)
-        const base = clasif.ventaDiaCentavos + clasif.carteraCentavos
-        const dia = base > 0 ? Math.round((neto * clasif.ventaDiaCentavos) / base) : 0
-        carteraYDia.ventaDiaCentavos += dia
-        carteraYDia.carteraCentavos += neto - dia
+        if (tipo === 'COBRO_DEL_DIA') {
+          delDiaCentavos += neto
+        } else {
+          const base = clasif.ventaDiaCentavos + clasif.carteraCentavos
+          const dia = base > 0 ? Math.round((neto * clasif.ventaDiaCentavos) / base) : 0
+          carteraCentavos += neto - dia
+        }
       }
     } catch (err) {
       clasificacionDisponible = false
       clasificacion.clear()
       logger.error({ err: err instanceof Error ? err.message : 'Unknown' }, 'cartera/abonos: no se pudo clasificar los cobros')
     }
-    if (tipoFiltro && clasificacionDisponible) {
-      const ids = [...clasificacion.entries()]
-        .filter(([, v]) => v.tipo === tipoFiltro || v.tipo === 'MIXTO')
-        .map(([id]) => id)
-      where.id = { in: ids }
+    // Los cobros del día no entran a Cartera. Si el clasificador falló no se oculta nada (no se adivina).
+    if (clasificacionDisponible && !incluirCobrosDelDia && idsDelDia.length > 0) {
+      where.id = { notIn: idsDelDia }
     }
 
     const [abonos, total, agg, revAgg] = await Promise.all([
@@ -155,9 +160,12 @@ export async function GET(request: NextRequest) {
       totalNeto: totalAbonado - totalRevertido,
       count: total,
       clasificacionDisponible,
-      // #796: del neto de TODO el filtro (sin el filtro de tipo), cuánto es cartera recuperada y cuánto cobro del día.
-      carteraRecuperada: clasificacionDisponible ? carteraYDia.carteraCentavos / 100 : null,
-      cobrosDelDia: clasificacionDisponible ? carteraYDia.ventaDiaCentavos / 100 : null,
+      // #796: cartera recuperada (neto de lo que cubre entregas de días anteriores) y, aparte, lo que no se lista por
+      // ser cobro del día (ya está en las ventas de ese día).
+      carteraRecuperada: clasificacionDisponible ? carteraCentavos / 100 : null,
+      cobrosDelDiaNoListados: clasificacionDisponible && !incluirCobrosDelDia
+        ? { cantidad: idsDelDia.length, monto: delDiaCentavos / 100 }
+        : null,
     }
 
     return apiSuccess(
