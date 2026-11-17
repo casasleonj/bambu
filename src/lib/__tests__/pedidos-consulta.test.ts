@@ -6,6 +6,7 @@ import {
   FiltroPedidosError,
   filtrosArrastrados,
   MAX_ARRASTRADOS,
+  baseEfectiva,
 } from "../pedidos-consulta";
 const leer = (s = "") =>
   leerFiltrosConsulta(new URLSearchParams(s), "2026-10-30");
@@ -138,5 +139,28 @@ describe("#797 — filtros de pendientes de días anteriores", () => {
     const antes = JSON.stringify(f);
     filtrosArrastrados(f, hoy);
     expect(JSON.stringify(f)).toBe(antes);
+  });
+});
+
+describe("#854 baseEfectiva", () => {
+  const f = (q: string) =>
+    leerFiltrosConsulta(new URLSearchParams(`desde=2026-11-14&hasta=2026-11-14&${q}`), "2026-11-17");
+  it("«Entregado» como único estado, con la base por defecto, rige por la fecha de entrega", () => {
+    expect(baseEfectiva(f("estadoEntrega=ENTREGADO"))).toBe("entrega");
+    expect(baseEfectiva(f("fechaBase=pedido&estadoEntrega=ENTREGADO&canal=PUNTO"))).toBe("entrega");
+  });
+  it("no cambia sin Entregado, con otros estados mezclados, con otra base, con foco ni sin rango", () => {
+    expect(baseEfectiva(f(""))).toBe("pedido");
+    expect(baseEfectiva(f("estadoEntrega=PENDIENTE"))).toBe("pedido");
+    expect(baseEfectiva(f("estadoEntrega=ENTREGADO&estadoEntrega=PENDIENTE"))).toBe("pedido");
+    expect(baseEfectiva(f("fechaBase=creacion&estadoEntrega=ENTREGADO"))).toBe("creacion");
+    expect(baseEfectiva(f("fechaBase=cobro&estadoEntrega=ENTREGADO"))).toBe("cobro");
+    expect(baseEfectiva(f("foco=enRuta&estadoEntrega=ENTREGADO"))).toBe("pedido");
+    expect(baseEfectiva(f("all=true&estadoEntrega=ENTREGADO"))).toBe("pedido");
+  });
+  it("es derivada: no altera la clave de consulta ni el filtro guardado", () => {
+    const x = f("estadoEntrega=ENTREGADO");
+    expect(x.fechaBase).toBe("pedido");
+    expect(parametrosConsulta(x).get("fechaBase")).toBe("pedido");
   });
 });
