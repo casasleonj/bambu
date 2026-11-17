@@ -338,10 +338,27 @@ export const REGLAS: readonly Regla[] = [
           'pagosDelDia', COALESCE(p.s, 0)::float8) AS detalle
       FROM "CierreDia" c
       LEFT JOIN LATERAL (
-        SELECT SUM(g.monto) AS s FROM "PagoComisionRepartidor" g
-        WHERE COALESCE(g."fechaPagoReal", g."createdAt") >= c.fecha
-          AND COALESCE(g."fechaPagoReal", g."createdAt") < c.fecha + interval '1 day'
-          AND g.metodo = 'EFECTIVO'
+        -- #834: se compara con el día real que cada pago tenía CUANDO se hizo el cierre. Una corrección posterior (solo ADMIN)
+        -- no descuadra un cierre que ya estaba bien: sin correcciones es el mismo criterio de #770 (día real o, sin verificar, captura).
+        SELECT SUM(x.monto) AS s FROM (
+          SELECT g.monto,
+            CASE
+              WHEN a.v IS NOT NULL THEN a.v
+              WHEN d.existe THEN COALESCE(d.v, g."createdAt")
+              ELSE COALESCE(g."fechaPagoReal", g."createdAt")
+            END AS efectiva
+          FROM "PagoComisionRepartidor" g
+          LEFT JOIN LATERAL (
+            SELECT k."fechaRealNueva" AS v FROM "PagoComisionFechaCorreccion" k
+            WHERE k."pagoId" = g.id AND k."corregidoAt" <= c."createdAt" ORDER BY k."corregidoAt" DESC LIMIT 1
+          ) a ON true
+          LEFT JOIN LATERAL (
+            SELECT k."fechaRealAnterior" AS v, true AS existe FROM "PagoComisionFechaCorreccion" k
+            WHERE k."pagoId" = g.id AND k."corregidoAt" > c."createdAt" ORDER BY k."corregidoAt" ASC LIMIT 1
+          ) d ON true
+          WHERE g.metodo = 'EFECTIVO'
+        ) x
+        WHERE x.efectiva >= c.fecha AND x.efectiva < c.fecha + interval '1 day'
       ) p ON true
       WHERE c.reporte->'comisionesAuto'->>'pagadoRepartidores' IS NOT NULL
         AND ABS((c.reporte->'comisionesAuto'->>'pagadoRepartidores')::numeric - COALESCE(p.s, 0)) > 0.005

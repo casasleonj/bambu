@@ -36,6 +36,9 @@ export interface AlertaItem {
 export interface AlertaRow {
   clienteId: string
   nombreCli: string
+  /** #829: apellido y negocio, solo para poder buscar; no se muestran. */
+  apellidoCli?: string
+  nombreNegocioCli?: string
   telefonoCli: string
   alertas: AlertaItem[]
   severidadMasAlta: SeveridadAlerta

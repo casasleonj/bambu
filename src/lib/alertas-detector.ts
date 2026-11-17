@@ -98,6 +98,8 @@ interface PedidoBase {
   numero: number
   clienteId: string
   nombreCli?: string
+  apellidoCli?: string | null
+  nombreNegocioCli?: string | null
   telefonoCli?: string
   fecha: string
   total: number | string
@@ -472,6 +474,8 @@ export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasO
         clientesMap.set(p.clienteId, {
           clienteId: p.clienteId,
           nombreCli: p.nombreCli ?? '',
+          apellidoCli: p.apellidoCli ?? undefined,
+          nombreNegocioCli: p.nombreNegocioCli ?? undefined,
           telefonoCli: p.telefonoCli ?? '',
           alertas,
           severidadMasAlta: 'BAJA',
@@ -505,6 +509,8 @@ export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasO
         clientesMap.set(clienteId, {
           clienteId,
           nombreCli: arr[0].nombreCli ?? '',
+          apellidoCli: arr[0].apellidoCli ?? undefined,
+          nombreNegocioCli: arr[0].nombreNegocioCli ?? undefined,
           telefonoCli: arr[0].telefonoCli ?? '',
           alertas: [alerta],
           severidadMasAlta: 'BAJA',

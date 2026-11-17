@@ -196,6 +196,8 @@ export interface CierreData {
     diferencia: number
     pagosCaja: import('@/lib/comision-pagada').PagoComisionCaja[]
     sinFechaVerificada: number
+    /** #834: correcciones de día real hechas después de cerrar este día; explican la diferencia. */
+    correccionesPosteriores?: import('@/lib/comision-pagada').CorreccionPosteriorAlCierre[]
   }
   salarios?: number
 

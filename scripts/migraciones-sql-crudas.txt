@@ -38,3 +38,5 @@
 20261111_devolucion_saldo_favor
 # #673: día real explícito del desembolso de comisión (CHECK de día Bogotá; sin backfill).
 20261111162455_fecha_pago_real_comision
+# #834: correcciones administrativas del dia real de caja de un pago de comision (CHECK).
+20261117_pago_comision_fecha_correccion
