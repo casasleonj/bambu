@@ -78,7 +78,10 @@ export interface FiltrosConsultaPedidos {
     | "esperandoPago"
     | "pendientesN2"
     | "excepciones"
-    | "entregaParcial";
+    | "entregaParcial"
+    // #836 F1: vista por FECHA PROMETIDA (`Pedido.fechaEntrega`), no por fecha de pedido.
+    | "paraHoy" // prevista hoy + atrasada abierta
+    | "programados"; // prevista para un día futuro
   conRecurrencia: boolean;
   resumen: boolean;
   page: number;
@@ -254,6 +257,8 @@ export function leerFiltrosConsulta(
         "pendientesN2",
         "excepciones",
         "entregaParcial",
+        "paraHoy",
+        "programados",
       ],
       "",
     ),
@@ -342,6 +347,11 @@ export function parametrosConsulta(f: FiltrosConsultaPedidos): URLSearchParams {
   return p;
 }
 
+/** #836 F1: focos que consultan por fecha prometida e ignoran el rango de fecha de pedido. */
+export function esFocoCompromiso(foco: FiltrosConsultaPedidos["foco"]): foco is "paraHoy" | "programados" {
+  return foco === "paraHoy" || foco === "programados";
+}
+
 /** #797: estados que cuentan como «pendiente de días anteriores». */
 export const ESTADOS_ARRASTRADOS = [
   "PENDIENTE",
@@ -366,6 +376,7 @@ export function filtrosArrastrados(
   hoy = getTodayString(),
 ): FiltrosConsultaPedidos | null {
   if (f.fechaBase !== "pedido" || f.all || !f.desde) return null;
+  if (esFocoCompromiso(f.foco)) return null; // #836: la vista por fecha prometida no mezcla arrastrados.
   if (f.registro === "anulados") return null;
   if (f.desde > hoy || (f.hasta && f.hasta < hoy)) return null;
   const estadoEntrega = f.estadoEntrega.length

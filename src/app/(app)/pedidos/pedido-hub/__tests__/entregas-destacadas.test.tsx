@@ -54,6 +54,23 @@ describe("#763 — tarjeta de entrega con histórico al corte", () => {
     expect(tarjeta).toHaveTextContent("6 pacas de agua");
     expect(tarjeta).not.toHaveTextContent("Completado posteriormente");
   });
+  it("#847: pedido anterior entregado completo de una vez muestra «✓ Completado» una sola vez y sin «Primera entrega»", () => {
+    const unaVez = [
+      { id: "unica", fecha: new Date("2026-11-11T16:00:00Z"), cantidades: [{ producto: "PACA_AGUA", cantidad: 6 }] },
+    ];
+    const datos = proyectarEntregaHistorial(pedido, unaVez, rango(11));
+    if (!datos) throw new Error("Proyección no disponible");
+    expect(datos.estadoAlCorte).toBe("PRIMERA_ENTREGA");
+    render(
+      <EntregasDestacadas entregas={[datos]} total={1} rangoAmplio={false}
+        hasta="2026-11-11" onVerPedido={vi.fn()} onVerTodas={vi.fn()} />,
+    );
+    const tarjeta = screen.getByTestId("entrega-historica-901");
+    expect(tarjeta).not.toHaveTextContent("Primera entrega");
+    expect(tarjeta).toHaveTextContent("6 pacas de agua");
+    expect(tarjeta.textContent?.match(/Completado/g)).toHaveLength(1);
+    expect(tarjeta).not.toHaveTextContent("Completado el");
+  });
   it("rangos demasiado amplios indican limitación sin inventar resultados", () => {
     render(
       <EntregasDestacadas entregas={[]} total={0} rangoAmplio={true}

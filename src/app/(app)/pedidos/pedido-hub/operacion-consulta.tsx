@@ -16,6 +16,7 @@ import type { AccionKey, Pedido } from "./types";
 import { fechaConsulta } from "./fecha-consulta";
 import { etiquetaArrastre } from "./arrastrados";
 import { NotaPedido } from "./nota-pedido";
+import { CompromisoChip } from "./compromiso-chip";
 import { importesEntregaPedido } from "@/lib/valor-entregado-pedido";
 import styles from "./operacion-consulta.module.css";
 
@@ -187,6 +188,7 @@ export function OperacionConsulta({
                     {etiquetaArrastre(p.fecha, hoyBogota)}
                   </p>
                 )}
+                <CompromisoChip id={p.id} pedido={p} hoyBogota={hoyBogota} />
                 <p
                   className={`${styles.meta} truncate`}
                   data-testid={`operacion-barrio-${p.id}`}

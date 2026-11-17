@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { PedidoExceptionPanel } from './pedido-exception-panel'
 import { PedidoCambioCantidad } from './pedido-cambio-cantidad'
+import { PedidoReprogramar } from './pedido-reprogramar'
 import { PedidoPeekRiesgo } from './pedido-peek-riesgo'
 import { PeekEntrega } from './peek-entrega'
 import { PeekRecurrencia } from './peek-recurrencia'
@@ -24,6 +25,7 @@ export function PeekRelaciones({
   onAccionN2,
   onMutadoN2,
   puedeAjustar,
+  hoyBogota,
 }: {
   pedido: Pedido
   data: PeekLayer2
@@ -32,6 +34,8 @@ export function PeekRelaciones({
   onMutadoN2?: () => void
   /** G11 (Fase 6-i): sólo ADMIN/ASISTENTE pueden abrir "Cambiar cantidades". */
   puedeAjustar?: boolean
+  /** #836 F1: día de hoy en Bogotá para avisar si la fecha prometida ya venció. */
+  hoyBogota?: string
 }) {
   const saldoOperacion = Number(pedido.saldo) || 0
 
@@ -92,6 +96,10 @@ export function PeekRelaciones({
         onNuevaDemanda={onAccionN2 ? () => onAccionN2('nueva-demanda') : undefined}
         onVentaLibre={onAccionN2 ? () => onAccionN2('venta-libre') : undefined}
       />
+
+      {puedeAjustar && onMutadoN2 && hoyBogota && (
+        <PedidoReprogramar pedido={pedido} hoyBogota={hoyBogota} onMutado={onMutadoN2} />
+      )}
 
       {puedeAjustar && onMutadoN2 && onAccionN2 && (
         <PedidoCambioCantidad
