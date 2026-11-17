@@ -462,6 +462,11 @@ export function ConsultaPedidosHub(props: Props) {
                   onVerFactura: props.onVerFactura,
                   onCorregirPendiente: props.onCorregirPendiente,
                   onDescartarPendiente: props.onDescartarPendiente,
+                  grupos: datos?.grupos,
+                  grupoActivo: filtrosLeidos?.grupoBarrio || undefined,
+                  onGrupoBarrio: filtrosLeidos
+                    ? (clave) => aplicar({ ...filtrosLeidos, grupoBarrio: clave ?? "", page: 1 })
+                    : undefined,
                 }}
               />
             )}

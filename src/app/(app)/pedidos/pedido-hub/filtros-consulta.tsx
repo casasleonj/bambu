@@ -9,6 +9,7 @@ import {
 import {
   alternarCanal,
   alternarEstadoEntrega,
+  alternarAgrupar,
   alternarFoco,
   alternarOrigen,
   alternarPago,
@@ -316,6 +317,17 @@ export function FiltrosConsulta({
                 {label}
               </Chip>
             ))}
+          </Grupo>
+          <Grupo
+            titulo="Vista de la lista"
+            ayuda="Agrupa todos los pedidos de la consulta por barrio, con el total real de cada uno."
+          >
+            <Chip
+              activo={draft.agrupar === "barrio"}
+              onClick={() => cambiar((f) => alternarAgrupar(f))}
+            >
+              📍 Agrupar por barrio
+            </Chip>
           </Grupo>
           <Grupo titulo="Pago">
             {PAGOS.map(([k, label]) => (
