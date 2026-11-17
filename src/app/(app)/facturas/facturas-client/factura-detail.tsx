@@ -24,7 +24,28 @@ function formatDateLong(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
 }
 
+function formatFechaHora(iso: string): string {
+  const f = new Date(iso)
+  const dia = f.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Bogota' })
+  const hora = f.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Bogota' })
+  // «17 de nov de 2026» → «17 nov 2026»: más corto para que no se parta en pantallas angostas.
+  return `${dia.replace(/ de /g, ' ')} · ${hora}`
+}
+
+/** #796: nombre legible del tipo de corrección (solo se muestra a quien puede ver su detalle). */
+const ETIQUETA_CORRECCION: Record<string, string> = {
+  MONTO: 'Monto corregido', CLIENTE: 'Cliente equivocado', FACTURA: 'Factura equivocada', NO_RECIBIDO: 'Pago no recibido',
+}
+
+/** #796: texto de estado del pago; solo lo que aún no está confirmado se marca. */
+function etiquetaConfirmacion(c: string | null): { texto: string; clase: string } | null {
+  if (c === 'REPORTADO') return { texto: 'Por confirmar', clase: 'bg-amber-100 text-amber-800' }
+  if (c === 'DISCREPANTE') return { texto: 'Con discrepancia', clase: 'bg-red-100 text-red-800' }
+  return null
+}
+
 interface FacturaDetailProps {
+  onReintentarPagos?: () => void
   factura: Factura
   empresaConfig: EmpresaConfig
   onRegistrarAbono?: () => void
@@ -32,7 +53,7 @@ interface FacturaDetailProps {
   volverPedidos?: string | null
 }
 
-export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpenPedido,volverPedidos }: FacturaDetailProps) {
+export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpenPedido,volverPedidos, onReintentarPagos }: FacturaDetailProps) {
   const [printReady, setPrintReady] = useState(false)
 
   useEffect(() => {
@@ -85,6 +106,8 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
       `
     }).join('')
 
+    // TODO(#796): la factura que se entrega al cliente NO debe llevar el historial interno (estados, correcciones, quién
+    // autorizó). Hasta que el PO apruebe el diseño de la impresión para el cliente, se conserva el bloque anterior.
     const abonosHtml = factura.abonos && factura.abonos.length > 0
       ? `
         <div style="margin-bottom:20px;">
@@ -521,6 +544,75 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
           {/* ════════════════════════════════════════
               ABONOS — Timeline (screen) / Lista simple (print)
               ════════════════════════════════════════ */}
+          {factura.historialPagosError && (
+            <div role="alert" data-testid="factura-pagos-error" className="mb-8 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              <span>No se pudo cargar los pagos de esta factura. Los totales de arriba siguen siendo válidos.</span>
+              {onReintentarPagos && <button className="rounded-lg border border-blue-600 bg-white px-3 py-1 text-xs font-semibold text-blue-700" onClick={onReintentarPagos}>Reintentar</button>}
+            </div>
+          )}
+          {factura.historialPagos ? (
+            <div className="mb-8" data-testid="factura-historial-pagos">
+              <h3 className="text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-1.5" style={{ color: BRAND.green }}>
+                Historial de pagos ({factura.historialPagos.pagos.length})
+              </h3>
+              {factura.historialPagos.pagos.length === 0 && <p className="text-sm text-gray-500" data-testid="factura-sin-pagos">Esta factura todavía no tiene pagos.</p>}
+              <div className="space-y-0">
+                {factura.historialPagos.pagos.map((p, i, arr) => {
+                  const chip = etiquetaConfirmacion(p.confirmacion)
+                  return (
+                    <div key={p.clave} className="flex gap-3" data-testid="factura-pago-fila">
+                      <div className="flex flex-col items-center">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border-2" style={{ backgroundColor: '#E8F5E9', borderColor: BRAND.green }}>
+                          <span className="text-xs font-bold" style={{ color: BRAND.green }}>{p.numero}</span>
+                        </div>
+                        {(i < arr.length - 1 || factura.historialPagos!.correcciones.length > 0) && <div className="w-0.5 flex-1 mt-1" style={{ backgroundColor: '#C8E6C9' }} />}
+                      </div>
+                      <div className="flex-1 pb-4">
+                        <div className="rounded-lg px-4 py-3 flex justify-between items-center gap-2" style={{ backgroundColor: '#E8F5E9' }}>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900">{formatFechaHora(p.fecha)}</p>
+                            <p className="text-xs text-gray-500 uppercase">{p.metodo}
+                              {chip && <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold normal-case ${chip.clase}`}>{chip.texto}</span>}
+                            </p>
+                          </div>
+                          <span className="text-lg font-bold whitespace-nowrap shrink-0" style={{ color: BRAND.green }}>{formatCurrency(Number(p.monto))}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                {factura.historialPagos.correcciones.map((c) => (
+                  <div key={c.id} className="flex gap-3" data-testid="factura-correccion-fila">
+                    <div className="flex flex-col items-center">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border-2" style={{ backgroundColor: '#FFF3E0', borderColor: '#E65100' }}>
+                        <span className="text-xs font-bold" style={{ color: '#E65100' }}>↩</span>
+                      </div>
+                    </div>
+                    <div className="flex-1 pb-4">
+                      <div className="rounded-lg px-4 py-3 flex justify-between items-center gap-2 border" style={{ backgroundColor: '#FFF3E0', borderColor: '#FFE0B2' }}>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900"><b>{c.numero}</b>{c.motivo !== null ? ` · ${ETIQUETA_CORRECCION[c.tipo] ?? 'Corrección'}` : ''}</p>
+                          <p className="text-xs uppercase" style={{ color: '#92400e' }}>
+                            {formatDate(c.fecha)}{c.autorizadoPor ? ` · autorizó ${c.autorizadoPor}` : ''}{c.sobrePagoNumero ? ` · sobre el pago #${c.sobrePagoNumero}` : ''}
+                          </p>
+                        </div>
+                        <span className="text-lg font-bold whitespace-nowrap shrink-0" style={{ color: '#E65100' }}>−{formatCurrency(Number(c.monto))}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {factura.historialPagos.correcciones.length > 0 && (
+                <p className="mt-1 text-xs text-gray-500">Pagado = pagos − correcciones ({formatCurrency(factura.historialPagos.totalPagado)} − {formatCurrency(factura.historialPagos.totalCorregido)}). Una corrección no borra el pago: aparece como su propia fila.</p>
+              )}
+              {typeof factura.montoPagado === 'number' && Math.abs(factura.historialPagos.totalNeto - factura.montoPagado) > 0.005 && (
+                <p data-testid="factura-pagos-divergencia" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  El historial suma {formatCurrency(factura.historialPagos.totalNeto)} y la factura marca {formatCurrency(factura.montoPagado)} pagados. Avísale al administrador para conciliarlo.
+                </p>
+              )}
+            </div>
+          ) : (
+            <>
           {factura.abonos && factura.abonos.length > 0 && (
             <div className="mb-8">
               <h3 className="text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-1.5" style={{ color: BRAND.green }}>
@@ -557,6 +649,9 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
 
 
             </div>
+          )}
+
+            </>
           )}
 
           {/* ════════════════════════════════════════

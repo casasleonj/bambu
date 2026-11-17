@@ -1,6 +1,6 @@
 # ADR-CORRECCION-MONETARIA-002 — Corregir un `Pago` que no tiene `Abono` (incremento de ADR-CORRECCION-MONETARIA-001)
 
-- Estado: **PROPUESTO — NO ACEPTADO.** Requiere aprobación del PO antes de implementar. No autoriza migración en producción.
+- Estado: **ACEPTADO por el PO el 17-nov-2026** (respuesta «Ok» a «¿apruebas la maqueta y el ADR para empezar el paso 1?»). **No autoriza migración en producción**: la fase 2b sigue pendiente de autorización expresa.
 - Fecha: 2026-11-17
 - Origen: issue #796 (auditoría `docs/agentes/investigacion/2026-11-17-796-auditoria-pago-abono-als.md`, hallazgos F1–F8).
 - Incrementa (no reemplaza): `ADR-CORRECCION-MONETARIA-001` (D.1, D.3), `ADR-PAGO-REPORTADO-CONFIRMADO-001` (§4).
