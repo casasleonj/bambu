@@ -67,6 +67,8 @@ interface PedidoHubProps {
   }
   /** #797: título de la lista principal; va después de los pendientes anteriores. */
   encabezadoLista?: ReactNode
+  /** #841: entregas de pedidos anteriores; van después de los pendientes y antes de la lista. */
+  entregasSlot?: ReactNode
 }
 
 function useViewport(): 'desktop' | 'mobile' {
@@ -82,7 +84,7 @@ function useViewport(): 'desktop' | 'mobile' {
 }
 
 export function PedidoHub({
-  pedidos, counts, loading, refetching = false, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch, consulta, onPeekMovilChange, arrastrados, encabezadoLista,
+  pedidos, counts, loading, refetching = false, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch, consulta, onPeekMovilChange, arrastrados, encabezadoLista, entregasSlot,
 }: PedidoHubProps) {
   const isOnline = useOnlineStatus()
   const viewport = useViewport()
@@ -208,6 +210,7 @@ export function PedidoHub({
           />
         </div>
       )}
+      {entregasSlot && <div className="mb-3">{entregasSlot}</div>}
       {encabezadoLista}
       {listNode}
     </>
