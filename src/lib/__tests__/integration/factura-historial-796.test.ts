@@ -20,6 +20,7 @@ describe('#796 · historial de pagos de la factura', () => {
     factura: { id: string; abonos: unknown[]; montoPagado: number }
     historialPagos: { pagos: Array<{ clave: string; origen: string; numero: number; monto: number; confirmacion: string | null }>; correcciones: Array<{ numero: string; monto: number; motivo: string | null; autorizadoPor: string | null; sobrePagoNumero: number | null }>; totalNeto: number } | null
     historialPagosError: boolean
+    puedeVerHistorialInterno: boolean
   }
 
   beforeAll(async () => {
@@ -63,10 +64,12 @@ describe('#796 · historial de pagos de la factura', () => {
       const c = cuerpo(await llamar()).historialPagos?.correcciones[0]
       expect(c).toMatchObject({ monto: 3000, motivo: 'no llegó' })
       expect(c?.autorizadoPor).toBeTruthy()
+      expect(cuerpo(await llamar()).puedeVerHistorialInterno).toBe(true)
     }
     authUser.role = 'ASISTENTE'
     const c = cuerpo(await llamar()).historialPagos?.correcciones[0]
     expect(c).toMatchObject({ monto: 3000, motivo: null, autorizadoPor: null })
+    expect(cuerpo(await llamar()).puedeVerHistorialInterno).toBe(false) // el servidor decide: ASISTENTE no imprime el interno
   })
 
   it('una factura sin ningún pago devuelve el historial vacío, no un error', async () => {

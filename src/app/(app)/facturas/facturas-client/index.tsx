@@ -161,7 +161,7 @@ export default function FacturasPage() {
         const data = await res.json()
         if (seq !== detailSeq.current) return
         if (data.factura?.id !== id) throw new Error('No se pudo identificar la factura solicitada.')
-        setFacturaDetail({ ...data.factura, historialPagos: data.historialPagos ?? null, historialPagosError: data.historialPagosError === true })
+        setFacturaDetail({ ...data.factura, historialPagos: data.historialPagos ?? null, historialPagosError: data.historialPagosError === true, puedeVerHistorialInterno: data.puedeVerHistorialInterno === true })
         setHighlightedFactura(id)
       } else {
         setDetailError(res.status === 404 ? 'Factura no encontrada.' : res.status === 403

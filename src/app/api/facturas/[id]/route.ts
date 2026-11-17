@@ -42,6 +42,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // Si falla, la factura se entrega igual y la pantalla muestra su estado de error; `abonos` se conserva.
     let historialPagos: HistorialPagos | null = null
     let historialPagosError = false
+    // Quién puede imprimir el historial INTERNO lo decide el servidor (mismos roles que ven el detalle de las correcciones).
+    let puedeVerHistorialInterno = false
     try {
       const [pagos, abonosConCorreccion] = await Promise.all([
         prisma.pago.findMany({
@@ -70,13 +72,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       )
       // Condición del PO: no ampliar privilegios. Hoy el ASISTENTE lee la factura pero no el detalle de las correcciones.
       const rol = (authResult.user as { role?: string } | undefined)?.role
-      historialPagos = rol === 'ADMIN' || rol === 'CONTADOR' ? completo : ocultarDetalleCorrecciones(completo)
+      puedeVerHistorialInterno = rol === 'ADMIN' || rol === 'CONTADOR'
+      historialPagos = puedeVerHistorialInterno ? completo : ocultarDetalleCorrecciones(completo)
     } catch (err) {
       historialPagosError = true
       logger.error({ err: err instanceof Error ? err.message : 'Unknown', facturaId: id }, 'factura: no se pudo armar el historial de pagos')
     }
 
-    return apiSuccess({ factura, historialPagos, historialPagosError })
+    return apiSuccess({ factura, historialPagos, historialPagosError, puedeVerHistorialInterno })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching factura:')
     return apiError('Error fetching factura', 500)

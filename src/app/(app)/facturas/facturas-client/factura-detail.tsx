@@ -9,6 +9,7 @@ import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import type { Factura, EmpresaConfig } from './types'
 import { pedidoEnConsulta } from '@/lib/pedidos-contexto'
 import { formatPrecioUnitario, formatImportePedido as formatCurrency } from '@/lib/precio-formato'
+import { historialInternoHtml, pagosRecibidosCliente, type FormatosImpresion } from '@/lib/factura-impresion'
 
 const BRAND = {
   green: '#4CAF50',
@@ -44,6 +45,29 @@ function etiquetaConfirmacion(c: string | null): { texto: string; clase: string 
   return null
 }
 
+/** Formatos de los documentos impresos (zona de Bogotá, fecha corta). */
+const FORMATOS_IMPRESION: FormatosImpresion = {
+  moneda: (n) => formatCurrency(n),
+  fecha: (iso) => new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Bogota' }).replace(/ de /g, ' '),
+  fechaHora: (iso) => formatFechaHora(iso),
+}
+
+/** Abre un documento en un iframe oculto y lo manda a imprimir (el mismo mecanismo de la factura). */
+function imprimirEnIframe(html: string): void {
+  const iframe = document.createElement('iframe')
+  iframe.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:0;height:0'
+  document.body.appendChild(iframe)
+  const doc = iframe.contentWindow?.document
+  if (!doc) { document.body.removeChild(iframe); return }
+  doc.open()
+  doc.write(html)
+  doc.close()
+  iframe.onload = () => {
+    iframe.contentWindow?.print()
+    setTimeout(() => { if (document.body.contains(iframe)) document.body.removeChild(iframe) }, 1000)
+  }
+}
+
 interface FacturaDetailProps {
   onReintentarPagos?: () => void
   factura: Factura
@@ -55,6 +79,13 @@ interface FacturaDetailProps {
 
 export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpenPedido,volverPedidos, onReintentarPagos }: FacturaDetailProps) {
   const [printReady, setPrintReady] = useState(false)
+  // Evita imprimir dos veces por doble clic mientras se prepara el documento.
+  const [imprimiendo, setImprimiendo] = useState(false)
+  const protegerImpresion = (accion: () => void) => {
+    if (imprimiendo) return
+    setImprimiendo(true)
+    try { accion() } finally { setTimeout(() => setImprimiendo(false), 1500) }
+  }
 
   useEffect(() => {
     // Bandera de hidratación SSR-safe: no se puede derivar durante el
@@ -82,7 +113,17 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
     email: factura.empresaEmail || empresaConfig.email,
   }
 
-  const handlePrint = () => {
+  const handlePrintInterno = () => protegerImpresion(() => {
+    const h = factura.historialPagos
+    if (!h || !factura.puedeVerHistorialInterno) return
+    const cuerpo = historialInternoHtml(
+      { facturaNumero: factura.numero, clienteNombre: clienteDisplayName },
+      h, FORMATOS_IMPRESION, formatFechaHora(new Date().toISOString()),
+    )
+    imprimirEnIframe(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Historial interno ${factura.numero}</title><style>body{font-family:Arial,sans-serif;margin:15mm;color:#000;background:#fff}@page{margin:15mm;size:letter}</style></head><body>${cuerpo}</body></html>`)
+  })
+
+  const handlePrint = () => protegerImpresion(() => {
     const iframe = document.createElement('iframe')
     iframe.style.position = 'absolute'
     iframe.style.top = '-9999px'
@@ -106,21 +147,8 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
       `
     }).join('')
 
-    // TODO(#796): la factura que se entrega al cliente NO debe llevar el historial interno (estados, correcciones, quién
-    // autorizó). Hasta que el PO apruebe el diseño de la impresión para el cliente, se conserva el bloque anterior.
-    const abonosHtml = factura.abonos && factura.abonos.length > 0
-      ? `
-        <div style="margin-bottom:20px;">
-          <h3 style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#4CAF50;margin-bottom:10px;">Historial de Pagos (${factura.abonos.length})</h3>
-          ${factura.abonos.map((abono, i) => `
-            <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;font-size:12px;">
-              <span>#${i + 1} ${formatDate(abono.fecha)} — ${abono.metodoPago}</span>
-              <span><strong>${formatCurrency(Number(abono.monto))}</strong></span>
-            </div>
-          `).join('')}
-        </div>
-      `
-      : ''
+    // #796: la factura que se ENTREGA al cliente lleva «Pagos recibidos» (fecha, medio, importe), sin información interna.
+    const abonosHtml = pagosRecibidosCliente(factura.historialPagos, pagado, FORMATOS_IMPRESION)
 
     const notasCreditoHtml = factura.notasCredito && factura.notasCredito.length > 0
       ? `
@@ -253,7 +281,7 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
         }
       }, 1000)
     }
-  }
+  })
 
   if (!printReady) return null
 
@@ -261,12 +289,19 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
     <div className="factura-print-container" id="factura-print">
       {/* Botones de acción */}
       <div className="flex justify-end gap-2 mb-6">
-        <Button onClick={handlePrint} variant="outline" size="sm">
+        <Button onClick={handlePrint} variant="outline" size="sm" disabled={imprimiendo} data-testid="factura-imprimir-cliente">
           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
           </svg>
           Imprimir / Descargar PDF
+          {factura.puedeVerHistorialInterno && <span className="ml-1 text-xs text-gray-500">(cliente)</span>}
         </Button>
+        {factura.puedeVerHistorialInterno && factura.historialPagos && (
+          <Button onClick={handlePrintInterno} variant="outline" size="sm" disabled={imprimiendo} data-testid="factura-imprimir-interno"
+            className="border-orange-700 text-orange-800 hover:bg-orange-50">
+            Historial interno de pagos
+          </Button>
+        )}
         {saldo > 0 && factura.estado !== 'ANULADA' && onRegistrarAbono && factura.pedido?.estadoEntrega === 'ENTREGADO' && (
           <Button onClick={onRegistrarAbono} size="sm" style={{ backgroundColor: BRAND.green }} className="hover:opacity-90 text-white border-0">
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

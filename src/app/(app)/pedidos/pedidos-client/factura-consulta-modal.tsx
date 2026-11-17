@@ -32,7 +32,7 @@ export function FacturaConsultaModal({ documento, onClose, onOpenPedido,onVolver
         const data = await res.json()
         if (!data.factura || data.factura.id !== documento.id) throw new Error('No se pudo identificar la factura solicitada.')
         if (documento.pedidoId && data.factura.pedidoId !== documento.pedidoId) throw new Error('La factura recibida no corresponde al pedido solicitado.')
-        if (!controller.signal.aborted) setFactura({ ...data.factura, historialPagos: data.historialPagos ?? null, historialPagosError: data.historialPagosError === true })
+        if (!controller.signal.aborted) setFactura({ ...data.factura, historialPagos: data.historialPagos ?? null, historialPagosError: data.historialPagosError === true, puedeVerHistorialInterno: data.puedeVerHistorialInterno === true })
       }).catch(err => { if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'No se pudo consultar la factura.') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()

@@ -34,6 +34,8 @@ export interface Factura {
   /** #796: historial armado desde los pagos (viene aparte en la respuesta de la API). */
   historialPagos?: HistorialPagos | null
   historialPagosError?: boolean
+  /** Lo decide el servidor: solo ADMIN y CONTADOR pueden imprimir el historial interno. */
+  puedeVerHistorialInterno?: boolean
   notasCredito?: NotaCredito[]
   createdBy?: {
     username: string
