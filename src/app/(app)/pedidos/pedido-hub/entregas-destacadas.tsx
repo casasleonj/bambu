@@ -1,5 +1,6 @@
 "use client";
 
+import { useId, useState } from "react";
 import { getProductoIconConfig } from "@/lib/producto-iconos";
 import type {
   CantidadEntrega,
@@ -64,6 +65,8 @@ export function EntregasDestacadas({
   hasta,
   onVerPedido,
   onVerTodas,
+  plegable = false,
+  periodo = "en el período",
 }: {
   entregas: EntregaDestacada[];
   total: number;
@@ -71,14 +74,48 @@ export function EntregasDestacadas({
   hasta: string;
   onVerPedido: (id: string) => void;
   onVerTodas: () => void;
+  /** #841: empieza plegada en una línea para no competir con los pendientes. */
+  plegable?: boolean;
+  /** «hoy» cuando el rango es exactamente hoy; si no, «en el período». */
+  periodo?: "hoy" | "en el período";
 }) {
+  const [abierta, setAbierta] = useState(false);
+  const idDetalle = useId();
   if (!total && !rangoAmplio) return null;
+  // El aviso de rango amplio es información importante: nunca se pliega.
+  const plegada = plegable && !rangoAmplio && !abierta;
   return (
     <section
       aria-label="Entregas parciales y de pedidos anteriores"
       data-testid="entregas-historicas-763"
-      className="space-y-3 rounded-xl border border-stone-200 bg-white p-3 lg:p-4"
+      className={
+        plegada
+          ? ""
+          : "space-y-3 rounded-xl border border-stone-200 bg-white p-3 lg:p-4"
+      }
     >
+      {plegable && !rangoAmplio && (
+        plegada ? (
+          <button
+            type="button"
+            aria-expanded={false}
+            data-testid="entregas-historicas-toggle"
+            onClick={() => setAbierta(true)}
+            className="flex min-h-12 w-full items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-left"
+          >
+            <span>
+              <span className="block text-sm font-bold text-slate-800">
+                🚚 {total} {total === 1 ? "pedido anterior con entregas" : "pedidos anteriores con entregas"} {periodo}
+              </span>
+              <span className="block text-xs text-stone-600">
+                Entregas parciales y de pedidos anteriores
+              </span>
+            </span>
+            <span className="shrink-0 text-sm font-semibold text-blue-700">Ver detalle ▾</span>
+          </button>
+        ) : null
+      )}
+      {!plegada && (<div id={idDetalle} className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-bold text-slate-800">🚚 Entregas parciales y de pedidos anteriores</h2>
@@ -86,11 +123,25 @@ export function EntregasDestacadas({
             Movimientos físicos del período · no son pedidos ni ventas adicionales.
           </p>
         </div>
-        {total > 0 && (
-          <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800">
-            {total} pedido(s)
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {total > 0 && (
+            <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800">
+              {total} pedido(s)
+            </span>
+          )}
+          {plegable && !rangoAmplio && (
+            <button
+              type="button"
+              aria-expanded={true}
+              aria-controls={idDetalle}
+              data-testid="entregas-historicas-toggle"
+              onClick={() => setAbierta(false)}
+              className="min-h-11 px-2 text-sm font-semibold text-blue-700"
+            >
+              Ocultar ▴
+            </button>
+          )}
+        </div>
       </div>
       {rangoAmplio ? (
         <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
@@ -171,6 +222,7 @@ export function EntregasDestacadas({
       >
         Consultar entregas por fecha
       </button>
+      </div>)}
     </section>
   );
 }
