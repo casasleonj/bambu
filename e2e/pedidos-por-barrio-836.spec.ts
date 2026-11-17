@@ -78,8 +78,9 @@ test.describe("#836 F3 — agrupar por barrio", () => {
       await expect(page.getByTestId("grupo-barrio-total-t:la esperanza")).toHaveText(/2 pedidos/);
       await expect(page.getByTestId("grupo-barrio-total-t:la esperanza 2")).toHaveText(/1 pedido/);
 
-      // Un solo barrio: solo sus pedidos y se puede volver a todos.
-      await goto(page, "/pedidos?all=true&agrupar=barrio&pageSize=25&page=1");
+      // Un solo barrio: solo sus pedidos y se puede volver a todos. Villa Nueva aparece en la página 2
+      // (la 1 son 25 filas de Centro), y «Ver todos» regresa a la página 1.
+      await goto(page, "/pedidos?all=true&agrupar=barrio&pageSize=25&page=2");
       await page.getByTestId(`grupo-barrio-solo-b:${villa}`).click();
       await expect(page).toHaveURL(new RegExp(`grupoBarrio=`));
       await expect(page.locator(filas)).toHaveCount(4);
