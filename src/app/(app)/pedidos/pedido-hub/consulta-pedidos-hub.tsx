@@ -6,6 +6,7 @@ import { useOnlineStatus } from "@/hooks/use-online-status";
 import type { EstadoGestionAdmin } from "@/hooks/use-gestion-admin";
 import {
   clavesConsultaPedidos,
+  filtrosArrastrados,
   leerFiltrosConsulta,
   parametrosConsulta,
   type FiltrosConsultaPedidos,
@@ -75,7 +76,7 @@ export function ConsultaPedidosHub(props: Props) {
   const { onTotal, onPedidos } = props;
   useEffect(() => {
     onTotal(datos?.total ?? 0);
-    onPedidos(datos?.pedidos ?? []);
+    onPedidos([...(datos?.pedidos ?? []), ...(datos?.arrastrados ?? [])]);
   }, [datos, onTotal, onPedidos]);
   const aplicar = useCallback(
     (f: FiltrosConsultaPedidos) => {
@@ -151,6 +152,60 @@ export function ConsultaPedidosHub(props: Props) {
     estadoBusqueda.tipo === "error" ||
     estadoBusqueda.tipo === "resultado" ||
     estadoBusqueda.tipo === "sin-resultados-en-todos";
+  const muestraHub =
+    !(datos && datos.total > 0 && datos.pedidos.length === 0) &&
+    (estadoBusqueda.tipo === "normal" || estadoBusqueda.tipo === "resultado");
+  // El título de la lista va dentro de PedidoHub (después de los pendientes
+  // anteriores) cuando se dibuja la lista; en los demás estados va solo.
+  const encabezado = (
+    <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+      <div>
+        <h2 className="text-lg font-bold text-slate-800">
+          {enExpansion
+            ? "Todos los períodos"
+            : filtrosLeidos?.resumen
+              ? "Pedidos de la consulta"
+              : "Pedidos de hoy"}
+        </h2>
+        <p className="mt-1 text-xs text-slate-500">
+          {estadoBusqueda.tipo === "cargando"
+            ? "Buscando…"
+            : estadoBusqueda.tipo === "error"
+              ? "No se pudo buscar"
+              : datos
+                ? `${datos.total} resultado(s) de toda la consulta`
+                : "Consultando…"}{" "}
+          · hora de Colombia
+        </p>
+      </div>
+      <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800">
+        {
+          {
+            pedido: "Fecha del pedido",
+            creacion: "Fecha de creación",
+            entrega: "Fecha de entrega",
+            cobro: "Fecha del cobro",
+          }[filtrosLeidos?.fechaBase ?? consulta.filtros.fechaBase]
+        }
+      </span>
+    </div>
+  );
+  const baseArrastrados = filtrosLeidos ?? consulta.filtros;
+  const aplicaArrastrados = !!filtrosArrastrados(baseArrastrados);
+  const verArrastrados = () => {
+    const fa = filtrosArrastrados(baseArrastrados);
+    if (fa) aplicar({ ...fa, resumen: true, pageSize: baseArrastrados.pageSize });
+  };
+  const arrastrados = aplicaArrastrados
+    ? {
+        pedidos: datos?.arrastrados ?? [],
+        total: datos?.arrastradosTotal ?? 0,
+        error: !!datos?.arrastradosError,
+        cargando: !hayDatos && pendiente,
+        onVerTodos: verArrastrados,
+        onReintentar: refresh,
+      }
+    : undefined;
   return (
     <div
       className="space-y-3 rounded-xl bg-[#f6f0e5] p-3 lg:p-4"
@@ -264,37 +319,7 @@ export function ConsultaPedidosHub(props: Props) {
             </div>
           )}
           <section className="rounded-xl border border-stone-200 bg-white p-4">
-            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <h2 className="text-lg font-bold text-slate-800">
-                  {enExpansion
-                    ? "Todos los períodos"
-                    : filtrosLeidos?.resumen
-                      ? "Pedidos de la consulta"
-                      : "Pedidos de hoy"}
-                </h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  {estadoBusqueda.tipo === "cargando"
-                    ? "Buscando…"
-                    : estadoBusqueda.tipo === "error"
-                      ? "No se pudo buscar"
-                      : datos
-                        ? `${datos.total} resultado(s) de toda la consulta`
-                        : "Consultando…"}{" "}
-                  · hora de Colombia
-                </p>
-              </div>
-              <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800">
-                {
-                  {
-                    pedido: "Fecha del pedido",
-                    creacion: "Fecha de creación",
-                    entrega: "Fecha de entrega",
-                    cobro: "Fecha del cobro",
-                  }[filtrosLeidos?.fechaBase ?? consulta.filtros.fechaBase]
-                }
-              </span>
-            </div>
+            {!muestraHub && encabezado}
             {datos && datos.total > 0 && datos.pedidos.length === 0 ? (
               <div className="p-5 text-center">
                 <p className="text-sm text-slate-600">
@@ -416,6 +441,8 @@ export function ConsultaPedidosHub(props: Props) {
                 onRetry={refresh}
                 onRefetch={refresh}
                 onPeekMovilChange={props.onPeekMovilChange}
+                arrastrados={arrastrados}
+                encabezadoLista={encabezado}
                 consulta={{
                   userRole: props.userRole,
                   gestionDirecta: props.gestion.activa && !gestionDesconocida,

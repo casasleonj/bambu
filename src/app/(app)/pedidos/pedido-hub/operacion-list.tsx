@@ -17,6 +17,8 @@ interface OperacionListProps {
   onAccion: (pedido: Pedido, key: AccionKey) => void
   onOpen: (pedido: Pedido) => void
   consulta?: AccionesConsulta
+  /** #797: lista de pendientes de días anteriores (solo en la consulta). */
+  arrastre?: boolean
 }
 
 function clienteLinea(p: Pedido): string {
@@ -143,7 +145,7 @@ function OperacionCardMobile({
  * En 4a la fila abre el modal de detalle legacy vía `onOpen`; el peek es 4b.
  */
 export function OperacionList({
-  pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen, consulta,
+  pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen, consulta, arrastre,
 }: OperacionListProps) {
   if (pedidos.length === 0) {
     return (
@@ -154,7 +156,7 @@ export function OperacionList({
     )
   }
 
-  if (consulta) return <OperacionConsulta pedidos={pedidos} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta}/>
+  if (consulta) return <OperacionConsulta pedidos={pedidos} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre}/>
 
   const ctxFor = (id: string): Omit<DeriveContext, 'hoyBogota'> => contextByPedido?.[id] ?? {}
 
