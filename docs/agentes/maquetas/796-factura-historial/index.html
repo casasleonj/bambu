@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maquetas #796 · Historial de pagos de la factura</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#eef0f4;color:#1f2937}
+.wrap{max-width:1500px;margin:0 auto;padding:24px}h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:34px 0 4px}.note{color:#475569;font-size:14px;max-width:960px}
+.badge{display:inline-block;background:#fef3c7;color:#92400e;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600}
+.grid{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;margin-top:12px}.col{flex:1 1 560px;min-width:320px}.colm{flex:0 0 390px}
+.lbl{font-size:12px;font-weight:700;margin:0 0 6px;color:#15803d}.lbl.b{color:#b91c1c}
+.frame{background:#fff;border:1px solid #cbd5e1;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.after{outline:2px dashed #16a34a;outline-offset:-2px}.before{outline:2px dashed #ef4444;outline-offset:-2px}
+.body{padding:18px}.t{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#4CAF50;margin:0 0 12px}
+.step{display:flex;gap:12px}.rail{display:flex;flex-direction:column;align-items:center}
+.dot{width:32px;height:32px;border-radius:50%;border:2px solid #4CAF50;background:#E8F5E9;color:#4CAF50;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.dot.o{border-color:#E65100;background:#FFF3E0;color:#E65100}.line{width:2px;flex:1;background:#C8E6C9;margin-top:4px}
+.card{flex:1;margin-bottom:14px;border-radius:8px;padding:10px 14px;background:#E8F5E9;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.card.o{background:#FFF3E0;border:1px solid #FFE0B2}.card b.m{font-size:18px;color:#4CAF50}.card.o b.m{color:#E65100}
+.sub{font-size:11px;color:#6b7280;text-transform:uppercase}.d{font-size:14px;font-weight:500}
+.chip{display:inline-block;font-size:10px;font-weight:700;border-radius:999px;padding:2px 8px;margin-left:6px}
+.c-ap{background:#fef3c7;color:#92400e}.c-rej{background:#fee2e2;color:#991b1b}.c-ok{background:#dcfce7;color:#166534}
+a.l{color:#2563eb;font-size:12px;font-weight:600;white-space:nowrap}.tot{display:flex;gap:8px;margin:0 0 16px}.tot div{flex:1;border-radius:8px;padding:8px;text-align:center;font-size:12px}
+.tot .p{background:#f0fdf4;color:#166534}.tot .s{background:#fef2f2;color:#991b1b}.tot b{display:block;font-size:15px}
+.hint{font-size:12px;color:#64748b;margin-top:8px}.sk{height:14px;border-radius:6px;background:linear-gradient(90deg,#e5e7eb,#f3f4f6,#e5e7eb);margin:10px 0}
+.err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:8px;padding:10px 12px;font-size:14px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.btn{background:#4CAF50;color:#fff;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:700;display:inline-block}.btn.o{background:#fff;color:#2563eb;border:1px solid #2563eb}.btn.r{background:#b91c1c}.btn.g{background:#fff;color:#334155;border:1px solid #cbd5e1}
+.paper{background:#fff;border:1px solid #94a3b8;padding:26px 30px;font-family:Arial,sans-serif;color:#000;font-size:12px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+.paper h3{font-size:11px;font-weight:bold;text-transform:uppercase;color:#4CAF50;margin:0 0 10px}.paper h3.n{color:#E65100}
+.pr{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee}.pr.n{color:#E65100}
+.modal{max-width:460px;margin:0 auto;border-radius:12px;background:#fff;border:1px solid #cbd5e1;padding:18px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.f{margin:10px 0;font-size:13px}.f span{display:block;color:#475569;margin-bottom:3px}.in{border:1px solid #cbd5e1;border-radius:6px;padding:7px 9px;background:#fff}
+.ba{display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px dashed #e2e8f0}.ba:last-child{border:0}
+.fase{font-size:11px;color:#6b21a8;background:#f3e8ff;border-radius:6px;padding:2px 8px;font-weight:700}
+</style></head><body><div class="wrap">
+<h1>#796 · Historial de pagos de la factura (paso 1) y corrección de un pago (paso 2b)</h1>
+<p class="note"><span class="badge">PENDIENTE DE APROBACIÓN DEL PO</span> Maquetas de escritorio, móvil e <b>impresa</b>, sobre el modal «Detalle de Factura» vigente (misma línea de tiempo verde, tarjetas y notas de crédito en naranja). Hoy el historial se arma con los abonos; propuesto: se arma con los <b>pagos</b>, de modo que cada pago aparezca <b>una sola vez</b>, también el que no tiene abono. Datos de ejemplo, no reales.</p>
+<p class="note"><b>Qué se aprueba:</b> (1) la lista de pagos de la factura, digital e impresa; (2) el punto de entrada «Corregir» por pago, solo para ADMIN y CONTADOR, que se implementa en la fase 2b (después del ADR aceptado y de la autorización de migración).</p>
+
+<h2>1 · Historial de pagos — escritorio <span class="fase">Paso 1</span></h2>
+<div class="grid">
+ <div class="col"><p class="lbl b">HOY (solo abonos; un pago sin abono no aparece)</p><div class="frame before"><div class="body">
+  <p class="t">Historial de pagos (1)</p>
+  <div class="step"><div class="rail"><div class="dot">1</div></div><div class="card"><div><div class="d">17 nov 2026</div><div class="sub">Efectivo</div></div><b class="m">$ 20.000</b></div></div>
+  <p class="hint">Falta el pago de $15.000 en Nequi porque no tiene abono: la factura figura pagada $35.000 pero el historial suma $20.000.</p></div></div>
+  <p class="lbl" style="margin-top:16px">PROPUESTO (desde los pagos; cada pago una sola vez)</p><div class="frame after"><div class="body">
+  <div class="tot"><div class="p">Pagado<b>$ 32.000</b></div><div class="s">Saldo<b>$ 14.000</b></div></div>
+  <p class="t">Historial de pagos (2)</p>
+  <div class="step"><div class="rail"><div class="dot">1</div><div class="line"></div></div><div class="card"><div><div class="d">17 nov 2026 · 10:15</div><div class="sub">Efectivo</div></div><div style="text-align:right"><b class="m">$ 20.000</b><div><a class="l">Corregir</a></div></div></div></div>
+  <div class="step"><div class="rail"><div class="dot">2</div><div class="line"></div></div><div class="card"><div><div class="d">17 nov 2026 · 15:40</div><div class="sub">Nequi <span class="chip c-ap">Por confirmar</span></div></div><div style="text-align:right"><b class="m">$ 15.000</b><div><a class="l">Corregir</a></div></div></div></div>
+  <div class="step"><div class="rail"><div class="dot o">↩</div></div><div class="card o"><div><div class="d"><b>COR-00012</b> · Pago no recibido</div><div class="sub" style="color:#92400e">18 nov 2026 · autorizó Administración · sobre el pago #2</div></div><b class="m">− $ 3.000</b></div></div>
+  <p class="hint">Pagado = pagos − correcciones ($35.000 − $3.000). Una corrección no borra el pago: se ve como su propia fila.</p></div></div></div>
+ <div class="colm"><p class="lbl">PROPUESTO (móvil 390 px)</p><div class="frame after"><div class="body">
+  <div class="tot"><div class="p">Pagado<b>$ 32.000</b></div><div class="s">Saldo<b>$ 14.000</b></div></div>
+  <p class="t">Historial de pagos (2)</p>
+  <div class="step"><div class="rail"><div class="dot">1</div><div class="line"></div></div><div class="card"><div><div class="d">17 nov · 10:15</div><div class="sub">Efectivo</div><a class="l">Corregir</a></div><b class="m">$ 20.000</b></div></div>
+  <div class="step"><div class="rail"><div class="dot">2</div><div class="line"></div></div><div class="card"><div><div class="d">17 nov · 15:40</div><div class="sub">Nequi <span class="chip c-ap">Por confirmar</span></div><a class="l">Corregir</a></div><b class="m">$ 15.000</b></div></div>
+  <div class="step"><div class="rail"><div class="dot o">↩</div></div><div class="card o"><div><div class="d"><b>COR-00012</b></div><div class="sub" style="color:#92400e">Pago no recibido · 18 nov</div></div><b class="m">− $ 3.000</b></div></div></div></div></div>
+</div>
+
+<h2>2 · Factura impresa / PDF <span class="fase">Paso 1</span></h2>
+<p class="note">Mismo bloque que hoy («Historial de Pagos»), sin botones. Los pagos salen una sola vez y las correcciones en su propio bloque naranja, como las notas de crédito. La nota «por confirmar» se imprime en texto para no dar por recibido un dinero que no lo está.</p>
+<div class="grid">
+ <div class="col"><p class="lbl b">HOY</p><div class="paper before"><h3>Historial de Pagos (1)</h3><div class="pr"><span>#1 17/11/2026 — EFECTIVO</span><span><b>$ 20.000</b></span></div></div>
+  <p class="lbl" style="margin-top:16px">PROPUESTO</p><div class="paper after"><h3>Historial de Pagos (2)</h3>
+  <div class="pr"><span>#1 17/11/2026 — EFECTIVO</span><span><b>$ 20.000</b></span></div>
+  <div class="pr"><span>#2 17/11/2026 — NEQUI (por confirmar)</span><span><b>$ 15.000</b></span></div>
+  <h3 class="n" style="margin-top:16px">Correcciones de pagos (1)</h3>
+  <div class="pr n"><span><b>COR-00012</b> 18/11/2026 — Pago no recibido (sobre el pago #2)</span><span><b>− $ 3.000</b></span></div>
+  <div class="pr" style="border:0;margin-top:8px"><span>Total pagado neto</span><span><b>$ 32.000</b></span></div></div></div>
+</div>
+
+<h2>3 · Estados de la lista de pagos (escritorio y móvil)</h2>
+<div class="grid">
+ <div class="col"><div class="frame"><div class="body"><b>Carga</b><div class="sk" style="width:55%"></div><div class="sk"></div><div class="sk" style="width:80%"></div><p class="hint">Esqueleto en lugar de cifras parciales; los totales de la cabecera no cambian mientras carga.</p></div></div></div>
+ <div class="col"><div class="frame"><div class="body"><b>Error</b><br><br><div class="err"><span>No se pudo cargar los pagos de esta factura. Los totales de arriba siguen siendo válidos.</span><span class="btn o">Reintentar</span></div></div></div></div>
+ <div class="col"><div class="frame"><div class="body"><b>Sin pagos</b><p class="hint" style="font-size:14px;margin-top:10px">Esta factura todavía no tiene pagos.</p></div></div></div>
+</div>
+
+<h2>4 · «Corregir» un pago — confirmación <span class="fase">Fase 2b · solo ADMIN y CONTADOR</span></h2>
+<p class="note">Es el mismo cuadro de corrección que usa hoy Cartera (mismos 4 tipos y mismo texto de que no se borra nada), ahora también para un pago sin abono. Muestra el antes y el después antes de confirmar. ASISTENTE y REPARTIDOR no ven el enlace «Corregir».</p>
+<div class="grid">
+ <div class="col"><div class="modal"><b style="font-size:16px">Corregir pago de Nequi · $ 15.000</b>
+  <div class="f"><span>Tipo</span><div class="in">Pago no recibido ▾</div></div>
+  <div class="f"><span>Monto a revertir (vacío = todo lo no revertido: $ 15.000)</span><div class="in">$ 3.000</div></div>
+  <div class="f"><span>Motivo (obligatorio)</span><div class="in">El cliente dijo que lo enviaría y no llegó</div></div>
+  <div style="background:#f8fafc;border-radius:8px;padding:8px 10px;margin:12px 0"><b style="font-size:12px">Antes → después</b>
+   <div class="ba"><span>Pagado de la factura</span><span>$ 35.000 → <b>$ 32.000</b></span></div>
+   <div class="ba"><span>Saldo de la factura</span><span>$ 11.000 → <b>$ 14.000</b></span></div></div>
+  <p class="hint">Esto <b>no borra</b> el pago: registra una corrección trazable (COR-…) y abre un caso de responsabilidad por pago no recibido.</p>
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><span class="btn g">Cancelar</span><span class="btn r">Confirmar corrección</span></div></div></div>
+ <div class="col"><div class="modal"><b style="font-size:16px">Corregir pago</b><div class="sk" style="width:60%"></div><div class="sk"></div><p class="hint">Estado «Registrando…»: el botón queda deshabilitado para que un doble clic no cree dos correcciones.</p>
+  <div class="err" style="margin-top:12px"><span>No se pudo registrar la corrección. No se cambió nada. Puedes reintentar.</span><span class="btn o">Reintentar</span></div></div></div>
+</div>
+<p class="note" style="margin-top:28px"><b>No incluido:</b> cambios en Cartera, Cierre, Caja ni en el resto de la factura (datos del cliente, ítems, notas de crédito). Colores, tarjetas e iconos respetan los vigentes.</p>
+</div></body></html>
