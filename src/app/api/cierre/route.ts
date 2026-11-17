@@ -19,6 +19,7 @@ import { calcularNetoCierre, calcularEfectivoEsperado } from '@/lib/cierre-total
 import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
 import { diasObligatoriosAntesDe, type DiaHueco } from '@/lib/cierre-huecos'
 import { exigirBaseVigente, BaseCambioError, BaseFaltanteError } from '@/lib/base-caja-dia'
+import { leerPagosComisionCaja } from '@/lib/comision-pagada'
 
 /** #306: hay días anteriores sin cerrar que tuvieron operación (o son demasiados para revisarlos). */
 class HuecoConOperacionError extends Error {
@@ -138,6 +139,14 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // Lectura adicional identificada: nunca reemplaza columnas ni JSON del cierre consolidado.
+      const pagosComisionActuales = await leerPagosComisionCaja(prisma, startOfDay, endOfDay)
+      const comisionGuardada = Number(cierreExistente.comisiones)
+      const conciliacionComisiones = {
+        original: comisionGuardada, actual: pagosComisionActuales.efectivo,
+        diferencia: Math.round((pagosComisionActuales.efectivo - comisionGuardada) * 100) / 100,
+        pagosCaja: pagosComisionActuales.pagos, sinFechaVerificada: pagosComisionActuales.sinFechaVerificada,
+      }
       return apiSuccess({
         status: 'CERRADO',
         embarquesPendientes: [],
@@ -152,6 +161,7 @@ export async function GET(request: NextRequest) {
           salarios: Number(cierreExistente.salarios), comisiones: Number(cierreExistente.comisiones),
           fecha: fechaStr,
           postCierre,
+          conciliacionComisiones,
           horaCierre: cierreExistente.horaCierre?.toISOString() ?? null,
           netoCaja: Number(cierreExistente.netoCaja || 0),
         },
@@ -259,7 +269,7 @@ export async function POST(request: NextRequest) {
         })
         const arqueo = leerArqueoDeclarado(parsed.data.reporte, efectivoEsperado)
         const reporteData = {
-          ...resumen, ...arqueo, _version: '2.2', netoCaja, efectivoEsperado,
+          ...resumen, ...arqueo, _version: '2.3', netoCaja, efectivoEsperado,
           baseDia: parsed.data.baseDia, salarios: 0, comisiones: comisiones.total,
           salariosEfectivo, salariosOtrosMedios: 0,
         }
@@ -338,8 +348,10 @@ export async function POST(request: NextRequest) {
       if (error instanceof Error && error.message.startsWith('Arqueo inválido')) return apiError(error.message, 400)
       lastError = error instanceof Error ? error : new Error(String(error))
 
-      // P2034 = write conflict, retry
-      if (lastError.message.includes('P2034')) {
+      // Prisma 6 entrega P2034 en `code`; su mensaje puede no contenerlo.
+      // Reusar el criterio de serializable.ts para no fallar al coincidir con un pago.
+      if ((error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034')
+        || lastError.message.includes('P2034')) {
         if (attempt < MAX_RETRIES - 1) continue
       }
 

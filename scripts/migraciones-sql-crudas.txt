@@ -36,3 +36,5 @@
 20260729210000_fix_search_clientes_phone_negocio
 # #560: devolución del saldo a favor al cliente (CHECK).
 20261111_devolucion_saldo_favor
+# #673: día real explícito del desembolso de comisión (CHECK de día Bogotá; sin backfill).
+20261111162455_fecha_pago_real_comision

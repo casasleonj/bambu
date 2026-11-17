@@ -21,6 +21,7 @@ import { WorkspaceComprador } from './workspace-comprador'
 import { WorkspaceDinero } from './workspace-dinero'
 import { WorkspaceEntregaMomento } from './workspace-entrega-momento'
 import { WorkspaceObservaciones } from './workspace-observaciones'
+import type { AyudaCaja } from './cobro-aviso'
 import { WorkspaceVentaEnRuta, type RepartidorVentaRuta } from './workspace-venta-en-ruta'
 import { getTodayString } from '@/lib/dates'
 import { ventaRutaEntregaPosteriorEnabled } from '@/lib/flags'
@@ -142,7 +143,7 @@ export interface PedidosWorkspaceProps {
    * de pedidos-client. `false` = no se guardó: el workspace sale de COMMITTING
    * para reintentar el mismo borrador (misma clave de idempotencia).
    */
-  onSubmit: (data: PedidoUnifiedData) => void | Promise<boolean>
+  onSubmit: (data: PedidoUnifiedData, ayudaCaja?: AyudaCaja) => void | Promise<boolean>
   onCancel?: () => void
 }
 
@@ -205,6 +206,8 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
   const [vendidoPorId, setVendidoPorId] = useState('')
   const [promesaPagoFecha, setPromesaPagoFecha] = useState('')
   const [intentoRegistrar, setIntentoRegistrar] = useState(false)
+  // «Recibido en efectivo» (ayuda de caja, #828): se eleva para el aviso de cobro; NO se envía ni se guarda.
+  const [recibidoEfectivo, setRecibidoEfectivo] = useState('')
 
   const onPending = useCallback(() => dispatch({ type: 'PREVIEW_PENDING' }), [])
   const onReceived = useCallback((preview: PreviewPedidoResult) => dispatch({ type: 'PREVIEW_RECEIVED', preview }), [])
@@ -483,7 +486,10 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
       soloParaEstePedido: !state.draft.guardarDireccionEnCliente,
     })
 
-    const guardado = await onSubmit({
+    // Ayuda de caja (#828): solo viaja si el operador anotó el efectivo recibido; nunca se guarda.
+    const ayudaCaja = Number(recibidoEfectivo) > 0 ? { recibidoEfectivo: Number(recibidoEfectivo) } : undefined
+    const enviar = (datos: PedidoUnifiedData) => (ayudaCaja ? onSubmit(datos, ayudaCaja) : onSubmit(datos))
+    const guardado = await enviar({
       // Contrato de POST /api/pedidos (PedidoCreateSchema exige clienteId): con
       // cliente nuevo viaja el canónico como marcador y el servidor resuelve el
       // cliente real por `clienteNuevo` (igual que el formulario antiguo).
@@ -758,6 +764,8 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
           disabled={state.phase === 'COMMITTING' || state.phase === 'COMMITTED'}
           onPagarCompleto={(metodo) => dispatch({ type: 'PAGAR_COMPLETO', metodo, total: totalEstimado ?? undefined })}
           onSetPagos={(pagos) => dispatch({ type: 'SET_PAGOS', pagos })}
+          recibido={recibidoEfectivo}
+          onRecibidoChange={setRecibidoEfectivo}
         />
       )}
 
