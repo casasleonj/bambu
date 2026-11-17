@@ -11,6 +11,7 @@ import { ignorarAlerta, getGuiaAlerta } from '@/lib/alertas-config'
 import type { Pedido } from './types'
 import { PedidoDocumentLinks, type AccesoDocumentosPedido } from './pedido-document-links'
 import { useParametroConsulta } from './use-consulta-contexto'
+import { coincideAlertaBusqueda } from '@/lib/alertas-busqueda'
 
 interface AlertasTableProps extends AccesoDocumentosPedido {
   pedidos: Pedido[]
@@ -86,9 +87,8 @@ export function AlertasTable({
     .map(row => filtroSeveridad === 'TODAS' ? row : { ...row,
       alertas: row.alertas.filter(a => a.severidad === filtroSeveridad), severidadMasAlta: filtroSeveridad })
     .filter((row) => {
-      const matchSearch = !searchTerm ||
-        row.nombreCli.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        row.telefonoCli?.includes(searchTerm)
+      // #829: sin tildes, por prefijo, y por apellido o negocio (misma regla que la lista de Pedidos).
+      const matchSearch = coincideAlertaBusqueda(row, searchTerm)
       const matchSeveridad = row.alertas.length > 0
       return matchSearch && matchSeveridad
     })
