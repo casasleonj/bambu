@@ -415,7 +415,13 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         <CierreKpiGrid data={data} />
         {data.conciliacionComisiones && <FechasPagosComision pagos={data.conciliacionComisiones.pagosCaja}
           efectivo={data.conciliacionComisiones.actual} sinFechaVerificada={data.conciliacionComisiones.sinFechaVerificada}
-          conciliacion={data.conciliacionComisiones} />}
+          conciliacion={data.conciliacionComisiones}
+          // #834: un ADMIN corrige el día real también aquí, en un día ya cerrado; el cierre guardado no cambia.
+          puedeCorregir={userRole === 'ADMIN'}
+          onCorregido={() => {
+            const signal = abortControllerRef.current?.signal
+            if (signal) void fetchCierre(fecha, signal)
+          }} />}
         <CierreDesgloseCobros data={data} />
         <CierreDetalleVentas data={data} />
 
@@ -754,6 +760,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           data={data}
           fecha={fecha}
           puedePagar={puedePagarComision}
+          puedeCorregirFecha={userRole === 'ADMIN'}
           diaCerrado={diaCerrado}
           onPagado={() => {
             const signal = abortControllerRef.current?.signal

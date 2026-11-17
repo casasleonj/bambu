@@ -27,17 +27,19 @@ export function resumenPagosPersonal(data: CierreData | null) {
   }
 }
 
-export function PagosPersonal({ data, fecha, puedePagar, diaCerrado, onPagado }: {
+export function PagosPersonal({ data, fecha, puedePagar, diaCerrado, onPagado, puedeCorregirFecha = false }: {
   data: CierreData | null
   fecha: string
   puedePagar: boolean
   diaCerrado: boolean
   onPagado: () => void
+  /** #834: solo un ADMIN puede cambiar el día de caja de un pago ya registrado. */
+  puedeCorregirFecha?: boolean
 }) {
   const r = resumenPagosPersonal(data)
   const conciliacion = data?.conciliacionComisiones
   const pagosCaja = conciliacion?.pagosCaja ?? data?.comisionesAuto?.pagosCaja ?? []
-  if (!r.hayAlgo && !pagosCaja.length && !conciliacion?.diferencia) {
+  if (!r.hayAlgo && !pagosCaja.length && !conciliacion?.diferencia && !conciliacion?.correccionesPosteriores?.length) {
     return <p className="text-sm text-muted-foreground" data-testid="pagos-personal-vacio">Sin comisiones ni sueldos este día.</p>
   }
   return (
@@ -62,7 +64,8 @@ export function PagosPersonal({ data, fecha, puedePagar, diaCerrado, onPagado }:
       </div>}
 
       <FechasPagosComision pagos={pagosCaja} efectivo={conciliacion?.actual ?? data?.comisionesAuto?.pagadoRepartidores ?? 0}
-        sinFechaVerificada={conciliacion?.sinFechaVerificada ?? data?.comisionesAuto?.pagosSinFechaVerificada ?? 0} conciliacion={conciliacion} />
+        sinFechaVerificada={conciliacion?.sinFechaVerificada ?? data?.comisionesAuto?.pagosSinFechaVerificada ?? 0} conciliacion={conciliacion}
+        puedeCorregir={puedeCorregirFecha} onCorregido={onPagado} />
 
       {r.repartidores.length > 0 && (
         <ComisionesRepartidores fecha={fecha} repartidores={r.repartidores} puedePagar={puedePagar} diaCerrado={diaCerrado} onPagado={onPagado} mostrarAviso={false} />
