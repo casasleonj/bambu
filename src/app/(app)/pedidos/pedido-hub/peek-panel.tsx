@@ -181,6 +181,7 @@ export function PeekPanel({
               onAccionN2={(key) => onAccion(pedido, key)}
               onMutadoN2={onMutadoN2}
               puedeAjustar={canSeePrecioOrigen}
+              hoyBogota={hoyBogota}
             />
           </>
         )}

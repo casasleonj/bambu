@@ -9,6 +9,7 @@ import { getAnonymousClientDisplayName } from "./cliente-canonical";
 import { pickCoords } from "./geo/pedido-coords";
 import { pickDireccionTexto } from "./geo/pedido-direccion";
 import { tipoDesdeCanal } from "./pedido-canal";
+import { endOfDayBogota, todayStringBogota } from "./dates";
 import { listarEntregasDestacadas } from "./pedidos-entregas-destacadas";
 import { PedidoMapper } from "@/modules/pedidos/infrastructure/mappers/PedidoMapper";
 import { PedidoDTOMapper } from "@/modules/pedidos/application/dto/PedidoDTOMapper";
@@ -24,6 +25,7 @@ import {
 import {
   parametrosConsulta,
   filtrosArrastrados,
+  esFocoCompromiso,
   rangoConsultaPedidos,
   type FiltrosConsultaPedidos,
   type ProductoConsulta,
@@ -92,7 +94,15 @@ export function whereConsultaPedidos(
         { casos: { some: { status: { in: ["ABIERTO", "EN_PROCESO"] } } } },
       ],
     });
-  if ((f.fechaBase === "pedido" || f.fechaBase === "creacion") && !f.all) {
+  if (esFocoCompromiso(f.foco)) {
+    // #836 F1: demanda abierta por FECHA PROMETIDA (día de Bogotá). No cambia ni usa Pedido.fecha.
+    const finHoy = endOfDayBogota(todayStringBogota());
+    and.push({
+      estadoEntrega: { in: ["PENDIENTE", "EN_RUTA", "NO_ENTREGADO"] },
+      fechaEntrega: f.foco === "paraHoy" ? { not: null, lte: finHoy } : { gt: finHoy },
+    });
+  }
+  if ((f.fechaBase === "pedido" || f.fechaBase === "creacion") && !f.all && !esFocoCompromiso(f.foco)) {
     const r = rangoConsultaPedidos(f);
     and.push(
       f.fechaBase === "creacion"
@@ -594,7 +604,7 @@ async function leerConsultaPedidos(
         pagado = dec(sumas?._sum.totalPagado),
         saldo = dec(sumas?._sum.saldo),
         fiado = [...(exigiblesConjunto?.values() ?? [])].reduce((s, monto) => s + centavos(monto), 0) / 100;
-      const consultaDestacadas = !arrastre && f.fechaBase === "pedido" && !f.all
+      const consultaDestacadas = !arrastre && f.fechaBase === "pedido" && !f.all && !esFocoCompromiso(f.foco)
         ? await listarEntregasDestacadas(tx, whereConsultaPedidos({ ...f, fechaBase: "entrega", foco: f.foco === "entregaParcial" ? "" : f.foco }), rango, f.repartidorId, f.foco === "entregaParcial")
         : null;
       const [{ ahora }] = await tx.$queryRaw<

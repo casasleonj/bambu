@@ -1,0 +1,34 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>#836 · Móvil</title><style>
+:root{--g100:#f3f4f6;--g200:#e5e7eb;--g300:#d1d5db;--g500:#6b7280;--g600:#4b5563;--g800:#1f2937;--b50:#eff6ff;--b600:#2563eb;--b800:#1e40af;--gr100:#dcfce7;--gr800:#166534;--a100:#fef3c7;--a800:#92400e;--r50:#fef2f2;--r200:#fecaca;--r800:#991b1b}
+*{box-sizing:border-box}body{margin:0;background:#e5e7eb;font:14px/20px Arial,sans-serif;color:#111827}
+h1,h2,h3,p{margin:0}.lienzo{padding:20px;display:flex;flex-wrap:wrap;gap:24px;justify-content:center;align-items:flex-start}
+.cab{width:100%;background:#fff;border:1px solid var(--g300);border-radius:12px;padding:14px 18px}.cab p{color:var(--g600)}
+.etq{background:var(--g800);color:#fff;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700;margin-right:6px}
+.pant{background:#fff;border:1px solid var(--g300);border-radius:12px;padding:14px}.pant>h2{font-size:12px;text-transform:uppercase;color:var(--g500);margin-bottom:10px}
+.tabs{display:flex;gap:6px;margin-bottom:10px}.tab{border:1px solid var(--g300);border-radius:999px;padding:4px 12px;background:#fff}.tab.on{background:var(--b600);color:#fff;border-color:var(--b600)}
+.bar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}.sw{border:1px solid var(--g300);border-radius:8px;padding:4px 10px;background:#fff}.sw.on{background:var(--b50);border-color:var(--b600);color:var(--b800)}
+.gr{background:var(--g100);border-radius:8px;padding:6px 10px;margin:10px 0 6px;display:flex;justify-content:space-between;font-weight:700}
+.f{border:1px solid var(--g200);border-radius:8px;padding:8px 10px;margin-bottom:6px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.f small{color:var(--g500);display:block}.ch{display:inline-block;border-radius:999px;padding:0 8px;font-size:12px;margin:2px 4px 0 0}
+.ok{background:var(--gr100);color:var(--gr800)}.am{background:var(--a100);color:var(--a800)}.ro{background:var(--r50);color:var(--r800);border:1px solid var(--r200)}.az{background:var(--b50);color:var(--b800)}
+button.b{border:1px solid var(--b600);background:var(--b600);color:#fff;border-radius:8px;padding:6px 12px;font:inherit}button.s{border:1px solid var(--g300);background:#fff;border-radius:8px;padding:6px 12px;font:inherit}
+.dlg{border:1px solid var(--g300);border-radius:12px;padding:14px;background:#fff}.dlg label{display:block;font-weight:700;margin:8px 0 2px}.dlg .in{border:1px solid var(--g300);border-radius:8px;padding:6px 8px;color:var(--g600)}
+.msg{border-radius:8px;padding:8px 10px;margin-top:8px}.dsk{width:560px}.mov{width:340px}.spin{display:inline-block;width:12px;height:12px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;vertical-align:-2px;margin-right:6px}
+</style></head><body><div class="lienzo"><div class="cab"><h1><span class="etq">MAQUETA · PENDIENTE DE APROBACIÓN</span>#836 · Móvil</h1><p>F1 (Hoy/Programados + fecha prometida) y F3 (barrio). Datos sintéticos. Etiquetas visibles, sin ocultar pedidos por horario.</p></div><div class="pant mov"><h2>1 · Pedidos · «Hoy» (vista base)</h2>
+<div class="tabs"><span class="tab on">Hoy (4)</span><span class="tab">Programados (7)</span><span class="tab">Todos</span></div>
+<div class="bar"><span class="sw">Agrupar por barrio</span><span class="sw">Compromiso: hoy ▾</span></div>
+<div class="f"><div><b>#1042 · Tienda La Esquina</b><small>Creado ayer · para hoy</small><span class="ch ok">Para hoy</span><span class="ch az">No antes de 16:00</span></div><button class="s">Ver</button></div>
+<div class="f"><div><b>#1031 · Panadería Sol</b><small>Creado lun · previsto ayer</small><span class="ch am">Arrastrado de ayer</span></div><button class="s">Ver</button></div>
+<div class="f"><div><b>#1050 · Don Pedro</b><small>Creado hoy · para hoy</small><span class="ch ok">Para hoy</span><span class="ch ro">Negocio cerrado ese día</span></div><button class="s">Ver</button></div>
+<div class="f"><div><b>#1022 · Cafetería Luna</b><small>Creado lun · para mié</small><span class="ch ok">Para hoy</span><span class="ch az">Ventana 16:00–17:00</span></div><button class="s">Ver</button></div>
+<p style="color:var(--g500);margin-top:6px">Los futuros no se cuentan como atraso; se preparan en «Programados».</p></div><div class="pant mov"><h2>2 · Agrupado por barrio (servidor, conteo total)</h2>
+<div class="bar"><span class="sw on">Agrupar por barrio ✓</span><span style="color:var(--g500)">70 pedidos · 6 grupos</span></div>
+<div class="gr"><span>Centro</span><span>18</span></div><div class="f"><div><b>#1042 · Tienda La Esquina</b><small>Cl 10 #5-20</small><span class="ch ok">Para hoy</span></div><button class="s">Ver</button></div><div class="f"><div><b>#1050 · Don Pedro</b><small>Cr 4 #8-12</small><span class="ch ro">Cerrado ese día</span></div><button class="s">Ver</button></div>
+<button class="s">Mostrar 16 más de Centro</button>
+<div class="gr"><span>Villa Nueva</span><span>11</span></div><div class="f"><div><b>#1031 · Panadería Sol</b><small>Mz 3 Casa 7</small><span class="ch am">Arrastrado</span></div><button class="s">Ver</button></div>
+<div class="gr"><span>Sin barrio</span><span>3</span></div><div class="f"><div><b>#1060 · Cliente nuevo</b><small>Sin dirección</small><span class="ch az">Para hoy</span></div><button class="s">Ver</button></div></div><div class="pant mov"><h2>3 · Cambiar fecha prometida: confirmación · carga · error</h2>
+<div class="dlg"><b>Cambiar fecha de #1031</b><label>Nueva fecha</label><div class="in">mié 19 nov</div><label>Motivo</label><div class="in">El cliente pidió esperar</div>
+<div class="msg am">Estaba vencido desde ayer. El incumplimiento queda en el historial.</div><div style="margin-top:10px"><button class="b">Confirmar cambio</button> <button class="s">Cancelar</button></div></div>
+<div class="dlg" style="margin-top:10px"><button class="b"><span class="spin"></span>Guardando…</button><p style="color:var(--g500);margin-top:6px">Se puede reintentar sin duplicar el cambio.</p></div>
+<div class="dlg" style="margin-top:10px"><div class="msg ro">Otra persona cambió este pedido hace un momento. Revisa la fecha actual y vuelve a confirmar.</div><div style="margin-top:8px"><button class="s">Ver fecha actual</button></div></div>
+<div class="dlg" style="margin-top:10px"><b>Entrega antes de la hora indicada</b><div class="msg am">Este pedido es «no antes de 16:00». ¿Entregar ahora de todos modos?</div><div class="in" style="margin-top:6px">Motivo (obligatorio)</div><div style="margin-top:8px"><button class="b">Entregar con motivo</button> <button class="s">Volver</button></div></div></div></div></body></html>
