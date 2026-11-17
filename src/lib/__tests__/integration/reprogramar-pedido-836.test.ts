@@ -19,7 +19,9 @@ async function crearPedido(o: { fechaEntrega?: Date | null; estadoEntrega?: 'PEN
   return testPrisma.pedido.create({
     data: {
       clienteId, canal: 'DOMICILIO', origen: 'PEDIDO',
-      estadoEntrega: o.estadoEntrega ?? 'PENDIENTE', estado: o.estadoEntrega ?? 'PENDIENTE', estadoPago: 'PENDIENTE',
+      estadoEntrega: o.estadoEntrega ?? 'PENDIENTE', estado: o.estadoEntrega ?? 'PENDIENTE',
+      // chk_pedido_estadopago_proyectado: cancelado/anulado ⇒ estadoPago ANULADO.
+      estadoPago: o.estadoEntrega === 'CANCELADO' || o.estadoEntrega === 'ANULADO' ? 'ANULADO' : 'PENDIENTE',
       total: 10000, totalPagado: 0, saldo: 10000,
       fechaEntrega: o.fechaEntrega === undefined ? null : o.fechaEntrega,
     },

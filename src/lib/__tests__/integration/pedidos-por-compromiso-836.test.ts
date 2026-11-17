@@ -23,7 +23,10 @@ async function crear(clave: string, o: { prometido: Date | null; estado?: "PENDI
   const p = await testPrisma.pedido.create({
     data: {
       clienteId: c.id, createdById: admin.id, canal: "DOMICILIO", fecha: creado, createdAt: creado,
-      estado, estadoEntrega: estado, estadoPago: "PENDIENTE", fechaEntrega: o.prometido,
+      estado, estadoEntrega: estado,
+      // chk_pedido_estadopago_proyectado: cancelado/anulado ⇒ estadoPago ANULADO.
+      estadoPago: estado === "CANCELADO" || estado === "ANULADO" ? "ANULADO" : "PENDIENTE",
+      fechaEntrega: o.prometido,
       total: 5000, totalPagado: 0, saldo: 5000,
     },
   });
