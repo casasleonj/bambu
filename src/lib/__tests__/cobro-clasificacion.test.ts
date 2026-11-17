@@ -192,5 +192,12 @@ describe('#796 clasificarCobrosDePedido', () => {
     const r = clasificarCobrosDePedido(base({ total: 25000, porciones }), cobros)
     for (const c of cobros) expect(una(r, c.id).ventaDiaCentavos + una(r, c.id).carteraCentavos).toBe(c.monto * 100)
   })
-})
 
+  it('varias entregas el mismo día y un solo cobro ese día: todo es venta del día (escenario 8)', () => {
+    const p = base({ total: 30000, porciones: [
+      { id: 'm1', entregadoAt: d('2026-11-13T14:00:00Z'), valor: 10000 }, { id: 'm2', entregadoAt: d('2026-11-13T19:00:00Z'), valor: 20000 }] })
+    const c = una(clasificarCobrosDePedido(p, [{ id: 'p', at: d('2026-11-13T22:00:00Z'), monto: 30000 }]), 'p')
+    expect(c).toMatchObject({ ventaDiaCentavos: 3000000, carteraCentavos: 0 })
+    expect(tipoDeCobro(c)).toBe('COBRO_DEL_DIA')
+  })
+})
