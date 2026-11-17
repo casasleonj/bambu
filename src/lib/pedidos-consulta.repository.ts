@@ -204,7 +204,24 @@ export async function consultarPedidos(
   if (!fa) return resultado;
   try {
     const a = await leerConsultaPedidos(fa, role, client, true);
-    return { ...resultado, arrastrados: a.pedidos, arrastradosTotal: a.total };
+    // #841: un pedido que ya se ve en «Pendientes» no se repite en las entregas de
+    // pedidos anteriores; su fila de pendientes ya dice cuánto se entregó y cuánto falta.
+    // Solo se quita lo que realmente se muestra (los más antiguos, con tope): un parcial
+    // pendiente fuera de ese tope se queda en las entregas para no desaparecer de la pantalla.
+    const visibles = new Set(a.pedidos.map((p) => p.id));
+    const destacadas = resultado.destacadas?.filter((d) => !visibles.has(d.pedidoId));
+    const quitadas = (resultado.destacadas?.length ?? 0) - (destacadas?.length ?? 0);
+    return {
+      ...resultado,
+      ...(destacadas
+        ? {
+            destacadas,
+            destacadasTotal: Math.max(0, (resultado.destacadasTotal ?? 0) - quitadas),
+          }
+        : {}),
+      arrastrados: a.pedidos,
+      arrastradosTotal: a.total,
+    };
   } catch (error) {
     logger.warn({ err: error }, "No se pudieron leer los pendientes de días anteriores");
     return { ...resultado, arrastradosError: true };

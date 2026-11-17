@@ -15,7 +15,11 @@ function ayerBogota() {
 }
 const fechaDe = (dia: string, hora: string) => new Date(dia + "T" + hora + "-05:00");
 
-async function pedidoDeAyer(nombre: string, estado: "PENDIENTE" | "ENTREGADO") {
+async function pedidoDeAyer(
+  nombre: string,
+  estado: "PENDIENTE" | "ENTREGADO",
+  entregadas = estado === "ENTREGADO" ? 3 : 0,
+) {
   const admin = await db.user.findUniqueOrThrow({ where: { username: "admin" } });
   const cliente = await db.cliente.create({
     data: { nombre: nombre + " " + randomUUID().slice(0, 8), telefono: randomUUID() },
@@ -28,10 +32,10 @@ async function pedidoDeAyer(nombre: string, estado: "PENDIENTE" | "ENTREGADO") {
       entregadoAt: entregado ? fechaDe(hoyBogota(), "00:30:00") : null,
       estado, estadoEntrega: estado, estadoPago: "PENDIENTE",
       total: 6900, totalPagado: 0, saldo: 6900,
-      items: { create: { producto: "PACA_AGUA", cantPedido: 3, cantEntrega: entregado ? 3 : 0, precio: 2300, subtotal: 6900 } },
+      items: { create: { producto: "PACA_AGUA", cantPedido: 3, cantEntrega: entregadas, precio: 2300, subtotal: 6900 } },
     },
   });
-  if (entregado) {
+  if (entregadas > 0) {
     await db.historial.create({
       data: {
         entidad: "Pedido", registroId: p.id, accion: "UPDATE", fecha: fechaDe(hoyBogota(), "00:30:00"),
@@ -39,7 +43,7 @@ async function pedidoDeAyer(nombre: string, estado: "PENDIENTE" | "ENTREGADO") {
           accion: "ENTREGA_OFICINA",
           consultaEntrega: {
             version: 1, precisionFecha: "INSTANTE", fecha: fechaDe(hoyBogota(), "00:30:00").toISOString(),
-            repartidorId: null, cantidades: [{ producto: "PACA_AGUA", cantidad: 3 }],
+            repartidorId: null, cantidades: [{ producto: "PACA_AGUA", cantidad: entregadas }],
           },
         }),
       },
@@ -118,5 +122,38 @@ test.describe("#841 — pendientes primero, entregas plegadas", () => {
     await toggle.focus();
     await page.keyboard.press("Enter");
     await expect(appMain(page).getByTestId("entregas-historicas-toggle")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  for (const [nombre, viewport] of [
+    ["escritorio", { width: 1280, height: 850 }],
+    ["móvil", { width: 390, height: 844 }],
+  ] as const) {
+    test(nombre + ": el pedido entregado a medias sale solo en pendientes, no en las entregas", async ({ page }) => {
+      await page.setViewportSize(viewport);
+      const parcial = await pedidoDeAyer("Parcial841", "PENDIENTE", 1);
+      const completo = await pedidoDeAyer("Completo841", "ENTREGADO");
+      await loginAs(page, "admin");
+      await goto(page, "/pedidos");
+      const app = appMain(page);
+      const pendientes = app.getByTestId("pendientes-anteriores");
+      const entregas = app.getByTestId("entregas-historicas-763");
+      // Una sola fila del pedido parcial en toda la pantalla, y está en pendientes.
+      await expect(pendientes.getByTestId("operacion-row-" + parcial.id)).toBeVisible();
+      await expect(app.getByTestId("operacion-row-" + parcial.id)).toHaveCount(1);
+      // La línea plegada cuenta solo lo que no está arriba: 1, no 2.
+      const toggle = entregas.getByTestId("entregas-historicas-toggle");
+      await expect(toggle).toContainText("1 pedido anterior con entregas hoy");
+      await toggle.click();
+      await expect(entregas.getByTestId("entrega-historica-" + completo.numero)).toBeVisible();
+      await expect(entregas.getByTestId("entrega-historica-" + parcial.numero)).toHaveCount(0);
+    });
+  }
+
+  test("si todas las entregas son de pedidos ya visibles en pendientes, no hay línea de entregas", async ({ page }) => {
+    const parcial = await pedidoDeAyer("SoloParcial841", "PENDIENTE", 1);
+    await loginAs(page, "admin");
+    await goto(page, "/pedidos");
+    await expect(appMain(page).getByTestId("pendientes-anteriores").getByTestId("operacion-row-" + parcial.id)).toBeVisible();
+    await expect(appMain(page).getByTestId("entregas-historicas-763")).toHaveCount(0);
   });
 });
