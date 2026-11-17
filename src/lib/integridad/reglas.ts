@@ -92,11 +92,17 @@ export const REGLAS: readonly Regla[] = [
              FROM "PedidoSaldoFavorMovimiento" GROUP BY 1
            ),
            cr AS (
-             SELECT COALESCE(a."pedidoId", f."pedidoId") AS "pedidoId", SUM(c."montoRevertido") AS s
-             FROM "CorreccionAbono" c
-             JOIN "Abono" a ON a.id = c."abonoId"
-             JOIN "Factura" f ON f.id = a."facturaId"
-             GROUP BY 1
+             -- ADR-002: una corrección está anclada a un abono O a un pago sin abono; ambas bajan totalPagado.
+             SELECT "pedidoId", SUM(s) AS s FROM (
+               SELECT COALESCE(a."pedidoId", f."pedidoId") AS "pedidoId", c."montoRevertido" AS s
+               FROM "CorreccionAbono" c
+               JOIN "Abono" a ON a.id = c."abonoId"
+               JOIN "Factura" f ON f.id = a."facturaId"
+               UNION ALL
+               SELECT g."pedidoId", c."montoRevertido"
+               FROM "CorreccionAbono" c
+               JOIN "Pago" g ON g.id = c."pagoId"
+             ) u GROUP BY 1
            )
       SELECT p.id AS ref, p.numero,
         json_build_object(

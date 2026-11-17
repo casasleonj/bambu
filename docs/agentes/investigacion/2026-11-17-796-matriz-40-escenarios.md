@@ -7,7 +7,7 @@
 - **PARCIAL:** una parte del escenario está probada; se indica qué falta.
 - **PENDIENTE:** sin prueba.
 
-**Resultado:** 18 EJECUTADO · 13 PARCIAL · 5 EXISTENTE · 4 PENDIENTE (= 40). **Con esto el issue no se puede cerrar** (condición 7 del PO): quedan 22 escenarios sin prueba directa completa.
+**Resultado (actualizado tras la fase 2b):** 19 EJECUTADO · 12 PARCIAL · 5 EXISTENTE · 4 PENDIENTE (= 40). **Con esto el issue no se puede cerrar** (condición 7 del PO): quedan 21 escenarios sin prueba directa completa.
 
 | # | Escenario | Estado | Evidencia / lo que falta |
 |---|---|---|---|
@@ -29,8 +29,8 @@
 | 16 | Excedente a saldo a favor | EXISTENTE | `pagar-fiado-deuda-exigible` («el sobrante queda a favor»); el clasificador no lee saldo a favor |
 | 17 | Consumo de saldo a favor sin nuevo ingreso | PARCIAL | unit con `BONO`; `cierre-saldo-favor-ingreso-524` y `dashboard-cobros-526` existentes |
 | 18 | Transferencia pendiente de confirmar | PARCIAL | Probado en factura (pantalla e impresa) y clasificador; el efecto en Cierre es existente |
-| 19 | Transferencia rechazada (`DISCREPANTE`) | PARCIAL | La factura del cliente no la expone (unit); **la reversión del dinero no existe** sin abono (fase 2b) |
-| 20 | Corrección de efectivo | PARCIAL | `correccion-abono-corregir` (existente) + prueba nueva del lock; falta por `pagoId` (fase 2b) |
+| 19 | Transferencia rechazada (`DISCREPANTE`) | PARCIAL | La factura del cliente no la expone (unit). **Fase 2b:** el dinero de un pago sin abono ya se puede revertir con `NO_RECIBIDO` (integración + QA, bandera encendida); `DISCREPANTE` por sí solo sigue sin revertir (ADR-PAGO §4) |
+| 20 | Corrección de efectivo | EJECUTADO | `correccion-abono-corregir` (existente), `corregir-lock-pedido-796` y `corregir-pago-sin-abono-796` (pago en efectivo, resta de la caja física del día); QA 12/12 |
 | 21 | Reversión aplicada a varias entregas | PENDIENTE | — |
 | 22 | Devolución parcial y total | PENDIENTE | Devolver dinero de un pago no existe; `devolver-saldo-favor` (#560) es otro concepto |
 | 23 | Anulación con pagos | EXISTENTE | `anular-cascada-hijos` y afines |
@@ -38,9 +38,9 @@
 | 25 | Modificación comercial tras una parcial | EXISTENTE | pruebas de corrección de precio y reducción |
 | 26 | Corrección retroactiva de la fecha efectiva | PARCIAL | `pago-fecha-correccion` (existente); el clasificador usa `createdAt` (límite documentado) |
 | 27 | Consulta histórica tras un cobro posterior | PENDIENTE | Fase 2 del issue (foto al corte) |
-| 28 | Corrección después del cierre | PARCIAL | Señal #712 existente; el hallazgo F8 (resta en el día del pago) sin prueba propia |
+| 28 | Corrección después del cierre | PARCIAL | Señal #712 existente; F8 ahora con prueba propia: la corrección de un pago resta de la caja del **día del pago** (`corregir-pago-sin-abono-796`); falta probar que un cierre ya guardado no cambia con una corrección por pago |
 | 29 | Cobro próximo al corte | EJECUTADO | unit (23:30 y 00:30 de Bogotá) |
-| 30 | Cobro concurrente de dos usuarios | EJECUTADO | integración `corregir-lock-pedido-796` (fallaba antes del arreglo) y «dos cobros simultáneos» existente |
+| 30 | Cobro concurrente de dos usuarios | EJECUTADO | `corregir-lock-pedido-796` (fallaba antes del arreglo), dos correcciones totales simultáneas del mismo pago (una gana) y «dos cobros simultáneos» existente |
 | 31 | Reintento tras desconexión | EXISTENTE | replay A/B/A y `offlineId` en `pagar-fiado`; no tocado |
 | 32 | Doble clic | EJECUTADO | QA: la impresión genera un solo documento |
 | 33 | Sincronización offline en otra jornada | PENDIENTE | — |

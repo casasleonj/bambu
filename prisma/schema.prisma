@@ -1232,6 +1232,8 @@ model Pago {
   monto     Decimal    @db.Decimal(10, 2)
   // #513: identidad del Abono que refleja este mismo cobro; no se infiere por tiempo.
   abonoEspejo Abono? @relation("AbonoPagoOrigen")
+  /// ADR-CORRECCION-MONETARIA-002: correcciones ancladas a este pago (solo si no tiene abono espejo).
+  correcciones CorreccionAbono[] @relation("CorreccionDePago")
   // FIX LOW (C-VAL-8): offlineId actualmente es solo @index, no @unique.
   // Esto es por diseño: múltiples pagos del mismo batch offline comparten
   // offlineId para reconstruir el resumen "pagosAplicados" en el cliente.
@@ -2216,8 +2218,12 @@ model Abono {
 model CorreccionAbono {
   id                   String              @id @default(cuid())
   numero               String              @unique // COR-00000
-  abonoId              String
-  abono                Abono               @relation(fields: [abonoId], references: [id], onDelete: Restrict)
+  /// ADR-CORRECCION-MONETARIA-002: exactamente UNA ancla (CHECK `chk_correccion_una_ancla`): el abono, o el pago
+  /// cuando el pago no tiene abono. Con `abonoId` nulo, `pagoId` es obligatorio.
+  abonoId              String?
+  abono                Abono?              @relation(fields: [abonoId], references: [id], onDelete: Restrict)
+  pagoId               String?
+  pago                 Pago?               @relation("CorreccionDePago", fields: [pagoId], references: [id], onDelete: Restrict)
   tipo                 String // MONTO | CLIENTE | FACTURA | NO_RECIBIDO
   montoRevertido       Decimal             @db.Decimal(10, 2)
   motivo               String              @db.Text
@@ -2232,6 +2238,7 @@ model CorreccionAbono {
   createdAt            DateTime            @default(now()) @db.Timestamptz()
 
   @@index([abonoId])
+  @@index([pagoId])
   @@index([responsibilityCaseId])
 }
 

@@ -68,4 +68,28 @@ describe('#796 armarHistorialPagos', () => {
     expect(o.correcciones[0]).toMatchObject({ numero: 'COR-1', monto: 1000, motivo: null, autorizadoPor: null })
     expect(o.totalNeto).toBe(4000)
   })
+
+  // ── Fase 2b (ADR-002): por dónde se corrige cada cobro ─────────────────────────────────────────────
+  it('un pago SIN abono se corrige por sí mismo; lo disponible descuenta sus correcciones', () => {
+    const h = armarHistorialPagos([pago('p1', 15000, '2026-11-17T20:40:00Z', { correcciones: [corr('9', 3000, '2026-11-18T14:00:00Z')] })], [])
+    expect(h.pagos[0].corregir).toEqual({ via: 'PAGO', id: 'p1', disponible: 12000 })
+    expect(h.correcciones).toEqual([expect.objectContaining({ numero: 'COR-9', monto: 3000, sobrePagoNumero: 1 })])
+    expect(h.totalNeto).toBe(12000)
+  })
+
+  it('un pago CON abono espejo se corrige por su abono (nunca por las dos vías)', () => {
+    const h = armarHistorialPagos([pago('p1', 20000, '2026-11-17T15:15:00Z')], [abono('a1', 20000, '2026-11-17T15:15:00Z', { pagoOrigenId: 'p1', correcciones: [corr('1', 5000, '2026-11-18T14:00:00Z')] })])
+    expect(h.pagos[0].corregir).toEqual({ via: 'ABONO', id: 'a1', disponible: 15000 })
+  })
+
+  it('un abono independiente se corrige por sí mismo', () => {
+    const h = armarHistorialPagos([], [abono('a9', 5000, '2026-11-17T15:00:00Z')])
+    expect(h.pagos[0].corregir).toEqual({ via: 'ABONO', id: 'a9', disponible: 5000 })
+  })
+
+  it('un cobro ya revertido por completo no ofrece corregir (no queda nada)', () => {
+    const h = armarHistorialPagos([pago('p1', 15000, '2026-11-17T20:40:00Z', { correcciones: [corr('9', 15000, '2026-11-18T14:00:00Z')] })], [])
+    expect(h.pagos[0].corregir).toBeNull()
+    expect(h.totalNeto).toBe(0)
+  })
 })

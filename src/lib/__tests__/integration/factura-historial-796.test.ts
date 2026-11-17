@@ -82,4 +82,22 @@ describe('#796 · historial de pagos de la factura', () => {
     expect(j.historialPagosError).toBe(false)
     expect(j.historialPagos?.pagos).toEqual([])
   })
+
+  it('fase 2b: «Corregir» solo para ADMIN/CONTADOR; el pago sin abono además exige la bandera; ASISTENTE no recibe ninguna acción', async () => {
+    facturaId = (await testPrisma.factura.findFirstOrThrow({ where: { montoPagado: 32000 } })).id
+    const filas = async () => cuerpo(await llamar()).historialPagos!.pagos as unknown as Array<{ origen: string; metodo: string; corregir: { via: string } | null }>
+    authUser.role = 'ADMIN'
+    delete process.env.CORRECCION_PAGO_SIN_ABONO
+    let f = await filas()
+    expect(f.find((x) => x.metodo === 'EFECTIVO')?.corregir?.via).toBe('ABONO')   // pago con espejo: por su abono (siempre)
+    expect(f.find((x) => x.metodo === 'NEQUI')?.corregir).toBeNull()               // sin abono: bandera apagada
+    process.env.CORRECCION_PAGO_SIN_ABONO = 'true'
+    f = await filas()
+    expect(f.find((x) => x.metodo === 'NEQUI')?.corregir?.via).toBe('PAGO')        // bandera encendida
+    authUser.role = 'ASISTENTE'
+    f = await filas()
+    expect(f.every((x) => x.corregir === null)).toBe(true)
+    delete process.env.CORRECCION_PAGO_SIN_ABONO
+    authUser.role = 'ADMIN'
+  })
 })

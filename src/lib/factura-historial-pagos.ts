@@ -13,6 +13,8 @@ export interface PagoParaHistorial {
   /** Fecha efectiva del cobro cuando se registró con otra fecha (flujo de oficina). */
   ocurridoAt: Date | null
   confirmacion: string
+  /** ADR-002: correcciones ancladas a este pago (solo existen si el pago no tiene abono espejo). */
+  correcciones?: readonly CorreccionParaHistorial[]
 }
 
 export interface CorreccionParaHistorial {
@@ -46,6 +48,11 @@ export interface FilaPago {
   monto: number
   /** Solo para pagos: CONFIRMADO, REPORTADO o DISCREPANTE. */
   confirmacion: string | null
+  /**
+   * Por dónde se corrige este cobro y cuánto queda por revertir (null si no queda nada). Un pago con abono se corrige
+   * por su abono (ADR-002 D2.2); un pago sin abono, por sí mismo; un abono independiente, por sí mismo.
+   */
+  corregir: { via: 'ABONO' | 'PAGO'; id: string; disponible: number } | null
 }
 
 export interface FilaCorreccion {
@@ -74,25 +81,38 @@ export function armarHistorialPagos(
   abonos: readonly AbonoParaHistorial[],
 ): HistorialPagos {
   const idsPago = new Set(pagos.map((p) => p.id))
-  type Cruda = Omit<FilaPago, 'numero'> & { orden: Date; claveCorreccion: string }
-  const crudas: Cruda[] = pagos.map((p) => ({
-    clave: p.id, origen: 'PAGO', fecha: (p.ocurridoAt ?? p.createdAt).toISOString(), metodo: p.metodo,
-    monto: aCentavos(p.monto) / 100, confirmacion: p.confirmacion, orden: p.ocurridoAt ?? p.createdAt, claveCorreccion: p.id,
-  }))
+  type Cruda = Omit<FilaPago, 'numero'> & { orden: Date }
+  const espejoDe = new Map<string, AbonoParaHistorial>()
+  for (const a of abonos) if (a.pagoOrigenId !== null && idsPago.has(a.pagoOrigenId)) espejoDe.set(a.pagoOrigenId, a)
+  const revertido = (cs: readonly CorreccionParaHistorial[]) => cs.reduce((t, c) => t + aCentavos(c.montoRevertido), 0)
+  const disponible = (monto: unknown, cs: readonly CorreccionParaHistorial[]) => Math.max(0, aCentavos(monto) - revertido(cs)) / 100
+  const crudas: Cruda[] = pagos.map((p) => {
+    const espejo = espejoDe.get(p.id)
+    const via = espejo
+      ? { via: 'ABONO' as const, id: espejo.id, disponible: disponible(espejo.monto, espejo.correcciones) }
+      : { via: 'PAGO' as const, id: p.id, disponible: disponible(p.monto, p.correcciones ?? []) }
+    return {
+      clave: p.id, origen: 'PAGO', fecha: (p.ocurridoAt ?? p.createdAt).toISOString(), metodo: p.metodo,
+      monto: aCentavos(p.monto) / 100, confirmacion: p.confirmacion, orden: p.ocurridoAt ?? p.createdAt,
+      corregir: via.disponible > 0 ? via : null,
+    }
+  })
   // Un abono con Pago de origen presente es el espejo de ese pago: no se lista. Si su pago no está (dato raro),
   // se lista como un pago más: nunca se pierde un cobro por no encontrar su pareja.
   for (const a of abonos) {
     if (a.pagoOrigenId !== null && idsPago.has(a.pagoOrigenId)) continue
+    const disp = disponible(a.monto, a.correcciones)
     crudas.push({
       clave: `abono:${a.id}`, origen: 'ABONO', fecha: a.fecha.toISOString(), metodo: a.metodoPago,
-      monto: aCentavos(a.monto) / 100, confirmacion: null, orden: a.fecha, claveCorreccion: `abono:${a.id}`,
+      monto: aCentavos(a.monto) / 100, confirmacion: null, orden: a.fecha,
+      corregir: disp > 0 ? { via: 'ABONO', id: a.id, disponible: disp } : null,
     })
   }
   crudas.sort((x, y) => +x.orden - +y.orden || (x.clave < y.clave ? -1 : x.clave > y.clave ? 1 : 0))
   const numeroPorClave = new Map<string, number>()
   const filas: FilaPago[] = crudas.map((c, i) => {
     numeroPorClave.set(c.clave, i + 1)
-    const { orden: _orden, claveCorreccion: _clave, ...fila } = c
+    const { orden: _orden, ...fila } = c
     return { ...fila, numero: i + 1 }
   })
 
@@ -103,6 +123,14 @@ export function armarHistorialPagos(
       correcciones.push({
         id: c.id, numero: c.numero, tipo: c.tipo, monto: aCentavos(c.montoRevertido) / 100, motivo: c.motivo,
         fecha: c.createdAt.toISOString(), autorizadoPor: c.autorizadoPor, sobrePagoNumero: numeroPorClave.get(clave) ?? null,
+      })
+    }
+  }
+  for (const p of pagos) {
+    for (const c of p.correcciones ?? []) {
+      correcciones.push({
+        id: c.id, numero: c.numero, tipo: c.tipo, monto: aCentavos(c.montoRevertido) / 100, motivo: c.motivo,
+        fecha: c.createdAt.toISOString(), autorizadoPor: c.autorizadoPor, sobrePagoNumero: numeroPorClave.get(p.id) ?? null,
       })
     }
   }

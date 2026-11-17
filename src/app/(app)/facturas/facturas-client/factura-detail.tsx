@@ -10,6 +10,8 @@ import type { Factura, EmpresaConfig } from './types'
 import { pedidoEnConsulta } from '@/lib/pedidos-contexto'
 import { formatPrecioUnitario, formatImportePedido as formatCurrency } from '@/lib/precio-formato'
 import { historialInternoHtml, pagosRecibidosCliente, type FormatosImpresion } from '@/lib/factura-impresion'
+import type { FilaPago } from '@/lib/factura-historial-pagos'
+import { CorregirModal } from '@/components/cartera/corregir-modal'
 
 const BRAND = {
   green: '#4CAF50',
@@ -81,6 +83,8 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
   const [printReady, setPrintReady] = useState(false)
   // Evita imprimir dos veces por doble clic mientras se prepara el documento.
   const [imprimiendo, setImprimiendo] = useState(false)
+  // #796 fase 2b: cobro que se está corrigiendo (solo ADMIN y CONTADOR reciben `corregir` del servidor).
+  const [corrigiendo, setCorrigiendo] = useState<FilaPago | null>(null)
   const protegerImpresion = (accion: () => void) => {
     if (imprimiendo) return
     setImprimiendo(true)
@@ -610,7 +614,16 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
                               {chip && <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold normal-case ${chip.clase}`}>{chip.texto}</span>}
                             </p>
                           </div>
-                          <span className="text-lg font-bold whitespace-nowrap shrink-0" style={{ color: BRAND.green }}>{formatCurrency(Number(p.monto))}</span>
+                          <div className="text-right shrink-0">
+                            <span className="text-lg font-bold whitespace-nowrap" style={{ color: BRAND.green }}>{formatCurrency(Number(p.monto))}</span>
+                            {p.corregir && (
+                              <div>
+                                <button type="button" data-testid="factura-pago-corregir" className="text-xs font-semibold text-blue-700 hover:underline" onClick={() => setCorrigiendo(p)}>
+                                  Corregir
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -734,6 +747,19 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
 
         </div>
       </div>
+      {corrigiendo?.corregir && (
+        <CorregirModal
+          titulo={`Corregir pago de ${corrigiendo.metodo.charAt(0) + corrigiendo.metodo.slice(1).toLowerCase()} · ${formatCurrency(corrigiendo.monto)}`}
+          contexto={<>Pago #{corrigiendo.numero} · {formatFechaHora(corrigiendo.fecha)} · Queda por revertir {formatCurrency(corrigiendo.corregir.disponible)}</>}
+          endpoint={corrigiendo.corregir.via === 'ABONO' ? `/api/cartera/abonos/${corrigiendo.corregir.id}/corregir` : `/api/pagos/${corrigiendo.corregir.id}/corregir`}
+          montoMaximo={corrigiendo.corregir.disponible}
+          queNoSeBorra={corrigiendo.origen === 'PAGO' ? 'el pago' : 'el abono'}
+          factura={{ total, montoPagado: pagado, saldo }}
+          testid="corregir-pago-modal"
+          onClose={() => setCorrigiendo(null)}
+          onDone={() => { setCorrigiendo(null); onReintentarPagos?.() }}
+        />
+      )}
     </div>
   )
 }

@@ -6,6 +6,13 @@
 - Incrementa (no reemplaza): `ADR-CORRECCION-MONETARIA-001` (D.1, D.3), `ADR-PAGO-REPORTADO-CONFIRMADO-001` (§4).
 - Decisión de diseño delegada por el PO el 17-nov-2026 («decide tú»); los gates de migración, maquetas y merge **siguen siendo del PO**.
 
+## Estado de implementación (18-nov-2026)
+Implementado en la rama del issue #796, **sin aplicar en producción**: migración `20261118_correccion_pago_sin_abono` (ensayada dos veces sobre una base
+desechable con esquema anterior y una fila antigua; reversa ensayada), helper compartido de reversión, ruta `POST /api/pagos/[id]/corregir` (bandera
+`CORRECCION_PAGO_SIN_ABONO` apagada por defecto), lectores tolerantes (Cierre, cobros por período, historial del cliente, integridad V2, factura) y
+cuadro «Corregir» compartido con Cartera. D2.6 (valores anteriores y posteriores) se aplica **también** al camino por abono. Runbook:
+`docs/agentes/investigacion/2026-11-18-796-runbook-migracion-2b.md`.
+
 ## Contexto
 1. Hoy toda reversión de dinero es un `CorreccionAbono` con `abonoId` **obligatorio** (ADR-001 D.3).
 2. `pagar-fiado` crea siempre un `Abono` espejo por cada `Pago`; el cobro al entregar desde Pedidos crea un `Pago` **sin** abono.
@@ -62,12 +69,21 @@ Una ancla opcional rompe cualquier lectura que asuma `abonoId` presente:
 | `ReceivableEntry` | Sin cambio de tipo | — |
 | Cierre guardado (`CierreDia`) | No se reescribe; existe la señal #712 | Probar caso 28 |
 
-## Compatibilidad y despliegue (expand/contract, reversible)
-1. **EXPAND (código):** lectores tolerantes a `abonoId` nulo y a `pagoId`; **sin** escribir aún `pagoId`. Desplegable sin migración.
-2. **EXPAND (esquema, aditivo e idempotente):** `ALTER TABLE ... ADD COLUMN "pagoId"`, `DROP NOT NULL` en `abonoId`, el `CHECK`, el índice. Verificación previa en producción **solo con autorización del PO**; ensayo en PostgreSQL desechable dos veces.
-3. **Escritura:** habilitar la ruta de corrección por `pagoId` detrás de una **bandera apagada por defecto**.
-4. **Solo entonces** (paso 3 del plan) dejar de crear espejos del cobro del día, también detrás de bandera.
-- **Rollback de comportamiento:** apagar las banderas. Las correcciones por `pagoId` ya creadas quedan y siguen siendo legibles (los lectores del punto 1 las toleran). `git revert` no revierte datos.
+## Compatibilidad y despliegue (expand/contract, reversible) — orden corregido el 18-nov-2026
+El código nuevo **lee** `CorreccionAbono.pagoId` (Cierre en SQL, historial, integridad, factura). Por eso la migración es
+**exigida por el código desplegado** y debe ir **antes** del merge (`prisma/AGENTS.md`). El primer borrador de este ADR la ponía después de los
+lectores; era incorrecto, porque esos lectores fallarían sin la columna.
+1. **EXPAND (esquema), en producción, ANTES del merge — requiere autorización explícita del PO.** `ADD COLUMN "pagoId"`, `DROP NOT NULL` en
+   `abonoId`, `CHECK` de una sola ancla, índice y FK. Aditiva e idempotente; **compatible con el código antiguo** (lo ignora; sin filas con `abonoId`
+   nulo mientras la bandera esté apagada). Ensayada dos veces sobre una base desechable con esquema anterior y una fila antigua.
+2. **Merge y despliegue del código** (lectores tolerantes + ruta nueva con `CORRECCION_PAGO_SIN_ABONO` **apagada**).
+3. **Verificación de solo lectura** en producción: columnas, restricción y `count(*) WHERE "abonoId" IS NULL = 0`.
+4. **Activar la bandera**, y solo entonces la interfaz muestra «Corregir» en pagos sin abono.
+5. **Dejar de crear espejos** del cobro del día (paso 3 del plan), con su propia bandera y conciliación antes y después.
+- **Recuperación / rollback:** apagar la bandera detiene nuevas correcciones; las ya creadas quedan y son legibles. La reversa del esquema (ensayada) solo
+  es posible mientras no exista ninguna fila ancladas a un pago; con filas se rechaza a propósito para no perder historia monetaria. No volver a un código
+  anterior a este cambio con filas ancladas a un pago. `git revert` no revierte datos.
+- **Permisos de base:** no hay tabla nueva; los GRANT existentes de `CorreccionAbono` cubren la columna nueva.
 
 ## Fuera de alcance
 Corrección multi-factura como una sola operación (ADR-001); devolución de dinero al cliente; cambio del catálogo de tipos; confirmación de `Abono`; reclasificar o borrar los 97 espejos o los 21 abonos sin procedencia.

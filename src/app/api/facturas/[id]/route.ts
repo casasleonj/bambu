@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
+import { correccionPagoActiva } from '@/lib/correccion-pago-flag'
 import { armarHistorialPagos, ocultarDetalleCorrecciones, type HistorialPagos } from '@/lib/factura-historial-pagos'
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -48,7 +49,16 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       const [pagos, abonosConCorreccion] = await Promise.all([
         prisma.pago.findMany({
           where: { pedidoId: factura.pedidoId },
-          select: { id: true, metodo: true, monto: true, createdAt: true, ocurridoAt: true, confirmacion: true },
+          select: {
+            id: true, metodo: true, monto: true, createdAt: true, ocurridoAt: true, confirmacion: true,
+            // ADR-002: correcciones ancladas al pago (existen solo si el pago no tiene abono).
+            correcciones: {
+              select: {
+                id: true, numero: true, tipo: true, montoRevertido: true, motivo: true, createdAt: true,
+                autorizadoPor: { select: { nombre: true, username: true } },
+              },
+            },
+          },
         }),
         prisma.abono.findMany({
           where: { facturaId: factura.id },
@@ -64,7 +74,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         }),
       ])
       const completo = armarHistorialPagos(
-        pagos.map((p) => ({ ...p, metodo: String(p.metodo), confirmacion: String(p.confirmacion) })),
+        pagos.map((p) => ({
+          ...p, metodo: String(p.metodo), confirmacion: String(p.confirmacion),
+          correcciones: p.correcciones.map((c) => ({ ...c, autorizadoPor: c.autorizadoPor?.nombre?.trim() || c.autorizadoPor?.username || null })),
+        })),
         abonosConCorreccion.map((a) => ({
           ...a,
           correcciones: a.correcciones.map((c) => ({ ...c, autorizadoPor: c.autorizadoPor?.nombre?.trim() || c.autorizadoPor?.username || null })),
@@ -73,7 +86,16 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       // Condición del PO: no ampliar privilegios. Hoy el ASISTENTE lee la factura pero no el detalle de las correcciones.
       const rol = (authResult.user as { role?: string } | undefined)?.role
       puedeVerHistorialInterno = rol === 'ADMIN' || rol === 'CONTADOR'
-      historialPagos = puedeVerHistorialInterno ? completo : ocultarDetalleCorrecciones(completo)
+      // «Corregir»: solo ADMIN y CONTADOR (misma regla que corregir un abono, #309). Corregir un pago SIN abono además exige
+      // la bandera encendida (ADR-002); mientras esté apagada esas filas no ofrecen la acción.
+      const conAcciones: HistorialPagos = {
+        ...completo,
+        pagos: completo.pagos.map((p) => ({
+          ...p,
+          corregir: puedeVerHistorialInterno && p.corregir && (p.corregir.via === 'ABONO' || correccionPagoActiva()) ? p.corregir : null,
+        })),
+      }
+      historialPagos = puedeVerHistorialInterno ? conAcciones : ocultarDetalleCorrecciones(conAcciones)
     } catch (err) {
       historialPagosError = true
       logger.error({ err: err instanceof Error ? err.message : 'Unknown', facturaId: id }, 'factura: no se pudo armar el historial de pagos')

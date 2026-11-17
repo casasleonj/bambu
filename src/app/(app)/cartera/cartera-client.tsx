@@ -4,10 +4,8 @@
 // centro de corrección. Solo ADMIN + CONTADOR (gate del proxy vía view:cartera).
 
 import { useCallback, useEffect, useState } from 'react'
-import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
-import { Modal } from '@/components/modal'
-import { generateUUID } from '@/lib/uuid'
+import { CorregirModal } from '@/components/cartera/corregir-modal'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 
 interface Correccion {
@@ -64,13 +62,6 @@ function Marcas({ r }: { r: AbonoRow }) {
     </span>
   )
 }
-
-const TIPOS: { value: string; label: string; hint: string }[] = [
-  { value: 'MONTO', label: 'Monto equivocado', hint: 'Se capturó de más. Podés revertir un monto parcial.' },
-  { value: 'CLIENTE', label: 'Cliente equivocado', hint: 'El abono se aplicó al cliente que no era.' },
-  { value: 'FACTURA', label: 'Factura equivocada', hint: 'El abono se aplicó a la factura que no era.' },
-  { value: 'NO_RECIBIDO', label: 'Pago no recibido', hint: 'El dinero nunca entró. Abre un caso de responsabilidad.' },
-]
 
 export default function CarteraClient() {
   const [rows, setRows] = useState<AbonoRow[]>([])
@@ -282,7 +273,12 @@ export default function CarteraClient() {
 
       {corrigiendo && (
         <CorregirModal
-          abono={corrigiendo}
+          titulo={`Corregir abono ${corrigiendo.numero}`}
+          contexto={<>Cliente <b>{corrigiendo.cliente?.nombre}</b> · Monto {formatCurrency(corrigiendo.monto)} · Neto sin revertir {formatCurrency(corrigiendo.montoNeto)}</>}
+          endpoint={`/api/cartera/abonos/${corrigiendo.id}/corregir`}
+          montoMaximo={corrigiendo.montoNeto}
+          queNoSeBorra="el abono original"
+          testid="corregir-abono-modal"
           onClose={() => setCorrigiendo(null)}
           onDone={() => {
             setCorrigiendo(null)
@@ -291,116 +287,5 @@ export default function CarteraClient() {
         />
       )}
     </div>
-  )
-}
-
-function CorregirModal({
-  abono,
-  onClose,
-  onDone,
-}: {
-  abono: AbonoRow
-  onClose: () => void
-  onDone: () => void
-}) {
-  const [tipo, setTipo] = useState('MONTO')
-  const [montoRevertido, setMontoRevertido] = useState('')
-  const [motivo, setMotivo] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const hint = TIPOS.find((t) => t.value === tipo)?.hint
-
-  async function submit() {
-    if (motivo.trim().length === 0) {
-      toast.error('El motivo es obligatorio')
-      return
-    }
-    setSubmitting(true)
-    try {
-      const body: Record<string, unknown> = { tipo, motivo: motivo.trim(), correccionOfflineId: generateUUID() }
-      if (tipo === 'MONTO' && montoRevertido) body.montoRevertido = Number(montoRevertido)
-      const res = await fetch(`/api/cartera/abonos/${abono.id}/corregir`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-        credentials: 'include',
-        signal: AbortSignal.timeout(10_000),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast.error(json?.error?.message ?? json?.error ?? 'No se pudo aplicar la corrección')
-        return
-      }
-      toast.success(`Corrección ${json.correccion?.numero ?? ''} aplicada`)
-      onDone()
-    } catch {
-      toast.error('Error de red al aplicar la corrección')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Modal open onClose={onClose} title={`Corregir abono ${abono.numero}`} data-testid="corregir-abono-modal">
-      <div className="space-y-3 p-1 text-sm">
-        <div className="text-gray-600">
-          Cliente <b>{abono.cliente?.nombre}</b> · Monto {formatCurrency(abono.monto)} · Neto sin revertir{' '}
-          {formatCurrency(abono.montoNeto)}
-        </div>
-
-        <label className="block">
-          <span className="text-gray-700">Tipo de corrección</span>
-          <select className="mt-1 w-full border rounded px-2 py-1.5" value={tipo} onChange={(e) => setTipo(e.target.value)}>
-            {TIPOS.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {hint && <p className="text-xs text-gray-500">{hint}</p>}
-
-        {tipo === 'MONTO' && (
-          <label className="block">
-            <span className="text-gray-700">Monto a revertir (vacío = todo el neto: {formatCurrency(abono.montoNeto)})</span>
-            <input
-              type="number"
-              min={0}
-              max={abono.montoNeto}
-              className="mt-1 w-full border rounded px-2 py-1.5"
-              value={montoRevertido}
-              onChange={(e) => setMontoRevertido(e.target.value)}
-            />
-          </label>
-        )}
-
-        <label className="block">
-          <span className="text-gray-700">Motivo (obligatorio)</span>
-          <textarea
-            className="mt-1 w-full border rounded px-2 py-1.5"
-            rows={3}
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-          />
-        </label>
-
-        <div className="rounded bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800">
-          Esto NO borra el abono original. Registra una reversión trazable (COR-…) y recalcula el saldo del
-          pedido y la factura.
-        </div>
-
-        <div className="flex justify-end gap-2 pt-1">
-          <button className="px-3 py-1.5 rounded border" onClick={onClose} disabled={submitting}>
-            Cancelar
-          </button>
-          <button
-            className="px-3 py-1.5 rounded bg-blue-600 text-white disabled:opacity-50"
-            onClick={submit}
-            disabled={submitting}
-          >
-            {submitting ? 'Aplicando…' : 'Aplicar corrección'}
-          </button>
-        </div>
-      </div>
-    </Modal>
   )
 }
