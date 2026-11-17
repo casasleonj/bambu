@@ -326,6 +326,7 @@ model User {
   // F4 (Cumplimiento — reprogramación de remanente)
   obligacionesReprogramadas ObligacionPendienteReprogramacion[]
   pagoFechaCorrecciones PagoFechaCorreccion[] @relation("PagoFechaCorreccionAutor")
+  pagoComisionFechaCorrecciones PagoComisionFechaCorreccion[] @relation("PagoComisionFechaCorreccionAutor")
 }
 
 // ====================
@@ -872,10 +873,36 @@ model PagoComisionRepartidor {
   pagadoPor    User?      @relation("PagoComisionPagador", fields: [pagadoPorId], references: [id], onDelete: SetNull)
   offlineId    String?    @unique
   createdAt    DateTime   @default(now()) @db.Timestamptz()
+  /// #834: correcciones administrativas del día real (solo añaden filas; `createdAt` y `fecha` nunca cambian).
+  correcciones PagoComisionFechaCorreccion[]
 
   @@index([trabajadorId, fecha])
   @@index([fechaPagoReal])
   @@index([createdAt])
+}
+
+/// #834 — Corrección administrativa (solo ADMIN) del día REAL de caja de un pago de comisión (`fechaPagoReal`).
+/// Append-only: guarda el día real anterior (NULL = estaba «sin verificar» y la caja contaba la captura) y el nuevo, quién,
+/// cuándo y por qué. No reabre cierres: un día ya cerrado conserva su cifra y V16 compara con el día que el pago tenía
+/// cuando se hizo el cierre.
+model PagoComisionFechaCorreccion {
+  id                String                 @id @default(cuid())
+  pagoId            String
+  pago              PagoComisionRepartidor @relation(fields: [pagoId], references: [id], onDelete: Restrict)
+  /// Día real antes de corregir (inicio de Bogotá). NULL = sin verificar.
+  fechaRealAnterior DateTime?              @db.Timestamptz()
+  /// Día real después de corregir (inicio de Bogotá).
+  fechaRealNueva    DateTime               @db.Timestamptz()
+  motivo            String
+  corregidoPorId    String
+  corregidoPor      User                   @relation("PagoComisionFechaCorreccionAutor", fields: [corregidoPorId], references: [id], onDelete: Restrict)
+  corregidoAt       DateTime               @default(now()) @db.Timestamptz()
+  /// Clave idempotente: un reintento no duplica la corrección.
+  offlineId         String?                @unique
+
+  @@index([pagoId])
+  @@index([corregidoPorId])
+  @@index([corregidoAt])
 }
 
 model Nomina {
