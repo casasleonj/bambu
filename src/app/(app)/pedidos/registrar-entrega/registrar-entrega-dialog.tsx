@@ -192,7 +192,7 @@ export function RegistrarEntregaDialog({ pedido, repartidores, fiadoParcialActiv
                   })}
                   {intento && errores.cantidades && <p className={ERROR}>{errores.cantidades}</p>}
                   <p className={AYUDA}>
-                    Si el cliente pidió otra cantidad, usa «Corregir cantidad» o crea un pedido nuevo antes de entregar.
+                    Si la cantidad pedida cambió, corrígela en el pedido con «Corregir la cantidad» antes de entregar.
                   </p>
                 </div>
               )}
