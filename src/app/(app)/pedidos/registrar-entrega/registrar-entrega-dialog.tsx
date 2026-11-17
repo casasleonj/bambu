@@ -160,25 +160,39 @@ export function RegistrarEntregaDialog({ pedido, repartidores, fiadoParcialActiv
               {intento && errores.alcance && <p className={ERROR}>{errores.alcance}</p>}
               {datos.alcance === 'MENOS' && (
                 <div className="mt-3 flex flex-col gap-2">
-                  {pend.map((i) => (
-                    <label key={i.producto} className="flex items-center justify-between gap-3 text-sm">
-                      <span>{nombreProducto(i.producto)} (faltan {i.pendiente})</span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={i.pendiente}
-                        inputMode="numeric"
-                        aria-label={`Cantidad entregada de ${nombreProducto(i.producto)}`}
-                        value={datos.cantidades[i.producto] ?? 0}
-                        onChange={(e) => set('cantidades', { ...datos.cantidades, [i.producto]: Number(e.target.value) })}
-                        className="min-h-[44px] w-24 rounded-lg border border-gray-300 px-3 text-right"
-                      />
-                    </label>
-                  ))}
+                  {pend.map((i) => {
+                    // #848: el campo es lo que se entrega AHORA; lo que quedará pendiente se calcula aparte.
+                    const linea = pedido.items.find((x) => x.producto === i.producto)
+                    const entregadasAntes = linea?.cantEntrega ?? 0
+                    const pedidas = linea?.cantPedido ?? i.pendiente + entregadasAntes
+                    const ahora = Number(datos.cantidades[i.producto] ?? 0)
+                    const quedaran = Math.max(0, i.pendiente - (Number.isFinite(ahora) ? ahora : 0))
+                    return (
+                      <label key={i.producto} className="flex flex-col gap-1 text-sm">
+                        <span className="font-semibold text-gray-900">{nombreProducto(i.producto)}</span>
+                        <span className="text-xs text-gray-700">Pedidas {pedidas} · ya entregadas {entregadasAntes}</span>
+                        <span className="flex items-center justify-between gap-3">
+                          <span>¿Cuántas entregas ahora?</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={i.pendiente}
+                            inputMode="numeric"
+                            aria-label={`Cantidad entregada de ${nombreProducto(i.producto)}`}
+                            value={datos.cantidades[i.producto] ?? 0}
+                            onChange={(e) => set('cantidades', { ...datos.cantidades, [i.producto]: Number(e.target.value) })}
+                            className="min-h-[44px] w-24 rounded-lg border border-gray-300 px-3 text-right"
+                          />
+                        </span>
+                        <span className="text-xs font-semibold text-gray-800" data-testid={`quedaran-${i.producto}`} aria-live="polite">
+                          {quedaran === 0 ? 'No quedará nada por entregar' : `Quedarán ${quedaran} por entregar`}
+                        </span>
+                      </label>
+                    )
+                  })}
                   {intento && errores.cantidades && <p className={ERROR}>{errores.cantidades}</p>}
                   <p className={AYUDA}>
-                    Lo debido no cambia. Si el cliente prefirió menos y no falta nada, o pidió más, usa «Corregir cantidad» o crea un
-                    pedido nuevo antes de registrar la entrega.
+                    Si la cantidad pedida cambió, corrígela en el pedido con «Corregir la cantidad» antes de entregar.
                   </p>
                 </div>
               )}
