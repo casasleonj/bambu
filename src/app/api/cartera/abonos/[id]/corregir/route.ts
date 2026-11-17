@@ -44,10 +44,10 @@ export async function POST(
     }
     const { tipo, montoRevertido, motivo, correccionOfflineId } = parsed.data
 
-    // Lectura fuera del lock solo para conocer el clienteId (clave del lock).
+    // Lectura fuera del lock solo para conocer las claves de los locks (cliente y pedido).
     const abonoPre = await prisma.abono.findUnique({
       where: { id: abonoId },
-      select: { clienteId: true },
+      select: { clienteId: true, pedidoId: true, factura: { select: { pedidoId: true } } },
     })
     if (!abonoPre) return apiError('Abono no encontrado', 404)
 
@@ -63,6 +63,12 @@ export async function POST(
           return { correccion: previa, deduped: true as const }
         }
       }
+
+      // #796 (auditoría F5): esta ruta reescribe `totalPagado/saldo` del pedido, igual que los cobros y entregas.
+      // Toma también el lock de PEDIDO, en el mismo orden que `pagar-fiado` (CARTERA y luego PEDIDO), para no
+      // pisar ni ser pisada por un flujo que solo bloquea el pedido. Se adquiere antes de leer el pedido.
+      const pedidoParaLock = abonoPre.pedidoId ?? abonoPre.factura?.pedidoId
+      if (pedidoParaLock) await acquireAdvisoryLockTx(tx, 'PEDIDO', pedidoParaLock)
 
       const abono = await tx.abono.findUnique({
         where: { id: abonoId },
