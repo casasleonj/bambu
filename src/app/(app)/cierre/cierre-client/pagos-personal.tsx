@@ -9,6 +9,7 @@ import { formatCurrency } from '@/lib/utils'
 import { ComisionesRepartidores, avisoPendiente, visiblesDeComision } from './comisiones-repartidores'
 import { SueldosQueTocan } from './sueldos-que-tocan'
 import type { CierreData } from './types'
+import { FechasPagosComision } from './fechas-pagos-comision'
 
 export function resumenPagosPersonal(data: CierreData | null) {
   const repartidores = visiblesDeComision(data?.comisionesAuto?.repartidores ?? [])
@@ -34,19 +35,21 @@ export function PagosPersonal({ data, fecha, puedePagar, diaCerrado, onPagado }:
   onPagado: () => void
 }) {
   const r = resumenPagosPersonal(data)
-  if (!r.hayAlgo) {
+  const conciliacion = data?.conciliacionComisiones
+  const pagosCaja = conciliacion?.pagosCaja ?? data?.comisionesAuto?.pagosCaja ?? []
+  if (!r.hayAlgo && !pagosCaja.length && !conciliacion?.diferencia) {
     return <p className="text-sm text-muted-foreground" data-testid="pagos-personal-vacio">Sin comisiones ni sueldos este día.</p>
   }
   return (
     <div id="cierre-comisiones" className="space-y-3" data-testid="pagos-personal">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" aria-label="Resumen de pagos al personal">
+      {r.hayAlgo && <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" aria-label="Resumen de pagos al personal">
         <div className="rounded-xl bg-blue-50 p-3" data-testid="pagos-personal-del-dia">
-          <p className="text-xs text-blue-900">Comisiones y sueldos del día</p>
+          <p className="text-xs text-blue-900">Comisiones del día y sueldos que tocan</p>
           <p className="text-xl font-extrabold tabular-nums text-blue-950">{formatCurrency(r.delDia)}</p>
         </div>
         <div className="rounded-xl bg-green-50 p-3" data-testid="pagos-personal-pagado">
-          <p className="flex items-center text-xs text-green-900">✅ Pagado
-            <AyudaTermino texto="Lo que ya le diste a cada persona hoy. Si lo pagaste en efectivo, ya está descontado de «¿Cuánto efectivo debe haber en la caja?»." />
+          <p className="flex items-center text-xs text-green-900">✅ Comisiones pagadas por este trabajo
+            <AyudaTermino texto="Lo registrado como pagado por el trabajo seleccionado. Puede haberse entregado otro día; el efectivo se resta de la caja del día real del pago, no automáticamente de esta fecha de trabajo." />
           </p>
           <p className="text-xl font-extrabold tabular-nums text-green-950">{formatCurrency(r.pagado)}</p>
         </div>
@@ -56,7 +59,10 @@ export function PagosPersonal({ data, fecha, puedePagar, diaCerrado, onPagado }:
           </p>
           <p className="text-xl font-extrabold tabular-nums text-amber-950">{formatCurrency(r.pendiente)}</p>
         </div>
-      </div>
+      </div>}
+
+      <FechasPagosComision pagos={pagosCaja} efectivo={conciliacion?.actual ?? data?.comisionesAuto?.pagadoRepartidores ?? 0}
+        sinFechaVerificada={conciliacion?.sinFechaVerificada ?? data?.comisionesAuto?.pagosSinFechaVerificada ?? 0} conciliacion={conciliacion} />
 
       {r.repartidores.length > 0 && (
         <ComisionesRepartidores fecha={fecha} repartidores={r.repartidores} puedePagar={puedePagar} diaCerrado={diaCerrado} onPagado={onPagado} mostrarAviso={false} />

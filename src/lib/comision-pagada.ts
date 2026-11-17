@@ -2,6 +2,7 @@ import { calcularPorFuentes, tarifasRepartidor } from './comision-repartidor-cal
 import type { Prisma } from '@prisma/client'
 import { comisionRepartidoresDelDia, type ComisionRepartidorDia, type TxComision } from '@/lib/comision-repartidor'
 import { startOfDayBogota } from '@/lib/dates'
+import { dayInBogota } from '@/lib/date-helpers'
 
 /**
  * Pago de la comisión del repartidor desde la caja (#499). La comisión se calcula sola
@@ -9,7 +10,8 @@ import { startOfDayBogota } from '@/lib/dates'
  * Cada registro es un pago; si la comisión del día sube después, se paga la diferencia.
  *
  * - `fecha` del registro = día (Bogotá) de la comisión → la nómina del período lo descuenta.
- * - `createdAt` del registro = cuándo salió el dinero → el cierre de ESE día de caja lo resta.
+ * - `fechaPagoReal` = día comprobado del desembolso → caja. `createdAt` conserva la captura.
+ * - Legado NULL: se conserva explícitamente el criterio anterior por captura, sin inventar una fecha física.
  */
 
 export type TxPagoComision = TxComision & Pick<Prisma.TransactionClient, 'pagoComisionRepartidor' | 'produccion'>
@@ -21,6 +23,8 @@ export interface PagoComisionDia {
   monto: number
   createdAt: Date
   pagadoPorNombre: string | null
+  fechaPagoReal?: Date | null
+  metodo?: string
 }
 
 export interface ComisionDiaConEstado extends ComisionRepartidorDia {
@@ -57,6 +61,8 @@ export async function comisionDiaConEstado(tx: TxPagoComision, fecha: string): P
       id: p.id,
       monto: num(p.monto),
       createdAt: p.createdAt,
+      fechaPagoReal: p.fechaPagoReal,
+      metodo: p.metodo,
       pagadoPorNombre: p.pagadoPor ? (p.pagadoPor.nombre || p.pagadoPor.username) : null,
     })
     porTrabajador.set(p.trabajadorId, lista)
@@ -88,21 +94,46 @@ export async function comisionDiaConEstado(tx: TxPagoComision, fecha: string): P
  * de pago. #305: solo cuenta lo pagado en EFECTIVO; lo pagado por transferencia, Nequi o Daviplata no
  * salió de la caja.
  */
-export async function comisionPagadaEnCaja(tx: Pick<Prisma.TransactionClient, 'pagoComisionRepartidor'>, desde: Date, hasta: Date): Promise<number> {
-  const agg = await tx.pagoComisionRepartidor.aggregate({
-    where: { createdAt: { gte: desde, lt: hasta }, metodo: 'EFECTIVO' },
-    _sum: { monto: true },
+export function whereFechaPagoComision(desde: Date, hasta: Date): Prisma.PagoComisionRepartidorWhereInput {
+  return { OR: [
+    { fechaPagoReal: { gte: desde, lt: hasta } },
+    { fechaPagoReal: null, createdAt: { gte: desde, lt: hasta } },
+  ] }
+}
+
+export interface PagoComisionCaja {
+  id: string
+  trabajadorId: string
+  nombre: string
+  monto: number
+  metodo: string
+  fechaTrabajo: string
+  fechaPagoReal: string | null
+  registradoAt: string
+}
+
+/** Una sola lectura atribuida por día para suma, detalle y advertencia de legado. No modifica pagos. */
+export async function leerPagosComisionCaja(tx: Pick<Prisma.TransactionClient, 'pagoComisionRepartidor'>, desde: Date, hasta: Date) {
+  const filas = await tx.pagoComisionRepartidor.findMany({
+    where: whereFechaPagoComision(desde, hasta), orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    include: { trabajador: { select: { nombre: true } } },
   })
-  return num(agg._sum.monto)
+  const pagos: PagoComisionCaja[] = filas.map(p => ({
+    id: p.id, trabajadorId: p.trabajadorId, nombre: p.trabajador.nombre, monto: num(p.monto), metodo: p.metodo,
+    fechaTrabajo: dayInBogota(p.fecha), fechaPagoReal: p.fechaPagoReal ? dayInBogota(p.fechaPagoReal) : null,
+    registradoAt: p.createdAt.toISOString(),
+  }))
+  const suma = (efectivo: boolean) => pagos.reduce((s, p) => s + ((p.metodo === 'EFECTIVO') === efectivo ? Math.round(p.monto * 100) : 0), 0) / 100
+  return { pagos, efectivo: suma(true), otrosMedios: suma(false), sinFechaVerificada: pagos.filter(p => p.fechaPagoReal === null).length }
+}
+
+export async function comisionPagadaEnCaja(tx: Pick<Prisma.TransactionClient, 'pagoComisionRepartidor'>, desde: Date, hasta: Date): Promise<number> {
+  return (await leerPagosComisionCaja(tx, desde, hasta)).efectivo
 }
 
 /** #305: comisión de repartidores pagada ese día por un medio distinto del efectivo (informativo; no resta de la caja). */
 export async function comisionPagadaOtrosMedios(tx: Pick<Prisma.TransactionClient, 'pagoComisionRepartidor'>, desde: Date, hasta: Date): Promise<number> {
-  const agg = await tx.pagoComisionRepartidor.aggregate({
-    where: { createdAt: { gte: desde, lt: hasta }, metodo: { not: 'EFECTIVO' } },
-    _sum: { monto: true },
-  })
-  return num(agg._sum.monto)
+  return (await leerPagosComisionCaja(tx, desde, hasta)).otrosMedios
 }
 
 /** Lo pagado de la comisión de un trabajador para días dentro de `[ini, fin]` (lo descuenta la nómina del período). */
@@ -170,6 +201,8 @@ export async function comisionSelladoresDia(
 }
 
 export interface ComisionesDelCierre {
+  pagosCaja: PagoComisionCaja[]
+  pagosSinFechaVerificada: number
   repartidores: ComisionDiaConEstado[]
   /** Comisión de sellador del día (Producción), informativa: no resta de la caja hasta que se paga (#645). */
   sellador: number
@@ -188,14 +221,14 @@ export interface ComisionesDelCierre {
  * (el cliente ya no teclea la cifra): `desde`/`hasta` son los límites del día de caja.
  */
 export async function comisionesDelCierre(tx: TxPagoComision, fecha: string, desde: Date, hasta: Date): Promise<ComisionesDelCierre> {
-  const [repartidores, sellador, selladores, pagadoRepartidores, pagadoRepartidoresOtrosMedios] = await Promise.all([
+  const [repartidores, sellador, selladores, caja] = await Promise.all([
     comisionDiaConEstado(tx, fecha),
     comisionSelladorDia(tx, desde, hasta),
     comisionSelladoresDia(tx, fecha, desde, hasta),
-    comisionPagadaEnCaja(tx, desde, hasta),
-    comisionPagadaOtrosMedios(tx, desde, hasta),
+    leerPagosComisionCaja(tx, desde, hasta),
   ])
   // #645: lo único que resta de la caja es lo PAGADO en efectivo (repartidores y selladores); la comisión generada
   // pero no pagada se paga con «Pagar» o por la nómina, nunca se resta sola (antes se contaba dos veces).
-  return { repartidores, sellador, selladores, pagadoRepartidores, pagadoRepartidoresOtrosMedios, total: pagadoRepartidores }
+  return { repartidores, sellador, selladores, pagadoRepartidores: caja.efectivo, pagadoRepartidoresOtrosMedios: caja.otrosMedios,
+    total: caja.efectivo, pagosCaja: caja.pagos, pagosSinFechaVerificada: caja.sinFechaVerificada }
 }
