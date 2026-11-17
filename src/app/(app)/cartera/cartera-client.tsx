@@ -37,9 +37,18 @@ interface AbonoRow {
   /** #796: null si el cobro no se pudo clasificar. */
   tipoCobro?: TipoCobro | null
   fechaAproximada?: boolean
+  /** #796: porción de deuda de jornadas anteriores (lo que Cartera muestra y suma); null si no se pudo clasificar. */
+  montoCartera?: number | null
+  netoCartera?: number | null
 }
 
 type TipoCobro = 'COBRO_DEL_DIA' | 'CARTERA' | 'MIXTO'
+
+/** Importe que Cartera muestra: solo la deuda de jornadas anteriores; el resto del cobro fue venta del día. */
+function importeCartera(r: AbonoRow): { monto: number; neto: number; mixto: boolean } {
+  const mixto = r.tipoCobro === 'MIXTO' && r.montoCartera != null && r.netoCartera != null
+  return mixto ? { monto: r.montoCartera ?? r.monto, neto: r.netoCartera ?? r.montoNeto, mixto } : { monto: r.monto, neto: r.montoNeto, mixto: false }
+}
 
 /** #796: esta lista solo trae cobros de cartera (entregas de días anteriores); el cobro del día de la entrega no se lista. */
 function Marcas({ r }: { r: AbonoRow }) {
@@ -47,7 +56,7 @@ function Marcas({ r }: { r: AbonoRow }) {
   return (
     <span className="ml-2 inline-flex flex-wrap items-center gap-1 align-middle">
       {r.tipoCobro === 'MIXTO' && (
-        <span title="Este pago cubre una entrega anterior y una del mismo día de la entrega; el monto incluye ambas." className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-800">Incluye venta del día</span>
+        <span title="Este pago cubrió una entrega anterior y una del mismo día. Aquí solo se muestra la parte de la entrega anterior." className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-800">Parte de un pago mayor</span>
       )}
       {r.fechaAproximada && (
         <span title="Este pedido figura entregado pero no tiene registro de la entrega; se clasificó por su fecha de creación. Falta conciliar." className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-800">Fecha aproximada ⓘ</span>
@@ -182,7 +191,8 @@ export default function CarteraClient() {
           {filtered.map((r) => (
             <div key={r.id} className="rounded-xl border bg-white p-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2"><b>{r.numero}</b><Marcas r={r} /></div>
-              <div className="mt-1 flex justify-between gap-2"><span>{r.cliente?.nombre ?? '—'} · {r.factura?.numero ?? '—'}</span><b>{formatCurrency(r.montoNeto)}</b></div>
+              <div className="mt-1 flex justify-between gap-2"><span>{r.cliente?.nombre ?? '—'} · {r.factura?.numero ?? '—'}</span><b>{formatCurrency(importeCartera(r).neto)}</b></div>
+              {importeCartera(r).mixto && <div className="text-[11px] text-gray-500">de {formatCurrency(r.monto)} cobrados; el resto fue venta del día</div>}
               <div className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500">
                 <span>{new Date(r.fecha).toLocaleDateString('es-CO')} · {r.metodoPago}</span>
                 <button className="text-sm text-blue-600 hover:underline disabled:text-gray-400" disabled={r.montoNeto <= 0} onClick={() => setCorrigiendo(r)}>Corregir</button>
@@ -216,14 +226,17 @@ export default function CarteraClient() {
                   <td className="px-3 py-2">{r.cliente?.nombre ?? '—'}</td>
                   <td className="px-3 py-2">{r.factura?.numero ?? '—'}</td>
                   <td className="px-3 py-2">{r.metodoPago}</td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(r.monto)}</td>
+                  <td className="px-3 py-2 text-right">
+                    {formatCurrency(importeCartera(r).monto)}
+                    {importeCartera(r).mixto && <div className="text-[11px] font-normal text-gray-500">de {formatCurrency(r.monto)} cobrados</div>}
+                  </td>
                   <td className="px-3 py-2 text-right">
                     {r.corregido ? (
                       <span className="text-amber-700" title={`Revertido ${formatCurrency(r.montoRevertido)}`}>
-                        {formatCurrency(r.montoNeto)}
+                        {formatCurrency(importeCartera(r).neto)}
                       </span>
                     ) : (
-                      formatCurrency(r.montoNeto)
+                      formatCurrency(importeCartera(r).neto)
                     )}
                   </td>
                   <td className="px-3 py-2 text-right">

@@ -31,7 +31,7 @@ export async function clasificarCobrosDePedidos(db: Db, pedidoIds: readonly stri
       // Abonos legados sin `pedidoId` propio: su pedido es el de la factura.
       factura: { select: { abonos: { where: { pedidoId: null, pagoOrigenId: null }, select: { id: true, fecha: true, monto: true } } } },
       // Con la capacidad apagada no se lee la tabla de hechos (contrato del #656).
-      ...(exigiblesActivos() ? { entregasExigibles: { select: { entregadoAt: true, valorEntregado: true } } } : {}),
+      ...(exigiblesActivos() ? { entregasExigibles: { select: { id: true, entregadoAt: true, valorEntregado: true } } } : {}),
     },
   })
   for (const p of pedidos) {
@@ -40,7 +40,7 @@ export async function clasificarCobrosDePedidos(db: Db, pedidoIds: readonly stri
       ...[...p.abonos, ...(p.factura?.abonos ?? [])].map((a) => ({ id: claveAbonoIndependiente(a.id), at: a.fecha, monto: a.monto })),
     ]
     const porciones = 'entregasExigibles' in p && Array.isArray(p.entregasExigibles)
-      ? p.entregasExigibles.map((e: { entregadoAt: Date; valorEntregado: unknown }) => ({ entregadoAt: e.entregadoAt, valor: e.valorEntregado }))
+      ? p.entregasExigibles.map((e: { id: string; entregadoAt: Date; valorEntregado: unknown }) => ({ id: e.id, entregadoAt: e.entregadoAt, valor: e.valorEntregado }))
       : []
     const r = clasificarCobrosDePedido(
       { fecha: p.fecha, estadoEntrega: p.estadoEntrega, total: p.total, entregadoAt: p.entregadoAt, porciones },

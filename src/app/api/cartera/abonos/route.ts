@@ -8,7 +8,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import type { Prisma } from '@prisma/client'
 import { clasificarCobrosDePedidos, claveAbonoIndependiente } from '@/lib/cobro-clasificacion-db'
-import { tipoDeCobro, type ClasificacionCobro, type TipoCobro } from '@/lib/cobro-clasificacion'
+import { repartirImporte, tipoDeCobro, type ClasificacionCobro, type TipoCobro } from '@/lib/cobro-clasificacion'
 
 /**
  * GET /api/cartera/abonos — ADR-CORRECCION-MONETARIA-001 D.5.
@@ -82,15 +82,11 @@ export async function GET(request: NextRequest) {
         const tipo = tipoDeCobro(clasif)
         clasificacion.set(a.id, { tipo, aproximado: clasif.aproximado, clasif })
         if (tipo === 'COBRO_DEL_DIA') idsDelDia.push(a.id)
-        // Neto del abono en centavos. Un cobro del día completo no cuenta como cartera; uno mixto aporta su parte de cartera.
+        // Solo cuenta la porción de deuda de jornadas anteriores (un cobro mixto aporta su parte de cartera).
         const neto = Math.round((Number(a.monto) - a.correcciones.reduce((t, c) => t + Number(c.montoRevertido), 0)) * 100)
-        if (tipo === 'COBRO_DEL_DIA') {
-          delDiaCentavos += neto
-        } else {
-          const base = clasif.ventaDiaCentavos + clasif.carteraCentavos
-          const dia = base > 0 ? Math.round((neto * clasif.ventaDiaCentavos) / base) : 0
-          carteraCentavos += neto - dia
-        }
+        const parte = repartirImporte(neto, clasif)
+        carteraCentavos += parte.carteraCentavos
+        if (tipo === 'COBRO_DEL_DIA') delDiaCentavos += neto
       }
     } catch (err) {
       clasificacionDisponible = false
@@ -144,6 +140,9 @@ export async function GET(request: NextRequest) {
         ...a,
         tipoCobro: clase?.tipo ?? null,
         fechaAproximada: clase?.aproximado ?? false,
+        // Porción de deuda de jornadas anteriores (null si no se pudo clasificar): es lo que Cartera muestra y suma.
+        montoCartera: clase ? repartirImporte(Math.round(Number(a.monto) * 100), clase.clasif).carteraCentavos / 100 : null,
+        netoCartera: clase ? repartirImporte(Math.round((Number(a.monto) - revertido) * 100), clase.clasif).carteraCentavos / 100 : null,
         monto: Number(a.monto),
         montoRevertido: revertido,
         montoNeto: Number(a.monto) - revertido,
@@ -157,7 +156,9 @@ export async function GET(request: NextRequest) {
     const totales = {
       totalAbonado,
       totalRevertido,
-      totalNeto: totalAbonado - totalRevertido,
+      // Con clasificación, el total es solo cartera (deuda de jornadas anteriores); sin ella, el neto de todos los abonos.
+      totalNeto: clasificacionDisponible ? carteraCentavos / 100 : totalAbonado - totalRevertido,
+      totalNetoAbonos: totalAbonado - totalRevertido,
       count: total,
       clasificacionDisponible,
       // #796: cartera recuperada (neto de lo que cubre entregas de días anteriores) y, aparte, lo que no se lista por
