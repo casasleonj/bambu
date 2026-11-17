@@ -7,8 +7,12 @@ const deCentavos = (c: number): number => c / 100
 export interface PagoParaDesglose {
   metodo: string
   monto: unknown
-  /** Fecha del pedido sobre el que se cobró (decide si es una venta de hoy o un fiado anterior). */
+  /** Fecha del pedido sobre el que se cobró (regla anterior; solo se usa si no llega `clasificacion`). */
   pedidoFecha: Date
+  /** #796: reparto en centavos por fecha de ENTREGA (ver `cobro-clasificacion.ts`). */
+  clasificacion?: { ventaDiaCentavos: number; carteraCentavos: number; aproximado: boolean }
+  /** Número del pedido, para listar los cobros de fecha aproximada. */
+  pedidoNumero?: number
 }
 
 export interface ParteDesglose {
@@ -31,6 +35,8 @@ export interface DesgloseCobros {
   esperado: number
   diferencia: number
   cuadra: boolean
+  /** #796: cobros clasificados por la fecha de creación porque el pedido entregado no tiene fecha de entrega. */
+  aproximados?: { cantidad: number; monto: number; pedidos: number[] }
 }
 
 function parteVacia(): { efectivo: number; digital: number; porMetodo: Record<string, number> } {
@@ -52,14 +58,29 @@ export function desglosarCobros(
 ): DesgloseCobros {
   const hoy = parteVacia()
   const anteriores = parteVacia()
-  for (const p of pagos) {
-    const destino = p.pedidoFecha >= desde && p.pedidoFecha < hasta ? hoy : anteriores
-    const c = aCentavos(p.monto)
-    if (p.metodo === 'EFECTIVO') destino.efectivo += c
+  const sumar = (destino: ReturnType<typeof parteVacia>, metodo: string, c: number) => {
+    if (c === 0) return
+    if (metodo === 'EFECTIVO') destino.efectivo += c
     else {
       destino.digital += c
-      destino.porMetodo[p.metodo] = (destino.porMetodo[p.metodo] ?? 0) + c
+      destino.porMetodo[metodo] = (destino.porMetodo[metodo] ?? 0) + c
     }
+  }
+  let aproxCantidad = 0
+  let aproxCentavos = 0
+  const aproxPedidos = new Set<number>()
+  for (const p of pagos) {
+    if (p.clasificacion) {
+      sumar(hoy, p.metodo, p.clasificacion.ventaDiaCentavos)
+      sumar(anteriores, p.metodo, p.clasificacion.carteraCentavos)
+      if (p.clasificacion.aproximado) {
+        aproxCantidad += 1
+        aproxCentavos += p.clasificacion.ventaDiaCentavos + p.clasificacion.carteraCentavos
+        if (p.pedidoNumero !== undefined) aproxPedidos.add(p.pedidoNumero)
+      }
+      continue
+    }
+    sumar(p.pedidoFecha >= desde && p.pedidoFecha < hasta ? hoy : anteriores, p.metodo, aCentavos(p.monto))
   }
   const abEfectivo = aCentavos(abonos.totalEfectivo)
   const abDigital = aCentavos(abonos.total) - abEfectivo
@@ -75,6 +96,7 @@ export function desglosarCobros(
     fiadosAnteriores,
     abonos: { ...ab, independientes: abonos.abonosIndependientes, ajustes: abonos.ajustesDeCobros },
     efectivo, digital, total, esperado, diferencia, cuadra: diferencia === 0,
+    aproximados: { cantidad: aproxCantidad, monto: deCentavos(aproxCentavos), pedidos: [...aproxPedidos].sort((a, b) => a - b) },
   }
 }
 

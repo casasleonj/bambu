@@ -34,6 +34,36 @@ interface AbonoRow {
   factura: { id: string; numero: string } | null
   pedido: { id: string; numero: number; estadoEntrega: string } | null
   correcciones: Correccion[]
+  /** #796: null si el cobro no se pudo clasificar. */
+  tipoCobro?: TipoCobro | null
+  fechaAproximada?: boolean
+}
+
+type TipoCobro = 'COBRO_DEL_DIA' | 'CARTERA' | 'MIXTO'
+
+/** #796: cómo se presenta cada tipo de cobro (el pago de la jornada de la entrega no es «cartera»). */
+const ETIQUETA_TIPO: Record<TipoCobro, { texto: string; clase: string; ayuda: string }> = {
+  COBRO_DEL_DIA: { texto: 'Cobro del día', clase: 'bg-green-100 text-green-800', ayuda: 'Se cobró el mismo día de la entrega. Ya está en las ventas de ese día.' },
+  CARTERA: { texto: 'Cartera anterior', clase: 'bg-amber-100 text-amber-800', ayuda: 'Recupera una entrega de un día anterior.' },
+  MIXTO: { texto: 'Cartera y día', clase: 'bg-sky-100 text-sky-800', ayuda: 'Cubre una entrega anterior y una del mismo día.' },
+}
+
+function EtiquetaTipo({ r }: { r: AbonoRow }) {
+  if (!r.tipoCobro) return <span className="text-gray-400">—</span>
+  const e = ETIQUETA_TIPO[r.tipoCobro]
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <span title={e.ayuda} className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${e.clase}`}>{e.texto}</span>
+      {r.fechaAproximada && (
+        <span
+          title="Este pedido figura entregado pero no tiene registro de la entrega; se clasificó por su fecha de creación. Falta conciliar."
+          className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-800"
+        >
+          Fecha aproximada ⓘ
+        </span>
+      )}
+    </span>
+  )
 }
 
 const TIPOS: { value: string; label: string; hint: string }[] = [
@@ -50,6 +80,10 @@ export default function CarteraClient() {
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalNeto, setTotalNeto] = useState(0)
+  const [carteraRecuperada, setCarteraRecuperada] = useState<number | null>(null)
+  const [cobrosDelDia, setCobrosDelDia] = useState<number | null>(null)
+  const [sinClasificar, setSinClasificar] = useState(false)
+  const [tipo, setTipo] = useState<'' | 'COBRO_DEL_DIA' | 'CARTERA'>('')
   const [estado, setEstado] = useState<'' | 'corregido' | 'sin-corregir'>('')
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('') // valor debounced que va al server
@@ -72,6 +106,7 @@ export default function CarteraClient() {
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: '20' })
       if (estado) params.set('estado', estado)
+      if (tipo) params.set('tipo', tipo)
       if (q) params.set('q', q)
       const res = await fetch(`/api/cartera/abonos?${params}`, {
         credentials: 'include',
@@ -87,12 +122,15 @@ export default function CarteraClient() {
       setRows(json.data ?? [])
       setTotalPages(json.totalPages ?? 1)
       setTotalNeto(json.totales?.totalNeto ?? 0)
+      setCarteraRecuperada(json.totales?.carteraRecuperada ?? null)
+      setCobrosDelDia(json.totales?.cobrosDelDia ?? null)
+      setSinClasificar(json.totales?.clasificacionDisponible === false)
     } catch {
       setError('No se pudo cargar la lista de abonos.')
     } finally {
       setLoading(false)
     }
-  }, [page, estado, q])
+  }, [page, estado, tipo, q])
 
   useEffect(() => {
     // Fetch de datos al montar / cambiar page-estado-q — side effect de red real,
@@ -117,6 +155,26 @@ export default function CarteraClient() {
         </div>
       </div>
 
+      {!loading && !error && !sinClasificar && carteraRecuperada !== null && cobrosDelDia !== null && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="cartera-totales-tipo">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+            <div className="text-xs text-slate-600">Cartera recuperada (deuda de días anteriores)</div>
+            <div className="text-xl font-bold" data-testid="cartera-total-cartera">{formatCurrency(carteraRecuperada)}</div>
+          </div>
+          <div className="rounded-xl border border-green-200 bg-green-50 px-3 py-2">
+            <div className="text-xs text-slate-600">Cobros del día de la venta (ya están en las ventas de ese día)</div>
+            <div className="text-xl font-bold" data-testid="cartera-total-dia">{formatCurrency(cobrosDelDia)}</div>
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && sinClasificar && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" data-testid="cartera-sin-clasificar">
+          <span>No se pudo clasificar los cobros. Los abonos se muestran sin tipo; los totales por tipo no están disponibles.</span>
+          <button className="rounded-lg border border-blue-600 bg-white px-3 py-1 text-xs font-semibold text-blue-700" onClick={() => load()}>Reintentar</button>
+        </div>
+      )}
+
       <div className="flex gap-2 flex-wrap">
         <input
           className="border rounded px-3 py-1.5 text-sm"
@@ -136,13 +194,50 @@ export default function CarteraClient() {
           <option value="sin-corregir">Sin corregir</option>
           <option value="corregido">Corregidos</option>
         </select>
+        <select
+          className="border rounded px-3 py-1.5 text-sm"
+          aria-label="Tipo de cobro"
+          data-testid="cartera-filtro-tipo"
+          value={tipo}
+          onChange={(e) => {
+            setPage(1)
+            setTipo(e.target.value as typeof tipo)
+          }}
+        >
+          <option value="">Tipo: Todos</option>
+          <option value="CARTERA">Cartera anterior</option>
+          <option value="COBRO_DEL_DIA">Cobro del día</option>
+        </select>
       </div>
 
       {error && <div className="text-sm text-red-600">{error}</div>}
-      {loading && <div className="text-sm text-gray-500">Cargando…</div>}
+      {loading && (
+        <div className="space-y-2" aria-busy="true" data-testid="cartera-cargando">
+          <div className="text-sm text-gray-500">Cargando…</div>
+          <div className="h-4 w-3/5 animate-pulse rounded bg-gray-200" />
+          <div className="h-4 animate-pulse rounded bg-gray-200" />
+          <div className="h-4 w-4/5 animate-pulse rounded bg-gray-200" />
+        </div>
+      )}
 
       {!loading && !error && (
-        <div className="overflow-x-auto border rounded">
+        <div className="space-y-2 md:hidden" data-testid="cartera-tarjetas">
+          {filtered.map((r) => (
+            <div key={r.id} className="rounded-xl border bg-white p-3 text-sm">
+              <div className="flex items-center justify-between gap-2"><b>{r.numero}</b><EtiquetaTipo r={r} /></div>
+              <div className="mt-1 flex justify-between gap-2"><span>{r.cliente?.nombre ?? '—'} · {r.factura?.numero ?? '—'}</span><b>{formatCurrency(r.montoNeto)}</b></div>
+              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500">
+                <span>{new Date(r.fecha).toLocaleDateString('es-CO')} · {r.metodoPago}</span>
+                <button className="text-sm text-blue-600 hover:underline disabled:text-gray-400" disabled={r.montoNeto <= 0} onClick={() => setCorrigiendo(r)}>Corregir</button>
+              </div>
+            </div>
+          ))}
+          {filtered.length === 0 && <div className="px-3 py-6 text-center text-gray-500">Sin abonos.</div>}
+        </div>
+      )}
+
+      {!loading && !error && (
+        <div className="hidden overflow-x-auto border rounded md:block">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 text-left">
               <tr>
@@ -150,6 +245,7 @@ export default function CarteraClient() {
                 <th className="px-3 py-2">Fecha</th>
                 <th className="px-3 py-2">Cliente</th>
                 <th className="px-3 py-2">Factura</th>
+                <th className="px-3 py-2">Tipo</th>
                 <th className="px-3 py-2">Método</th>
                 <th className="px-3 py-2 text-right">Monto</th>
                 <th className="px-3 py-2 text-right">Neto</th>
@@ -163,6 +259,7 @@ export default function CarteraClient() {
                   <td className="px-3 py-2 whitespace-nowrap">{new Date(r.fecha).toLocaleDateString('es-CO')}</td>
                   <td className="px-3 py-2">{r.cliente?.nombre ?? '—'}</td>
                   <td className="px-3 py-2">{r.factura?.numero ?? '—'}</td>
+                  <td className="px-3 py-2"><EtiquetaTipo r={r} /></td>
                   <td className="px-3 py-2">{r.metodoPago}</td>
                   <td className="px-3 py-2 text-right">{formatCurrency(r.monto)}</td>
                   <td className="px-3 py-2 text-right">
@@ -187,7 +284,7 @@ export default function CarteraClient() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-gray-500">
+                  <td colSpan={9} className="px-3 py-6 text-center text-gray-500">
                     Sin abonos.
                   </td>
                 </tr>
