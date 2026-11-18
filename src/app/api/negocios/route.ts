@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiList, apiError } from '@/lib/api-response'
 import { BarrioNoEncontradoError, resolverBarrioParaVinculo } from '@/lib/barrios/barrio-service'
+import { normalizarHorario, resumenHorario, validarHorario } from '@/lib/negocio-horario'
 import { EvaluarImpactoUbicacionUseCase } from '@/modules/pedidos/application/use-cases/EvaluarImpactoUbicacionUseCase'
 
 const evaluarImpactoUbicacion = new EvaluarImpactoUbicacionUseCase()
@@ -33,6 +34,12 @@ const NegocioCreateSchema = z.object({
   habBolsaHielo: z.boolean().optional().default(true),
   frecuencia: z.string().optional().nullable(),
   cadaNDias: z.number().int().min(1).optional().nullable(),
+  /** #836 F2: horario semanal. Al actualizar, REEMPLAZA el conjunto; omitirlo no lo toca; `[]` lo borra. */
+  horarios: z.array(z.object({
+    diaSemana: z.number().int().min(0).max(6),
+    desde: z.string(),
+    hasta: z.string(),
+  })).max(28).optional(),
 })
 
 const NegocioUpdateSchema = NegocioCreateSchema.partial()
@@ -53,6 +60,7 @@ export async function GET(request: NextRequest) {
       include: {
         cliente: { select: { id: true, nombre: true, apellido: true, telefono: true } },
         ruta: { select: { id: true, nombre: true } },
+        horarios: { select: { diaSemana: true, desde: true, hasta: true }, orderBy: [{ diaSemana: 'asc' }, { desde: 'asc' }] },
         _count: { select: { pedidos: true } },
       },
       orderBy: { nombre: 'asc' },
@@ -77,6 +85,9 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return apiError('Datos inválidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
+    const { horarios: horariosNuevos, ...datosCrear } = parsed.data
+    const erroresHorario = horariosNuevos ? validarHorario(horariosNuevos) : []
+    if (erroresHorario.length) return apiError('Datos inválidos', 400, { formErrors: erroresHorario })
 
     // F1-BARRIO-CANONICO (fix revisión pre-merge): verificar el Cliente,
     // resolver el Barrio y crear el Negocio DENTRO de la misma transacción
@@ -87,18 +98,18 @@ export async function POST(request: NextRequest) {
     // patrón ya usado en PUT /api/negocios.
     const negocio = await prisma.$transaction(async (tx) => {
       const cliente = await tx.cliente.findUnique({
-        where: { id: parsed.data.clienteId },
+        where: { id: datosCrear.clienteId },
         select: { id: true },
       })
       if (!cliente) throw new Error('CLIENTE_NOT_FOUND')
 
       // F1-BARRIO-CANONICO: si llega barrioId, resuelve el Barrio y
       // sincroniza el string legacy `barrio` con su nombre canónico.
-      let barrioLegacy = parsed.data.barrio
-      if (parsed.data.barrioId) {
+      let barrioLegacy = datosCrear.barrio
+      if (datosCrear.barrioId) {
         let barrioCanonico
         try {
-          barrioCanonico = await resolverBarrioParaVinculo(parsed.data.barrioId, tx)
+          barrioCanonico = await resolverBarrioParaVinculo(datosCrear.barrioId, tx)
         } catch (err) {
           if (err instanceof BarrioNoEncontradoError) throw new Error('BARRIO_NOT_FOUND')
           throw err
@@ -108,13 +119,15 @@ export async function POST(request: NextRequest) {
 
       return tx.negocio.create({
         data: {
-          ...parsed.data,
+          ...datosCrear,
           barrio: barrioLegacy,
           createdById: authResult.user?.id,
+          ...(horariosNuevos?.length ? { horarios: { create: normalizarHorario(horariosNuevos) } } : {}),
         },
         include: {
           cliente: { select: { id: true, nombre: true, apellido: true } },
           ruta: { select: { id: true, nombre: true } },
+          horarios: { select: { diaSemana: true, desde: true, hasta: true } },
         },
       })
     })
@@ -123,7 +136,7 @@ export async function POST(request: NextRequest) {
       entidad: 'Negocio',
       registroId: negocio.id,
       accion: 'CREATE',
-      datos: { nombre: negocio.nombre, clienteId: negocio.clienteId },
+      datos: { nombre: negocio.nombre, clienteId: negocio.clienteId, ...(horariosNuevos?.length ? { horario: resumenHorario(horariosNuevos) } : {}) },
       usuarioId: authResult.user?.id,
     })
 
@@ -154,6 +167,9 @@ export async function PUT(request: NextRequest) {
     if (!parsed.success) {
       return apiError('Datos inválidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
+    const { horarios, ...datosNegocio } = parsed.data
+    const erroresHorario = horarios ? validarHorario(horarios) : []
+    if (erroresHorario.length) return apiError('Datos inválidos', 400, { formErrors: erroresHorario })
 
     // FIX F-35b: optimistic locking con updatedAt.
     // Antes: prisma.negocio.findUnique + update directo sin tx.
@@ -175,15 +191,15 @@ export async function PUT(request: NextRequest) {
       // F1-BARRIO-CANONICO: si llega barrioId, resuelve el Barrio y
       // sincroniza el string legacy `barrio`. Si el negocio no tenía
       // barrioId antes, es una vinculación explícita (auditada aparte).
-      if (parsed.data.barrioId) {
+      if (datosNegocio.barrioId) {
         let barrioCanonico
         try {
-          barrioCanonico = await resolverBarrioParaVinculo(parsed.data.barrioId, tx)
+          barrioCanonico = await resolverBarrioParaVinculo(datosNegocio.barrioId, tx)
         } catch (err) {
           if (err instanceof BarrioNoEncontradoError) throw new Error('BARRIO_NOT_FOUND')
           throw err
         }
-        parsed.data.barrio = barrioCanonico.nombre
+        datosNegocio.barrio = barrioCanonico.nombre
         if (!existing.barrioId) {
           vinculoAudit = { barrioId: barrioCanonico.id, nombreBarrio: barrioCanonico.nombre }
         }
@@ -191,23 +207,31 @@ export async function PUT(request: NextRequest) {
 
       const updateResult = await tx.negocio.updateMany({
         where: { id, updatedAt: existing.updatedAt },
-        data: parsed.data,
+        data: horarios !== undefined ? { ...datosNegocio, updatedAt: new Date() } : datosNegocio,
       })
       if (updateResult.count === 0) {
         throw new Error('NEGOCIO_MODIFICADO_POR_OTRO_ADMIN')
       }
 
+      // #836 F2: el horario se REEMPLAZA completo dentro de la misma transacción (nunca queda a medias).
+      if (horarios !== undefined) {
+        await tx.negocioHorario.deleteMany({ where: { negocioId: id } })
+        if (horarios.length) {
+          await tx.negocioHorario.createMany({ data: normalizarHorario(horarios).map((h) => ({ negocioId: id, ...h })) })
+        }
+      }
+
       // F3 (Impacto en Demanda): señal informativa para Pedidos pendientes
       // que todavía dependían de esta dirección — nunca bloquea ni revierte
       // el update de arriba.
-      if ('direccion' in parsed.data || 'barrio' in parsed.data) {
+      if ('direccion' in datosNegocio || 'barrio' in datosNegocio) {
         await evaluarImpactoUbicacion.execute({
           origenTipo: 'NEGOCIO',
           origenId: id,
           direccionAnterior: existing.direccion,
           barrioAnterior: existing.barrio,
-          direccionNueva: (parsed.data.direccion as string | undefined) ?? existing.direccion,
-          barrioNueva: (parsed.data.barrio as string | undefined) ?? existing.barrio,
+          direccionNueva: (datosNegocio.direccion as string | undefined) ?? existing.direccion,
+          barrioNueva: (datosNegocio.barrio as string | undefined) ?? existing.barrio,
           tx,
         })
       }
@@ -217,6 +241,7 @@ export async function PUT(request: NextRequest) {
         include: {
           cliente: { select: { id: true, nombre: true, apellido: true } },
           ruta: { select: { id: true, nombre: true } },
+          horarios: { select: { diaSemana: true, desde: true, hasta: true }, orderBy: [{ diaSemana: 'asc' }, { desde: 'asc' }] },
         },
       })
     })
@@ -227,7 +252,7 @@ export async function PUT(request: NextRequest) {
       entidad: 'Negocio',
       registroId: id,
       accion: 'UPDATE',
-      datos: parsed.data,
+      datos: horarios !== undefined ? { ...datosNegocio, horario: resumenHorario(horarios) } : datosNegocio,
       usuarioId: authResult.user?.id,
     })
 
