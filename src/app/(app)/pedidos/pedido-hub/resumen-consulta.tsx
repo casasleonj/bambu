@@ -85,7 +85,7 @@ export function ResumenConsulta({
       </h3>
       <p className="mt-1 text-xs text-stone-600">
         {entregas
-          ? "Solo cantidades de entregas con evidencia del intervalo y de los repartidores elegidos."
+          ? "Cantidades de entregas con evidencia del intervalo y de los repartidores elegidos. Las ventas de mostrador entregadas al vender cuentan en la hora de la venta."
           : "Pedidas y entregadas acumuladas de esos pedidos; cada producto se cuenta por separado."}
       </p>
       <div className="mt-1 grid gap-x-5 lg:grid-cols-2">

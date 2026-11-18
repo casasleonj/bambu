@@ -270,4 +270,63 @@ describe("#854 — consulta por evento vs creación vs estado actual", () => {
       expect((await q(a.c.id, D14, "estadoEntrega=ENTREGADO")).total).toBe(0);
     });
   });
+
+  describe("Venta de mostrador entregada al vender: hora y cantidades (entregadoAt = fecha)", () => {
+    async function venta(opts: { canal?: "PUNTO" | "DOMICILIO"; entregadoDistinto?: boolean } = {}) {
+      const c = await testPrisma.cliente.create({ data: { nombre: `854h ${randomUUID()}`, telefono: randomUUID() } });
+      const fecha = en(D14, "11:07:00");
+      const p = await testPrisma.pedido.create({
+        data: {
+          clienteId: c.id, createdById: adminId, canal: opts.canal ?? "PUNTO", origen: "VENTA_RAPIDA",
+          fecha, createdAt: fecha, estado: "ENTREGADO", estadoEntrega: "ENTREGADO", estadoPago: "PAGADO",
+          entregadoAt: opts.entregadoDistinto ? en(D14, "11:30:00") : fecha,
+          total: 13000, totalPagado: 13000, saldo: 0,
+          items: { create: [
+            { producto: "PACA_AGUA", cantPedido: 2, cantEntrega: 2, precio: 5000, subtotal: 10000 },
+            { producto: "BOTELLON", cantPedido: 1, cantEntrega: 1, precio: 3000, subtotal: 3000 },
+          ] },
+        },
+      });
+      return { c, p };
+    }
+    const q = (c: string, extra: string) =>
+      consultarPedidos(filtros(D14, `clienteId=${c}&resumen=1&canal=PUNTO&estadoEntrega=ENTREGADO&${extra}`), "ADMIN", testPrisma);
+
+    it("el resumen suma las cantidades de la venta y no la deja por conciliar", async () => {
+      const { c } = await venta();
+      const r = await q(c.id, "");
+      expect(r.total).toBe(1);
+      expect(r.resumen?.productos).toEqual([
+        { producto: "BOTELLON", pedidas: 0, entregadas: 1 },
+        { producto: "PACA_AGUA", pedidas: 0, entregadas: 2 },
+      ]);
+      expect(r.resumen?.entregasPorConciliar).toBe(0);
+    });
+    it("la fila muestra la hora de la venta como hora verificable", async () => {
+      const { c, p } = await venta();
+      const r = await q(c.id, "");
+      expect(r.pedidos[0].entregaHoraVerificable).toBe(true);
+      expect(r.pedidos[0].entregadoAt).toBe(p.fecha.toISOString());
+    });
+    it("el filtro por hora respeta la hora de la venta", async () => {
+      const { c } = await venta();
+      expect((await q(c.id, "desdeHora=11:00&hastaHora=11:30")).total).toBe(1);
+      expect((await q(c.id, "desdeHora=12:00&hastaHora=13:00")).total).toBe(0);
+    });
+    it("no cambia: entrega con hora distinta de la venta, o Domicilio, sigue por conciliar", async () => {
+      const a = await venta({ entregadoDistinto: true });
+      const ra = await q(a.c.id, "");
+      expect(ra.resumen?.productos).toEqual([]);
+      expect(ra.resumen?.entregasPorConciliar).toBe(1);
+      expect(ra.pedidos[0].entregaHoraVerificable).toBe(false);
+      const b = await venta({ canal: "DOMICILIO" });
+      const rb = await consultarPedidos(
+        filtros(D14, `clienteId=${b.c.id}&resumen=1&canal=DOMICILIO&estadoEntrega=ENTREGADO`),
+        "ADMIN",
+        testPrisma,
+      );
+      expect(rb.resumen?.entregasPorConciliar).toBe(1);
+      expect(rb.resumen?.productos).toEqual([]);
+    });
+  });
 });

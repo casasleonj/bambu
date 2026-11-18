@@ -27,6 +27,25 @@ const fechaValida = (v: unknown): Date | null => {
   const d = new Date(v);
   return Number.isFinite(+d) ? d : null;
 };
+/**
+ * #854: venta de mostrador entregada al vender. Nace ENTREGADA con `entregadoAt` igual, al
+ * milisegundo, a `fecha` (CrearPedidoUseCase; los históricos se rellenaron con la misma regla).
+ * La hora de la entrega es la de la venta y las unidades entregadas son las del pedido. No aplica
+ * a pedidos con eventos propios ni a fechas que difieren de la venta.
+ */
+export function esVentaMostradorEntregadaAlVender(p: {
+  canal: string;
+  estadoEntrega: string;
+  fecha: Date;
+  entregadoAt: Date | null;
+}): boolean {
+  return (
+    p.canal === "PUNTO" &&
+    p.estadoEntrega === "ENTREGADO" &&
+    !!p.entregadoAt &&
+    p.entregadoAt.getTime() === p.fecha.getTime()
+  );
+}
 const enRango = (d: Date, r?: Rango) => !r || (d >= r.desde && d < r.hasta);
 function diaBogota(d: Date) {
   return new Date(
@@ -138,6 +157,9 @@ export async function leerEntregasConsulta(
       },
       select: {
         id: true,
+        canal: true,
+        estadoEntrega: true,
+        fecha: true,
         entregadoAt: true,
         entregadoPorId: true,
         items: { select: { producto: true, cantEntrega: true } },
@@ -292,6 +314,31 @@ export async function leerEntregasConsulta(
         e.incompleto = true;
         if (exceso) e.cantidades = null;
       }
+    const alVender = [...porProducto]
+      .filter(([, cantidad]) => cantidad > 0)
+      .map(([producto, cantidad]) => ({ producto, cantidad }));
+    if (
+      !evidencias.length &&
+      p.entregadoAt &&
+      alVender.length &&
+      esVentaMostradorEntregadaAlVender({
+        canal: p.canal,
+        estadoEntrega: p.estadoEntrega,
+        fecha: p.fecha,
+        entregadoAt: p.entregadoAt,
+      })
+    ) {
+      resultado.push({
+        id: `historico:${p.id}`,
+        pedidoId: p.id,
+        fecha: p.entregadoAt,
+        repartidorId: p.entregadoPorId,
+        cantidades: alVender,
+        fuente: "HISTORICO",
+        precisionDia: false,
+      });
+      continue;
+    }
     if ((!evidencias.length || incompleto) && p.entregadoAt)
       resultado.push({
         id: `historico:${p.id}`,
