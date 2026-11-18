@@ -8,6 +8,12 @@ import { canReadFacturas } from "./permissions";
 import { getAnonymousClientDisplayName } from "./cliente-canonical";
 import { pickCoords } from "./geo/pedido-coords";
 import { pickDireccionTexto } from "./geo/pedido-direccion";
+import {
+  construirCatalogoBarrios,
+  ordenarGrupos,
+  resolverGrupoBarrio,
+  type GrupoBarrio,
+} from "./barrios/grupo-barrio";
 import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
 import { listarEntregasDestacadas } from "./pedidos-entregas-destacadas";
@@ -27,7 +33,10 @@ import {
   filtrosArrastrados,
   esFocoCompromiso,
   rangoConsultaPedidos,
+  baseEfectiva,
+  entregadoComoUnicoEstado,
   type FiltrosConsultaPedidos,
+  type GrupoBarrioConsulta,
   type ProductoConsulta,
   type ResultadoConsultaPedidos,
 } from "./pedidos-consulta";
@@ -102,10 +111,11 @@ export function whereConsultaPedidos(
       fechaEntrega: f.foco === "paraHoy" ? { not: null, lte: finHoy } : { gt: finHoy },
     });
   }
-  if ((f.fechaBase === "pedido" || f.fechaBase === "creacion") && !f.all && !esFocoCompromiso(f.foco)) {
+  const base = baseEfectiva(f);
+  if ((base === "pedido" || base === "creacion") && !f.all && !esFocoCompromiso(f.foco)) {
     const r = rangoConsultaPedidos(f);
     and.push(
-      f.fechaBase === "creacion"
+      base === "creacion"
         ? { createdAt: { gte: r.desde, lt: r.hasta } }
         : { fecha: { gte: r.desde, lt: r.hasta } },
     );
@@ -249,12 +259,18 @@ async function leerConsultaPedidos(
       const coincidencias = f.search
         ? await resolverCoincidenciasPedidos(tx, f.search)
         : undefined;
+      const base = baseEfectiva(f);
       const rango = rangoConsultaPedidos(f),
         where = whereConsultaPedidos(f, coincidencias);
       const and = where.AND as Prisma.PedidoWhereInput[];
       let cobros: CobrosPeriodo | null = null,
         entregas: EntregaConsulta[] | null = null;
-      if (f.fechaBase === "cobro") {
+      // #854: «Entregado» sin fecha ni evento de entrega (ventas de mostrador antiguas o
+      // inmediatas). Convención del repo (entregas-hoy, unidades-entregadas-dia, fiados): el día
+      // de la entrega es el de la fecha del pedido, marcado como «por conciliar». No se escribe
+      // ninguna fecha. No aplica con repartidor: sin evidencia no hay a quién atribuirla.
+      const sinFechaEntrega = new Set<string>();
+      if (base === "cobro") {
         cobros = await leerCobrosPeriodo(tx, rango.desde, rango.hasta);
         const ids = [
           ...new Set([
@@ -266,20 +282,41 @@ async function leerConsultaPedidos(
         ];
         and.push({ id: { in: ids } });
       }
-      if (f.fechaBase === "entrega") {
+      if (base === "entrega") {
         entregas = await leerEntregasConsulta(tx, { rango });
-        const ids = [
-          ...new Set(
-            entregas
-              .filter(
-                (e) =>
-                  !f.repartidorId.length ||
-                  (!!e.repartidorId && f.repartidorId.includes(e.repartidorId)),
-              )
-              .map((e) => e.pedidoId),
-          ),
-        ];
-        and.push({ id: { in: ids } });
+        const ids = new Set(
+          entregas
+            .filter(
+              (e) =>
+                !f.repartidorId.length ||
+                (!!e.repartidorId && f.repartidorId.includes(e.repartidorId)),
+            )
+            .map((e) => e.pedidoId),
+        );
+        if (entregadoComoUnicoEstado(f) && !f.repartidorId.length) {
+          const candidatos = await tx.pedido.findMany({
+            where: {
+              AND: [
+                ...and,
+                { entregadoAt: null, fecha: { gte: rango.desde, lt: rango.hasta } },
+              ],
+            },
+            select: { id: true },
+          });
+          if (candidatos.length) {
+            const conHechos = new Set(
+              (await leerEntregasConsulta(tx, { ids: candidatos.map((c) => c.id) })).map(
+                (e) => e.pedidoId,
+              ),
+            );
+            for (const c of candidatos)
+              if (!conHechos.has(c.id)) {
+                sinFechaEntrega.add(c.id);
+                ids.add(c.id);
+              }
+          }
+        }
+        and.push({ id: { in: [...ids] } });
       } else if (f.repartidorId.length) {
         const candidatos = await tx.pedido.findMany({
           where,
@@ -309,16 +346,63 @@ async function leerConsultaPedidos(
       const exigiblesConjunto = f.resumen || soloFiados
         ? await leerExigibles(tx, { AND: [where, validoFinanciero] }) : null;
       if (soloFiados) and.push({ id: { in: [...exigiblesConjunto!].filter(([, monto]) => monto > 0).map(([id]) => id) } });
+      // #836 F3: agrupar por barrio efectivo sobre TODO el conjunto filtrado (no sobre la página).
+      // Lee solo las columnas necesarias para clasificar; la página real se trae después.
+      let grupos: GrupoBarrioConsulta[] | undefined;
+      let ordenPagina: string[] | null = null;
+      let grupoPorId: Map<string, GrupoBarrio> | null = null;
+      if (f.agrupar === "barrio" || f.grupoBarrio) {
+        const canonico = { select: { id: true, nombre: true } } as const;
+        const [candidatos, barrios] = await Promise.all([
+          tx.pedido.findMany({
+            where,
+            select: {
+              id: true, fecha: true, numero: true, direccionEntrega: true, barrioEntrega: true,
+              cliente: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
+              negocio: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
+            },
+          }),
+          tx.barrio.findMany({
+            select: { id: true, nombre: true, nombreNormalizado: true, aliases: { select: { textoNormalizado: true } } },
+          }),
+        ]);
+        const catalogo = construirCatalogoBarrios(barrios);
+        const porGrupo = new Map<string, { g: GrupoBarrio; items: typeof candidatos }>();
+        grupoPorId = new Map();
+        for (const c of candidatos) {
+          const g = resolverGrupoBarrio(
+            { overrideDireccion: c.direccionEntrega, overrideBarrio: c.barrioEntrega, cliente: c.cliente, negocio: c.negocio },
+            catalogo,
+          );
+          grupoPorId.set(c.id, g);
+          const e = porGrupo.get(g.clave) ?? { g, items: [] };
+          e.items.push(c);
+          porGrupo.set(g.clave, e);
+        }
+        grupos = ordenarGrupos([...porGrupo.values()].map(({ g, items }) => ({ ...g, total: items.length })));
+        const elegibles = f.grupoBarrio ? (porGrupo.get(f.grupoBarrio)?.items ?? []) : candidatos;
+        if (f.grupoBarrio) and.push({ id: { in: elegibles.map((c) => c.id) } });
+        if (f.agrupar === "barrio") {
+          const posGrupo = new Map(grupos.map((g, i) => [g.clave, i]));
+          ordenPagina = [...elegibles]
+            .sort((a, b) =>
+              (posGrupo.get(grupoPorId!.get(a.id)!.clave)! - posGrupo.get(grupoPorId!.get(b.id)!.clave)!) ||
+              (b.fecha.getTime() - a.fecha.getTime()) ||
+              (b.numero - a.numero) ||
+              (a.id < b.id ? -1 : 1))
+            .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
+            .map((c) => c.id);
+        }
+      }
       const fin: Prisma.PedidoWhereInput = { AND: [where, validoFinanciero] };
-      const [total, rows, repartidores, sumas, parciales] = await Promise.all([
+      const [total, rowsSinOrden, repartidores, sumas, parciales] = await Promise.all([
         tx.pedido.count({ where }),
         tx.pedido.findMany({
-          where,
+          where: ordenPagina ? { AND: [where, { id: { in: ordenPagina } }] } : where,
           orderBy: arrastre
             ? [{ fecha: "asc" }, { numero: "asc" }, { id: "asc" }]
             : [{ fecha: "desc" }, { numero: "desc" }, { id: "asc" }],
-          skip: (f.page - 1) * f.pageSize,
-          take: f.pageSize,
+          ...(ordenPagina ? {} : { skip: (f.page - 1) * f.pageSize, take: f.pageSize }),
           include: {
             items: true,
             pagos: true,
@@ -377,13 +461,18 @@ async function leerConsultaPedidos(
           select: { id: true, total: true, totalPagado: true, saldo: true, estadoEntrega: true, items: { select: { cantEntrega: true, precio: true } } },
         }) : [],
       ]);
+      // #836 F3: con agrupación, la página se trajo por ids; se devuelve en orden de grupo.
+      const posicion = ordenPagina ? new Map(ordenPagina.map((id, i) => [id, i])) : null;
+      const rows = posicion
+        ? [...rowsSinOrden].sort((a, b) => posicion.get(a.id)! - posicion.get(b.id)!)
+        : rowsSinOrden;
       let productos: ProductoConsulta[] = [],
         entregasPorConciliar = 0;
       const idsPagina = rows.map((p) => p.id);
       const exigiblesPagina = exigiblesConjunto ?? await leerExigibles(tx, { id: { in: idsPagina } });
       const hechosPagina = await leerEntregasConsulta(tx, { ids: idsPagina });
       if (f.resumen) {
-        if (f.fechaBase === "entrega" || cobros) {
+        if (base === "entrega" || cobros) {
           const elegibles = await tx.pedido.findMany({
             where: fin,
             select: { id: true },
@@ -396,7 +485,7 @@ async function leerConsultaPedidos(
                 (c) => !c.pedidoId || ids.has(c.pedidoId),
               ),
             );
-          if (entregas && f.fechaBase === "entrega") {
+          if (entregas && base === "entrega") {
             const hechos = entregas.filter(
               (e) =>
                 ids.has(e.pedidoId) &&
@@ -404,11 +493,12 @@ async function leerConsultaPedidos(
                   (!!e.repartidorId &&
                     f.repartidorId.includes(e.repartidorId))),
             );
-            entregasPorConciliar = new Set(
-              hechos
+            entregasPorConciliar = new Set([
+              ...hechos
                 .filter((e) => !e.cantidades || e.incompleto)
                 .map((e) => e.pedidoId),
-            ).size;
+              ...[...sinFechaEntrega].filter((id) => ids.has(id)),
+            ]).size;
             const sums = new Map<string, number>();
             for (const e of hechos)
               for (const l of e.cantidades ?? [])
@@ -420,7 +510,7 @@ async function leerConsultaPedidos(
             }));
           }
         }
-        if (f.fechaBase !== "entrega") {
+        if (base !== "entrega") {
           const [lineas, legacy] = await Promise.all([
             tx.pedidoItem.groupBy({
               by: ["producto"],
@@ -550,6 +640,7 @@ async function leerConsultaPedidos(
           nombreNegocioCli: raw.negocio?.nombre ?? null,
           zonaCli: direccion.direccion ?? "",
           barrioCli: direccion.barrio ?? "",
+          ...(grupoPorId?.get(raw.id) ? { grupoBarrio: grupoPorId.get(raw.id) } : {}),
           rutaNombre:
             raw.negocio?.ruta?.nombre ?? raw.cliente.ruta?.nombre ?? null,
           lat: coords?.lat ?? null,
@@ -604,7 +695,7 @@ async function leerConsultaPedidos(
         pagado = dec(sumas?._sum.totalPagado),
         saldo = dec(sumas?._sum.saldo),
         fiado = [...(exigiblesConjunto?.values() ?? [])].reduce((s, monto) => s + centavos(monto), 0) / 100;
-      const consultaDestacadas = !arrastre && f.fechaBase === "pedido" && !f.all && !esFocoCompromiso(f.foco)
+      const consultaDestacadas = !arrastre && base === "pedido" && !f.all && !esFocoCompromiso(f.foco)
         ? await listarEntregasDestacadas(tx, whereConsultaPedidos({ ...f, fechaBase: "entrega", foco: f.foco === "entregaParcial" ? "" : f.foco }), rango, f.repartidorId, f.foco === "entregaParcial")
         : null;
       const [{ ahora }] = await tx.$queryRaw<
@@ -618,6 +709,7 @@ async function leerConsultaPedidos(
         pageSize: f.pageSize,
         leidoAt: ahora.toISOString(),
         repartidores,
+        ...(grupos ? { grupos } : {}),
         ...(consultaDestacadas ? {
           destacadas: consultaDestacadas.destacadas,
           destacadasTotal: consultaDestacadas.destacadasTotal,

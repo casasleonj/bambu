@@ -3,9 +3,10 @@ import { useState, useSyncExternalStore } from "react";
 import { Modal } from "@/components/modal";
 import { getProductoIconConfig } from "@/lib/producto-iconos";
 import { formatCurrency } from "@/lib/utils";
-import type {
-  FiltrosConsultaPedidos,
-  ResumenConsultaPedidos,
+import {
+  baseEfectiva,
+  type FiltrosConsultaPedidos,
+  type ResumenConsultaPedidos,
 } from "@/lib/pedidos-consulta";
 const money = (n: number) => formatCurrency(n);
 const CLAVE = "consulta-resumen-abierto";
@@ -65,8 +66,9 @@ export function ResumenConsulta({
     }
     window.dispatchEvent(new Event(EVENTO));
   };
-  const cobros = f.fechaBase === "cobro",
-    entregas = f.fechaBase === "entrega";
+  const base = baseEfectiva(f),
+    cobros = base === "cobro",
+    entregas = base === "entrega";
   const rango = f.all
     ? "Todas las fechas"
     : `${f.desde || "Sin inicio"}${f.desdeHora ? " " + f.desdeHora : ""} → ${f.hasta || "Sin final"}${f.hastaHora ? " " + f.hastaHora : ""}`;

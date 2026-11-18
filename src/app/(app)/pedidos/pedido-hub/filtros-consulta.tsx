@@ -2,6 +2,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { getPresetDate, getTodayString } from "@/lib/dates";
 import {
+  baseEfectiva,
   leerFiltrosConsulta,
   parametrosConsulta,
   type FiltrosConsultaPedidos,
@@ -9,6 +10,7 @@ import {
 import {
   alternarCanal,
   alternarEstadoEntrega,
+  alternarAgrupar,
   alternarFoco,
   alternarOrigen,
   alternarPago,
@@ -317,6 +319,17 @@ export function FiltrosConsulta({
               </Chip>
             ))}
           </Grupo>
+          <Grupo
+            titulo="Vista de la lista"
+            ayuda="Agrupa todos los pedidos de la consulta por barrio, con el total real de cada uno."
+          >
+            <Chip
+              activo={draft.agrupar === "barrio"}
+              onClick={() => cambiar((f) => alternarAgrupar(f))}
+            >
+              📍 Agrupar por barrio
+            </Chip>
+          </Grupo>
           <Grupo titulo="Pago">
             {PAGOS.map(([k, label]) => (
               <Chip
@@ -446,7 +459,7 @@ export function FiltrosConsulta({
               <select
                 className={`${control} mt-1`}
                 aria-label="Usar la fecha y hora de"
-                value={draft.fechaBase}
+                value={baseEfectiva(draft)}
                 onChange={(e) =>
                   cambiar((f) => ({
                     ...f,

@@ -72,6 +72,10 @@ export function alternarEstadoEntrega(f: F, estado: string): F {
 export function alternarFoco(f: F, foco: FocoConsulta): F {
   return { ...f, foco: f.foco === foco ? "" : foco, estadoEntrega: [] };
 }
+/** #836 F3: agrupar la lista por barrio. Al desactivar se quita también el barrio elegido. */
+export function alternarAgrupar(f: F): F {
+  return { ...f, agrupar: f.agrupar === "barrio" ? "" : "barrio", grupoBarrio: "" };
+}
 export function alternarPago(f: F, pago: Exclude<F["pago"], "todos">): F {
   return { ...f, pago: f.pago === pago ? "todos" : pago, estadoPago: [] };
 }
@@ -155,6 +159,12 @@ export function filtrosActivos(
       clave: "foco",
       etiqueta: etiqueta(FOCOS, f.foco),
       quitar: (x) => ({ ...x, foco: "" }),
+    });
+  if (f.agrupar === "barrio")
+    out.push({
+      clave: "agrupar",
+      etiqueta: f.grupoBarrio ? "Agrupado por barrio · un solo barrio" : "Agrupado por barrio",
+      quitar: (x) => ({ ...x, agrupar: "", grupoBarrio: "" }),
     });
   if (f.pago !== "todos")
     out.push({
