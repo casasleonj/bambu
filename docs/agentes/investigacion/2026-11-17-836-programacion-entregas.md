@@ -84,3 +84,45 @@ Maquetas F1 y F3 (escritorio y móvil, con confirmación, carga y error): `docs/
 - **Migración `20261118_pedido_reprogramacion` — verificación previa AUTORIZADA por el PO (solo lectura), realizada:** la tabla no existe aún en producción; `Pedido.id` y `User.id` son `text` (coinciden con las FK); el código desplegado no conoce la tabla, así que aplicarla antes del merge es compatible. SQL probado en PostgreSQL 16 local (idempotente, sin diferencias contra el esquema); producción es PostgreSQL 17.
 - **`BRECHA` previa, ajena a #836:** `_prisma_migrations` de producción no registra 5 migraciones cuyos objetos sí existen (`20261111162455_fecha_pago_real_comision`, `20261111_devolucion_saldo_favor`, `20261112_user_puede_confirmar_pagos`, `20261113_precio_unitario_precision_795`, `20261117_pago_comision_fecha_correccion`). Requiere decisión aparte (#409). No se tocó.
 - **Migración APLICADA y REGISTRADA en producción (17-nov-2026, autorización expresa del PO):** se ejecutó el SQL de `prisma/migrations/20261118_pedido_reprogramacion/migration.sql` sin cambios. Verificación de solo lectura posterior: 9 columnas, 4 índices, 2 claves foráneas (`CASCADE` hacia `Pedido`, `RESTRICT` hacia `User`), tabla vacía y los 1218 pedidos intactos. Registrada en `_prisma_migrations` con el sha256 real del archivo (`dd805348…d933`), sin otra fila creada. Reversa: la tabla es nueva y vacía; el código desplegado no la usa, así que dejarla no afecta a nadie.
+
+## 8. Fase 2b · «no antes de HH:MM» por pedido (R1+R2 con Claude, sobre `main` `944c8cd`, 18-nov-2026)
+
+**Estado:** `INVESTIGADO`, `PLAN_APROBADO`: **no**, maquetas: **pendientes**. Código de producto: ninguno. 2a (horario por negocio) está fusionada y en producción (#862, migración aplicada).
+
+### Hechos nuevos (HECHO, a `944c8cd`)
+- `Pedido.horaPreferida` ya existe (`String?`, `schema.prisma:1123`). Es **texto libre**; lo copia `lib/recurrentes.ts` desde la plantilla, lo muestran la tabla de Pedidos y el detalle, y Embarques lo usa solo para ordenar («hoy con hora» / «hoy sin hora»). No lo valida nadie y no restringe nada.
+- Ningún formulario de creación captura `fechaEntrega`; la F1 añadió «Cambiar fecha prometida» (`pedido-reprogramar.tsx`), que es el único lugar de la UI donde hoy se fija.
+- La entrega la registra `POST /api/pedidos/[id]/entrega` → `EntregarPedidoUseCase` (con `entregadoAt` que puede venir del dispositivo) y también se hace **sin conexión** (repartidor). Un bloqueo del servidor no puede detener una entrega ya hecha en la calle y sincronizada después.
+
+### Alternativas
+- **A. Campo nuevo `Pedido.entregaNoAntesDe` (`HH:MM`, hora de Bogotá, opcional)**, interpretado siempre sobre el día prometido (`fechaEntrega`). ✔ Sin ambigüedad, validable con el mismo formato que el horario de negocio. ✘ Una columna más; `horaPreferida` y este campo se parecen y hay que explicar la diferencia en la interfaz («preferida» orienta, «no antes de» avisa).
+- **B. Reinterpretar `horaPreferida`.** ✘ Texto libre con datos de significado desconocido en producción (`NO VERIFICADO`) y copiado desde plantillas: convertiría una preferencia en una restricción sin que nadie lo pidiera.
+- **C. Guardar la hora dentro de `fechaEntrega` (timestamp con hora).** ✘ Rompe el contrato de F1 («día de calendario de Bogotá»), las vistas «hoy/atrasado/programado» y la clasificación compartida con Embarques.
+- **Recomendado: A.** Migración aditiva e idempotente (columna nullable + CHECK de formato). No toca datos existentes.
+
+### Reglas propuestas (alineadas con D1, ya decidida)
+1. **Nunca bloquea.** Preparar, planificar y asignar a embarque siempre se permite; la restricción solo gobierna la **entrega**.
+2. **Al registrar la entrega:** si la hora de entrega (Bogotá) es anterior a `entregaNoAntesDe` el mismo día, se muestra un aviso y se pide **confirmar con un motivo**; queda como evento auditable («entregado antes de la hora acordada»), sin cambiar dinero ni comisión.
+3. **Sin conexión:** el aviso se calcula en el dispositivo con el dato en caché; la entrega se guarda con la marca y el motivo, y el servidor la **registra y señala, no la rechaza** (un rechazo al sincronizar perdería un hecho físico real).
+4. **Cambiar el día prometido** (F1) conserva o limpia la hora según lo que el usuario elija en el mismo diálogo; el historial `PedidoReprogramacion` guarda la hora anterior y la nueva.
+5. **Pedidos ya entregados, cancelados o anulados:** no se muestra ni se aplica.
+6. **Parciales / remanente:** la hora aplica al pedido; la obligación pendiente tiene su propia fecha (H6) y no hereda la hora (`NO VERIFICADO` el recorrido completo; se prueba en F2b).
+
+### Refutación adversarial (qué la rompe)
+1. Hora sin día (pedido sin `fechaEntrega`) → no se permite guardar la hora sin día prometido.
+2. Medianoche y huso: la hora se compara siempre contra el día y la hora de **Bogotá**, no UTC (mismo origen que #753).
+3. Entrega adelantada legítima (el cliente pidió que fueran antes) → por eso confirma con motivo en lugar de bloquear.
+4. `entregadoAt` manipulado desde el dispositivo → el servidor lo registra como viene (precedente F1) y la marca queda en la auditoría; no es un control de seguridad.
+5. Choque con el horario del negocio: «no antes de 06:00» en un negocio que abre a las 08:00 → solo aviso informativo al guardar; no se valida entre sí.
+6. Reintentos y duplicados offline: el evento usa el `offlineId` de la entrega (idempotente).
+
+### Superficies a tocar (a confirmar en R3)
+`schema.prisma` + migración; `ReprogramarPedidoUseCase` y su ruta; `pedido-reprogramar.tsx` (campo de hora opcional); `EntregarPedidoUseCase`/ruta de entrega y la pantalla de registrar entrega (aviso + motivo); `compromiso-chip.tsx` (mostrar «no antes de HH:MM»); consulta de Pedidos (campo en la fila); sincronización offline; OpenAPI.
+
+### Decisiones pendientes del PO
+- **P1:** ¿Campo nuevo (A, recomendado) o reutilizar `horaPreferida` (B)?
+- **P2:** ¿Dónde se captura? Recomendado: en «Cambiar fecha prometida» (hora opcional junto a la fecha). Alternativa: también en la creación del pedido (hoy no captura fecha).
+- **P3:** ¿Confirmar con motivo al entregar antes de hora (recomendado, según D1) o solo avisar sin pedir motivo?
+- **P4:** ¿Aviso también cuando la entrega cae fuera del horario de atención del negocio (2a)? Recomendado: fuera de v1.
+
+**Maquetas (escritorio y móvil, con confirmación, carga y error):** pendientes; no se producen hasta cerrar P1–P4.
