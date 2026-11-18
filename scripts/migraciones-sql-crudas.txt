@@ -41,3 +41,5 @@
 # #834: correcciones administrativas del dia real de caja de un pago de comision (CHECK).
 20261117_pago_comision_fecha_correccion
 20261119_negocio_horario
+# #836 F2b: hora acordada del pedido (CHECK de formato HH:MM, columnas aditivas).
+20261120_pedido_hora_acordada

@@ -93,6 +93,8 @@ export const PedidoCreateSchema = z.object({
   ).optional(),
   obs: z.string().max(500).optional(),
   fechaEntrega: z.string().optional(),
+  /** #836 F2b: hora acordada HH:MM (Bogotá). Solo ordena/agrupa; requiere `fechaEntrega`. */
+  entregaNoAntesDe: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, 'La hora debe tener formato HH:MM').optional(),
   // Snapshot de dirección puntual del pedido (no toca Cliente/Negocio) —
   // ver CrearPedidoUseCase.
   direccionEntrega: z.string().max(200).optional(),

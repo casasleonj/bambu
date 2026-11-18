@@ -266,6 +266,10 @@ export async function POST(request: NextRequest) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
+    if (parsed.data.entregaNoAntesDe && !parsed.data.fechaEntrega) {
+      return apiError('Datos invalidos', 400, { formErrors: ['La hora acordada necesita una fecha prometida.'] })
+    }
+
     const {
       clienteId,
       negocioId,
@@ -273,6 +277,7 @@ export async function POST(request: NextRequest) {
       productos,
       obs,
       fechaEntrega,
+      entregaNoAntesDe,
       canal,
       preciosManuales,
       clienteNuevo,
@@ -356,6 +361,7 @@ export async function POST(request: NextRequest) {
       })),
       obs,
       fechaEntrega: fechaEntrega ? new Date(fechaEntrega) : undefined,
+      entregaNoAntesDe: entregaNoAntesDe || undefined,
       entregado: entregadoInput,
       pedidoOrigenId,
       offlineId,

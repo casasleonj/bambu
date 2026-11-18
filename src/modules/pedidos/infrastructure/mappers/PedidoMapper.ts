@@ -30,6 +30,7 @@ interface PrismaPedido {
   totalPagado: number | { toNumber: () => number }
   fecha: Date
   fechaEntrega: Date | null
+  entregaNoAntesDe?: string | null
   obs: string | null
   idOrigen: string | null
   fotoEntrega: string | null
@@ -120,6 +121,7 @@ export class PedidoMapper {
       pagos,
       fecha: raw.fecha,
       fechaEntrega: raw.fechaEntrega || undefined,
+      entregaNoAntesDe: raw.entregaNoAntesDe || undefined,
       obs: raw.obs || undefined,
       idOrigen: raw.idOrigen || undefined,
       fotoEntrega: raw.fotoEntrega || undefined,
@@ -169,6 +171,7 @@ export class PedidoMapper {
       saldo: pedido.saldo.toDecimal(),
       fecha: pedido.fecha,
       fechaEntrega: pedido.fechaEntrega || null,
+      entregaNoAntesDe: pedido.entregaNoAntesDe ?? null,
       obs: pedido.obs || null,
       idOrigen: pedido.idOrigen || null,
       fotoEntrega: pedido.fotoEntrega || null,

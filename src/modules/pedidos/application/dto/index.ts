@@ -17,6 +17,8 @@ export interface CrearPedidoInput {
   pagos?: PagoData[]
   obs?: string
   fechaEntrega?: Date
+  /** #836 F2b: hora acordada HH:MM (Bogotá) del día prometido. Requiere `fechaEntrega`. */
+  entregaNoAntesDe?: string
   /**
    * ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: solo aplica a venta rápida.
    * `undefined` / `true` → entrega inmediata (ENTREGADO, comportamiento histórico).

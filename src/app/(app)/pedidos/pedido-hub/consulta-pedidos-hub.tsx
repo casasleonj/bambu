@@ -465,6 +465,7 @@ export function ConsultaPedidosHub(props: Props) {
                   onDescartarPendiente: props.onDescartarPendiente,
                   grupos: datos?.grupos,
                   grupoActivo: filtrosLeidos?.grupoBarrio || undefined,
+                  franjas: filtrosLeidos?.foco === "paraHoy",
                   onGrupoBarrio: filtrosLeidos
                     ? (clave) => aplicar({ ...filtrosLeidos, grupoBarrio: clave ?? "", page: 1 })
                     : undefined,

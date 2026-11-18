@@ -20,12 +20,13 @@ function diaLargo(iso: string): string {
 export function PedidoReprogramar({
   pedido, hoyBogota, onMutado,
 }: {
-  pedido: Pick<Pedido, 'id' | 'numero' | 'estadoEntrega' | 'fechaEntrega' | 'negocioHorarios'>
+  pedido: Pick<Pedido, 'id' | 'numero' | 'estadoEntrega' | 'fechaEntrega' | 'entregaNoAntesDe' | 'negocioHorarios'>
   hoyBogota: string
   onMutado: () => void
 }) {
   const [abierto, setAbierto] = useState(false)
   const [fecha, setFecha] = useState('')
+  const [hora, setHora] = useState('')
   const [motivo, setMotivo] = useState('')
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -42,7 +43,7 @@ export function PedidoReprogramar({
 
   function abrir() {
     intento.current = crypto.randomUUID()
-    setFecha(''); setMotivo(''); setError(null); setConflicto(false)
+    setFecha(''); setHora(pedido.entregaNoAntesDe ?? ''); setMotivo(''); setError(null); setConflicto(false)
     setAbierto(true)
   }
 
@@ -57,6 +58,8 @@ export function PedidoReprogramar({
         body: JSON.stringify({
           // Mediodía de Bogotá: el día calendario no deriva por zona horaria.
           fechaNueva: new Date(`${fecha}T12:00:00-05:00`).toISOString(),
+          // #836 F2b: hora acordada. Sin cambio = no se envía; vacía = se quita.
+          horaNueva: hora === (pedido.entregaNoAntesDe ?? '') ? undefined : (hora || null),
           motivo: motivo.trim() || undefined,
           offlineId: intento.current,
           fechaAnteriorEsperada: actual,
@@ -93,6 +96,14 @@ export function PedidoReprogramar({
             Nueva fecha
             <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} disabled={guardando}
               data-testid="reprogramar-fecha" className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+          </label>
+          <label className="block text-xs font-medium text-gray-700">
+            Hora acordada <span className="font-normal text-gray-500">(opcional)</span>
+            <input type="time" value={hora} onChange={(e) => setHora(e.target.value)} disabled={guardando}
+              data-testid="reprogramar-hora" className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+            <span className="mt-0.5 block font-normal text-gray-500">
+              Actual: {pedido.entregaNoAntesDe ?? 'sin hora'}. Solo ordena la lista según qué tan cerca esté; vacía la hora para quitarla. Hora de Bogotá.
+            </span>
           </label>
           <label className="block text-xs font-medium text-gray-700">
             Motivo (opcional)
