@@ -126,3 +126,10 @@ Maquetas F1 y F3 (escritorio y móvil, con confirmación, carga y error): `docs/
 - **P4:** ¿Aviso también cuando la entrega cae fuera del horario de atención del negocio (2a)? Recomendado: fuera de v1.
 
 **Maquetas (escritorio y móvil, con confirmación, carga y error):** pendientes; no se producen hasta cerrar P1–P4.
+
+### 8.1 Decisiones del PO sobre la fase 2b (18-nov-2026)
+- **P1 — `DECISIÓN` (PO):** campo nuevo `Pedido.entregaNoAntesDe` (HH:MM, hora de Bogotá), no se reutiliza `horaPreferida`.
+- **P2 — `DECISIÓN` (PO):** se captura **en las dos partes**: al crear el pedido (bloque «¿Para cuándo?» con «Hoy» / «Otro día», fecha prometida y «No entregar antes de») y al «Cambiar fecha prometida». «Hoy» no guarda fecha, así que quien no programa no nota cambios.
+- **P3 — `DECISIÓN` (PO):** al entregar antes de la hora **solo avisa**, sin pedir motivo (reemplaza la propuesta «avisar y pedir motivo» de §8). Se mantiene la marca auditable «entregado antes de la hora acordada» y nunca se bloquea, tampoco sin conexión.
+- **P4 — `DECISIÓN` (PO):** el aviso por horario de atención del negocio al entregar queda fuera de esta versión.
+- **Maquetas:** `05-no-antes-de-escritorio` y `06-no-antes-de-movil` (`.html` y `.png`), **PENDIENTE DE APROBACIÓN**. Sin aprobación no hay código.

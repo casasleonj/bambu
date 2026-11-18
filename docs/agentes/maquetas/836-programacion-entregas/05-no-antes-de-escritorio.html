@@ -1,0 +1,54 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>#836 · F2b · Escritorio</title><style>
+:root{--g100:#f3f4f6;--g200:#e5e7eb;--g300:#d1d5db;--g500:#6b7280;--g600:#4b5563;--g800:#1f2937;--b50:#eff6ff;--b600:#2563eb;--b800:#1e40af;--gr100:#dcfce7;--gr800:#166534;--a100:#fef3c7;--a800:#92400e;--r50:#fef2f2;--r200:#fecaca;--r800:#991b1b}
+*{box-sizing:border-box}body{margin:0;background:#e5e7eb;font:14px/20px Arial,sans-serif;color:#111827}
+h1,h2,h3,p{margin:0}.lienzo{padding:20px;display:flex;flex-wrap:wrap;gap:24px;justify-content:center;align-items:flex-start}
+.cab{width:100%;background:#fff;border:1px solid var(--g300);border-radius:12px;padding:14px 18px}.cab p{color:var(--g600)}
+.etq{background:var(--g800);color:#fff;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700;margin-right:6px}
+.pant{background:#fff;border:1px solid var(--g300);border-radius:12px;padding:14px}.pant>h2{font-size:12px;text-transform:uppercase;color:var(--g500);margin-bottom:10px}
+.tabs{display:flex;gap:6px;margin-bottom:10px}.tab{border:1px solid var(--g300);border-radius:999px;padding:4px 12px;background:#fff}.tab.on{background:var(--b600);color:#fff;border-color:var(--b600)}
+.bar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}.sw{border:1px solid var(--g300);border-radius:8px;padding:4px 10px;background:#fff}.sw.on{background:var(--b50);border-color:var(--b600);color:var(--b800)}
+.gr{background:var(--g100);border-radius:8px;padding:6px 10px;margin:10px 0 6px;display:flex;justify-content:space-between;font-weight:700}
+.f{border:1px solid var(--g200);border-radius:8px;padding:8px 10px;margin-bottom:6px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.f small{color:var(--g500);display:block}.ch{display:inline-block;border-radius:999px;padding:0 8px;font-size:12px;margin:2px 4px 0 0}
+.ok{background:var(--gr100);color:var(--gr800)}.am{background:var(--a100);color:var(--a800)}.ro{background:var(--r50);color:var(--r800);border:1px solid var(--r200)}.az{background:var(--b50);color:var(--b800)}
+button.b{border:1px solid var(--b600);background:var(--b600);color:#fff;border-radius:8px;padding:6px 12px;font:inherit}button.s{border:1px solid var(--g300);background:#fff;border-radius:8px;padding:6px 12px;font:inherit}
+.dlg{border:1px solid var(--g300);border-radius:12px;padding:14px;background:#fff}.dlg label{display:block;font-weight:700;margin:8px 0 2px}.dlg .in{border:1px solid var(--g300);border-radius:8px;padding:6px 8px;color:var(--g600)}
+.msg{border-radius:8px;padding:8px 10px;margin-top:8px}.dsk{width:560px}.mov{width:340px}.spin{display:inline-block;width:12px;height:12px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;vertical-align:-2px;margin-right:6px}
+
+.in{border:1px solid var(--g300);border-radius:8px;padding:6px 10px;background:#fff;min-height:32px}.in.er{border-color:#b91c1c;background:#fef2f2}
+.seg{display:inline-flex;border:1px solid var(--g300);border-radius:8px;overflow:hidden}.seg span{padding:6px 14px;background:#fff}.seg span.on{background:var(--b600);color:#fff}
+.row2{display:flex;gap:10px;flex-wrap:wrap}.row2>div{flex:1;min-width:130px}.ayu{color:var(--g500);font-size:12px;margin-top:2px}.err{color:#b91c1c;font-size:12px;margin-top:2px}
+.sec{border:1px solid var(--g200);border-radius:10px;padding:10px;margin:8px 0;background:#fafafa}.sub{font-size:12px;text-transform:uppercase;color:var(--g500);margin:10px 0 4px;font-weight:700}
+</style></head><body><div class="lienzo"><div class="cab"><h1><span class="etq">MAQUETA · PENDIENTE DE APROBACIÓN</span>#836 · F2b · Escritorio</h1><p>F2b · «No antes de HH:MM»: se captura al crear y al cambiar la fecha; al entregar antes solo avisa. Datos de ejemplo.</p></div><div class="pant dsk">
+<div class="sub">A · Crear pedido · entrega pendiente (Domicilio, o Punto con «entregar después»)</div>
+<div class="dlg"><b>Nuevo pedido · 🚚 Domicilio</b>
+<p class="ayu">Cliente, productos y pagos sin cambios. Se añade este bloque, arriba de «Observaciones».</p>
+<div class="sec"><b>¿Para cuándo?</b><div style="margin-top:6px"><div class="seg"><span class="on">Hoy</span><span>Otro día</span></div></div>
+<p class="ayu">«Hoy» no guarda fecha prometida: el pedido se comporta como hoy. Nada cambia para quien no programa.</p></div>
+<div class="sec"><b>¿Para cuándo?</b><div style="margin-top:6px"><div class="seg"><span>Hoy</span><span class="on">Otro día</span></div></div>
+<div class="row2"><div><label>Fecha prometida</label><div class="in">sáb 21 nov</div></div><div><label>No entregar antes de <small>(opcional)</small></label><div class="in">06:00 a. m.</div></div></div>
+<p class="ayu">Es un aviso para quien entrega: nunca impide registrar la entrega. Hora de Bogotá. Se puede cambiar después.</p></div>
+<button class="b">Crear pedido</button>
+<div class="sub">B · Errores de validación (no se guarda hasta corregir)</div>
+<div class="sec"><div class="row2"><div><label>Fecha prometida</label><div class="in er">lun 10 nov</div><div class="err">La fecha ya pasó. Elige hoy o una fecha futura.</div></div><div><label>No entregar antes de</label><div class="in">06:00 a. m.</div></div></div></div>
+<div class="sec"><div class="seg"><span>Hoy</span><span class="on">Otro día</span></div><div class="row2"><div><label>Fecha prometida</label><div class="in er">elige una fecha</div><div class="err">Elige la fecha para poder indicar la hora.</div></div><div><label>No entregar antes de</label><div class="in">06:00 a. m.</div></div></div></div>
+<div class="sub">C · Guardando y error al crear</div>
+<div class="dlg"><button class="b"><span class="spin"></span>Creando…</button><p class="ayu">Sin conexión se guarda en el dispositivo y se sincroniza; la fecha y la hora viajan con el pedido.</p></div>
+<div class="msg ro">No se pudo crear el pedido. No se perdió nada: revisa la conexión y vuelve a intentar.</div></div>
+<div class="sub">D · Cambiar fecha prometida (pedido existente)</div>
+<div class="dlg"><b>Cambiar fecha de #1031</b>
+<div class="row2"><div><label>Nueva fecha</label><div class="in">sáb 21 nov</div></div><div><label>No entregar antes de <small>(opcional)</small></label><div class="in">06:00 a. m.</div></div></div>
+<p class="ayu">Actual: vie 20 nov · sin hora. Se puede dejar la hora vacía para quitarla.</p>
+<label>Motivo</label><div class="in">El cliente pidió recibir temprano</div>
+<div class="msg am">Estaba vencido desde ayer. El incumplimiento queda en el historial.</div>
+<div style="margin-top:10px"><button class="b">Confirmar cambio</button> <button class="s">Cancelar</button></div></div>
+<div class="dlg" style="margin-top:8px"><button class="b"><span class="spin"></span>Guardando…</button></div>
+<div class="dlg" style="margin-top:8px"><div class="msg ro">Otra persona cambió este pedido hace un momento. Revisa la fecha actual y vuelve a confirmar.</div><button class="s" style="margin-top:6px">Ver fecha actual</button></div>
+<div class="sub">E · Cómo se ve después (lista y detalle)</div>
+<div class="f"><div><b>#1031 · Panadería Sol</b><small>Programado · sáb 21 nov</small><span class="ch az">No antes de 06:00</span></div><button class="s">Cambiar fecha</button></div>
+<div class="f"><div><b>#1042 · Tienda La Esquina</b><small>Para hoy</small><span class="ch ok">Para hoy</span><span class="ch ro">Negocio cerrado ese día</span></div></div>
+<div class="sub">F · Al registrar la entrega antes de la hora (solo avisa, sin motivo)</div>
+<div class="dlg"><b>Entrega antes de la hora acordada</b>
+<div class="msg am">Este pedido se acordó para después de las 6:00 a. m. y ahora son las 5:40 a. m. Puedes registrar la entrega.</div>
+<div style="margin-top:10px"><button class="b">Registrar entrega de todos modos</button> <button class="s">Volver</button></div>
+<p class="ayu">Queda la marca «entregado antes de la hora acordada». Sin conexión se guarda igual y se señala al sincronizar. No cambia dinero ni comisión.</p></div></div></div></body></html>
