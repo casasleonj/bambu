@@ -383,6 +383,13 @@ export function parametrosConsulta(f: FiltrosConsultaPedidos): URLSearchParams {
  * mezclados, «Creación registrada» o «Cobro registrado», la base elegida se respeta. Es
  * derivada: no se guarda en la URL ni en el borrador, así quitar el chip devuelve la base.
  */
+/** #854: «Entregado» es el único estado de entrega elegido. */
+export function entregadoComoUnicoEstado(
+  f: Pick<FiltrosConsultaPedidos, "estadoEntrega">,
+): boolean {
+  return f.estadoEntrega.length === 1 && f.estadoEntrega[0] === "ENTREGADO";
+}
+
 export function baseEfectiva(
   f: Pick<FiltrosConsultaPedidos, "fechaBase" | "estadoEntrega" | "foco" | "all" | "desde" | "hasta">,
 ): FechaConsulta {
@@ -391,8 +398,7 @@ export function baseEfectiva(
     !f.all &&
     (f.desde || f.hasta) &&
     f.foco === "" &&
-    f.estadoEntrega.length === 1 &&
-    f.estadoEntrega[0] === "ENTREGADO"
+    entregadoComoUnicoEstado(f)
   )
     return "entrega";
   return f.fechaBase;
