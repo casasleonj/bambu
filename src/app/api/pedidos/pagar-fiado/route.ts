@@ -20,6 +20,7 @@ import { gestionAdminSinEmbarqueActiva } from '@/lib/gestion-admin'
 import { diaBogota, validarFechaHechoOficina } from '@/lib/gestion-admin-fecha'
 import { nominaQueCubre } from '@/lib/nomina-cobertura'
 import { todayStringBogota } from '@/lib/dates'
+import { cobroDelDiaSinEspejoActivo } from '@/lib/cobro-dia-sin-espejo-flag'
 import { EntregaOficinaError, ESTADO_HTTP_OFICINA } from '@/modules/pedidos/domain/services/entrega-oficina.errors'
 import { idResultadoFiado, huellaCobroFiado, prepararCobroFiado, leerResultadoFiado, errorCobroPedido } from '@/lib/fiados-cobro-server'
 import type { AplicacionFiado, ResultadoCobroFiado } from '@/lib/fiados-cobro'
@@ -128,6 +129,10 @@ export async function POST(request: NextRequest) {
         'La deuda cambió desde que la revisaste. Actualiza el reparto antes de registrar el pago.', 409, { code: 'DEUDA_CAMBIO' })
       if (!preparacion.pedidos.length) return apiError('El cliente no tiene deudas pendientes de pedidos entregados', 400, { code: 'SIN_DEUDA' })
 
+      // #796 paso 3: el cobro de UN pedido entregado hoy (camino #597, ya validado arriba con `errorCobroPedido`) es venta del
+      // día, no cartera: no se le crea el `Abono` espejo. Solo con ambas banderas (sin camino de corrección por pago no se
+      // omite nada) y sin recepción retroactiva de oficina (su día de caja puede no ser el de la entrega).
+      const sinEspejo = Boolean(pedidoId) && !oficina && cobroDelDiaSinEspejoActivo()
       const fondos = pagos.map(p => ({ ...p, restante: Math.round(p.monto * 100), aplicado: 0 }))
       const pagosAplicados: AplicacionFiado[] = []
       const culminados: Array<{ pedidoId: string; numero: number }> = []
@@ -155,15 +160,17 @@ export async function POST(request: NextRequest) {
               data: { saldo: { decrement: montoAplicar }, montoPagado: { increment: montoAplicar } } })
             await tx.factura.update({ where: { id: factura.id }, data: {
               estado: Number(factura.saldo) <= 0 ? 'PAGADA' : Number(factura.montoPagado) > 0 ? 'PARCIAL' : 'EMITIDA' } })
-            const numero = await getNextNumero(tx, { model: 'abono', field: 'numero' })
-            await tx.abono.create({ data: { numero: `ABO-${numero.toString().padStart(5, '0')}`,
-              facturaId: factura.id, clienteId, pedidoId: pedido.id, monto: montoAplicar,
-              metodoPago: fondo.metodo, origenCobro: 'ESPEJO_PAGO', pagoOrigenId: pago.id } })
+            if (!sinEspejo) {
+              const numero = await getNextNumero(tx, { model: 'abono', field: 'numero' })
+              await tx.abono.create({ data: { numero: `ABO-${numero.toString().padStart(5, '0')}`,
+                facturaId: factura.id, clienteId, pedidoId: pedido.id, monto: montoAplicar,
+                metodoPago: fondo.metodo, origenCobro: 'ESPEJO_PAGO', pagoOrigenId: pago.id } })
+            }
           }
         }
         if (aplicado > 0) {
           pagosAplicados.push({ pedidoId: pedido.id, numero: pedido.numero, montoAplicado: aplicado / 100,
-            saldoRestante: saldo / 100, facturaId: pedido.factura?.id, facturaNumero: pedido.factura?.numero, abonoCreado: !!pedido.factura })
+            saldoRestante: saldo / 100, facturaId: pedido.factura?.id, facturaNumero: pedido.factura?.numero, abonoCreado: !!pedido.factura && !sinEspejo })
           if (shouldFireCulminado(pedido.estadoEntrega ?? 'ENTREGADO', calcularEstadoPago(pedido.total, pagado / 100, pedido.estadoEntrega ?? 'ENTREGADO'))) culminados.push({ pedidoId: pedido.id, numero: pedido.numero })
         }
         if (fondos.every(f => f.restante <= 0)) break
