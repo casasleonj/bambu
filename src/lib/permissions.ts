@@ -95,6 +95,15 @@ export function canCreatePedidos(role: string | null | undefined): boolean {
  * Lectura de facturas (#556, decisión del PO 2026-11-01): ADMIN, CONTADOR y ASISTENTE. Misma regla que
  * GET /api/facturas, /api/facturas/[id] y /api/facturas/buscar. Crear o modificar sigue siendo ADMIN/CONTADOR.
  */
+/**
+ * Compartir el resumen consolidado de facturas con el cliente por WhatsApp (#845,
+ * decisión delegada por el PO): ADMIN y ASISTENTE. CONTADOR consulta pero no lo envía.
+ * No es una barrera de datos (el contador puede imprimir a PDF); el endpoint la aplica igual.
+ */
+export function canCompartirResumenFacturas(role: string | null | undefined): boolean {
+  return role === ROLES.ADMIN || role === ROLES.ASISTENTE
+}
+
 export function canReadFacturas(role: string | null | undefined): boolean {
   return role === ROLES.ADMIN || role === ROLES.CONTADOR || role === ROLES.ASISTENTE
 }

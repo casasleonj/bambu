@@ -113,3 +113,34 @@ export function detalleItemsFactura(
   const dif = Math.round((totalFactura - suma) * 100) / 100
   return { items: filas, otrosAjustes: Math.abs(dif) < 0.005 ? 0 : dif }
 }
+
+export interface AbonoParaResumen {
+  fecha: Date
+  monto: number
+  /** Suma de `montoRevertido` de sus correcciones (append-only, ADR-CORRECCION-MONETARIA-001). */
+  revertido: number
+}
+
+export interface AbonoNeto {
+  fecha: Date
+  monto: number
+}
+
+/**
+ * Abonos netos de una factura para mostrarlos al cliente. Un abono puede haberse
+ * revertido (parcial o total) sin borrarse; se muestra su monto neto y se omiten
+ * los reversados del todo. Si la suma no cuadra con `montoPagado` (la autoridad),
+ * se devuelve `null`: el documento muestra solo el total abonado, nunca una lista
+ * que no sume.
+ */
+export function abonosNetosFactura(
+  abonos: readonly AbonoParaResumen[],
+  montoPagado: number,
+): AbonoNeto[] | null {
+  const netos = abonos
+    .map((a) => ({ fecha: a.fecha, monto: Math.round((a.monto - a.revertido) * 100) / 100 }))
+    .filter((a) => a.monto > 0)
+    .sort((a, b) => a.fecha.getTime() - b.fecha.getTime())
+  const suma = Math.round(netos.reduce((acc, a) => acc + a.monto, 0) * 100) / 100
+  return Math.abs(suma - montoPagado) < 0.005 ? netos : null
+}

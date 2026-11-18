@@ -1,6 +1,6 @@
 // @tests totalizarResumen / conteosPorEstado — resumen consolidado de facturas (#758)
 import { describe, it, expect } from 'vitest'
-import { conteosPorEstado, detalleItemsFactura, totalizarResumen, type FacturaParaResumen } from '../resumen-facturas'
+import { abonosNetosFactura, conteosPorEstado, detalleItemsFactura, totalizarResumen, type FacturaParaResumen } from '../resumen-facturas'
 
 const f = (estado: FacturaParaResumen['estado'], total: number, montoPagado: number): FacturaParaResumen => ({
   estado,
@@ -87,5 +87,36 @@ describe('detalleItemsFactura (#867)', () => {
 
   it('sin ítems devuelve la lista vacía y todo el total como ajuste', () => {
     expect(detalleItemsFactura([], 40_000)).toEqual({ items: [], otrosAjustes: 40_000 })
+  })
+})
+
+describe('abonosNetosFactura (#845)', () => {
+  const d = (iso: string) => new Date(`${iso}T15:00:00Z`)
+
+  it('devuelve los abonos en orden cuando suman lo pagado', () => {
+    const r = abonosNetosFactura(
+      [{ fecha: d('2026-11-09'), monto: 10_000, revertido: 0 }, { fecha: d('2026-11-08'), monto: 30_000, revertido: 0 }],
+      40_000,
+    )
+    expect(r?.map((a) => a.monto)).toEqual([30_000, 10_000])
+  })
+
+  it('descuenta lo revertido y omite el abono reversado del todo', () => {
+    const r = abonosNetosFactura(
+      [
+        { fecha: d('2026-11-08'), monto: 30_000, revertido: 10_000 },
+        { fecha: d('2026-11-09'), monto: 5_000, revertido: 5_000 },
+      ],
+      20_000,
+    )
+    expect(r?.map((a) => a.monto)).toEqual([20_000])
+  })
+
+  it('si no cuadra con montoPagado devuelve null: solo se muestra el total', () => {
+    expect(abonosNetosFactura([{ fecha: d('2026-11-08'), monto: 30_000, revertido: 0 }], 40_000)).toBeNull()
+  })
+
+  it('sin abonos y sin pagado devuelve lista vacía', () => {
+    expect(abonosNetosFactura([], 0)).toEqual([])
   })
 })

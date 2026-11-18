@@ -5,9 +5,12 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { toast } from 'sonner'
+import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
+import { canCompartirResumenFacturas } from '@/lib/permissions'
 import './print.css'
 import { FacturaCard, ResumenHero, type ItemResumen } from './resumen-visual'
+import { CompartirWhatsapp } from './compartir-whatsapp'
 
 interface FacturaResumen {
   id: string
@@ -138,6 +141,8 @@ function SkeletonLine({ className = '' }: { className?: string }) {
 export default function ResumenFacturasPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
+  const { data: session } = useSession()
+  const puedeCompartir = canCompartirResumenFacturas((session?.user as { role?: string } | undefined)?.role)
   const clienteId = searchParams.get('clienteId')
   const desde = searchParams.get('desde')
   const hasta = searchParams.get('hasta')
@@ -274,6 +279,18 @@ export default function ResumenFacturasPage() {
         <h1 className="text-2xl font-bold">Resumen Consolidado de Facturas</h1>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => window.history.back()}>Volver</Button>
+          {puedeCompartir && (
+            <CompartirWhatsapp
+              clienteId={cliente.id}
+              clienteNombre={[cliente.nombre, cliente.apellido].filter(Boolean).join(' ')}
+              telefono={cliente.telefono}
+              estado={estado}
+              desde={desde}
+              hasta={hasta}
+              facturas={totales.count}
+              saldo={totales.saldo}
+            />
+          )}
           <Button onClick={handlePrint}>
             <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
