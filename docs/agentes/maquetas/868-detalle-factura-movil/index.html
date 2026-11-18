@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>#868 · Detalle de factura en celular — maqueta para aprobación</title>
+<style>
+  :root { --verde:#2e7d32; --naranja:#9a3412; --gris:#6b7280; --borde:#d1d5db; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background:#f3f4f6; color:#111827; }
+  h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 28px 0 8px; }
+  p.n { color: var(--gris); font-size: 13px; margin: 4px 0 12px; max-width: 900px; }
+  .fila { display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; }
+  .marco { background:#fff; border:1px solid var(--borde); border-radius:14px; padding:14px; }
+  .tel { width: 360px; } .esc { width: 760px; }
+  .etq { font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; margin-bottom:8px; }
+  .mal { color:#b91c1c; } .bien { color: var(--verde); }
+  .btn { font: 500 14px system-ui; border:1px solid #111; background:#fff; border-radius:8px; padding:0 12px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+  .btn.int { border-color:#c2410c; color:var(--naranja); }
+  .btn.abo { background:var(--verde); color:#fff; border-color:var(--verde); }
+  .btn[disabled] { opacity:.55; cursor:default; }
+  /* ANTES (defecto reproducido: alto fijo 36 px, la fila no se parte) */
+  .antes { display:flex; justify-content:flex-end; gap:8px; }
+  .antes .btn { height:36px; }
+  /* DESPUÉS */
+  .despues { display:flex; flex-wrap:wrap; gap:8px; }
+  .despues .btn { min-height:44px; flex:1 1 100%; }
+  @media (min-width: 640px) { .despues { justify-content:flex-end; } .despues .btn { flex:0 0 auto; min-height:36px; } }
+  .nota { font-size:12px; color:var(--gris); margin:2px 0 0; }
+  .estado { margin-top:10px; font-size:13px; }
+  .aviso { border:1px solid #fecaca; background:#fef2f2; color:#991b1b; border-radius:8px; padding:8px 10px; font-size:13px; }
+  .ok { border:1px solid #bbf7d0; background:#f0fdf4; color:#166534; border-radius:8px; padding:8px 10px; font-size:13px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; color:#4b5563; padding:10px 16px; border-bottom:1px solid var(--borde); }
+  td { padding:12px 16px; border-bottom:1px solid #eee; }
+  .compacta th, .compacta td { padding-left:8px; padding-right:8px; }
+  .r { text-align:right; }
+  .caja { border:1px solid var(--borde); border-radius:12px; overflow:hidden; }
+  .ancho { overflow-x:auto; }
+  ul.l { font-size:13px; color:#374151; margin:6px 0 0 18px; padding:0; }
+</style>
+</head>
+<body>
+<h1>#868 · Detalle de factura en celular</h1>
+<p class="n">Maqueta para aprobación del PO (escritorio y móvil, con estados de carga, error y confirmación). Cambia solo la <b>presentación</b> de los botones de la parte superior y el relleno de la tabla de pedidos. No cambia qué botón ve cada rol, ni la impresión, ni ningún cálculo de dinero. Estados reproducidos en navegador a 360 y 390 px: el contenido de los botones medía 47 y 57 px dentro de una caja de 34 px.</p>
+
+<h2>1 · Botones de acción — antes (defecto) y después</h2>
+<div class="fila">
+  <div>
+    <div class="etq mal">Antes · móvil 360 px (defecto reproducido)</div>
+    <div class="marco tel">
+      <div class="antes">
+        <button class="btn" style="height:36px;max-width:150px;white-space:normal;overflow:visible;line-height:1.15">Imprimir / Descargar PDF <small>(cliente)</small></button>
+        <button class="btn int" style="height:36px;max-width:80px;white-space:normal;line-height:1.15">Historial interno de pagos</button>
+      </div>
+      <p class="nota">El texto se parte en 3–4 líneas y se sale de la caja; el primer botón queda recortado a la izquierda.</p>
+    </div>
+  </div>
+  <div>
+    <div class="etq bien">Después · móvil 360 px (propuesta)</div>
+    <div class="marco tel">
+      <div class="despues">
+        <button class="btn" aria-label="Imprimir factura para el cliente">🖨 Factura para el cliente</button>
+        <button class="btn int">Historial interno de pagos</button>
+        <button class="btn abo">Registrar abono</button>
+      </div>
+      <p class="nota">Cada botón ocupa una línea, alto táctil mínimo de 44 px, etiqueta corta en una sola línea. Los botones que el rol no puede usar siguen sin mostrarse.</p>
+    </div>
+  </div>
+  <div>
+    <div class="etq bien">Después · escritorio (sin cambios visibles)</div>
+    <div class="marco esc">
+      <div class="despues" style="justify-content:flex-end">
+        <button class="btn" style="min-height:36px;flex:0 0 auto">🖨 Factura para el cliente</button>
+        <button class="btn int" style="min-height:36px;flex:0 0 auto">Historial interno de pagos</button>
+        <button class="btn abo" style="min-height:36px;flex:0 0 auto">Registrar abono</button>
+      </div>
+      <p class="nota">Fila horizontal alineada a la derecha, como hoy. El nombre del primer botón pasa de «Imprimir / Descargar PDF (cliente)» a «Factura para el cliente»; el navegador sigue ofreciendo imprimir o guardar como PDF.</p>
+    </div>
+  </div>
+</div>
+
+<h2>2 · Estados de los botones (móvil)</h2>
+<div class="fila">
+  <div><div class="etq">Cargando</div><div class="marco tel"><div class="despues">
+    <button class="btn" disabled>Preparando…</button><button class="btn int" disabled>Historial interno de pagos</button></div>
+    <p class="nota">Mientras se arma la hoja se bloquean ambos botones (hoy ya es así); un doble toque genera un solo documento.</p></div></div>
+  <div><div class="etq">Error</div><div class="marco tel"><div class="despues"><button class="btn">Factura para el cliente</button></div>
+    <div class="estado aviso" role="alert">No se pudo preparar la factura. No se cambió nada. <u>Reintentar</u></div></div></div>
+  <div><div class="etq">Confirmación</div><div class="marco tel"><div class="despues"><button class="btn">Factura para el cliente</button></div>
+    <div class="estado ok" role="status">Hoja lista. Elige imprimir o guardar como PDF.</div></div></div>
+</div>
+
+<h2>3 · Tabla «Detalle de pedidos» — antes y después</h2>
+<div class="fila">
+  <div><div class="etq mal">Antes · móvil (cortada)</div><div class="marco tel"><div class="caja"><div class="ancho" style="width:300px"><table style="width:400px"><tr><th>Producto</th><th class="r">Cant.</th><th class="r">Subtotal</th></tr><tr><td>Paca Agua</td><td class="r">4</td><td class="r"><b>$10.000</b></td></tr></table></div></div>
+    <p class="nota">Relleno de 16 px por celda: la columna «Subtotal» queda fuera de vista y hay que deslizar.</p></div></div>
+  <div><div class="etq bien">Después · móvil</div><div class="marco tel"><div class="caja"><table class="compacta"><tr><th>Producto</th><th class="r">Cant.</th><th class="r">Subtotal</th></tr><tr><td>Paca Agua</td><td class="r">4</td><td class="r"><b>$10.000</b></td></tr></table></div>
+    <p class="nota">Relleno de 8 px en celular (16 px desde 640 px). Se conserva el desplazamiento horizontal si algún nombre es muy largo.</p></div></div>
+</div>
+
+<h2>Alcance</h2>
+<ul class="l">
+  <li><b>Dentro:</b> fila de botones del detalle de factura (flex con salto de línea, alto mínimo táctil, etiqueta corta) y relleno de la tabla de pedidos en celular.</li>
+  <li><b>Fuera:</b> permisos y qué rol ve qué botón, la factura impresa del cliente y el historial interno impreso, cualquier regla o cálculo de dinero, el diseño de escritorio salvo el nombre del primer botón.</li>
+  <li><b>Pruebas:</b> medición automática a 360, 390, 768 y 1366 px (sin desborde vertical ni horizontal), roles ADMIN, CONTADOR y ASISTENTE, y recorrido en navegador real.</li>
+</ul>
+</body>
+</html>
