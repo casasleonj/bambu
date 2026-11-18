@@ -2,6 +2,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { getPresetDate, getTodayString } from "@/lib/dates";
 import {
+  baseEfectiva,
   leerFiltrosConsulta,
   parametrosConsulta,
   type FiltrosConsultaPedidos,
@@ -446,7 +447,7 @@ export function FiltrosConsulta({
               <select
                 className={`${control} mt-1`}
                 aria-label="Usar la fecha y hora de"
-                value={draft.fechaBase}
+                value={baseEfectiva(draft)}
                 onChange={(e) =>
                   cambiar((f) => ({
                     ...f,

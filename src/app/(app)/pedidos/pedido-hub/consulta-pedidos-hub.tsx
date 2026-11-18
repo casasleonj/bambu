@@ -5,6 +5,7 @@ import { useConsultaPedidos } from "@/hooks/use-consulta-pedidos";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import type { EstadoGestionAdmin } from "@/hooks/use-gestion-admin";
 import {
+  baseEfectiva,
   clavesConsultaPedidos,
   filtrosArrastrados,
   leerFiltrosConsulta,
@@ -185,7 +186,7 @@ export function ConsultaPedidosHub(props: Props) {
             creacion: "Fecha de creación",
             entrega: "Fecha de entrega",
             cobro: "Fecha del cobro",
-          }[filtrosLeidos?.fechaBase ?? consulta.filtros.fechaBase]
+          }[baseEfectiva(filtrosLeidos ?? consulta.filtros)]
         }
       </span>
     </div>
@@ -209,7 +210,7 @@ export function ConsultaPedidosHub(props: Props) {
   // #841: las entregas de pedidos anteriores van plegadas, después de los pendientes.
   const hoyEntregas = getTodayString();
   const entregasNode =
-    datos && filtrosLeidos?.fechaBase === "pedido" && !filtrosLeidos.all ? (
+    datos && filtrosLeidos && baseEfectiva(filtrosLeidos) === "pedido" && !filtrosLeidos.all ? (
       <EntregasDestacadas
         entregas={datos.destacadas ?? []}
         total={datos.destacadasTotal ?? 0}

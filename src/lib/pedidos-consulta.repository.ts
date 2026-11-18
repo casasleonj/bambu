@@ -27,6 +27,7 @@ import {
   filtrosArrastrados,
   esFocoCompromiso,
   rangoConsultaPedidos,
+  baseEfectiva,
   type FiltrosConsultaPedidos,
   type ProductoConsulta,
   type ResultadoConsultaPedidos,
@@ -102,10 +103,11 @@ export function whereConsultaPedidos(
       fechaEntrega: f.foco === "paraHoy" ? { not: null, lte: finHoy } : { gt: finHoy },
     });
   }
-  if ((f.fechaBase === "pedido" || f.fechaBase === "creacion") && !f.all && !esFocoCompromiso(f.foco)) {
+  const base = baseEfectiva(f);
+  if ((base === "pedido" || base === "creacion") && !f.all && !esFocoCompromiso(f.foco)) {
     const r = rangoConsultaPedidos(f);
     and.push(
-      f.fechaBase === "creacion"
+      base === "creacion"
         ? { createdAt: { gte: r.desde, lt: r.hasta } }
         : { fecha: { gte: r.desde, lt: r.hasta } },
     );
@@ -249,12 +251,13 @@ async function leerConsultaPedidos(
       const coincidencias = f.search
         ? await resolverCoincidenciasPedidos(tx, f.search)
         : undefined;
+      const base = baseEfectiva(f);
       const rango = rangoConsultaPedidos(f),
         where = whereConsultaPedidos(f, coincidencias);
       const and = where.AND as Prisma.PedidoWhereInput[];
       let cobros: CobrosPeriodo | null = null,
         entregas: EntregaConsulta[] | null = null;
-      if (f.fechaBase === "cobro") {
+      if (base === "cobro") {
         cobros = await leerCobrosPeriodo(tx, rango.desde, rango.hasta);
         const ids = [
           ...new Set([
@@ -266,7 +269,7 @@ async function leerConsultaPedidos(
         ];
         and.push({ id: { in: ids } });
       }
-      if (f.fechaBase === "entrega") {
+      if (base === "entrega") {
         entregas = await leerEntregasConsulta(tx, { rango });
         const ids = [
           ...new Set(
@@ -383,7 +386,7 @@ async function leerConsultaPedidos(
       const exigiblesPagina = exigiblesConjunto ?? await leerExigibles(tx, { id: { in: idsPagina } });
       const hechosPagina = await leerEntregasConsulta(tx, { ids: idsPagina });
       if (f.resumen) {
-        if (f.fechaBase === "entrega" || cobros) {
+        if (base === "entrega" || cobros) {
           const elegibles = await tx.pedido.findMany({
             where: fin,
             select: { id: true },
@@ -396,7 +399,7 @@ async function leerConsultaPedidos(
                 (c) => !c.pedidoId || ids.has(c.pedidoId),
               ),
             );
-          if (entregas && f.fechaBase === "entrega") {
+          if (entregas && base === "entrega") {
             const hechos = entregas.filter(
               (e) =>
                 ids.has(e.pedidoId) &&
@@ -420,7 +423,7 @@ async function leerConsultaPedidos(
             }));
           }
         }
-        if (f.fechaBase !== "entrega") {
+        if (base !== "entrega") {
           const [lineas, legacy] = await Promise.all([
             tx.pedidoItem.groupBy({
               by: ["producto"],
@@ -604,7 +607,7 @@ async function leerConsultaPedidos(
         pagado = dec(sumas?._sum.totalPagado),
         saldo = dec(sumas?._sum.saldo),
         fiado = [...(exigiblesConjunto?.values() ?? [])].reduce((s, monto) => s + centavos(monto), 0) / 100;
-      const consultaDestacadas = !arrastre && f.fechaBase === "pedido" && !f.all && !esFocoCompromiso(f.foco)
+      const consultaDestacadas = !arrastre && base === "pedido" && !f.all && !esFocoCompromiso(f.foco)
         ? await listarEntregasDestacadas(tx, whereConsultaPedidos({ ...f, fechaBase: "entrega", foco: f.foco === "entregaParcial" ? "" : f.foco }), rango, f.repartidorId, f.foco === "entregaParcial")
         : null;
       const [{ ahora }] = await tx.$queryRaw<

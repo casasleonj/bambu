@@ -347,6 +347,29 @@ export function parametrosConsulta(f: FiltrosConsultaPedidos): URLSearchParams {
   return p;
 }
 
+/**
+ * #854: base temporal que realmente rige la consulta. «Entregado» como único estado de
+ * entrega, con rango y sin gestión (foco), significa «entregado en ese período», es decir,
+ * fecha efectiva de entrega, no «pedido hecho en ese período que hoy está entregado». Es el
+ * mismo resultado de elegir «Entrega registrada» (mismos lectores). Con otros estados
+ * mezclados, «Creación registrada» o «Cobro registrado», la base elegida se respeta. Es
+ * derivada: no se guarda en la URL ni en el borrador, así quitar el chip devuelve la base.
+ */
+export function baseEfectiva(
+  f: Pick<FiltrosConsultaPedidos, "fechaBase" | "estadoEntrega" | "foco" | "all" | "desde" | "hasta">,
+): FechaConsulta {
+  if (
+    f.fechaBase === "pedido" &&
+    !f.all &&
+    (f.desde || f.hasta) &&
+    f.foco === "" &&
+    f.estadoEntrega.length === 1 &&
+    f.estadoEntrega[0] === "ENTREGADO"
+  )
+    return "entrega";
+  return f.fechaBase;
+}
+
 /** #836 F1: focos que consultan por fecha prometida e ignoran el rango de fecha de pedido. */
 export function esFocoCompromiso(foco: FiltrosConsultaPedidos["foco"]): foco is "paraHoy" | "programados" {
   return foco === "paraHoy" || foco === "programados";
