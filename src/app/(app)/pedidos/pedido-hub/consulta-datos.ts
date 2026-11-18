@@ -3,6 +3,7 @@
 import { getItemsFromPedido } from "../pedido-items";
 import type { Pedido, OperacionDerivada } from "./types";
 import { fechaConsulta } from "./fecha-consulta";
+import { esVentaMostradorEntregadaAlVender } from "@/lib/venta-mostrador";
 
 export interface ItemConsulta {
   producto: string;
@@ -154,7 +155,9 @@ export function responsablesConsulta(p: Pedido, hoyBogota: string): Responsables
       titulo: repartidores.length
         ? `🚚 ${esParcial(p) ? "Responsable" : "Entregó"} ${repartidores.map((r) => r.nombre).join(" y ")}`
         : p.entregadoAt
-          ? "📦 Entrega registrada"
+          ? esVentaMostradorEntregadaAlVender(p)
+            ? "📦 Entregada al vender"
+            : "📦 Entrega registrada"
           : "🕓 Sin entrega registrada",
       meta: entregaMeta,
     },

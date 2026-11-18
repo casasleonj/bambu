@@ -1,5 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { CAPTURA_ENTREGA_PEDIDO, leerMetadata } from "./entrega-fisica-viva";
+import { esVentaMostradorEntregadaAlVender } from "./venta-mostrador";
+
+export { esVentaMostradorEntregadaAlVender };
 
 export interface EntregaConsulta {
   id: string;
@@ -27,25 +30,6 @@ const fechaValida = (v: unknown): Date | null => {
   const d = new Date(v);
   return Number.isFinite(+d) ? d : null;
 };
-/**
- * #854: venta de mostrador entregada al vender. Nace ENTREGADA con `entregadoAt` igual, al
- * milisegundo, a `fecha` (CrearPedidoUseCase; los históricos se rellenaron con la misma regla).
- * La hora de la entrega es la de la venta y las unidades entregadas son las del pedido. No aplica
- * a pedidos con eventos propios ni a fechas que difieren de la venta.
- */
-export function esVentaMostradorEntregadaAlVender(p: {
-  canal: string;
-  estadoEntrega: string;
-  fecha: Date;
-  entregadoAt: Date | null;
-}): boolean {
-  return (
-    p.canal === "PUNTO" &&
-    p.estadoEntrega === "ENTREGADO" &&
-    !!p.entregadoAt &&
-    p.entregadoAt.getTime() === p.fecha.getTime()
-  );
-}
 const enRango = (d: Date, r?: Rango) => !r || (d >= r.desde && d < r.hasta);
 function diaBogota(d: Date) {
   return new Date(
