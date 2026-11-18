@@ -235,6 +235,8 @@ export interface PedidoResumenDTO {
   saldo: number
   fecha: string
   fechaEntrega?: string
+  /** #836 F2b: hora acordada HH:MM (Bogotá) del día prometido. */
+  entregaNoAntesDe?: string | null
   obs?: string
   direccionEntrega?: string | null
   barrioEntrega?: string | null

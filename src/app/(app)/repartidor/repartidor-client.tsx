@@ -22,6 +22,8 @@ import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 import { DireccionIndicator } from '@/components/direccion-indicator'
 import { EntregaCobroSheet, type PedidoParaEntregar } from './entrega-cobro-sheet'
 import { numeroVisibleEmbarque } from '@/lib/embarque-numero'
+import { useAhora } from '@/hooks/use-ahora'
+import { ordenarPorFranja, textoTiempoRestante } from '@/lib/pedidos-franja'
 
 interface RepartidorClientProps {
   trabajador: { id: string; nombre: string }
@@ -69,6 +71,9 @@ interface RepartidorClientProps {
           linkUbicacion?: string | null
         }
         estado: string
+      fechaEntrega?: string | null
+      /** #836 F2b: hora acordada HH:MM (Bogotá); ordena la ruta, no restringe la entrega. */
+      entregaNoAntesDe?: string | null
       estadoEntrega: string
       estadoPago: string
       promesaPagoFecha?: string | null
@@ -94,6 +99,8 @@ const METODOS_PAGO = ['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']
 
 export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRole, preciosOcultos = false }: RepartidorClientProps) {
   const [showVentaLibre, setShowVentaLibre] = useState(false)
+  // #836 F2b: reloj para ordenar por tiempo restante hasta la hora acordada (se refresca cada minuto).
+  const ahora = useAhora()
   const [syncing, setSyncing] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
   const online = useOnlineStatus()
@@ -420,7 +427,7 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
   // Bloque 2: si hay orden optimizado, reordenar la lista de pedidos
   // para iterar en el orden TSP. Los pedidos sin coords (no incluidos
   // en el orden) van al final.
-  const pedidosOrdenados = (() => {
+  const pedidosBase = (() => {
     if (!embarque) return []
     const ordenIds = embarque.ordenVisita?.pedidoIds
     if (!ordenIds || ordenIds.length === 0) return embarque.pedidos
@@ -436,6 +443,9 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
     }
     return ordenados
   })()
+  // #836 F2b: encima del orden geográfico, SOLO se mueven los pedidos con hora acordada: «ya toca» (≤ 1 h)
+  // al frente y los que faltan más de 3 h al final; el resto conserva su orden de ruta. Nunca se oculta nada.
+  const pedidosOrdenados = ordenarPorFranja(pedidosBase, ahora, (p) => p)
 
   return (
     <div className="space-y-4">
@@ -564,7 +574,7 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
               const items = getItemsFromPedido(pedido)
               const saldo = Number(pedido.saldo)
               return (
-                <div key={pedido.id} className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition">
+                <div key={pedido.id} className={`p-4 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition ${pedido._franja.franja === 'mas_tarde' ? 'opacity-60' : ''}`} data-franja={pedido._franja.franja}>
                   <div className="flex justify-between items-start mb-1">
                     <div>
                       {/* Bloque 2: badge de orden de visita si está optimizado */}
@@ -574,6 +584,11 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
                         </span>
                       )}
                       <span className="text-xs text-gray-400 font-medium ml-2">#{pedido.numero}</span>
+                      {pedido.entregaNoAntesDe && pedido._franja.minutosFaltantes !== null && (
+                        <span className="ml-2 inline-block rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800" data-testid={`hora-acordada-${pedido.numero}`}>
+                          🕐 {pedido._franja.franja === 'mas_tarde' ? `Desde ${pedido.entregaNoAntesDe}` : `Hora ${pedido.entregaNoAntesDe}`} · {textoTiempoRestante(pedido._franja.minutosFaltantes)}
+                        </span>
+                      )}
                       <PedidoClienteDisplay
                         clienteId={pedido.clienteId}
                         nombreCli={pedido.nombreCli}

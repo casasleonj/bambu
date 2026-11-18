@@ -23,6 +23,8 @@ export interface CrearPedidoPayload {
   pagos?: Array<{ metodo: string; monto: number }>
   obs?: string
   fechaEntrega?: string
+  /** #836 F2b: hora acordada HH:MM (Bogotá); requiere `fechaEntrega`. */
+  entregaNoAntesDe?: string
   /**
    * G6/ventaRapida→origen (decisión PO 2026-09-06): responde a si hay un
    * cliente real detrás de la operación, independiente de `canal`.
