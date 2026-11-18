@@ -21,6 +21,12 @@ export interface ResumenConsultaPedidos {
   exigiblesPorConciliar?: number;
   cobros: Omit<CobrosPeriodo, "movimientos"> | null;
 }
+/** #836 F3: grupo de barrio con el total REAL de la consulta completa (no de la página). */
+export interface GrupoBarrioConsulta {
+  clave: string;
+  etiqueta: string;
+  total: number;
+}
 export interface ResultadoConsultaPedidos {
   consultaKey: string;
   pedidos: Pedido[];
@@ -36,6 +42,8 @@ export interface ResultadoConsultaPedidos {
     /** Atributo propio del trabajador (#633), no derivado de asignaciones ni del rol. */
     usaMoto: boolean;
   }>;
+  /** #836 F3: totales por barrio de TODO el conjunto filtrado; solo con `agrupar=barrio`. */
+  grupos?: GrupoBarrioConsulta[];
   /** Actividad física destacada, independiente del listado por fecha del pedido. */
   destacadas?: EntregaDestacada[];
   destacadasTotal?: number;
@@ -83,6 +91,10 @@ export interface FiltrosConsultaPedidos {
     | "paraHoy" // prevista hoy + atrasada abierta
     | "programados"; // prevista para un día futuro
   conRecurrencia: boolean;
+  /** #836 F3: agrupa la lista por barrio efectivo (servidor, conjunto completo). */
+  agrupar: "" | "barrio";
+  /** #836 F3: solo los pedidos de un grupo de barrio (clave de `grupos`). */
+  grupoBarrio: string;
   resumen: boolean;
   page: number;
   pageSize: number;
@@ -107,6 +119,8 @@ export const clavesConsultaPedidos = [
   "clienteId",
   "foco",
   "conRecurrencia",
+  "agrupar",
+  "grupoBarrio",
   "resumen",
   "page",
   "pageSize",
@@ -136,6 +150,14 @@ function lista(
   )
     throw new FiltroPedidosError(`Revisa el filtro «${key}».`);
   return items;
+}
+/** Clave de grupo: `sin-barrio`, `b:<id>` o `t:<texto normalizado>`; acotada y sin comodines. */
+function leerGrupoBarrio(p: URLSearchParams): string {
+  const v = p.get("grupoBarrio") || "";
+  if (!v) return "";
+  if (v.length > 120 || !/^(sin-barrio|[bt]:[^\u0000-\u001f]+)$/.test(v))
+    throw new FiltroPedidosError("Revisa el filtro «grupoBarrio».");
+  return v;
 }
 function pagina(
   p: URLSearchParams,
@@ -263,6 +285,8 @@ export function leerFiltrosConsulta(
       "",
     ),
     conRecurrencia: p.get("conRecurrencia") === "true",
+    agrupar: opcion(p, "agrupar", ["", "barrio"], ""),
+    grupoBarrio: leerGrupoBarrio(p),
     resumen: p.has("resumen")
       ? p.get("resumen") === "1"
       : [
@@ -283,6 +307,8 @@ export function leerFiltrosConsulta(
           "all",
           "foco",
           "conRecurrencia",
+          "agrupar",
+          "grupoBarrio",
         ].some((k) => p.has(k)),
     page: pagina(p, "page", 1, 100000),
     pageSize: pagina(p, "pageSize", 25, 100),
@@ -341,6 +367,8 @@ export function parametrosConsulta(f: FiltrosConsultaPedidos): URLSearchParams {
   p.set("registro", f.registro);
   p.set("pago", f.pago);
   if (f.conRecurrencia) p.set("conRecurrencia", "true");
+  if (f.agrupar) p.set("agrupar", f.agrupar);
+  if (f.grupoBarrio) p.set("grupoBarrio", f.grupoBarrio);
   p.set("resumen", f.resumen ? "1" : "0");
   p.set("page", String(f.page));
   p.set("pageSize", String(f.pageSize));
@@ -417,6 +445,8 @@ export function filtrosArrastrados(
     all: false,
     registro: "activos",
     estadoEntrega,
+    agrupar: "",
+    grupoBarrio: "",
     resumen: false,
     page: 1,
     pageSize: MAX_ARRASTRADOS,
