@@ -16,6 +16,7 @@ import {
 } from "./barrios/grupo-barrio";
 import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
+import { ordenarPorFranja } from "./pedidos-franja";
 import { listarEntregasDestacadas } from "./pedidos-entregas-destacadas";
 import { PedidoMapper } from "@/modules/pedidos/infrastructure/mappers/PedidoMapper";
 import { PedidoDTOMapper } from "@/modules/pedidos/application/dto/PedidoDTOMapper";
@@ -390,6 +391,24 @@ async function leerConsultaPedidos(
               (b.fecha.getTime() - a.fecha.getTime()) ||
               (b.numero - a.numero) ||
               (a.id < b.id ? -1 : 1))
+            .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
+            .map((c) => c.id);
+        }
+      }
+      // #836 F2b: «Para hoy» ordena por tiempo restante hasta la hora acordada (Ya toca → Normales → Más tarde).
+      // Solo si algún pedido del conjunto tiene hora; si no, la consulta es la de siempre.
+      if (!ordenPagina && f.foco === "paraHoy" && !f.grupoBarrio) {
+        const conHora = await tx.pedido.findFirst({ where: { AND: [where, { entregaNoAntesDe: { not: null } }] }, select: { id: true } });
+        if (conHora) {
+          const candidatos = await tx.pedido.findMany({
+            where,
+            select: { id: true, fecha: true, numero: true, fechaEntrega: true, estadoEntrega: true, entregaNoAntesDe: true },
+          });
+          const base = [...candidatos].sort((a, b) =>
+            arrastre
+              ? (a.fecha.getTime() - b.fecha.getTime()) || (a.numero - b.numero) || (a.id < b.id ? -1 : 1)
+              : (b.fecha.getTime() - a.fecha.getTime()) || (b.numero - a.numero) || (a.id < b.id ? -1 : 1));
+          ordenPagina = ordenarPorFranja(base, new Date(), (c) => c)
             .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
             .map((c) => c.id);
         }

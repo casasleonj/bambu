@@ -12,6 +12,8 @@ import {
 
 const ReprogramarSchema = z.object({
   fechaNueva: z.string().datetime(),
+  /** #836 F2b: hora acordada HH:MM (Bogotá). Omitir = no tocar; null = quitar. */
+  horaNueva: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, 'La hora debe tener formato HH:MM').nullable().optional(),
   motivo: z.string().trim().max(500).optional(),
   offlineId: z.string().optional(),
   /** Fecha que la pantalla veía (ISO) o null si veía «sin fecha». Omitir = no comprobar. */
@@ -43,6 +45,7 @@ export async function POST(
       pedidoId: id,
       fechaNueva: new Date(parsed.data.fechaNueva),
       actorId,
+      horaNueva: parsed.data.horaNueva,
       motivo: parsed.data.motivo || undefined,
       offlineId: parsed.data.offlineId,
       fechaAnteriorEsperada:

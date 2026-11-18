@@ -14,6 +14,9 @@ import { resolveActualizarCliente } from './resolve-actualizar-cliente'
 import { PedidoPricingSummary } from './pedido-pricing-summary'
 import { PedidoContextPanel } from './pedido-context-panel'
 import { PedidoItemEditor } from './pedido-item-editor'
+import { ProgramarEntrega } from './programar-entrega'
+import { resolverProgramacion } from '@/lib/programar-entrega'
+import { todayStringBogota } from '@/lib/dates'
 import { usePriceSync } from '@/hooks/use-price-sync'
 import { Money, calcularSaldo } from '@/shared/domain'
 import type { FiadoStatus } from '@/modules/pedidos/domain/types'
@@ -80,6 +83,9 @@ export interface PedidoUnifiedData {
   preciosManuales: Record<string, number>
   pagos: Array<{ metodo: string; monto: number }>
   obs?: string
+  /** #836 F2b: programación opcional al crear (ISO del día prometido y HH:MM acordada). */
+  fechaEntrega?: string
+  entregaNoAntesDe?: string
   clienteNuevo?: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string; fuente?: string }
   actualizarCliente?: { direccion: string; barrio: string }
   /**
@@ -186,6 +192,10 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
   // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: toggle "entregar después" para venta
   // rápida. Solo visible con el flag activo; default = entregar en el acto.
   const [entregarDespues, setEntregarDespues] = useState(false)
+  // #836 F2b: programación opcional (fecha y/u hora acordada). Vacío = comportamiento de siempre.
+  const [progFecha, setProgFecha] = useState('')
+  const [progHora, setProgHora] = useState('')
+  const [progError, setProgError] = useState<string | null>(null)
   const resolverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean; sobreCostoDomicilio: number }>>([])
   const [fiadosStatus, setFiadosStatus] = useState<FiadoStatus | null>(null)
@@ -745,6 +755,11 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       )
       return
     }
+    // #836 F2b: solo al crear (no al editar) y solo si la entrega queda pendiente.
+    const programable = !pedidoInicial?.id && (canal === 'DOMICILIO' || (canal === 'PUNTO' && entregarDespues))
+    const programacion = programable ? resolverProgramacion(progFecha, progHora, todayStringBogota()) : {}
+    if (programacion.error) { setProgError(programacion.error); toast.error(programacion.error); return }
+    setProgError(null)
     if (mostrarNuevo && (!nuevoCliente.nombre || !nuevoCliente.telefono)) {
       toast.error('Nombre y teléfono son obligatorios')
       return
@@ -797,6 +812,8 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       preciosManuales,
       pagos: pagos.filter(p => p.monto > 0),
       obs: observaciones || undefined,
+      fechaEntrega: programacion.fechaEntrega,
+      entregaNoAntesDe: programacion.entregaNoAntesDe,
       clienteNuevo: clienteNuevoData,
       actualizarCliente,
       direccionEntrega: canal === 'DOMICILIO' ? editDireccion || undefined : undefined,
@@ -947,6 +964,11 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
           onPrecioManualChange={setPrecioManual}
           onConfirmarPrecioBajo={(codigo) => setPrecioBajoConfirmado(prev => ({ ...prev, [codigo]: true }))}
         />
+
+        {/* #836 F2b: programar entrega (cerrado por defecto) */}
+        {!pedidoInicial?.id && (canal === 'DOMICILIO' || (canal === 'PUNTO' && entregarDespues)) && (
+          <ProgramarEntrega fecha={progFecha} hora={progHora} onFecha={(v) => { setProgFecha(v); setProgError(null) }} onHora={(v) => { setProgHora(v); setProgError(null) }} error={progError} hoyBogota={todayStringBogota()} />
+        )}
 
         {/* Observaciones */}
         <div className="bg-white border rounded-xl p-4">

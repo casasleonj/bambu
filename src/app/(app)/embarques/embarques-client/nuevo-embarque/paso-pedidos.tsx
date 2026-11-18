@@ -1,11 +1,14 @@
 'use client'
 
-import { useMemo } from 'react'
+import { Fragment, useMemo, useState } from 'react'
+import { useAhora } from '@/hooks/use-ahora'
+import { clasificarFranja, textoTiempoRestante } from '@/lib/pedidos-franja'
 import { getProductoEmoji } from '@/hooks/use-productos-domicilio'
 import {
   filtrarPedidosSeleccionables,
   tieneFiadoPendiente,
   type PedidoSeleccionable,
+  type UrgenciaBucket,
 } from './filtrar-pedidos'
 import { resumenSeleccion } from './derivar-carga'
 import type { WizardState, WizardAction } from './wizard-reducer'
@@ -50,17 +53,33 @@ function fechaChip(p: PedidoSeleccionable): { texto: string; tono: string } | nu
   return { texto: `En ${dias}d`, tono: 'bg-gray-100 text-gray-600' }
 }
 
+/** #836 F2b: encabezados por tiempo restante; solo aparecen si algún pedido tiene hora acordada. */
+const GRUPO: Record<UrgenciaBucket, { clave: string; etiqueta: string; tono: string }> = {
+  vencido: { clave: 'atrasados', etiqueta: 'Atrasados', tono: 'bg-amber-100 text-amber-900' },
+  hoy_ya_toca: { clave: 'ya_toca', etiqueta: 'Ya toca', tono: 'bg-red-100 text-red-800' },
+  hoy_sin_hora: { clave: 'normales', etiqueta: 'Normales', tono: 'bg-gray-100 text-gray-600' },
+  hoy_con_hora: { clave: 'normales', etiqueta: 'Normales', tono: 'bg-gray-100 text-gray-600' },
+  sin_fecha: { clave: 'normales', etiqueta: 'Normales', tono: 'bg-gray-100 text-gray-600' },
+  hoy_mas_tarde: { clave: 'mas_tarde', etiqueta: 'Más tarde hoy', tono: 'bg-indigo-50 text-indigo-800' },
+  futuro: { clave: 'futuros', etiqueta: 'Futuros', tono: 'bg-blue-50 text-blue-800' },
+}
+
 export function PasoPedidos({ state, dispatch, onCancel }: PasoPedidosProps) {
   const { data, fase } = state
+  const ahora = useAhora()
+  const [tardeAbierto, setTardeAbierto] = useState(false)
 
   const lista = useMemo(
     () =>
       filtrarPedidosSeleccionables(data.pedidos, {
         verFuturos: data.verFuturos,
         buscar: data.buscar,
+        ahora,
       }),
-    [data.pedidos, data.verFuturos, data.buscar],
+    [data.pedidos, data.verFuturos, data.buscar, ahora],
   )
+  const hayHoras = lista.some((p) => p.entregaNoAntesDe)
+  const nMasTarde = lista.filter((p) => p._bucket === 'hoy_mas_tarde').length
 
   const seleccionados = data.pedidos.filter((p) => data.selectedIds.includes(p.id))
   const { unidades, pesoKg } = resumenSeleccion(seleccionados)
@@ -110,11 +129,27 @@ export function PasoPedidos({ state, dispatch, onCancel }: PasoPedidosProps) {
           </p>
         ) : (
           <ul className="divide-y divide-gray-100">
-            {lista.map((p) => {
+            {lista.map((p, i) => {
               const checked = data.selectedIds.includes(p.id)
               const chip = fechaChip(p)
+              const grupo = GRUPO[p._bucket]
+              const nuevoGrupo = hayHoras && (i === 0 || GRUPO[lista[i - 1]._bucket].clave !== grupo.clave)
+              const plegado = p._bucket === 'hoy_mas_tarde' && !tardeAbierto
+              const restante = textoTiempoRestante(clasificarFranja(p, ahora).minutosFaltantes)
               return (
-                <li key={p.id}>
+                <Fragment key={p.id}>
+                  {nuevoGrupo && (
+                    <li className={`my-2 flex items-center justify-between rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${grupo.tono}`} data-testid={`franja-${grupo.clave}`}>
+                      <span>{grupo.etiqueta}{grupo.clave === 'mas_tarde' ? ` · ${nMasTarde}` : ''}</span>
+                      {grupo.clave === 'mas_tarde' && (
+                        <button type="button" className="underline" aria-expanded={tardeAbierto} onClick={() => setTardeAbierto((v) => !v)} data-testid="franja-mas-tarde-toggle">
+                          {tardeAbierto ? '▲ ocultar' : '▼ ver'}
+                        </button>
+                      )}
+                    </li>
+                  )}
+                  {!plegado && (
+                <li>
                   <label className="flex items-start gap-3 py-2.5 cursor-pointer min-h-[44px]">
                     <input
                       type="checkbox"
@@ -134,6 +169,11 @@ export function PasoPedidos({ state, dispatch, onCancel }: PasoPedidosProps) {
                             {chip.texto}
                           </span>
                         )}
+                        {p.entregaNoAntesDe && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-800 font-medium" data-testid={`hora-acordada-${p.numero}`}>
+                            🕐 {p.entregaNoAntesDe}{restante ? ` · ${restante}` : ''}
+                          </span>
+                        )}
                         {p.horaPreferida && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 text-gray-600">
                             {p.horaPreferida}
@@ -150,6 +190,8 @@ export function PasoPedidos({ state, dispatch, onCancel }: PasoPedidosProps) {
                     </div>
                   </label>
                 </li>
+                  )}
+                </Fragment>
               )
             })}
           </ul>

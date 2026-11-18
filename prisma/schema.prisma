@@ -1121,6 +1121,9 @@ model Pedido {
   repartidor    String?
   obs           String?
   horaPreferida String?
+  /// #836 F2b: «hora acordada» (HH:MM, America/Bogota) del día prometido `fechaEntrega`. Solo ordena y agrupa
+  /// (franjas «Ya toca / Normales / Más tarde»); no avisa, no bloquea. Distinta de `horaPreferida` (texto libre).
+  entregaNoAntesDe String?
 
   // Referencia polimórfica: PlantillaRecurrente.id o null
   idOrigen String?
@@ -3364,6 +3367,9 @@ model PedidoReprogramacion {
   fechaNueva           DateTime  @db.Timestamptz()
   motivo               String?
   vencidaAlReprogramar Boolean   @default(false)
+  /// #836 F2b: hora acordada (HH:MM) antes y después del cambio; igual en ambas si solo cambió la fecha.
+  horaAnterior String?
+  horaNueva    String?
 
   reprogramadoPorId String
   reprogramadoPor   User     @relation("PedidoReprogramadoPor", fields: [reprogramadoPorId], references: [id], onDelete: Restrict)

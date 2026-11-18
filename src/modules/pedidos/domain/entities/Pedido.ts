@@ -31,6 +31,7 @@ export interface PedidoProps {
   pagos: PagoData[]
   fecha: Date
   fechaEntrega?: Date
+  entregaNoAntesDe?: string
   obs?: string
   idOrigen?: string
   fotoEntrega?: string
@@ -83,6 +84,7 @@ export class Pedido {
   get pagos(): readonly PagoData[] { return this.props.pagos }
   get fecha(): Date { return this.props.fecha }
   get fechaEntrega(): Date | undefined { return this.props.fechaEntrega }
+  get entregaNoAntesDe(): string | undefined { return this.props.entregaNoAntesDe }
   get obs(): string | undefined { return this.props.obs }
   get idOrigen(): string | undefined { return this.props.idOrigen }
   get fotoEntrega(): string | undefined { return this.props.fotoEntrega }

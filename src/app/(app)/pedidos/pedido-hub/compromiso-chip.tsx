@@ -1,4 +1,7 @@
+"use client";
 import { clasificarCompromiso } from "@/lib/pedidos-compromiso";
+import { useAhora } from "@/hooks/use-ahora";
+import { clasificarFranja, textoTiempoRestante } from "@/lib/pedidos-franja";
 import { negocioCerradoEseDia, type TramoHorario } from "@/lib/negocio-horario";
 
 const TONO = {
@@ -65,6 +68,30 @@ export function CierreNegocioChip({
       title="Según el horario del negocio, ese día no atiende. Se puede preparar igual."
     >
       Negocio cerrado ese día
+    </p>
+  );
+}
+
+/**
+ * #836 F2b: «Hora 16:00 · En 40 min». La hora acordada solo ordena y agrupa la lista; no avisa ni bloquea.
+ * El tiempo restante se muestra únicamente el día prometido (hoy) y se refresca cada minuto.
+ */
+export function HoraAcordadaChip({
+  id, pedido,
+}: {
+  id: string;
+  pedido: { fechaEntrega?: string | null; estadoEntrega: string; entregaNoAntesDe?: string | null };
+}) {
+  const ahora = useAhora();
+  if (!pedido.entregaNoAntesDe || ["ENTREGADO", "CANCELADO", "ANULADO"].includes(pedido.estadoEntrega)) return null;
+  const { minutosFaltantes } = clasificarFranja(pedido, ahora);
+  const restante = textoTiempoRestante(minutosFaltantes);
+  return (
+    <p
+      className="mt-1 ml-1 inline-block rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800"
+      data-testid={`operacion-hora-${id}`}
+    >
+      🕐 Hora {pedido.entregaNoAntesDe}{restante ? ` · ${restante}` : ""}
     </p>
   );
 }
