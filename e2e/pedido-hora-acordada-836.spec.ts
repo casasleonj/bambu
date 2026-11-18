@@ -21,13 +21,14 @@ test.describe('#836 F2b — hora acordada', () => {
       await goto(page, `/pedidos?new=1&clienteId=${cliente.id}`)
       await expect(page.getByText('📦 Nuevo Pedido')).toBeVisible({ timeout: 15000 })
       await page.getByTestId('item-inc-PACA_AGUA').click()
+    await expect(page.getByTestId('submit-pedido')).toContainText(/\$\s?[1-9]/, { timeout: 20000 }) // precios resueltos
     }
 
     // 1) Sin programar: el bloque está cerrado y no se guarda nada.
     await crear()
     await expect(page.getByTestId('programar-entrega-toggle')).toContainText('Programar entrega (fecha u hora)')
     await expect(page.getByTestId('programar-hora')).toHaveCount(0)
-    await page.getByRole('button', { name: /Crear Pedido/ }).click()
+    await page.getByTestId('submit-pedido').click()
     await expect.poll(() => db.pedido.count({ where: { clienteId: cliente.id } }), { timeout: 20000 }).toBe(1)
     const sinProgramar = await db.pedido.findFirstOrThrow({ where: { clienteId: cliente.id } })
     expect(sinProgramar.entregaNoAntesDe).toBeNull()
@@ -37,7 +38,7 @@ test.describe('#836 F2b — hora acordada', () => {
     await crear()
     await page.getByTestId('programar-entrega-toggle').click()
     await page.getByTestId('programar-hora').fill('16:00')
-    await page.getByRole('button', { name: /Crear Pedido/ }).click()
+    await page.getByTestId('submit-pedido').click()
     await expect.poll(() => db.pedido.count({ where: { clienteId: cliente.id } }), { timeout: 20000 }).toBe(2)
     const conHora = await db.pedido.findFirstOrThrow({ where: { clienteId: cliente.id, entregaNoAntesDe: { not: null } } })
     expect(conHora.entregaNoAntesDe).toBe('16:00')
@@ -47,9 +48,11 @@ test.describe('#836 F2b — hora acordada', () => {
   test('crear: una fecha pasada se explica y no guarda', async ({ page }) => {
     await loginAs(page, 'admin')
     const { cliente } = await createCliente(page, { nombre: 'Cliente Fecha Pasada', telefono: '3001230002' })
+    await goto(page, '/pedidos') // parte de una página limpia: el enlace ?new=1 solo abre el formulario al cargar
     await goto(page, `/pedidos?new=1&clienteId=${cliente.id}`)
     await expect(page.getByText('📦 Nuevo Pedido')).toBeVisible({ timeout: 15000 })
     await page.getByTestId('item-inc-PACA_AGUA').click()
+    await expect(page.getByTestId('submit-pedido')).toContainText(/\$\s?[1-9]/, { timeout: 20000 }) // precios resueltos
     await page.getByTestId('programar-entrega-toggle').click()
     await page.getByTestId('programar-fecha').evaluate((el: HTMLInputElement) => {
       // `min` no impide el valor programático: la regla del servidor y del formulario deben rechazarlo.
@@ -57,7 +60,7 @@ test.describe('#836 F2b — hora acordada', () => {
       const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
       set.call(el, '2026-01-05'); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }))
     })
-    await page.getByRole('button', { name: /Crear Pedido/ }).click()
+    await page.getByTestId('submit-pedido').click()
     await expect(page.getByTestId('programar-error')).toContainText('La fecha ya pasó')
     expect(await db.pedido.count({ where: { clienteId: cliente.id } })).toBe(0)
   })
