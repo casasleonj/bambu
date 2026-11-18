@@ -292,22 +292,23 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
   return (
     <div className="factura-print-container" id="factura-print">
       {/* Botones de acción */}
-      <div className="flex justify-end gap-2 mb-6">
-        <Button onClick={handlePrint} variant="outline" size="sm" disabled={imprimiendo} data-testid="factura-imprimir-cliente">
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      {/* #868: en celular cada botón ocupa su línea (44 px táctiles) y puede partir su texto; desde 640 px vuelve la fila a la derecha. */}
+      <div className="flex flex-wrap gap-2 mb-6 sm:justify-end">
+        <Button onClick={handlePrint} variant="outline" size="sm" disabled={imprimiendo} data-testid="factura-imprimir-cliente"
+          className="w-full min-h-11 h-auto whitespace-normal sm:w-auto sm:min-h-9">
+          <svg className="w-4 h-4 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
           </svg>
-          Imprimir / Descargar PDF
-          {factura.puedeVerHistorialInterno && <span className="ml-1 text-xs text-gray-500">(cliente)</span>}
+          Factura para el cliente
         </Button>
         {factura.puedeVerHistorialInterno && factura.historialPagos && (
           <Button onClick={handlePrintInterno} variant="outline" size="sm" disabled={imprimiendo} data-testid="factura-imprimir-interno"
-            className="border-orange-700 text-orange-800 hover:bg-orange-50">
+            className="w-full min-h-11 h-auto whitespace-normal border-orange-700 text-orange-800 hover:bg-orange-50 sm:w-auto sm:min-h-9">
             Historial interno de pagos
           </Button>
         )}
         {saldo > 0 && factura.estado !== 'ANULADA' && onRegistrarAbono && factura.pedido?.estadoEntrega === 'ENTREGADO' && (
-          <Button onClick={onRegistrarAbono} size="sm" style={{ backgroundColor: BRAND.green }} className="hover:opacity-90 text-white border-0">
+          <Button onClick={onRegistrarAbono} size="sm" style={{ backgroundColor: BRAND.green }} className="w-full min-h-11 h-auto whitespace-normal hover:opacity-90 text-white border-0 sm:w-auto sm:min-h-9">
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -496,10 +497,10 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-xs font-bold text-gray-600 uppercase">Producto</TableHead>
-                      <TableHead className="text-xs font-bold text-gray-600 uppercase text-right">Cant.</TableHead>
-                      <TableHead className="text-xs font-bold text-gray-600 uppercase text-right hidden sm:table-cell">V. Unitario</TableHead>
-                      <TableHead className="text-xs font-bold text-gray-600 uppercase text-right">Subtotal</TableHead>
+                      <TableHead className="px-2 sm:px-4 text-xs font-bold text-gray-600 uppercase">Producto</TableHead>
+                      <TableHead className="px-2 sm:px-4 text-xs font-bold text-gray-600 uppercase text-right">Cant.</TableHead>
+                      <TableHead className="px-2 sm:px-4 text-xs font-bold text-gray-600 uppercase text-right hidden sm:table-cell">V. Unitario</TableHead>
+                      <TableHead className="px-2 sm:px-4 text-xs font-bold text-gray-600 uppercase text-right">Subtotal</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -508,13 +509,13 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
                       const Icon = meta.Icon
                       return (
                         <TableRow key={item.id}>
-                          <TableCell className="py-3">
+                          <TableCell className="px-2 sm:px-4 py-3">
                             <Icon size={18} className="inline-block mr-2 align-text-bottom" />
                             <span className="text-sm font-medium">{meta.label}</span>
                           </TableCell>
-                          <TableCell className="py-3 text-right text-sm">{item.cantPedido}</TableCell>
-                          <TableCell className="py-3 text-right text-sm hidden sm:table-cell">{formatPrecioUnitario(Number(item.precio))}</TableCell>
-                          <TableCell className="py-3 text-right text-sm font-bold">{formatCurrency(Number(item.subtotal))}</TableCell>
+                          <TableCell className="px-2 sm:px-4 py-3 text-right text-sm">{item.cantPedido}</TableCell>
+                          <TableCell className="px-2 sm:px-4 py-3 text-right text-sm hidden sm:table-cell">{formatPrecioUnitario(Number(item.precio))}</TableCell>
+                          <TableCell className="px-2 sm:px-4 py-3 text-right text-sm font-bold">{formatCurrency(Number(item.subtotal))}</TableCell>
                         </TableRow>
                       )
                     })}
