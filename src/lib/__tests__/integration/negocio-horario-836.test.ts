@@ -11,6 +11,8 @@ vi.mock('@/lib/auth-check', () => ({
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }))
 
 import { POST, PUT, GET } from '@/app/api/negocios/route'
+import { consultarPedidos } from '@/lib/pedidos-consulta.repository'
+import { leerFiltrosConsulta } from '@/lib/pedidos-consulta'
 
 const partido = (d: number) => [{ diaSemana: d, desde: '06:00', hasta: '12:00' }, { diaSemana: d, desde: '14:00', hasta: '20:00' }]
 const req = (method: string, body: unknown, qs = '') =>
@@ -94,5 +96,20 @@ describe('#836 F2 — horario semanal por negocio (API + Postgres real)', () => 
     const n = await testPrisma.negocio.create({ data: { clienteId, nombre: 'Negocio Efímero', horarios: { create: partido(4) } } })
     await testPrisma.negocio.delete({ where: { id: n.id } })
     expect(await cuenta(n.id)).toBe(0)
+  })
+
+  it('la consulta de Pedidos trae los tramos del negocio SOLO si tiene horario configurado (A11, A12)', async () => {
+    const admin = await getAdminUser()
+    const conHorario = await testPrisma.negocio.create({ data: { clienteId, nombre: 'Con Horario', horarios: { create: partido(1) } } })
+    const sinHorario = await testPrisma.negocio.create({ data: { clienteId, nombre: 'Sin Horario' } })
+    const mk = (negocioId: string) => testPrisma.pedido.create({
+      data: { clienteId, negocioId, createdById: admin.id, canal: 'DOMICILIO', origen: 'PEDIDO', estado: 'PENDIENTE', estadoEntrega: 'PENDIENTE', estadoPago: 'PENDIENTE', total: 1000, totalPagado: 0, saldo: 1000, fechaEntrega: new Date('2026-11-22T17:00:00Z') },
+    })
+    const [pa, pb] = [await mk(conHorario.id), await mk(sinHorario.id)]
+    const r = await consultarPedidos(leerFiltrosConsulta(new URLSearchParams('all=true&pageSize=100')), 'ADMIN')
+    const a = r.pedidos.find((p) => p.id === pa.id)!
+    const b = r.pedidos.find((p) => p.id === pb.id)!
+    expect(a.negocioHorarios).toHaveLength(2)
+    expect(b.negocioHorarios).toBeUndefined()
   })
 })

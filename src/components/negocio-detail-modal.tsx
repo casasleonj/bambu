@@ -6,6 +6,8 @@ import { Modal } from '@/components/modal'
 import { useConfirm } from '@/components/confirm-modal'
 import { toast } from 'sonner'
 
+import { resumenHorario, type TramoHorario } from '@/lib/negocio-horario'
+
 export interface NegocioDetail {
   id: string
   nombre: string
@@ -17,6 +19,8 @@ export interface NegocioDetail {
   referencia: string | null
   linkUbicacion: string | null
   horaApertura: string | null
+  /** #836 F2: horario semanal; vacío = sin horario configurado. */
+  horarios?: TramoHorario[]
   ruta: { id: string; nombre: string } | null
   clienteId?: string
   _count: { pedidos: number }
@@ -183,7 +187,20 @@ export function NegocioDetailModal({
                 </div>
               </div>
             )}
-            {neg.horaApertura && (
+            {(neg.horarios?.length ?? 0) > 0 && (
+              <div className="flex items-start gap-3 text-sm" data-testid="negocio-horario-ficha">
+                <svg className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <span className="text-gray-500">Horario de atención</span>
+                  {resumenHorario(neg.horarios).map((l) => (
+                    <p key={l} className="font-medium">{l}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+            {neg.horaApertura && !(neg.horarios?.length) && (
               <div className="flex items-start gap-3 text-sm">
                 <svg className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -191,6 +208,7 @@ export function NegocioDetailModal({
                 <div>
                   <span className="text-gray-500">Hora de apertura: </span>
                   <span className="font-medium">{neg.horaApertura}</span>
+                  <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900" data-testid="negocio-horario-heredado">Heredado: sin horario por día</span>
                 </div>
               </div>
             )}

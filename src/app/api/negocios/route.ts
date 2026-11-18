@@ -85,7 +85,9 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return apiError('Datos inválidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
-    const { horarios: horariosNuevos, ...datosCrear } = parsed.data
+    // #836 F2: `horarios` no es una columna; se quita de los datos del negocio y se guarda aparte.
+    const horariosNuevos = parsed.data.horarios
+    delete parsed.data.horarios
     const erroresHorario = horariosNuevos ? validarHorario(horariosNuevos) : []
     if (erroresHorario.length) return apiError('Datos inválidos', 400, { formErrors: erroresHorario })
 
@@ -98,18 +100,18 @@ export async function POST(request: NextRequest) {
     // patrón ya usado en PUT /api/negocios.
     const negocio = await prisma.$transaction(async (tx) => {
       const cliente = await tx.cliente.findUnique({
-        where: { id: datosCrear.clienteId },
+        where: { id: parsed.data.clienteId },
         select: { id: true },
       })
       if (!cliente) throw new Error('CLIENTE_NOT_FOUND')
 
       // F1-BARRIO-CANONICO: si llega barrioId, resuelve el Barrio y
       // sincroniza el string legacy `barrio` con su nombre canónico.
-      let barrioLegacy = datosCrear.barrio
-      if (datosCrear.barrioId) {
+      let barrioLegacy = parsed.data.barrio
+      if (parsed.data.barrioId) {
         let barrioCanonico
         try {
-          barrioCanonico = await resolverBarrioParaVinculo(datosCrear.barrioId, tx)
+          barrioCanonico = await resolverBarrioParaVinculo(parsed.data.barrioId, tx)
         } catch (err) {
           if (err instanceof BarrioNoEncontradoError) throw new Error('BARRIO_NOT_FOUND')
           throw err
@@ -119,10 +121,11 @@ export async function POST(request: NextRequest) {
 
       return tx.negocio.create({
         data: {
-          ...datosCrear,
+          ...parsed.data,
           barrio: barrioLegacy,
           createdById: authResult.user?.id,
-          ...(horariosNuevos?.length ? { horarios: { create: normalizarHorario(horariosNuevos) } } : {}),
+          // (se vuelve a fijar `horarios` porque el tipo de `parsed.data` aún lo incluye como arreglo)
+          horarios: horariosNuevos?.length ? { create: normalizarHorario(horariosNuevos) } : undefined,
         },
         include: {
           cliente: { select: { id: true, nombre: true, apellido: true } },
@@ -167,7 +170,9 @@ export async function PUT(request: NextRequest) {
     if (!parsed.success) {
       return apiError('Datos inválidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
-    const { horarios, ...datosNegocio } = parsed.data
+    // #836 F2: `horarios` no es una columna; se quita de los datos del negocio y se guarda aparte.
+    const horarios = parsed.data.horarios
+    delete parsed.data.horarios
     const erroresHorario = horarios ? validarHorario(horarios) : []
     if (erroresHorario.length) return apiError('Datos inválidos', 400, { formErrors: erroresHorario })
 
@@ -191,15 +196,15 @@ export async function PUT(request: NextRequest) {
       // F1-BARRIO-CANONICO: si llega barrioId, resuelve el Barrio y
       // sincroniza el string legacy `barrio`. Si el negocio no tenía
       // barrioId antes, es una vinculación explícita (auditada aparte).
-      if (datosNegocio.barrioId) {
+      if (parsed.data.barrioId) {
         let barrioCanonico
         try {
-          barrioCanonico = await resolverBarrioParaVinculo(datosNegocio.barrioId, tx)
+          barrioCanonico = await resolverBarrioParaVinculo(parsed.data.barrioId, tx)
         } catch (err) {
           if (err instanceof BarrioNoEncontradoError) throw new Error('BARRIO_NOT_FOUND')
           throw err
         }
-        datosNegocio.barrio = barrioCanonico.nombre
+        parsed.data.barrio = barrioCanonico.nombre
         if (!existing.barrioId) {
           vinculoAudit = { barrioId: barrioCanonico.id, nombreBarrio: barrioCanonico.nombre }
         }
@@ -207,7 +212,7 @@ export async function PUT(request: NextRequest) {
 
       const updateResult = await tx.negocio.updateMany({
         where: { id, updatedAt: existing.updatedAt },
-        data: horarios !== undefined ? { ...datosNegocio, updatedAt: new Date() } : datosNegocio,
+        data: horarios !== undefined ? { ...parsed.data, updatedAt: new Date() } : parsed.data,
       })
       if (updateResult.count === 0) {
         throw new Error('NEGOCIO_MODIFICADO_POR_OTRO_ADMIN')
@@ -224,14 +229,14 @@ export async function PUT(request: NextRequest) {
       // F3 (Impacto en Demanda): señal informativa para Pedidos pendientes
       // que todavía dependían de esta dirección — nunca bloquea ni revierte
       // el update de arriba.
-      if ('direccion' in datosNegocio || 'barrio' in datosNegocio) {
+      if ('direccion' in parsed.data || 'barrio' in parsed.data) {
         await evaluarImpactoUbicacion.execute({
           origenTipo: 'NEGOCIO',
           origenId: id,
           direccionAnterior: existing.direccion,
           barrioAnterior: existing.barrio,
-          direccionNueva: (datosNegocio.direccion as string | undefined) ?? existing.direccion,
-          barrioNueva: (datosNegocio.barrio as string | undefined) ?? existing.barrio,
+          direccionNueva: (parsed.data.direccion as string | undefined) ?? existing.direccion,
+          barrioNueva: (parsed.data.barrio as string | undefined) ?? existing.barrio,
           tx,
         })
       }
@@ -252,7 +257,7 @@ export async function PUT(request: NextRequest) {
       entidad: 'Negocio',
       registroId: id,
       accion: 'UPDATE',
-      datos: horarios !== undefined ? { ...datosNegocio, horario: resumenHorario(horarios) } : datosNegocio,
+      datos: horarios !== undefined ? { ...parsed.data, horario: resumenHorario(horarios) } : parsed.data,
       usuarioId: authResult.user?.id,
     })
 

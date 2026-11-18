@@ -30,6 +30,7 @@ import { ClienteStats } from './cliente-stats'
 import { ClienteSaldoFavor } from './cliente-saldo-favor'
 import { saldoFavorDeFila } from '@/lib/saldo-favor-textos'
 import { NegocioForm } from '@/components/negocio-form'
+import type { TramoHorario } from '@/lib/negocio-horario'
 import { NegocioDetailModal, type NegocioDetail } from '@/components/negocio-detail-modal'
 import { calcularAlertasCliente } from '@/app/(app)/pedidos/pedidos-client/alertas-utils'
 import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
@@ -462,7 +463,7 @@ export default function ClientesClient({
   // Guard contra respuestas stale de fetchClientes en paginación (clics rápidos).
   const pageSeqRef = useRef(0)
   const [negocioFormOpen, setNegocioFormOpen] = useState(false)
-  const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; barrioId?: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null } | null>(null)
+  const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; barrioId?: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null; horarios?: TramoHorario[] } | null>(null)
   const [viewNegocioData, setViewNegocioData] = useState<NegocioDetail | null>(null)
   const [showNegocioDetail, setShowNegocioDetail] = useState(false)
 
@@ -1375,6 +1376,7 @@ export default function ClientesClient({
       referencia: neg.referencia || null,
       linkUbicacion: neg.linkUbicacion || null,
       horaApertura: neg.horaApertura || null,
+      horarios: neg.horarios,
       rutaId: neg.ruta?.id || null,
     })
     setNegocioFormOpen(true)
@@ -2215,6 +2217,7 @@ export default function ClientesClient({
                                           referencia: neg.referencia || null,
                                           linkUbicacion: neg.linkUbicacion || null,
                                           horaApertura: neg.horaApertura || null,
+                                          horarios: neg.horarios,
                                           rutaId: neg.ruta?.id || null,
                                         })
                                         setNegocioFormOpen(true)
