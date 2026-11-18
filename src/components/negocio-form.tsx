@@ -90,6 +90,7 @@ export function NegocioForm({
   const horarioInicial = normalizarHorario(editData?.horarios ?? [])
   const [horarios, setHorarios] = useState<TramoHorario[]>(horarioInicial)
   const [erroresHorario, setErroresHorario] = useState<string[]>([])
+  const erroresVivosHorario = validarHorario(horarios)
 
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
@@ -251,7 +252,13 @@ export function NegocioForm({
           </div>
         </div>
 
-        <NegocioHorarioEditor value={horarios} onChange={(v) => { setHorarios(v); setErroresHorario([]) }} errores={erroresHorario} disabled={saving} />
+        <NegocioHorarioEditor
+          value={horarios}
+          onChange={(v) => { setHorarios(v); setErroresHorario([]) }}
+          // Errores mientras se edita; si no hay, los que devolvió el servidor.
+          errores={erroresVivosHorario.length ? erroresVivosHorario : erroresHorario}
+          disabled={saving}
+        />
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Link de Google Maps</label>
