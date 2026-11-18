@@ -11,6 +11,7 @@ import { resolverStockInicial } from '@/lib/stock-inicial'
 import { PAGO_DE_PEDIDO_VIGENTE } from '@/lib/pago-confirmacion'
 import { desglosarCobros, detallarPorConfirmar, listarFiadosDelDia, listarGastosDelDia } from '@/lib/cierre-desglose-cobros'
 import { leerExigibles } from '@/lib/entregas-exigibles-db'
+import { clasificarCobrosDePedidos } from '@/lib/cobro-clasificacion-db'
 import { valorEntregadoPedidoCentavos, importesEntregaPedido } from '@/lib/valor-entregado-pedido'
 
 type PagoMetodoMonto = { metodo: MetodoPago; monto: unknown }
@@ -158,7 +159,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
           pedido: { estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
         },
         // #631: la fecha del pedido separa «ventas de hoy» de «fiados de días anteriores cobrados hoy».
-        select: { metodo: true, monto: true, pedido: { select: { fecha: true } } },
+        select: { id: true, pedidoId: true, metodo: true, monto: true, pedido: { select: { fecha: true, numero: true } } },
       }),
       // #631: detalle de los REPORTADO de días anteriores (los más recientes; el total sigue siendo el agregado).
       prisma.pago.findMany({
@@ -243,8 +244,16 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
       detalleDiasPrevios: detallarPorConfirmar(reportadosDiasPreviosRaw),
     }
     // #631: de dónde viene lo cobrado (origen × medio) y a quién se fió; no cambia ninguna cifra, solo la explica.
+    // #796: venta del día vs. cartera por la fecha de ENTREGA (no la de creación del pedido).
+    const clasificados = await clasificarCobrosDePedidos(prisma, pagosCapturadosHoy.map((pg) => pg.pedidoId))
     const desgloseCobros = desglosarCobros(
-      pagosCapturadosHoy.map((pg) => ({ metodo: pg.metodo, monto: pg.monto, pedidoFecha: pg.pedido.fecha })),
+      pagosCapturadosHoy.map((pg) => {
+        const c = clasificados.porCobro.get(pg.id)
+        return {
+          metodo: pg.metodo, monto: pg.monto, pedidoFecha: pg.pedido.fecha, pedidoNumero: pg.pedido.numero,
+          ...(c ? { clasificacion: { ventaDiaCentavos: c.ventaDiaCentavos, carteraCentavos: c.carteraCentavos, aproximado: c.aproximado } } : {}),
+        }
+      }),
       startOfDay, endOfDay, abonos, cobroVentasHoy + cobroCartera,
     )
     const fiadosDelDia = listarFiadosDelDia(pedidos.map(p => ({ ...p, exigible: exigibles.get(p.id) ?? 0 })))

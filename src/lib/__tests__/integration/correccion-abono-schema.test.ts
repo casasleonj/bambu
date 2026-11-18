@@ -72,7 +72,7 @@ describe('CorreccionAbono — schema', () => {
       where: { id: cor.id },
       include: { abono: true, autorizadoPor: true },
     })
-    expect(conAbono?.abono.id).toBe(abonoId)
+    expect(conAbono?.abono?.id).toBe(abonoId)
     expect(conAbono?.autorizadoPor.id).toBe(adminId)
   })
 

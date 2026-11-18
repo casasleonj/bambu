@@ -8,8 +8,7 @@ import { getNextNumero } from '@/lib/sequence'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
-import { calcularEstadoPago } from '@/lib/pedido-utils'
-import { registrarReceivableEntry } from '@/lib/receivable-entry'
+import { aplicarReversionMonetaria } from '@/lib/correccion-monetaria'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { prisma } from '@/lib/prisma'
 
@@ -44,10 +43,10 @@ export async function POST(
     }
     const { tipo, montoRevertido, motivo, correccionOfflineId } = parsed.data
 
-    // Lectura fuera del lock solo para conocer el clienteId (clave del lock).
+    // Lectura fuera del lock solo para conocer las claves de los locks (cliente y pedido).
     const abonoPre = await prisma.abono.findUnique({
       where: { id: abonoId },
-      select: { clienteId: true },
+      select: { clienteId: true, pedidoId: true, factura: { select: { pedidoId: true } } },
     })
     if (!abonoPre) return apiError('Abono no encontrado', 404)
 
@@ -64,10 +63,16 @@ export async function POST(
         }
       }
 
+      // #796 (auditoría F5): esta ruta reescribe `totalPagado/saldo` del pedido, igual que los cobros y entregas.
+      // Toma también el lock de PEDIDO, en el mismo orden que `pagar-fiado` (CARTERA y luego PEDIDO), para no
+      // pisar ni ser pisada por un flujo que solo bloquea el pedido. Se adquiere antes de leer el pedido.
+      const pedidoParaLock = abonoPre.pedidoId ?? abonoPre.factura?.pedidoId
+      if (pedidoParaLock) await acquireAdvisoryLockTx(tx, 'PEDIDO', pedidoParaLock)
+
       const abono = await tx.abono.findUnique({
         where: { id: abonoId },
         include: {
-          factura: { include: { pedido: { select: { id: true, total: true, totalPagado: true, estadoEntrega: true, estado: true } } } },
+          factura: { include: { pedido: { select: { id: true, total: true, totalPagado: true, saldo: true, estadoEntrega: true, estado: true, estadoPago: true } } } },
           correcciones: { select: { montoRevertido: true } },
         },
       })
@@ -131,51 +136,18 @@ export async function POST(
         },
       })
 
-      // Recalcular Factura: la reversión devuelve saldo y quita monto pagado.
-      let facturaActualizada = null
-      if (factura) {
-        const nuevoMontoPagado = Math.max(0, Number(factura.montoPagado) - revertir)
-        // clamp a >= 0 (paridad con `calcularSaldo` del resto del código).
-        const nuevoSaldoFactura = Math.max(0, Number(factura.total) - nuevoMontoPagado)
-        const nuevoEstadoFactura =
-          nuevoSaldoFactura <= 0 ? 'PAGADA' : nuevoMontoPagado > 0 ? 'PARCIAL' : 'EMITIDA'
-        facturaActualizada = await tx.factura.update({
-          where: { id: factura.id },
-          data: { montoPagado: nuevoMontoPagado, saldo: nuevoSaldoFactura, estado: nuevoEstadoFactura },
-        })
-      }
-
-      // Recalcular Pedido.
-      let pedidoActualizado = null
-      if (pedido) {
-        const nuevoTotalPagado = Math.max(0, Number(pedido.totalPagado) - revertir)
-        const nuevoSaldoPedido = Math.max(0, Number(pedido.total) - nuevoTotalPagado)
-        const nuevoEstadoPago = calcularEstadoPago(
-          Number(pedido.total),
-          nuevoTotalPagado,
-          pedido.estadoEntrega,
-        )
-        pedidoActualizado = await tx.pedido.update({
-          where: { id: pedido.id },
-          data: {
-            totalPagado: nuevoTotalPagado,
-            saldo: nuevoSaldoPedido,
-            estadoPago: nuevoEstadoPago,
-          },
-        })
-
-        // Proyección de auditoría (ADR-MONETARIO-001 §12), en la MISMA tx.
-        await registrarReceivableEntry(tx, {
-          pedidoId: pedido.id,
-          facturaId: factura?.id ?? null,
-          clienteId: abono.clienteId,
-          tipo: 'REVERSION',
-          monto: revertir,
-          saldoResultante: nuevoSaldoPedido,
-          totalPagadoResultante: nuevoTotalPagado,
-          offlineId: correccionOfflineId || null,
-        })
-      }
+      // Factura + Pedido + ReceivableEntry REVERSION: un solo cálculo compartido con la corrección de un pago (ADR-002).
+      const { efecto, pedidoActualizado, facturaActualizada } = await aplicarReversionMonetaria(tx, {
+        pedido: pedido
+          ? { id: pedido.id, total: pedido.total, totalPagado: pedido.totalPagado, saldo: pedido.saldo, estadoEntrega: pedido.estadoEntrega, estadoPago: pedido.estadoPago }
+          : null,
+        factura: factura
+          ? { id: factura.id, total: factura.total, montoPagado: factura.montoPagado, saldo: factura.saldo, estado: factura.estado }
+          : null,
+        clienteId: abono.clienteId,
+        revertir,
+        correccionOfflineId: correccionOfflineId || null,
+      })
 
       await logAudit(
         {
@@ -189,6 +161,9 @@ export async function POST(
             montoRevertido: revertir,
             motivo,
             responsibilityCaseId,
+            // Condición 3 del PO: valores anteriores y posteriores de lo que cambió.
+            antes: { pedido: efecto.pedido?.antes ?? null, factura: efecto.factura?.antes ?? null },
+            despues: { pedido: efecto.pedido?.despues ?? null, factura: efecto.factura?.despues ?? null },
           },
           usuarioId: userId,
         },
