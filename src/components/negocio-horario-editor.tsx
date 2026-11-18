@@ -4,7 +4,7 @@ import {
   DIAS_SEMANA, ORDEN_DIAS, normalizarHorario, type TramoHorario,
 } from '@/lib/negocio-horario'
 
-const inputHora = 'w-[6.5rem] rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'
+const inputHora = 'w-[7.25rem] rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100'
 
 function sumarHoras(hhmm: string, horas: number): string {
   const [h, m] = hhmm.split(':').map(Number)
@@ -60,8 +60,8 @@ export function NegocioHorarioEditor({
           const ts = delDia(d)
           return (
             <div key={d} role="group" aria-label={DIAS_SEMANA[d]} data-testid={`horario-dia-${d}`} className="flex flex-wrap items-center gap-2 py-1.5">
-              <span className="w-24 text-sm font-medium text-gray-700">{DIAS_SEMANA[d]}</span>
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <span className="w-full text-sm font-medium text-gray-700 sm:w-24">{DIAS_SEMANA[d]}</span>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1.5">
                 {ts.length === 0 && (
                   <span className="text-sm text-gray-500" data-testid={`horario-cerrado-${d}`}>{configurado ? 'Cerrado' : '—'}</span>
                 )}
@@ -76,11 +76,11 @@ export function NegocioHorarioEditor({
                       className="rounded px-1.5 py-1 text-sm text-gray-400 hover:bg-gray-100 hover:text-red-600">✕</button>
                   </span>
                 ))}
+                <button type="button" disabled={disabled} onClick={() => agregar(d)} data-testid={`horario-agregar-${d}`}
+                  className="rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                  {ts.length === 0 ? 'Abrir' : '＋ Tramo'}
+                </button>
               </div>
-              <button type="button" disabled={disabled} onClick={() => agregar(d)} data-testid={`horario-agregar-${d}`}
-                className="rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">
-                {ts.length === 0 ? 'Abrir' : '＋ Tramo'}
-              </button>
             </div>
           )
         })}
