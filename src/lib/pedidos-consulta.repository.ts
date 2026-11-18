@@ -408,7 +408,7 @@ async function leerConsultaPedidos(
             pagos: true,
             createdBy: { select: { nombre: true } },
             cliente: { include: { ruta: { select: { nombre: true } } } },
-            negocio: { include: { ruta: { select: { nombre: true } } } },
+            negocio: { include: { ruta: { select: { nombre: true } }, horarios: { select: { diaSemana: true, desde: true, hasta: true } } } },
             obligacion: {
               select: {
                 id: true,
@@ -641,6 +641,8 @@ async function leerConsultaPedidos(
           zonaCli: direccion.direccion ?? "",
           barrioCli: direccion.barrio ?? "",
           ...(grupoPorId?.get(raw.id) ? { grupoBarrio: grupoPorId.get(raw.id) } : {}),
+          // #836 F2: tramos del negocio para avisar «cierra ese día»; solo si tiene horario configurado.
+          ...(raw.negocio?.horarios?.length ? { negocioHorarios: raw.negocio.horarios } : {}),
           rutaNombre:
             raw.negocio?.ruta?.nombre ?? raw.cliente.ruta?.nombre ?? null,
           lat: coords?.lat ?? null,

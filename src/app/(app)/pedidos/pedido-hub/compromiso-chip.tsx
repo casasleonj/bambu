@@ -1,4 +1,5 @@
 import { clasificarCompromiso } from "@/lib/pedidos-compromiso";
+import { negocioCerradoEseDia, type TramoHorario } from "@/lib/negocio-horario";
 
 const TONO = {
   hoy: "bg-green-100 text-green-800",
@@ -40,6 +41,30 @@ export function CompromisoChip({
       data-testid={`operacion-compromiso-${id}`}
     >
       📅 {e.texto}
+    </p>
+  );
+}
+
+/**
+ * #836 F2: aviso (no bloqueo) de que el negocio no atiende el día de la fecha prometida. Solo con
+ * horario configurado y un pedido todavía abierto; el pedido sigue visible y se puede preparar.
+ */
+export function CierreNegocioChip({
+  id, pedido,
+}: {
+  id: string;
+  pedido: { fechaEntrega?: string | null; estadoEntrega: string; negocioHorarios?: TramoHorario[] };
+}) {
+  if (!pedido.fechaEntrega || !pedido.negocioHorarios?.length) return null;
+  if (["ENTREGADO", "CANCELADO", "ANULADO"].includes(pedido.estadoEntrega)) return null;
+  if (!negocioCerradoEseDia(pedido.negocioHorarios, pedido.fechaEntrega)) return null;
+  return (
+    <p
+      className="mt-1 ml-1 inline-block rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-800"
+      data-testid={`operacion-cierre-${id}`}
+      title="Según el horario del negocio, ese día no atiende. Se puede preparar igual."
+    >
+      Negocio cerrado ese día
     </p>
   );
 }

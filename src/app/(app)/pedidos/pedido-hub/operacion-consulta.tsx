@@ -16,7 +16,7 @@ import type { AccionKey, Pedido } from "./types";
 import { fechaConsulta } from "./fecha-consulta";
 import { etiquetaArrastre } from "./arrastrados";
 import { NotaPedido } from "./nota-pedido";
-import { CompromisoChip } from "./compromiso-chip";
+import { CompromisoChip, CierreNegocioChip } from "./compromiso-chip";
 import { importesEntregaPedido } from "@/lib/valor-entregado-pedido";
 import type { GrupoBarrioConsulta } from "@/lib/pedidos-consulta";
 import styles from "./operacion-consulta.module.css";
@@ -195,6 +195,7 @@ export function OperacionConsulta({
                   </p>
                 )}
                 <CompromisoChip id={p.id} pedido={p} hoyBogota={hoyBogota} />
+                <CierreNegocioChip id={p.id} pedido={p} />
                 <p
                   className={`${styles.meta} truncate`}
                   data-testid={`operacion-barrio-${p.id}`}

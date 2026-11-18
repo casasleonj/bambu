@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiList, apiError } from '@/lib/api-response'
 import { BarrioNoEncontradoError, resolverBarrioParaVinculo } from '@/lib/barrios/barrio-service'
+import { normalizarHorario, resumenHorario, validarHorario } from '@/lib/negocio-horario'
 import { EvaluarImpactoUbicacionUseCase } from '@/modules/pedidos/application/use-cases/EvaluarImpactoUbicacionUseCase'
 
 const evaluarImpactoUbicacion = new EvaluarImpactoUbicacionUseCase()
@@ -33,6 +34,12 @@ const NegocioCreateSchema = z.object({
   habBolsaHielo: z.boolean().optional().default(true),
   frecuencia: z.string().optional().nullable(),
   cadaNDias: z.number().int().min(1).optional().nullable(),
+  /** #836 F2: horario semanal. Al actualizar, REEMPLAZA el conjunto; omitirlo no lo toca; `[]` lo borra. */
+  horarios: z.array(z.object({
+    diaSemana: z.number().int().min(0).max(6),
+    desde: z.string(),
+    hasta: z.string(),
+  })).max(28).optional(),
 })
 
 const NegocioUpdateSchema = NegocioCreateSchema.partial()
@@ -53,6 +60,7 @@ export async function GET(request: NextRequest) {
       include: {
         cliente: { select: { id: true, nombre: true, apellido: true, telefono: true } },
         ruta: { select: { id: true, nombre: true } },
+        horarios: { select: { diaSemana: true, desde: true, hasta: true }, orderBy: [{ diaSemana: 'asc' }, { desde: 'asc' }] },
         _count: { select: { pedidos: true } },
       },
       orderBy: { nombre: 'asc' },
@@ -77,6 +85,11 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return apiError('Datos inválidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
+    // #836 F2: `horarios` no es una columna; se quita de los datos del negocio y se guarda aparte.
+    const horariosNuevos = parsed.data.horarios
+    delete parsed.data.horarios
+    const erroresHorario = horariosNuevos ? validarHorario(horariosNuevos) : []
+    if (erroresHorario.length) return apiError('Datos inválidos', 400, { formErrors: erroresHorario })
 
     // F1-BARRIO-CANONICO (fix revisión pre-merge): verificar el Cliente,
     // resolver el Barrio y crear el Negocio DENTRO de la misma transacción
@@ -111,10 +124,13 @@ export async function POST(request: NextRequest) {
           ...parsed.data,
           barrio: barrioLegacy,
           createdById: authResult.user?.id,
+          // (se vuelve a fijar `horarios` porque el tipo de `parsed.data` aún lo incluye como arreglo)
+          horarios: horariosNuevos?.length ? { create: normalizarHorario(horariosNuevos) } : undefined,
         },
         include: {
           cliente: { select: { id: true, nombre: true, apellido: true } },
           ruta: { select: { id: true, nombre: true } },
+          horarios: { select: { diaSemana: true, desde: true, hasta: true } },
         },
       })
     })
@@ -123,7 +139,7 @@ export async function POST(request: NextRequest) {
       entidad: 'Negocio',
       registroId: negocio.id,
       accion: 'CREATE',
-      datos: { nombre: negocio.nombre, clienteId: negocio.clienteId },
+      datos: { nombre: negocio.nombre, clienteId: negocio.clienteId, ...(horariosNuevos?.length ? { horario: resumenHorario(horariosNuevos) } : {}) },
       usuarioId: authResult.user?.id,
     })
 
@@ -154,6 +170,11 @@ export async function PUT(request: NextRequest) {
     if (!parsed.success) {
       return apiError('Datos inválidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
+    // #836 F2: `horarios` no es una columna; se quita de los datos del negocio y se guarda aparte.
+    const horarios = parsed.data.horarios
+    delete parsed.data.horarios
+    const erroresHorario = horarios ? validarHorario(horarios) : []
+    if (erroresHorario.length) return apiError('Datos inválidos', 400, { formErrors: erroresHorario })
 
     // FIX F-35b: optimistic locking con updatedAt.
     // Antes: prisma.negocio.findUnique + update directo sin tx.
@@ -191,10 +212,18 @@ export async function PUT(request: NextRequest) {
 
       const updateResult = await tx.negocio.updateMany({
         where: { id, updatedAt: existing.updatedAt },
-        data: parsed.data,
+        data: horarios !== undefined ? { ...parsed.data, updatedAt: new Date() } : parsed.data,
       })
       if (updateResult.count === 0) {
         throw new Error('NEGOCIO_MODIFICADO_POR_OTRO_ADMIN')
+      }
+
+      // #836 F2: el horario se REEMPLAZA completo dentro de la misma transacción (nunca queda a medias).
+      if (horarios !== undefined) {
+        await tx.negocioHorario.deleteMany({ where: { negocioId: id } })
+        if (horarios.length) {
+          await tx.negocioHorario.createMany({ data: normalizarHorario(horarios).map((h) => ({ negocioId: id, ...h })) })
+        }
       }
 
       // F3 (Impacto en Demanda): señal informativa para Pedidos pendientes
@@ -217,6 +246,7 @@ export async function PUT(request: NextRequest) {
         include: {
           cliente: { select: { id: true, nombre: true, apellido: true } },
           ruta: { select: { id: true, nombre: true } },
+          horarios: { select: { diaSemana: true, desde: true, hasta: true }, orderBy: [{ diaSemana: 'asc' }, { desde: 'asc' }] },
         },
       })
     })
@@ -227,7 +257,7 @@ export async function PUT(request: NextRequest) {
       entidad: 'Negocio',
       registroId: id,
       accion: 'UPDATE',
-      datos: parsed.data,
+      datos: horarios !== undefined ? { ...parsed.data, horario: resumenHorario(horarios) } : parsed.data,
       usuarioId: authResult.user?.id,
     })
 
