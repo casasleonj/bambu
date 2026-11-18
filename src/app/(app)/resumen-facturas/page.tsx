@@ -1,12 +1,16 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { Fragment, useEffect, useState, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { toast } from 'sonner'
+import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
+import { canCompartirResumenFacturas } from '@/lib/permissions'
 import './print.css'
+import { FacturaCard, ResumenHero, type ItemResumen } from './resumen-visual'
+import { CompartirWhatsapp } from './compartir-whatsapp'
 
 interface FacturaResumen {
   id: string
@@ -16,6 +20,8 @@ interface FacturaResumen {
   montoPagado: number
   saldo: number
   estado: string
+  items: ItemResumen[]
+  otrosAjustes: number
   pedidoNumero: number | null
   pedidoId: string | null
   desfase: {
@@ -50,11 +56,40 @@ interface TotalesResumen {
   count: number
 }
 
+type EstadoTab = 'TODAS' | 'EMITIDA' | 'PARCIAL' | 'PAGADA' | 'ANULADA'
+
+const TABS: { key: EstadoTab; label: string }[] = [
+  { key: 'TODAS', label: 'Todas' },
+  { key: 'EMITIDA', label: 'Emitidas' },
+  { key: 'PARCIAL', label: 'Parciales' },
+  { key: 'PAGADA', label: 'Pagadas' },
+  { key: 'ANULADA', label: 'Anuladas' },
+]
+
+const ESTADO_TXT: Record<string, string> = {
+  EMITIDA: 'Emitida',
+  PARCIAL: 'Parcial',
+  PAGADA: 'Pagada',
+  ANULADA: 'Anulada · no suma',
+}
+
+function esEstadoTab(v: string | null): v is EstadoTab {
+  return v === 'TODAS' || v === 'EMITIDA' || v === 'PARCIAL' || v === 'PAGADA' || v === 'ANULADA'
+}
+
+interface AnuladasResumen {
+  count: number
+  totalHistorico: number
+}
+
 interface ResumenData {
   cliente: ClienteResumen
   periodo: { desde: string | null; hasta: string | null }
+  filtro: { estado: EstadoTab; incluirAnuladas: boolean }
+  conteos: Record<'EMITIDA' | 'PARCIAL' | 'PAGADA' | 'ANULADA', number>
   facturas: FacturaResumen[]
   totales: TotalesResumen
+  anuladas: AnuladasResumen
   empresa: EmpresaResumen
 }
 
@@ -105,9 +140,16 @@ function SkeletonLine({ className = '' }: { className?: string }) {
 
 export default function ResumenFacturasPage() {
   const searchParams = useSearchParams()
+  const router = useRouter()
+  const { data: session } = useSession()
+  const puedeCompartir = canCompartirResumenFacturas((session?.user as { role?: string } | undefined)?.role)
   const clienteId = searchParams.get('clienteId')
   const desde = searchParams.get('desde')
   const hasta = searchParams.get('hasta')
+  // Enlaces antiguos sin `estado` = «Todas» (anuladas atenuadas, sin sumar).
+  const estadoParam = searchParams.get('estado')?.toUpperCase() ?? null
+  const estado: EstadoTab = esEstadoTab(estadoParam) ? estadoParam : 'TODAS'
+  const incluirAnuladas = searchParams.get('incluirAnuladas')
 
   const [data, setData] = useState<ResumenData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -128,6 +170,8 @@ export default function ResumenFacturasPage() {
       const query = new URLSearchParams()
       if (desde) query.set('desde', desde)
       if (hasta) query.set('hasta', hasta)
+      query.set('estado', estado)
+      if (incluirAnuladas) query.set('incluirAnuladas', incluirAnuladas)
       const qs = query.toString()
       const res = await fetch(`/api/clientes/${clienteId}/resumen-facturas${qs ? `?${qs}` : ''}`)
       if (!res.ok) {
@@ -146,7 +190,7 @@ export default function ResumenFacturasPage() {
     } finally {
       setLoading(false)
     }
-  }, [clienteId, desde, hasta])
+  }, [clienteId, desde, hasta, estado, incluirAnuladas])
 
   useEffect(() => {
     // Fetch de datos al montar / cambiar clienteId-desde-hasta — side
@@ -156,6 +200,11 @@ export default function ResumenFacturasPage() {
   }, [fetchData])
 
   const handlePrint = () => { window.print() }
+  const handleTab = (key: EstadoTab) => {
+    const q = new URLSearchParams(searchParams.toString())
+    q.set('estado', key)
+    router.replace(`/resumen-facturas?${q.toString()}`)
+  }
   const handleRetry = () => { fetchData() }
 
   if (!clienteId) {
@@ -220,7 +269,8 @@ export default function ResumenFacturasPage() {
     )
   }
 
-  const { cliente, periodo, facturas, totales, empresa } = data
+  const { cliente, periodo, facturas, totales, anuladas, conteos, empresa } = data
+  const estadoNombre = TABS.find((t) => t.key === estado)?.label ?? 'Todas'
 
   return (
     <div className="p-4 space-y-4">
@@ -229,6 +279,18 @@ export default function ResumenFacturasPage() {
         <h1 className="text-2xl font-bold">Resumen Consolidado de Facturas</h1>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => window.history.back()}>Volver</Button>
+          {puedeCompartir && (
+            <CompartirWhatsapp
+              clienteId={cliente.id}
+              clienteNombre={[cliente.nombre, cliente.apellido].filter(Boolean).join(' ')}
+              telefono={cliente.telefono}
+              estado={estado}
+              desde={desde}
+              hasta={hasta}
+              facturas={totales.count}
+              saldo={totales.saldo}
+            />
+          )}
           <Button onClick={handlePrint}>
             <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -238,38 +300,40 @@ export default function ResumenFacturasPage() {
         </div>
       </div>
 
-      {/* KPIs — no imprimibles */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 print:hidden">
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total facturado</p>
-          <p className="text-lg font-bold text-gray-900 mt-1">{formatCurrency(totales.total)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{totales.count} factura{totales.count !== 1 ? 's' : ''}</p>
-        </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total pagado</p>
-          <p className="text-lg font-bold text-green-700 mt-1">{formatCurrency(totales.totalPagado)}</p>
-        </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Saldo pendiente</p>
-          <p className={`text-lg font-bold mt-1 ${totales.saldo > 0 ? 'text-red-600' : 'text-green-700'}`}>
-            {formatCurrency(totales.saldo)}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Cobranza</p>
-          <div className="mt-2">
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-blue-600 h-2 rounded-full transition-all"
-                style={{ width: `${totales.total > 0 ? Math.round((totales.totalPagado / totales.total) * 100) : 0}%` }}
-              />
-            </div>
-            <p className="text-xs text-gray-400 mt-1">
-              {totales.total > 0 ? Math.round((totales.totalPagado / totales.total) * 100) : 0}% cobrado
-            </p>
-          </div>
-        </div>
+      {/* Filtro por estado (#758): el documento y los totales siguen la selección */}
+      <div className="flex flex-wrap gap-2 print:hidden" role="tablist" aria-label="Filtrar por estado" data-testid="resumen-tabs">
+        {TABS.map((t) => {
+          const n = t.key === 'TODAS'
+            ? conteos.EMITIDA + conteos.PARCIAL + conteos.PAGADA + (data.filtro.incluirAnuladas ? conteos.ANULADA : 0)
+            : conteos[t.key]
+          const activa = estado === t.key
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={activa}
+              data-testid={`resumen-tab-${t.key}`}
+              onClick={() => handleTab(t.key)}
+              className={`min-h-11 px-4 rounded-full text-sm font-semibold border transition ${
+                activa ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {t.label} ({n})
+            </button>
+          )
+        })}
       </div>
+
+      {/* Lo que se debe, de un vistazo (#867) — no imprimible */}
+      <ResumenHero
+        soloAnuladas={estado === 'ANULADA'}
+        totales={totales}
+        anuladasTotal={anuladas.totalHistorico}
+        conSaldo={facturas
+          .filter((f) => f.estado !== 'ANULADA' && f.saldo > 0)
+          .map((f) => ({ numero: f.numero, saldo: f.saldo }))}
+      />
 
       {/* Estado vacío */}
       {facturas.length === 0 && (
@@ -278,7 +342,7 @@ export default function ResumenFacturasPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <p className="text-gray-600 font-medium">No hay facturas de <span className="font-bold">{cliente.nombre}</span></p>
-          <p className="text-gray-400 text-sm mt-1">Período: {formatPeriodo(periodo.desde, periodo.hasta)}</p>
+          <p className="text-gray-400 text-sm mt-1">Período: {formatPeriodo(periodo.desde, periodo.hasta)} · Estado: {estadoNombre}</p>
         </div>
       )}
 
@@ -306,6 +370,7 @@ export default function ResumenFacturasPage() {
               </div>
               <div className="mt-3 flex gap-6 text-xs text-gray-600">
                 <span><strong>Período de facturas:</strong> {formatPeriodo(periodo.desde, periodo.hasta)}</span>
+                <span data-testid="resumen-estado"><strong>Estado:</strong> {estadoNombre}</span>
               </div>
             </div>
 
@@ -332,8 +397,29 @@ export default function ResumenFacturasPage() {
               </div>
             </div>
 
-            {/* Tabla de facturas */}
-            <div className="overflow-x-auto mb-4">
+            {/* En pantalla: tarjetas con el detalle de productos (#867) */}
+            <div className="space-y-3 mb-4 print:hidden" data-testid="resumen-tarjetas">
+              {facturas.map((f) => (
+                <FacturaCard
+                  key={f.id}
+                  abiertaInicial={facturas.length === 1}
+                  factura={{
+                    id: f.id,
+                    numero: f.numero,
+                    fechaTxt: formatDate(f.fecha),
+                    total: f.total,
+                    montoPagado: f.montoPagado,
+                    saldo: f.saldo,
+                    estado: f.estado,
+                    items: f.items,
+                    otrosAjustes: f.otrosAjustes,
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Al imprimir: tabla con el detalle de cada factura */}
+            <div className="hidden print:block overflow-x-auto mb-4">
               <table className="w-full text-sm border border-gray-300 print:border-gray-400">
                 <thead className="bg-gray-100 print:bg-gray-50">
                   <tr>
@@ -349,7 +435,8 @@ export default function ResumenFacturasPage() {
                 </thead>
                 <tbody>
                   {facturas.map((f, i) => (
-                    <tr key={f.id} className={`print:break-inside-avoid ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50 print:bg-white'}`}>
+                    <Fragment key={f.id}>
+                    <tr className={`print:break-inside-avoid ${f.estado === 'ANULADA' ? 'bg-gray-100 text-gray-500 print:bg-white' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50 print:bg-white'}`}>
                       <td className="px-3 py-2 font-medium border-b border-gray-100 print:border-gray-200">
                         <Link href={`/facturas?openFactura=${f.id}`} className="text-blue-600 hover:underline">
                           {f.numero}
@@ -385,9 +472,26 @@ export default function ResumenFacturasPage() {
                         )}
                       </td>
                       <td className="px-3 py-2 text-center text-xs font-medium text-gray-600 border-b border-gray-100 print:border-gray-200">
-                        {f.estado}
+                        {ESTADO_TXT[f.estado] ?? f.estado}
                       </td>
                     </tr>
+                    {f.items.map((it) => (
+                      <tr key={`${f.id}-${it.producto}`} className="print:break-inside-avoid text-xs text-gray-500">
+                        <td className="px-3 py-1 pl-8 border-b border-gray-100 print:border-gray-200" colSpan={3}>
+                          {it.etiqueta} × {it.cantidad}
+                        </td>
+                        <td className="px-3 py-1 text-right border-b border-gray-100 print:border-gray-200">{formatCurrency(it.subtotal)}</td>
+                        <td className="border-b border-gray-100 print:border-gray-200" colSpan={4} />
+                      </tr>
+                    ))}
+                    {f.otrosAjustes !== 0 && (
+                      <tr className="print:break-inside-avoid text-xs text-gray-500">
+                        <td className="px-3 py-1 pl-8 border-b border-gray-100 print:border-gray-200" colSpan={3}>Otros ajustes</td>
+                        <td className="px-3 py-1 text-right border-b border-gray-100 print:border-gray-200">{formatCurrency(f.otrosAjustes)}</td>
+                        <td className="border-b border-gray-100 print:border-gray-200" colSpan={4} />
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -409,6 +513,12 @@ export default function ResumenFacturasPage() {
                     <span className="text-gray-600">Total pagado:</span>
                     <span className="font-semibold text-green-700">{formatCurrency(totales.totalPagado)}</span>
                   </div>
+                  {anuladas.count > 0 && (
+                    <div className="flex justify-between text-xs text-gray-500" data-testid="resumen-anuladas">
+                      <span>Anuladas (no suman): {anuladas.count}</span>
+                      <span>{formatCurrency(anuladas.totalHistorico)}</span>
+                    </div>
+                  )}
                   <div className="border-t-2 border-gray-800 pt-2 mt-2 print:border-gray-600">
                     <div className="flex justify-between text-base">
                       <span className="font-bold text-gray-800 uppercase">
