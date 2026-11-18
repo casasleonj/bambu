@@ -113,6 +113,8 @@ export interface Pedido {
   // P1-1 PR B (#379) — extras que solo trae GET /api/pedidos/[id].
   direccionEntrega?: string | null
   fechaEntrega?: string | null
+  /** #836 F2b: hora acordada HH:MM (Bogotá) del día prometido; solo ordena/agrupa. */
+  entregaNoAntesDe?: string | null
   entregadoAt?: string | null
   creadoPor?: string | null
   createdAt?: string

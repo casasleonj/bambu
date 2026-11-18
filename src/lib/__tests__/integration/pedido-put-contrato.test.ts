@@ -83,6 +83,8 @@ function centinelasPedido(ctx: { adminId: string; embarqueOrigenId: string; pedi
     codigoVisita: 'CEN-123',
     repartidor: 'Centinela Repartidor',
     horaPreferida: '10:30',
+    // #836 F2b: hora acordada (HH:MM); el PUT de edición NO la toca (solo «Cambiar fecha prometida»).
+    entregaNoAntesDe: '16:30',
     idOrigen: 'CENTINELA_PLANTILLA',
   }
 }

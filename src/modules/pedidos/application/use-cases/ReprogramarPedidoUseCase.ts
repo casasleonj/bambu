@@ -41,6 +41,11 @@ export interface ReprogramarPedidoInput {
   actorId: string
   motivo?: string
   offlineId?: string
+  /**
+   * #836 F2b — hora acordada (HH:MM de Bogotá). Omitida = no se toca; `null` = se quita; texto = se fija.
+   * Solo ordena/agrupa: no cambia nada más del pedido.
+   */
+  horaNueva?: string | null
   /** Fecha que la pantalla creía vigente (ISO). `null` = la pantalla veía «sin fecha». Omitida = no se comprueba. */
   fechaAnteriorEsperada?: Date | null
 }
@@ -49,6 +54,8 @@ export interface ReprogramarPedidoResult {
   pedidoId: string
   fechaAnterior: Date | null
   fechaNueva: Date
+  horaAnterior: string | null
+  horaNueva: string | null
   vencidaAlReprogramar: boolean
   vecesReprogramado: number
   fechaNuevaVencida: boolean
@@ -65,6 +72,8 @@ export class ReprogramarPedidoUseCase {
             pedidoId: previa.pedidoId,
             fechaAnterior: previa.fechaAnterior,
             fechaNueva: previa.fechaNueva,
+            horaAnterior: previa.horaAnterior,
+            horaNueva: previa.horaNueva,
             vencidaAlReprogramar: previa.vencidaAlReprogramar,
             vecesReprogramado: await tx.pedidoReprogramacion.count({ where: { pedidoId: previa.pedidoId } }),
             fechaNuevaVencida: compromisoVencido(previa.fechaNueva, new Date()),
@@ -75,7 +84,7 @@ export class ReprogramarPedidoUseCase {
 
       const pedido = await tx.pedido.findUnique({
         where: { id: input.pedidoId },
-        select: { id: true, estadoEntrega: true, fechaEntrega: true },
+        select: { id: true, estadoEntrega: true, fechaEntrega: true, entregaNoAntesDe: true },
       })
       if (!pedido) throw new PedidoReprogramacionNotFoundError(input.pedidoId)
       if (['ENTREGADO', 'CANCELADO', 'ANULADO'].includes(pedido.estadoEntrega)) {
@@ -89,6 +98,8 @@ export class ReprogramarPedidoUseCase {
 
       const ahora = new Date()
       const fechaAnterior = pedido.fechaEntrega
+      const horaAnterior = pedido.entregaNoAntesDe
+      const horaNueva = input.horaNueva === undefined ? horaAnterior : input.horaNueva
       const vencidaAlReprogramar = compromisoVencido(fechaAnterior, ahora)
 
       await tx.pedidoReprogramacion.create({
@@ -96,21 +107,28 @@ export class ReprogramarPedidoUseCase {
           pedidoId: pedido.id,
           fechaAnterior,
           fechaNueva: input.fechaNueva,
+          horaAnterior,
+          horaNueva,
           motivo: input.motivo,
           vencidaAlReprogramar,
           reprogramadoPorId: input.actorId,
           offlineId: input.offlineId,
         },
       })
-      // Única mutación del pedido: la fecha prometida.
-      await tx.pedido.update({ where: { id: pedido.id }, data: { fechaEntrega: input.fechaNueva } })
+      // Únicas mutaciones del pedido: la fecha prometida y, si se indicó, su hora acordada.
+      await tx.pedido.update({
+        where: { id: pedido.id },
+        data: input.horaNueva === undefined
+          ? { fechaEntrega: input.fechaNueva }
+          : { fechaEntrega: input.fechaNueva, entregaNoAntesDe: input.horaNueva },
+      })
 
       const vecesReprogramado = await tx.pedidoReprogramacion.count({ where: { pedidoId: pedido.id } })
       await logAudit({
         entidad: 'Pedido',
         registroId: pedido.id,
         accion: 'UPDATE',
-        datos: { reprogramacion: true, fechaAnterior, fechaNueva: input.fechaNueva, motivo: input.motivo ?? null, vencidaAlReprogramar, vecesReprogramado },
+        datos: { reprogramacion: true, fechaAnterior, fechaNueva: input.fechaNueva, horaAnterior, horaNueva, motivo: input.motivo ?? null, vencidaAlReprogramar, vecesReprogramado },
         usuarioId: input.actorId,
       }, tx)
 
@@ -118,6 +136,8 @@ export class ReprogramarPedidoUseCase {
         pedidoId: pedido.id,
         fechaAnterior,
         fechaNueva: input.fechaNueva,
+        horaAnterior,
+        horaNueva,
         vencidaAlReprogramar,
         vecesReprogramado,
         fechaNuevaVencida: compromisoVencido(input.fechaNueva, ahora),

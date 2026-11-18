@@ -5,7 +5,10 @@ import { pedidoItemsResumen } from '../pedido-items'
 import { deriveOperacion, origenLabel, embarqueLinea } from './derive-operacion'
 import type { AccionKey, DeriveContext, Pedido } from './types'
 import { OperacionConsulta,type AccionesConsulta } from './operacion-consulta'
+import { useState } from 'react'
 import { GrupoBarrioEncabezado } from './grupo-barrio-encabezado'
+import { useAhora } from '@/hooks/use-ahora'
+import { ordenarPorFranja, type Franja } from '@/lib/pedidos-franja'
 
 const money = (n: number) => new Intl.NumberFormat('es-CO').format(Number(n) || 0)
 
@@ -145,6 +148,56 @@ function OperacionCardMobile({
  * defecto (blueprint §2.4). Estado como microcopy, no badges apilados.
  * En 4a la fila abre el modal de detalle legacy vía `onOpen`; el peek es 4b.
  */
+const ETIQUETA_FRANJA: Record<Franja, string> = { ya_toca: 'Ya toca', normal: 'Normales', mas_tarde: 'Más tarde hoy' }
+const TONO_FRANJA: Record<Franja, string> = {
+  ya_toca: 'bg-red-100 text-red-800',
+  normal: 'bg-gray-100 text-gray-600',
+  mas_tarde: 'bg-indigo-50 text-indigo-800',
+}
+
+/**
+ * #836 F2b: «Para hoy» agrupado por tiempo restante hasta la hora acordada. Nunca oculta un pedido:
+ * «Más tarde hoy» arranca plegado pero muestra cuántos hay y se despliega con un toque.
+ */
+function ListaPorFranja({
+  pedidos, viewport, hoyBogota, onAccion, onOpen, consulta, arrastre,
+}: { pedidos: Pedido[]; viewport: 'desktop' | 'mobile'; hoyBogota: string; onAccion: (p: Pedido, k: AccionKey) => void; onOpen: (p: Pedido) => void; consulta: AccionesConsulta; arrastre?: boolean }) {
+  const ahora = useAhora()
+  const [tardeAbierto, setTardeAbierto] = useState(false)
+  const ordenados = ordenarPorFranja(pedidos, ahora, (p) => p)
+  const bloques: Array<{ franja: Franja; filas: Pedido[] }> = []
+  for (const p of ordenados) {
+    const ultimo = bloques[bloques.length - 1]
+    if (ultimo && ultimo.franja === p._franja.franja) ultimo.filas.push(p)
+    else bloques.push({ franja: p._franja.franja, filas: [p] })
+  }
+  return (
+    <div data-testid="pedidos-por-franja">
+      {bloques.map((b) => {
+        const plegado = b.franja === 'mas_tarde' && !tardeAbierto
+        return (
+          <section key={b.franja} aria-label={ETIQUETA_FRANJA[b.franja]}>
+            <div
+              className={`my-2 flex items-center justify-between rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${TONO_FRANJA[b.franja]}`}
+              data-testid={`franja-${b.franja}`}
+            >
+              <span>{ETIQUETA_FRANJA[b.franja]} · {b.filas.length}</span>
+              {b.franja === 'mas_tarde' && (
+                <button type="button" className="underline" aria-expanded={!plegado} onClick={() => setTardeAbierto((v) => !v)} data-testid="franja-mas-tarde-toggle">
+                  {plegado ? '▼ ver' : '▲ ocultar'}
+                </button>
+              )}
+            </div>
+            {!plegado && (
+              <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre} />
+            )}
+          </section>
+        )
+      })}
+    </div>
+  )
+}
+
 export function OperacionList({
   pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen, consulta, arrastre,
 }: OperacionListProps) {
@@ -155,6 +208,10 @@ export function OperacionList({
         description="Ajustá los filtros o creá una nueva operación."
       />
     )
+  }
+
+  if (consulta?.franjas && !pedidos.some((p) => p.grupoBarrio) && pedidos.some((p) => p.entregaNoAntesDe)) {
+    return <ListaPorFranja pedidos={pedidos} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} consulta={consulta} arrastre={arrastre} />
   }
 
   if (consulta && pedidos.some((p) => p.grupoBarrio)) {

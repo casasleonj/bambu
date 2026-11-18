@@ -43,3 +43,5 @@
 # #796: ancla de corrección anclada a un Pago sin Abono (pagoId nullable, abonoId nullable, CHECK de una sola ancla; aditiva).
 20261118_correccion_pago_sin_abono
 20261119_negocio_horario
+# #836 F2b: hora acordada del pedido (CHECK de formato HH:MM, columnas aditivas).
+20261120_pedido_hora_acordada

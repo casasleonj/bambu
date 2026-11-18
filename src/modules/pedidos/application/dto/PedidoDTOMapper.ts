@@ -67,6 +67,7 @@ export class PedidoDTOMapper {
       saldo: pedido.saldo.toDecimal(),
       fecha: pedido.fecha.toISOString(),
       fechaEntrega: pedido.fechaEntrega?.toISOString(),
+      entregaNoAntesDe: pedido.entregaNoAntesDe ?? null,
       obs: pedido.obs,
       direccionEntrega: pedido.direccionEntrega ?? null,
       barrioEntrega: pedido.barrioEntrega ?? null,

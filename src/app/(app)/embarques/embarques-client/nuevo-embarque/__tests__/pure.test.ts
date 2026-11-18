@@ -1,4 +1,5 @@
 // @tests funciones puras del wizard de "Nuevo Embarque"
+import { todayStringBogota } from '@/lib/dates'
 import { describe, it, expect } from 'vitest'
 import { derivarCarga, totalUnidadesCarga, resumenSeleccion, cargaVacia } from '../derivar-carga'
 import { horaActualBogota } from '../defaults'
@@ -49,13 +50,13 @@ describe('horaActualBogota', () => {
 function mkPedido(over: Partial<PedidoSeleccionable>): PedidoSeleccionable {
   return {
     id: 'p', numero: 1, estadoEntrega: 'PENDIENTE', estadoPago: 'PENDIENTE',
-    embarqueId: null, fechaEntrega: null, horaPreferida: null, saldo: 0, total: 1000,
+    embarqueId: null, fechaEntrega: null, horaPreferida: null, entregaNoAntesDe: null, saldo: 0, total: 1000,
     nombreCli: 'Cliente', ...over,
   }
 }
 
 describe('filtrarPedidosSeleccionables', () => {
-  const hoy = new Date().toISOString()
+  const mediodiaHoy = new Date(`${todayStringBogota()}T12:00:00-05:00`).toISOString()
   const ayer = new Date(Date.now() - 86400000).toISOString()
   const en8dias = new Date(Date.now() + 8 * 86400000).toISOString()
 
@@ -75,14 +76,28 @@ describe('filtrarPedidosSeleccionables', () => {
     expect(filtrarPedidosSeleccionables(pedidos, { verFuturos: true })).toHaveLength(1)
   })
 
-  it('ordena: vencido → hoy con hora → hoy sin hora → sin fecha', () => {
+  it('ordena: vencido → ya toca → hoy sin hora → hoy con hora (1–3 h) → sin fecha → más tarde', () => {
+    // 6:10 a. m. de hoy en Bogotá: la hora preferida (texto libre) ya no ordena; sí la hora acordada.
+    const ahora = new Date(`${todayStringBogota()}T06:10:00-05:00`)
     const r = filtrarPedidosSeleccionables([
       mkPedido({ id: 'sinfecha', fechaEntrega: null }),
-      mkPedido({ id: 'hoy_sin', fechaEntrega: hoy }),
-      mkPedido({ id: 'hoy_con', fechaEntrega: hoy, horaPreferida: '16:00' }),
+      mkPedido({ id: 'hoy_sin', fechaEntrega: mediodiaHoy, horaPreferida: '16:00' }),
+      mkPedido({ id: 'tarde', fechaEntrega: mediodiaHoy, entregaNoAntesDe: '16:00' }),
+      mkPedido({ id: 'con_8', fechaEntrega: mediodiaHoy, entregaNoAntesDe: '08:00' }),
+      mkPedido({ id: 'ya_toca', fechaEntrega: mediodiaHoy, entregaNoAntesDe: '06:30' }),
       mkPedido({ id: 'vencido', fechaEntrega: ayer }),
-    ])
-    expect(r.map((p) => p.id)).toEqual(['vencido', 'hoy_con', 'hoy_sin', 'sinfecha'])
+    ], { ahora })
+    expect(r.map((p) => p.id)).toEqual(['vencido', 'ya_toca', 'hoy_sin', 'con_8', 'sinfecha', 'tarde'])
+    expect(r.find((p) => p.id === 'tarde')!._bucket).toBe('hoy_mas_tarde')
+  })
+
+  it('a las 15:20 el pedido de las 16:00 ya sube a «ya toca»', () => {
+    const ahora = new Date(`${todayStringBogota()}T15:20:00-05:00`)
+    const r = filtrarPedidosSeleccionables([
+      mkPedido({ id: 'hoy_sin', fechaEntrega: mediodiaHoy }),
+      mkPedido({ id: 'a_las_16', fechaEntrega: mediodiaHoy, entregaNoAntesDe: '16:00' }),
+    ], { ahora })
+    expect(r.map((p) => p.id)).toEqual(['a_las_16', 'hoy_sin'])
   })
 
   it('buscador filtra por nombre de cliente o negocio', () => {

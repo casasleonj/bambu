@@ -16,7 +16,7 @@ import type { AccionKey, Pedido } from "./types";
 import { fechaConsulta } from "./fecha-consulta";
 import { etiquetaArrastre } from "./arrastrados";
 import { NotaPedido } from "./nota-pedido";
-import { CompromisoChip, CierreNegocioChip } from "./compromiso-chip";
+import { CompromisoChip, CierreNegocioChip, HoraAcordadaChip } from "./compromiso-chip";
 import { importesEntregaPedido } from "@/lib/valor-entregado-pedido";
 import type { GrupoBarrioConsulta } from "@/lib/pedidos-consulta";
 import styles from "./operacion-consulta.module.css";
@@ -34,6 +34,8 @@ export interface AccionesConsulta {
   /** #836 F3: clave del único barrio que se está viendo, si hay. */
   grupoActivo?: string;
   onGrupoBarrio?: (clave: string | null) => void;
+  /** #836 F2b: «Para hoy» agrupa por tiempo restante (Ya toca / Normales / Más tarde hoy). */
+  franjas?: boolean;
 }
 function interceptar(e: MouseEvent<HTMLAnchorElement>, abrir: () => void) {
   e.stopPropagation();
@@ -195,6 +197,7 @@ export function OperacionConsulta({
                   </p>
                 )}
                 <CompromisoChip id={p.id} pedido={p} hoyBogota={hoyBogota} />
+                <HoraAcordadaChip id={p.id} pedido={p} />
                 <CierreNegocioChip id={p.id} pedido={p} />
                 <p
                   className={`${styles.meta} truncate`}

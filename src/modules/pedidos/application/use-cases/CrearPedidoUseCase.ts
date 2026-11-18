@@ -381,6 +381,7 @@ export class CrearPedidoUseCase {
         pagos: pagosNormalizados,
         fecha: fechaPedido,
         fechaEntrega: input.fechaEntrega,
+        entregaNoAntesDe: input.entregaNoAntesDe,
         obs: input.obs,
         direccionEntrega: direccionEntregaSnapshot,
         barrioEntrega: barrioEntregaSnapshot,

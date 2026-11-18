@@ -298,6 +298,7 @@ describe('Pedido.toProps — copia COMPLETA (fuente única para reconstruir el a
       pagos: [],
       fecha: new Date('2026-01-01T00:00:00Z'),
       fechaEntrega: new Date('2026-01-02T00:00:00Z'),
+      entregaNoAntesDe: '16:00',
       obs: 'o',
       idOrigen: 'io',
       fotoEntrega: 'f',
