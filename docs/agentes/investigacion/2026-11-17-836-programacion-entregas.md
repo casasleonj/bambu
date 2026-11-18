@@ -136,3 +136,11 @@ Maquetas F1 y F3 (escritorio y móvil, con confirmación, carga y error): `docs/
 
 ### 8.2 Corrección de diseño (18-nov-2026, a observación del PO)
 La hora «no antes de» también aplica a **hoy** («hoy, no antes de las 16:00»). Regla: en «Hoy» la hora es opcional; sin hora no se guarda nada, con hora se guarda `fechaEntrega` = hoy (Bogotá) + `entregaNoAntesDe`. Si la hora ya pasó, se avisa («no restringe la entrega») y se permite guardar. Maquetas 05 y 06 actualizadas, **PENDIENTE DE APROBACIÓN**.
+
+### 8.3 Cambio de diseño por decisión del PO (18-nov-2026): la hora ordena y agrupa, no avisa
+- **`DECISIÓN` (PO):** se **elimina el aviso al entregar** (reemplaza P3). La hora acordada (`Pedido.entregaNoAntesDe`, campo nuevo, P1) solo sirve para **ordenar y agrupar**; registrar la entrega no pide nada extra. La entrega conserva, sin mostrarlo, la hora real junto a la acordada.
+- **`DECISIÓN` (PO):** franjas por tiempo restante, con el reloj de Bogotá: **«Ya toca»** (hora llegada o faltan ≤ 1 h, primero, por hora), **«Normales»** (sin hora, y con hora entre 1 h y 3 h, estos últimos ordenados por hora, así suben solos) y **«Más tarde hoy»** (faltan > 3 h, al final, plegado, con la hora visible). Nunca se oculta un pedido. Los límites son constantes fáciles de cambiar.
+- **`DECISIÓN` (PO):** alcance **A + B + C**: armar embarque, ruta del repartidor (sobre el orden geográfico guardado, moviendo solo los pedidos con hora) y la vista «Para hoy» de la lista de oficina. La lista general paginada no cambia.
+- **Sin ruido:** el bloque de crear pedido queda cerrado como enlace «＋ Programar entrega (fecha u hora)»; sin hora no aparece ninguna franja.
+- **Riesgos anotados:** el orden de ruta es geográfico (`Embarque.ordenVisita`, heurístico NN+2-opt); mover pedidos con hora puede alargar tramos y no se optimiza con ventanas de tiempo (fuera de alcance). El orden depende del reloj: se calcula con una función pura que recibe la hora (probable con reloj inyectado), se refresca cada minuto y no reordena mientras hay un diálogo abierto. `NO VERIFICADO`: refresco de la ruta del repartidor al agregar un pedido; se comprueba en R3.
+- **Maquetas 05 y 06 rehechas** (`.html` y `.png`): la lista «Para hoy» en tres momentos del día, armar embarque, ruta del repartidor, crear/cambiar sin ruido y detalle. **PENDIENTE DE APROBACIÓN.**
