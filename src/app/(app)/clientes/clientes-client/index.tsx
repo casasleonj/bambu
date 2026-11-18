@@ -465,6 +465,14 @@ export default function ClientesClient({
   const [negocioFormOpen, setNegocioFormOpen] = useState(false)
   const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; barrioId?: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null; horarios?: TramoHorario[] } | null>(null)
   const [viewNegocioData, setViewNegocioData] = useState<NegocioDetail | null>(null)
+  // La ficha se abre con la copia de la fila; cuando llega el detalle completo del cliente
+  // (que sí trae el horario) se completa por derivación, sin estado extra (#836).
+  const negocioFicha = useMemo<NegocioDetail | null>(() => {
+    if (!viewNegocioData || viewNegocioData.horarios !== undefined) return viewNegocioData
+    const completo = (selectedCliente?.negocios as Array<{ id: string; horarios?: TramoHorario[] }> | undefined)
+      ?.find(n => n.id === viewNegocioData.id)
+    return completo?.horarios !== undefined ? { ...viewNegocioData, horarios: completo.horarios } : viewNegocioData
+  }, [viewNegocioData, selectedCliente])
   const [showNegocioDetail, setShowNegocioDetail] = useState(false)
 
   const puedeDesactivar = userRole === 'ADMIN' || userRole === 'CONTADOR'
@@ -1352,17 +1360,6 @@ export default function ClientesClient({
       toast.error('Error desactivando cliente')
     }
   }
-
-  // La ficha se abre con la copia de la fila; cuando llega el detalle completo del cliente
-  // (que sí trae el horario), se completa para no mostrar una ficha sin horario (#836).
-  useEffect(() => {
-    if (!viewNegocioData || viewNegocioData.horarios !== undefined) return
-    const completo = (selectedCliente?.negocios as Array<{ id: string; horarios?: TramoHorario[] }> | undefined)
-      ?.find(n => n.id === viewNegocioData.id)
-    if (completo?.horarios !== undefined) {
-      setViewNegocioData(prev => (prev && prev.id === completo.id ? { ...prev, horarios: completo.horarios } : prev))
-    }
-  }, [selectedCliente, viewNegocioData])
 
   function viewNegocio(neg: NegocioDetail) {
     setViewNegocioData(neg)
@@ -2545,11 +2542,11 @@ export default function ClientesClient({
           key={viewNegocioData?.id || 'closed'}
           open={showNegocioDetail}
           onClose={closeNegocioDetail}
-          negocio={viewNegocioData}
+          negocio={negocioFicha ?? viewNegocioData}
           canEdit={true}
           canDelete={puedeEliminarNegocio}
           clienteId={viewNegocioData.clienteId || selectedCliente?.id}
-          onEdit={() => viewNegocioData && handleEditNegocioFromDetail(viewNegocioData)}
+          onEdit={() => negocioFicha && handleEditNegocioFromDetail(negocioFicha)}
           onDeleted={handleNegocioDeleted}
           onGeocoded={handleNegocioGeocoded}
         />
