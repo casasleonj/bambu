@@ -339,7 +339,10 @@ jobs:
 
   e2e:
     name: E2E (${{ matrix.shard }}/${{ strategy.job-total }})
-    runs-on: ubuntu-latest
+    # #875: ubuntu-latest ya es Ubuntu 26.04, que Playwright 1.59.1 no soporta
+    # («does not support chromium on ubuntu26.04-x64»). Se fija 24.04 solo en los
+    # trabajos que instalan Playwright; revisar al actualizar Playwright.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     needs: detect-changes
     # Suite legacy (V2 OFF). `github.event_name != 'schedule'` es la
@@ -559,7 +562,10 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   e2e-hub:
     name: E2E Hub (V2 ON)
-    runs-on: ubuntu-latest
+    # #875: ubuntu-latest ya es Ubuntu 26.04, que Playwright 1.59.1 no soporta
+    # («does not support chromium on ubuntu26.04-x64»). Se fija 24.04 solo en los
+    # trabajos que instalan Playwright; revisar al actualizar Playwright.
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     # Mismo criterio que el job `e2e` (#778): si el diff es estrictamente
     # declarativo, el Hub tampoco tiene nada que probar. Sin este `if:` corría
