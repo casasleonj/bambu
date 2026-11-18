@@ -34,6 +34,7 @@ import {
   esFocoCompromiso,
   rangoConsultaPedidos,
   baseEfectiva,
+  entregadoComoUnicoEstado,
   type FiltrosConsultaPedidos,
   type GrupoBarrioConsulta,
   type ProductoConsulta,
@@ -264,6 +265,11 @@ async function leerConsultaPedidos(
       const and = where.AND as Prisma.PedidoWhereInput[];
       let cobros: CobrosPeriodo | null = null,
         entregas: EntregaConsulta[] | null = null;
+      // #854: «Entregado» sin fecha ni evento de entrega (ventas de mostrador antiguas o
+      // inmediatas). Convención del repo (entregas-hoy, unidades-entregadas-dia, fiados): el día
+      // de la entrega es el de la fecha del pedido, marcado como «por conciliar». No se escribe
+      // ninguna fecha. No aplica con repartidor: sin evidencia no hay a quién atribuirla.
+      const sinFechaEntrega = new Set<string>();
       if (base === "cobro") {
         cobros = await leerCobrosPeriodo(tx, rango.desde, rango.hasta);
         const ids = [
@@ -278,18 +284,39 @@ async function leerConsultaPedidos(
       }
       if (base === "entrega") {
         entregas = await leerEntregasConsulta(tx, { rango });
-        const ids = [
-          ...new Set(
-            entregas
-              .filter(
-                (e) =>
-                  !f.repartidorId.length ||
-                  (!!e.repartidorId && f.repartidorId.includes(e.repartidorId)),
-              )
-              .map((e) => e.pedidoId),
-          ),
-        ];
-        and.push({ id: { in: ids } });
+        const ids = new Set(
+          entregas
+            .filter(
+              (e) =>
+                !f.repartidorId.length ||
+                (!!e.repartidorId && f.repartidorId.includes(e.repartidorId)),
+            )
+            .map((e) => e.pedidoId),
+        );
+        if (entregadoComoUnicoEstado(f) && !f.repartidorId.length) {
+          const candidatos = await tx.pedido.findMany({
+            where: {
+              AND: [
+                ...and,
+                { entregadoAt: null, fecha: { gte: rango.desde, lt: rango.hasta } },
+              ],
+            },
+            select: { id: true },
+          });
+          if (candidatos.length) {
+            const conHechos = new Set(
+              (await leerEntregasConsulta(tx, { ids: candidatos.map((c) => c.id) })).map(
+                (e) => e.pedidoId,
+              ),
+            );
+            for (const c of candidatos)
+              if (!conHechos.has(c.id)) {
+                sinFechaEntrega.add(c.id);
+                ids.add(c.id);
+              }
+          }
+        }
+        and.push({ id: { in: [...ids] } });
       } else if (f.repartidorId.length) {
         const candidatos = await tx.pedido.findMany({
           where,
@@ -466,11 +493,12 @@ async function leerConsultaPedidos(
                   (!!e.repartidorId &&
                     f.repartidorId.includes(e.repartidorId))),
             );
-            entregasPorConciliar = new Set(
-              hechos
+            entregasPorConciliar = new Set([
+              ...hechos
                 .filter((e) => !e.cantidades || e.incompleto)
                 .map((e) => e.pedidoId),
-            ).size;
+              ...[...sinFechaEntrega].filter((id) => ids.has(id)),
+            ]).size;
             const sums = new Map<string, number>();
             for (const e of hechos)
               for (const l of e.cantidades ?? [])

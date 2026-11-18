@@ -197,4 +197,77 @@ describe("#854 — consulta por evento vs creación vs estado actual", () => {
     expect(c17.total).toBe(1);
     expect(c17.resumen?.cobros?.subtotalRegistrado).toBe(138000);
   });
+
+  describe("«Entregado» sin ninguna fecha ni evento de entrega (ventas de mostrador)", () => {
+    const D16 = "2026-11-16";
+    async function ventaMostrador(opts: { origen?: "VENTA_RAPIDA" | "PEDIDO"; canal?: "PUNTO" | "DOMICILIO"; dia?: string } = {}) {
+      const dia = opts.dia ?? D14;
+      const c = await testPrisma.cliente.create({ data: { nombre: `854m ${randomUUID()}`, telefono: randomUUID() } });
+      const p = await testPrisma.pedido.create({
+        data: {
+          clienteId: c.id, createdById: adminId, canal: opts.canal ?? "PUNTO", origen: opts.origen ?? "VENTA_RAPIDA",
+          fecha: en(dia, "11:00:00"), createdAt: en(dia, "11:00:00"),
+          estado: "ENTREGADO", estadoEntrega: "ENTREGADO", estadoPago: "PAGADO", entregadoAt: null,
+          total: 10000, totalPagado: 10000, saldo: 0,
+          items: { create: { producto: "PACA_AGUA", cantPedido: 2, cantEntrega: 2, precio: 5000, subtotal: 10000 } },
+        },
+      });
+      return { c, p };
+    }
+    const q = (c: string, dia: string, s: string) =>
+      consultarPedidos(filtros(dia, `clienteId=${c}&resumen=1&${s}`), "ADMIN", testPrisma);
+
+    it("Punto + Entregado el día del pedido incluye la venta sin fecha; otro día no", async () => {
+      const { c, p } = await ventaMostrador();
+      expect((await q(c.id, D14, "canal=PUNTO&estadoEntrega=ENTREGADO")).pedidos.map((x) => x.id)).toEqual([p.id]);
+      expect((await q(c.id, D17, "canal=PUNTO&estadoEntrega=ENTREGADO")).total).toBe(0);
+    });
+    it("se señala como por conciliar y no inventa cantidades ni escribe fechas", async () => {
+      const { c, p } = await ventaMostrador();
+      const r = await q(c.id, D14, "canal=PUNTO&estadoEntrega=ENTREGADO");
+      expect(r.resumen?.entregasPorConciliar).toBe(1);
+      expect(r.resumen?.productos).toEqual([]);
+      expect(r.pedidos[0].entregadoAt).toBeNull();
+      expect(r.pedidos[0].entregasSinDetalle).toBe(true);
+      const bd = await testPrisma.pedido.findUniqueOrThrow({ where: { id: p.id } });
+      expect(bd.entregadoAt).toBeNull();
+    });
+    it("un pedido con evento de entrega otro día no se atribuye también a su fecha", async () => {
+      const c = await testPrisma.cliente.create({ data: { nombre: `854e ${randomUUID()}`, telefono: randomUUID() } });
+      const p = await testPrisma.pedido.create({
+        data: {
+          clienteId: c.id, createdById: adminId, canal: "PUNTO", fecha: en(D14, "10:00:00"), createdAt: en(D14, "10:00:00"),
+          estado: "ENTREGADO", estadoEntrega: "ENTREGADO", estadoPago: "PAGADO", entregadoAt: null,
+          total: 5000, totalPagado: 5000, saldo: 0,
+          items: { create: { producto: "PACA_AGUA", cantPedido: 1, cantEntrega: 1, precio: 5000, subtotal: 5000 } },
+        },
+      });
+      await testPrisma.historial.create({
+        data: {
+          entidad: "Pedido", registroId: p.id, accion: "UPDATE", fecha: en(D16, "09:00:00"),
+          datos: JSON.stringify({ accion: "ENTREGA_OFICINA", consultaEntrega: { version: 1, fecha: en(D16, "09:00:00").toISOString(), repartidorId: null, eventoEntregaId: null, cantidades: [{ producto: "PACA_AGUA", cantidad: 1 }] } }),
+        },
+      });
+      expect((await q(c.id, D14, "canal=PUNTO&estadoEntrega=ENTREGADO")).total).toBe(0);
+      expect((await q(c.id, D16, "canal=PUNTO&estadoEntrega=ENTREGADO")).total).toBe(1);
+    });
+    it("sin el chip «Entregado» (Entrega registrada explícita) solo hay hechos reales", async () => {
+      const { c } = await ventaMostrador();
+      expect((await q(c.id, D14, "canal=PUNTO&fechaBase=entrega")).total).toBe(0);
+    });
+    it("con otro estado mezclado conserva la fecha del pedido; con repartidor no hay atribución", async () => {
+      const { c, p } = await ventaMostrador();
+      expect((await q(c.id, D14, "estadoEntrega=ENTREGADO&estadoEntrega=PENDIENTE")).pedidos.map((x) => x.id)).toEqual([p.id]);
+      const r = await testPrisma.trabajador.create({ data: { nombre: `854r ${randomUUID()}`, rol: "REPARTIDOR" } });
+      expect((await q(c.id, D14, `canal=PUNTO&estadoEntrega=ENTREGADO&repartidorId=${r.id}`)).total).toBe(0);
+    });
+    it("el canal Domicilio se respeta y un pedido anulado no entra", async () => {
+      const { c } = await ventaMostrador({ canal: "DOMICILIO" });
+      expect((await q(c.id, D14, "canal=PUNTO&estadoEntrega=ENTREGADO")).total).toBe(0);
+      expect((await q(c.id, D14, "canal=DOMICILIO&estadoEntrega=ENTREGADO")).total).toBe(1);
+      const a = await ventaMostrador();
+      await testPrisma.pedido.update({ where: { id: a.p.id }, data: { estadoEntrega: "ANULADO", estado: "ANULADO", estadoPago: "ANULADO" } });
+      expect((await q(a.c.id, D14, "estadoEntrega=ENTREGADO")).total).toBe(0);
+    });
+  });
 });
