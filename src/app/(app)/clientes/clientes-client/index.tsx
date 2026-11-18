@@ -1353,6 +1353,17 @@ export default function ClientesClient({
     }
   }
 
+  // La ficha se abre con la copia de la fila; cuando llega el detalle completo del cliente
+  // (que sí trae el horario), se completa para no mostrar una ficha sin horario (#836).
+  useEffect(() => {
+    if (!viewNegocioData || viewNegocioData.horarios !== undefined) return
+    const completo = (selectedCliente?.negocios as Array<{ id: string; horarios?: TramoHorario[] }> | undefined)
+      ?.find(n => n.id === viewNegocioData.id)
+    if (completo?.horarios !== undefined) {
+      setViewNegocioData(prev => (prev && prev.id === completo.id ? { ...prev, horarios: completo.horarios } : prev))
+    }
+  }, [selectedCliente, viewNegocioData])
+
   function viewNegocio(neg: NegocioDetail) {
     setViewNegocioData(neg)
     setShowNegocioDetail(true)
