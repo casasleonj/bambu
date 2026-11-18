@@ -1,6 +1,6 @@
 // @tests totalizarResumen / conteosPorEstado — resumen consolidado de facturas (#758)
 import { describe, it, expect } from 'vitest'
-import { conteosPorEstado, totalizarResumen, type FacturaParaResumen } from '../resumen-facturas'
+import { conteosPorEstado, detalleItemsFactura, totalizarResumen, type FacturaParaResumen } from '../resumen-facturas'
 
 const f = (estado: FacturaParaResumen['estado'], total: number, montoPagado: number): FacturaParaResumen => ({
   estado,
@@ -47,5 +47,45 @@ describe('conteosPorEstado', () => {
       PAGADA: 3,
       ANULADA: 0,
     })
+  })
+})
+
+describe('detalleItemsFactura (#867)', () => {
+  const item = (producto: string, cantPedido: number, precio: number, subtotal: number, cantEntrega = cantPedido) => ({
+    producto,
+    cantPedido,
+    cantEntrega,
+    precio,
+    subtotal,
+  })
+
+  it('usa las etiquetas del catálogo y la suma de subtotales cuadra con el total', () => {
+    const { items, otrosAjustes } = detalleItemsFactura(
+      [item('PACA_AGUA', 10, 6_000, 60_000), item('BOTELLON', 4, 15_000, 60_000)],
+      120_000,
+    )
+    expect(items.map((i) => i.etiqueta)).toEqual(['Paca Agua', 'Botellón'])
+    expect(items.map((i) => i.cantidad)).toEqual([10, 4])
+    expect(otrosAjustes).toBe(0)
+  })
+
+  it('si no cuadra informa la diferencia como otros ajustes (nunca una cifra que no suma)', () => {
+    expect(detalleItemsFactura([item('PACA_AGUA', 10, 6_000, 60_000)], 65_000).otrosAjustes).toBe(5_000)
+    expect(detalleItemsFactura([item('PACA_AGUA', 10, 6_000, 60_000)], 55_000).otrosAjustes).toBe(-5_000)
+  })
+
+  it('el subtotal sale de la BD y no se recalcula con cantidad × precio', () => {
+    const { items } = detalleItemsFactura([item('BOLSA_HIELO', 3, 3_333.333333, 10_000)], 10_000)
+    expect(items[0].subtotal).toBe(10_000)
+  })
+
+  it('omite ítems sin cantidad y conserva un código desconocido tal cual', () => {
+    const { items } = detalleItemsFactura([item('PACA_AGUA', 0, 6_000, 0), item('NUEVO', 2, 1_000, 2_000)], 2_000)
+    expect(items).toHaveLength(1)
+    expect(items[0].etiqueta).toBe('NUEVO')
+  })
+
+  it('sin ítems devuelve la lista vacía y todo el total como ajuste', () => {
+    expect(detalleItemsFactura([], 40_000)).toEqual({ items: [], otrosAjustes: 40_000 })
   })
 })

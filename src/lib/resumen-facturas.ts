@@ -1,5 +1,6 @@
 import type { FacturaEstado } from '@/lib/facturas-filtros'
 import { FACTURA_ESTADOS } from '@/lib/facturas-filtros'
+import { PRODUCT_LABELS, type ProductCode } from '@/shared/domain/value-objects'
 
 /** Mínimo que necesita el resumen de cada factura (importes ya en número). */
 export interface FacturaParaResumen {
@@ -57,4 +58,58 @@ export function conteosPorEstado(
   const conteos = Object.fromEntries(FACTURA_ESTADOS.map((e) => [e, 0])) as ConteosPorEstado
   for (const fila of filas) conteos[fila.estado] += fila.count
   return conteos
+}
+
+/** Ítem de pedido tal como lo guarda la BD (importes ya en número). */
+export interface ItemPedidoParaResumen {
+  producto: string
+  cantPedido: number
+  cantEntrega: number
+  precio: number
+  subtotal: number
+}
+
+export interface ItemFacturaResumen {
+  producto: string
+  etiqueta: string
+  /** Cantidad facturada (la del pedido; el total de la factura la sigue). */
+  cantidad: number
+  cantEntrega: number
+  precio: number
+  /** Subtotal guardado en BD: no se recalcula (el precio puede tener 6 decimales). */
+  subtotal: number
+}
+
+export interface DetalleFacturaResumen {
+  items: ItemFacturaResumen[]
+  /** total de la factura − Σ subtotales (descuentos, domicilio…). 0 si cuadra. */
+  otrosAjustes: number
+}
+
+function esProducto(codigo: string): codigo is ProductCode {
+  return Object.prototype.hasOwnProperty.call(PRODUCT_LABELS, codigo)
+}
+
+/**
+ * Detalle de productos de una factura. Si la suma de subtotales no cuadra con el
+ * total de la factura, la diferencia se informa como «otros ajustes» en vez de
+ * mostrar una cifra que no cuadre en silencio.
+ */
+export function detalleItemsFactura(
+  items: readonly ItemPedidoParaResumen[],
+  totalFactura: number,
+): DetalleFacturaResumen {
+  const filas = items
+    .filter((i) => i.cantPedido > 0)
+    .map((i) => ({
+      producto: i.producto,
+      etiqueta: esProducto(i.producto) ? PRODUCT_LABELS[i.producto] : i.producto,
+      cantidad: i.cantPedido,
+      cantEntrega: i.cantEntrega,
+      precio: i.precio,
+      subtotal: i.subtotal,
+    }))
+  const suma = filas.reduce((a, i) => a + i.subtotal, 0)
+  const dif = Math.round((totalFactura - suma) * 100) / 100
+  return { items: filas, otrosAjustes: Math.abs(dif) < 0.005 ? 0 : dif }
 }

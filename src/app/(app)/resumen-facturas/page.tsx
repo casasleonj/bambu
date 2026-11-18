@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { Fragment, useEffect, useState, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import './print.css'
+import { FacturaCard, ResumenHero, type ItemResumen } from './resumen-visual'
 
 interface FacturaResumen {
   id: string
@@ -16,6 +17,8 @@ interface FacturaResumen {
   montoPagado: number
   saldo: number
   estado: string
+  items: ItemResumen[]
+  otrosAjustes: number
   pedidoNumero: number | null
   pedidoId: string | null
   desfase: {
@@ -305,38 +308,15 @@ export default function ResumenFacturasPage() {
         })}
       </div>
 
-      {/* KPIs — no imprimibles */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 print:hidden">
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total facturado</p>
-          <p className="text-lg font-bold text-gray-900 mt-1">{formatCurrency(totales.total)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{totales.count} factura{totales.count !== 1 ? 's' : ''}</p>
-        </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total pagado</p>
-          <p className="text-lg font-bold text-green-700 mt-1">{formatCurrency(totales.totalPagado)}</p>
-        </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Saldo pendiente</p>
-          <p className={`text-lg font-bold mt-1 ${totales.saldo > 0 ? 'text-red-600' : 'text-green-700'}`}>
-            {formatCurrency(totales.saldo)}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Cobranza</p>
-          <div className="mt-2">
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-blue-600 h-2 rounded-full transition-all"
-                style={{ width: `${totales.total > 0 ? Math.round((totales.totalPagado / totales.total) * 100) : 0}%` }}
-              />
-            </div>
-            <p className="text-xs text-gray-400 mt-1">
-              {totales.total > 0 ? Math.round((totales.totalPagado / totales.total) * 100) : 0}% cobrado
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* Lo que se debe, de un vistazo (#867) — no imprimible */}
+      <ResumenHero
+        soloAnuladas={estado === 'ANULADA'}
+        totales={totales}
+        anuladasTotal={anuladas.totalHistorico}
+        conSaldo={facturas
+          .filter((f) => f.estado !== 'ANULADA' && f.saldo > 0)
+          .map((f) => ({ numero: f.numero, saldo: f.saldo }))}
+      />
 
       {/* Estado vacío */}
       {facturas.length === 0 && (
@@ -400,8 +380,29 @@ export default function ResumenFacturasPage() {
               </div>
             </div>
 
-            {/* Tabla de facturas */}
-            <div className="overflow-x-auto mb-4">
+            {/* En pantalla: tarjetas con el detalle de productos (#867) */}
+            <div className="space-y-3 mb-4 print:hidden" data-testid="resumen-tarjetas">
+              {facturas.map((f) => (
+                <FacturaCard
+                  key={f.id}
+                  abiertaInicial={facturas.length === 1}
+                  factura={{
+                    id: f.id,
+                    numero: f.numero,
+                    fechaTxt: formatDate(f.fecha),
+                    total: f.total,
+                    montoPagado: f.montoPagado,
+                    saldo: f.saldo,
+                    estado: f.estado,
+                    items: f.items,
+                    otrosAjustes: f.otrosAjustes,
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Al imprimir: tabla con el detalle de cada factura */}
+            <div className="hidden print:block overflow-x-auto mb-4">
               <table className="w-full text-sm border border-gray-300 print:border-gray-400">
                 <thead className="bg-gray-100 print:bg-gray-50">
                   <tr>
@@ -417,7 +418,8 @@ export default function ResumenFacturasPage() {
                 </thead>
                 <tbody>
                   {facturas.map((f, i) => (
-                    <tr key={f.id} data-testid={`resumen-fila-${f.numero}`} className={`print:break-inside-avoid ${f.estado === 'ANULADA' ? 'bg-gray-100 text-gray-500 print:bg-white' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50 print:bg-white'}`}>
+                    <Fragment key={f.id}>
+                    <tr className={`print:break-inside-avoid ${f.estado === 'ANULADA' ? 'bg-gray-100 text-gray-500 print:bg-white' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50 print:bg-white'}`}>
                       <td className="px-3 py-2 font-medium border-b border-gray-100 print:border-gray-200">
                         <Link href={`/facturas?openFactura=${f.id}`} className="text-blue-600 hover:underline">
                           {f.numero}
@@ -456,6 +458,23 @@ export default function ResumenFacturasPage() {
                         {ESTADO_TXT[f.estado] ?? f.estado}
                       </td>
                     </tr>
+                    {f.items.map((it) => (
+                      <tr key={`${f.id}-${it.producto}`} className="print:break-inside-avoid text-xs text-gray-500">
+                        <td className="px-3 py-1 pl-8 border-b border-gray-100 print:border-gray-200" colSpan={3}>
+                          {it.etiqueta} × {it.cantidad}
+                        </td>
+                        <td className="px-3 py-1 text-right border-b border-gray-100 print:border-gray-200">{formatCurrency(it.subtotal)}</td>
+                        <td className="border-b border-gray-100 print:border-gray-200" colSpan={4} />
+                      </tr>
+                    ))}
+                    {f.otrosAjustes !== 0 && (
+                      <tr className="print:break-inside-avoid text-xs text-gray-500">
+                        <td className="px-3 py-1 pl-8 border-b border-gray-100 print:border-gray-200" colSpan={3}>Otros ajustes</td>
+                        <td className="px-3 py-1 text-right border-b border-gray-100 print:border-gray-200">{formatCurrency(f.otrosAjustes)}</td>
+                        <td className="border-b border-gray-100 print:border-gray-200" colSpan={4} />
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

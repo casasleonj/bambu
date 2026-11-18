@@ -102,6 +102,25 @@ describe('GET /api/clientes/[id]/resumen-facturas', () => {
       expect(facturaGroupBy.mock.calls[0][0].where.clienteId).toBe('c1')
     })
 
+    it('cada factura trae sus productos con etiqueta y los otros ajustes (#867)', async () => {
+      facturaFindMany.mockResolvedValue([
+        {
+          id: 'a', numero: 'FAC-1', fecha: new Date('2026-11-02T15:00:00Z'), total: 65_000, montoPagado: 0, saldo: 65_000, estado: 'EMITIDA',
+          pedido: {
+            id: 'p1', numero: 7, fecha: new Date(), saldo: 65_000, totalPagado: 0,
+            items: [{ producto: 'PACA_AGUA', cantPedido: 10, cantEntrega: 6, precio: 6_000, subtotal: 60_000 }],
+          },
+        },
+      ])
+      const body = await (await get('')).json()
+      expect(body.facturas[0].items).toEqual([
+        { producto: 'PACA_AGUA', etiqueta: 'Paca Agua', cantidad: 10, cantEntrega: 6, precio: 6_000, subtotal: 60_000 },
+      ])
+      expect(body.facturas[0].otrosAjustes).toBe(5_000)
+      const select = facturaFindMany.mock.calls[0][0].include.pedido.select
+      expect(select.items.select).toMatchObject({ producto: true, cantPedido: true, subtotal: true })
+    })
+
     it('los totales suman solo vigentes y reportan las anuladas aparte', async () => {
       const base = { fecha: new Date('2026-11-02T15:00:00Z'), pedido: null }
       facturaFindMany.mockResolvedValue([

@@ -8,7 +8,7 @@ import {
   type FacturaEstado,
   type FacturasFiltros,
 } from '@/lib/facturas-filtros'
-import { conteosPorEstado, totalizarResumen } from '@/lib/resumen-facturas'
+import { conteosPorEstado, detalleItemsFactura, totalizarResumen } from '@/lib/resumen-facturas'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 
@@ -62,7 +62,12 @@ export async function GET(
         where: buildFacturasListWhere(filtros),
         orderBy: { fecha: 'asc' },
         include: {
-          pedido: { select: { id: true, numero: true, fecha: true, saldo: true, totalPagado: true } },
+          pedido: {
+            select: {
+              id: true, numero: true, fecha: true, saldo: true, totalPagado: true,
+              items: { select: { producto: true, cantPedido: true, cantEntrega: true, precio: true, subtotal: true } },
+            },
+          },
         },
       }),
       // Conteos para las pestañas: mismo cliente y período, sin filtrar por estado.
@@ -121,6 +126,16 @@ export async function GET(
             saldo,
             // Estado guardado: el mismo que usa la lista y el filtro (#758).
             estado: f.estado,
+            ...detalleItemsFactura(
+              (f.pedido?.items ?? []).map((i) => ({
+                producto: i.producto,
+                cantPedido: i.cantPedido,
+                cantEntrega: i.cantEntrega,
+                precio: Number(i.precio),
+                subtotal: Number(i.subtotal),
+              })),
+              Number(f.total),
+            ),
             pedidoNumero: f.pedido?.numero ?? null,
             pedidoId: f.pedido?.id ?? null,
             desfase: tieneDesfase ? {
