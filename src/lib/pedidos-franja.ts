@@ -88,7 +88,7 @@ export function ordenarPorFranja<T>(items: readonly T[], ahora: Date, obtener: (
 /** «En 20 min», «En 1 h 50 min», «Hora llegada», «Faltan 9 h 50 min». */
 export function textoTiempoRestante(m: number | null): string | null {
   if (m === null) return null
-  if (m <= 0) return m === 0 ? 'Ya es la hora' : `Hora pasada hace ${formatear(-m)}`
+  if (m <= 0) return m === 0 ? 'Ya es la hora' : `pasó hace ${formatear(-m)}`
   return `${m > MAS_TARDE_MIN ? 'Faltan' : 'En'} ${formatear(m)}`
 }
 function formatear(min: number): string {

@@ -77,6 +77,6 @@ describe('textoTiempoRestante', () => {
     expect(textoTiempoRestante(110)).toBe('En 1 h 50 min')
     expect(textoTiempoRestante(590)).toBe('Faltan 9 h 50 min')
     expect(textoTiempoRestante(0)).toBe('Ya es la hora')
-    expect(textoTiempoRestante(-10)).toBe('Hora pasada hace 10 min')
+    expect(textoTiempoRestante(-10)).toBe('pasó hace 10 min')
   })
 })
