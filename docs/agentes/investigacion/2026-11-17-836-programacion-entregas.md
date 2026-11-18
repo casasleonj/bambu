@@ -133,3 +133,6 @@ Maquetas F1 y F3 (escritorio y móvil, con confirmación, carga y error): `docs/
 - **P3 — `DECISIÓN` (PO):** al entregar antes de la hora **solo avisa**, sin pedir motivo (reemplaza la propuesta «avisar y pedir motivo» de §8). Se mantiene la marca auditable «entregado antes de la hora acordada» y nunca se bloquea, tampoco sin conexión.
 - **P4 — `DECISIÓN` (PO):** el aviso por horario de atención del negocio al entregar queda fuera de esta versión.
 - **Maquetas:** `05-no-antes-de-escritorio` y `06-no-antes-de-movil` (`.html` y `.png`), **PENDIENTE DE APROBACIÓN**. Sin aprobación no hay código.
+
+### 8.2 Corrección de diseño (18-nov-2026, a observación del PO)
+La hora «no antes de» también aplica a **hoy** («hoy, no antes de las 16:00»). Regla: en «Hoy» la hora es opcional; sin hora no se guarda nada, con hora se guarda `fechaEntrega` = hoy (Bogotá) + `entregaNoAntesDe`. Si la hora ya pasó, se avisa («no restringe la entrega») y se permite guardar. Maquetas 05 y 06 actualizadas, **PENDIENTE DE APROBACIÓN**.
