@@ -102,6 +102,9 @@ describe('ASISTENTE permissions (contrato de negocio en e2e/roles-permisos.spec.
   it('NO puede ver cierre ni productos (páginas restringidas)', () => {
     expect(userCan(ROLES.ASISTENTE, 'view:cierre')).toBe(false)
     expect(userCan(ROLES.ASISTENTE, 'view:productos')).toBe(false)
+    // #758: el consolidado de facturas sigue la misma regla de lectura que /facturas (#556).
+    expect(userCan(ROLES.ASISTENTE, 'view:resumen-facturas')).toBe(true)
+    expect(isRouteAllowed('/resumen-facturas', ROLES.ASISTENTE)).toBe(true)
   })
 
   it('isRouteAllowed refleja el mismo contrato', () => {

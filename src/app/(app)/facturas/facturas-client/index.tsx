@@ -598,6 +598,10 @@ export default function FacturasPage() {
               clienteId: clienteSeleccionado.id,
               ...(dateRange.desde ? { desde: dateRange.desde } : {}),
               ...(dateRange.hasta ? { hasta: dateRange.hasta } : {}),
+              // #758: el consolidado conserva el estado elegido y, en «Todas»,
+              // el mismo criterio de anuladas que la lista.
+              estado: estadoFilter,
+              ...(estadoFilter === 'TODAS' && !incluirAnuladas ? { incluirAnuladas: 'false' } : {}),
             }).toString()}`}
             className="shrink-0"
           >

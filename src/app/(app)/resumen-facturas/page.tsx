@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { toast } from 'sonner'
@@ -50,11 +50,40 @@ interface TotalesResumen {
   count: number
 }
 
+type EstadoTab = 'TODAS' | 'EMITIDA' | 'PARCIAL' | 'PAGADA' | 'ANULADA'
+
+const TABS: { key: EstadoTab; label: string }[] = [
+  { key: 'TODAS', label: 'Todas' },
+  { key: 'EMITIDA', label: 'Emitidas' },
+  { key: 'PARCIAL', label: 'Parciales' },
+  { key: 'PAGADA', label: 'Pagadas' },
+  { key: 'ANULADA', label: 'Anuladas' },
+]
+
+const ESTADO_TXT: Record<string, string> = {
+  EMITIDA: 'Emitida',
+  PARCIAL: 'Parcial',
+  PAGADA: 'Pagada',
+  ANULADA: 'Anulada · no suma',
+}
+
+function esEstadoTab(v: string | null): v is EstadoTab {
+  return v === 'TODAS' || v === 'EMITIDA' || v === 'PARCIAL' || v === 'PAGADA' || v === 'ANULADA'
+}
+
+interface AnuladasResumen {
+  count: number
+  totalHistorico: number
+}
+
 interface ResumenData {
   cliente: ClienteResumen
   periodo: { desde: string | null; hasta: string | null }
+  filtro: { estado: EstadoTab; incluirAnuladas: boolean }
+  conteos: Record<'EMITIDA' | 'PARCIAL' | 'PAGADA' | 'ANULADA', number>
   facturas: FacturaResumen[]
   totales: TotalesResumen
+  anuladas: AnuladasResumen
   empresa: EmpresaResumen
 }
 
@@ -105,9 +134,14 @@ function SkeletonLine({ className = '' }: { className?: string }) {
 
 export default function ResumenFacturasPage() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const clienteId = searchParams.get('clienteId')
   const desde = searchParams.get('desde')
   const hasta = searchParams.get('hasta')
+  // Enlaces antiguos sin `estado` = «Todas» (anuladas atenuadas, sin sumar).
+  const estadoParam = searchParams.get('estado')?.toUpperCase() ?? null
+  const estado: EstadoTab = esEstadoTab(estadoParam) ? estadoParam : 'TODAS'
+  const incluirAnuladas = searchParams.get('incluirAnuladas')
 
   const [data, setData] = useState<ResumenData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -128,6 +162,8 @@ export default function ResumenFacturasPage() {
       const query = new URLSearchParams()
       if (desde) query.set('desde', desde)
       if (hasta) query.set('hasta', hasta)
+      query.set('estado', estado)
+      if (incluirAnuladas) query.set('incluirAnuladas', incluirAnuladas)
       const qs = query.toString()
       const res = await fetch(`/api/clientes/${clienteId}/resumen-facturas${qs ? `?${qs}` : ''}`)
       if (!res.ok) {
@@ -146,7 +182,7 @@ export default function ResumenFacturasPage() {
     } finally {
       setLoading(false)
     }
-  }, [clienteId, desde, hasta])
+  }, [clienteId, desde, hasta, estado, incluirAnuladas])
 
   useEffect(() => {
     // Fetch de datos al montar / cambiar clienteId-desde-hasta — side
@@ -156,6 +192,11 @@ export default function ResumenFacturasPage() {
   }, [fetchData])
 
   const handlePrint = () => { window.print() }
+  const handleTab = (key: EstadoTab) => {
+    const q = new URLSearchParams(searchParams.toString())
+    q.set('estado', key)
+    router.replace(`/resumen-facturas?${q.toString()}`)
+  }
   const handleRetry = () => { fetchData() }
 
   if (!clienteId) {
@@ -220,7 +261,8 @@ export default function ResumenFacturasPage() {
     )
   }
 
-  const { cliente, periodo, facturas, totales, empresa } = data
+  const { cliente, periodo, facturas, totales, anuladas, conteos, empresa } = data
+  const estadoNombre = TABS.find((t) => t.key === estado)?.label ?? 'Todas'
 
   return (
     <div className="p-4 space-y-4">
@@ -236,6 +278,31 @@ export default function ResumenFacturasPage() {
             Imprimir / Guardar PDF
           </Button>
         </div>
+      </div>
+
+      {/* Filtro por estado (#758): el documento y los totales siguen la selección */}
+      <div className="flex flex-wrap gap-2 print:hidden" role="tablist" aria-label="Filtrar por estado" data-testid="resumen-tabs">
+        {TABS.map((t) => {
+          const n = t.key === 'TODAS'
+            ? conteos.EMITIDA + conteos.PARCIAL + conteos.PAGADA + (data.filtro.incluirAnuladas ? conteos.ANULADA : 0)
+            : conteos[t.key]
+          const activa = estado === t.key
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={activa}
+              data-testid={`resumen-tab-${t.key}`}
+              onClick={() => handleTab(t.key)}
+              className={`min-h-11 px-4 rounded-full text-sm font-semibold border transition ${
+                activa ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {t.label} ({n})
+            </button>
+          )
+        })}
       </div>
 
       {/* KPIs — no imprimibles */}
@@ -278,7 +345,7 @@ export default function ResumenFacturasPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <p className="text-gray-600 font-medium">No hay facturas de <span className="font-bold">{cliente.nombre}</span></p>
-          <p className="text-gray-400 text-sm mt-1">Período: {formatPeriodo(periodo.desde, periodo.hasta)}</p>
+          <p className="text-gray-400 text-sm mt-1">Período: {formatPeriodo(periodo.desde, periodo.hasta)} · Estado: {estadoNombre}</p>
         </div>
       )}
 
@@ -306,6 +373,7 @@ export default function ResumenFacturasPage() {
               </div>
               <div className="mt-3 flex gap-6 text-xs text-gray-600">
                 <span><strong>Período de facturas:</strong> {formatPeriodo(periodo.desde, periodo.hasta)}</span>
+                <span data-testid="resumen-estado"><strong>Estado:</strong> {estadoNombre}</span>
               </div>
             </div>
 
@@ -349,7 +417,7 @@ export default function ResumenFacturasPage() {
                 </thead>
                 <tbody>
                   {facturas.map((f, i) => (
-                    <tr key={f.id} className={`print:break-inside-avoid ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50 print:bg-white'}`}>
+                    <tr key={f.id} data-testid={`resumen-fila-${f.numero}`} className={`print:break-inside-avoid ${f.estado === 'ANULADA' ? 'bg-gray-100 text-gray-500 print:bg-white' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50 print:bg-white'}`}>
                       <td className="px-3 py-2 font-medium border-b border-gray-100 print:border-gray-200">
                         <Link href={`/facturas?openFactura=${f.id}`} className="text-blue-600 hover:underline">
                           {f.numero}
@@ -385,7 +453,7 @@ export default function ResumenFacturasPage() {
                         )}
                       </td>
                       <td className="px-3 py-2 text-center text-xs font-medium text-gray-600 border-b border-gray-100 print:border-gray-200">
-                        {f.estado}
+                        {ESTADO_TXT[f.estado] ?? f.estado}
                       </td>
                     </tr>
                   ))}
@@ -409,6 +477,12 @@ export default function ResumenFacturasPage() {
                     <span className="text-gray-600">Total pagado:</span>
                     <span className="font-semibold text-green-700">{formatCurrency(totales.totalPagado)}</span>
                   </div>
+                  {anuladas.count > 0 && (
+                    <div className="flex justify-between text-xs text-gray-500" data-testid="resumen-anuladas">
+                      <span>Anuladas (no suman): {anuladas.count}</span>
+                      <span>{formatCurrency(anuladas.totalHistorico)}</span>
+                    </div>
+                  )}
                   <div className="border-t-2 border-gray-800 pt-2 mt-2 print:border-gray-600">
                     <div className="flex justify-between text-base">
                       <span className="font-bold text-gray-800 uppercase">

@@ -47,6 +47,9 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     'view:casos', 'view:produccion', 'view:insumos', 'view:embarques',
     'view:rutas', 'view:facturas', 'view:gastos', 'view:mi-perfil',
     'view:recurrentes',
+    // #758: el resumen consolidado de facturas usa la misma regla de lectura que
+    // /facturas (#556): ASISTENTE también lo consulta; el endpoint lo valida.
+    'view:resumen-facturas',
     // #566: ve la deuda pendiente de cada trabajador (solo lectura; ver /api/trabajadores/deudas-resumen).
     'view:trabajadores',
   ],

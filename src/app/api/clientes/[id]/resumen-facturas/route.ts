@@ -2,7 +2,13 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth-check'
 import { ResumenFacturasQuerySchema } from '@/lib/validators'
-import { buildDateRangeFilter } from '@/lib/dates'
+import {
+  buildFacturasBaseWhere,
+  buildFacturasListWhere,
+  type FacturaEstado,
+  type FacturasFiltros,
+} from '@/lib/facturas-filtros'
+import { conteosPorEstado, totalizarResumen } from '@/lib/resumen-facturas'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 
@@ -10,8 +16,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Mismo alcance que GET /api/facturas: es información financiera.
-  const authResult = await requireRole(['ADMIN', 'CONTADOR'])
+  // Mismo alcance que GET /api/facturas (decisión del PO #556): ADMIN, CONTADOR
+  // y ASISTENTE leen facturas. Es información financiera; el servidor decide.
+  const authResult = await requireRole(['ADMIN', 'CONTADOR', 'ASISTENTE'])
   if (authResult instanceof Response) return authResult
 
   const { id: clienteId } = await params
@@ -21,29 +28,48 @@ export async function GET(
     const desde = searchParams.get('desde') || undefined
     const hasta = searchParams.get('hasta') || undefined
 
-    const parsed = ResumenFacturasQuerySchema.safeParse({ clienteId, desde, hasta })
+    const parsed = ResumenFacturasQuerySchema.safeParse({
+      clienteId,
+      desde,
+      hasta,
+      estado: searchParams.get('estado')?.toUpperCase() || undefined,
+      incluirAnuladas: searchParams.get('incluirAnuladas') || undefined,
+    })
     if (!parsed.success) {
       return apiError('Datos inválidos', 400)
     }
 
-    // Sin fechas = historial completo; sin tope de meses (lo limita el rango).
-    const fecha = buildDateRangeFilter(desde, hasta)
+    // Sin `estado` (enlaces antiguos) = TODAS, con las anuladas visibles pero
+    // sin sumar. Sin fechas = historial completo; el rango es el único límite.
+    const estado: FacturaEstado | null =
+      parsed.data.estado && parsed.data.estado !== 'TODAS' ? parsed.data.estado : null
+    const filtros: FacturasFiltros = {
+      desde: desde ?? null,
+      hasta: hasta ?? null,
+      clienteId,
+      facturaId: null,
+      estado,
+      pendiente: false,
+      incluirAnuladas: parsed.data.incluirAnuladas !== 'false',
+    }
 
-    const [cliente, facturas, empresaConfigs] = await Promise.all([
+    const [cliente, facturas, porEstado, empresaConfigs] = await Promise.all([
       prisma.cliente.findUnique({
         where: { id: clienteId },
         select: { id: true, nombre: true, apellido: true, telefono: true, direccion: true, barrio: true },
       }),
       prisma.factura.findMany({
-        where: {
-          clienteId,
-          ...(fecha ? { fecha } : {}),
-          estado: { not: 'ANULADA' },
-        },
+        where: buildFacturasListWhere(filtros),
         orderBy: { fecha: 'asc' },
         include: {
           pedido: { select: { id: true, numero: true, fecha: true, saldo: true, totalPagado: true } },
         },
+      }),
+      // Conteos para las pestañas: mismo cliente y período, sin filtrar por estado.
+      prisma.factura.groupBy({
+        by: ['estado'],
+        where: buildFacturasBaseWhere(filtros),
+        _count: { _all: true },
       }),
       prisma.config.findMany({
         where: {
@@ -63,17 +89,23 @@ export async function GET(
       return d.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
     }
 
-    const total = facturas.reduce((sum, f) => sum + Number(f.total), 0)
-    const totalPagado = facturas.reduce((sum, f) => sum + Number(f.montoPagado || 0), 0)
-    const saldoTotal = facturas.reduce((sum, f) => sum + Number(f.saldo), 0)
+    const filas = facturas.map((f) => ({
+      estado: f.estado,
+      total: Number(f.total),
+      montoPagado: Number(f.montoPagado || 0),
+      saldo: Number(f.saldo),
+    }))
+    const { totales, anuladas } = totalizarResumen(filas)
+    const conteos = conteosPorEstado(porEstado.map((g) => ({ estado: g.estado, count: g._count._all })))
 
     return apiSuccess({
       cliente,
       periodo: { desde: desde ?? null, hasta: hasta ?? null },
+      filtro: { estado: estado ?? 'TODAS', incluirAnuladas: filtros.incluirAnuladas },
+      conteos,
         facturas: facturas.map((f) => {
           const saldo = Number(f.saldo)
           const montoPagado = Number(f.montoPagado || 0)
-          const estadoDerivado = saldo <= 0 ? 'PAGADA' : (montoPagado > 0 ? 'PARCIAL' : 'EMITIDA')
 
           const pedidoSaldo = f.pedido ? Number(f.pedido.saldo) : null
           const pedidoPagado = f.pedido ? Number(f.pedido.totalPagado) : null
@@ -87,7 +119,8 @@ export async function GET(
             total: Number(f.total),
             montoPagado,
             saldo,
-            estado: estadoDerivado,
+            // Estado guardado: el mismo que usa la lista y el filtro (#758).
+            estado: f.estado,
             pedidoNumero: f.pedido?.numero ?? null,
             pedidoId: f.pedido?.id ?? null,
             desfase: tieneDesfase ? {
@@ -98,7 +131,8 @@ export async function GET(
             } : null,
           }
         }),
-      totales: { total, totalPagado, saldo: saldoTotal, count: facturas.length },
+      totales,
+      anuladas,
       empresa: {
         nombre: empresaMap.empresa_nombre || 'Agua Bambú SAS',
         nit: empresaMap.empresa_nit || '900.123.456-7',
