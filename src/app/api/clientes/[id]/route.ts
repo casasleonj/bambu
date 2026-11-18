@@ -102,6 +102,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
             referencia: true,
             linkUbicacion: true,
             horaApertura: true,
+            horarios: { select: { diaSemana: true, desde: true, hasta: true }, orderBy: [{ diaSemana: 'asc' }, { desde: 'asc' }] },
             clienteId: true,
             lat: true,
             lng: true,

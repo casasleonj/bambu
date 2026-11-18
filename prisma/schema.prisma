@@ -557,7 +557,12 @@ model Negocio {
   lat Decimal? @db.Decimal(10, 6)
   lng Decimal? @db.Decimal(10, 6)
 
+  /// LEGADO (#836 F2): texto libre de «hora de apertura». El horario real vive en `horarios`
+  /// (por día, con turnos partidos). Se conserva solo de lectura hasta que se configure el horario.
   horaApertura String?
+  /// #836 F2: horario de atención semanal. Sin filas = «sin horario configurado»; con filas,
+  /// un día sin tramos está cerrado.
+  horarios     NegocioHorario[]
 
   rutaId String?
   ruta   Ruta?   @relation("RutaNegocio", fields: [rutaId], references: [id])
@@ -3361,4 +3366,22 @@ model PedidoReprogramacion {
 
   @@index([pedidoId])
   @@index([reprogramadoPorId])
+}
+
+/// #836 F2: un TRAMO de atención de un negocio en un día de la semana (0 = domingo … 6 = sábado).
+/// Un día con turno partido tiene varias filas (06:00–12:00 y 14:00–20:00). Horas «HH:MM» de
+/// America/Bogota; la pausa entre tramos cuenta como cerrado.
+model NegocioHorario {
+  id        String  @id @default(cuid())
+  negocioId String
+  negocio   Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  diaSemana Int
+  desde     String
+  hasta     String
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+
+  @@index([negocioId])
+  @@index([negocioId, diaSemana])
 }

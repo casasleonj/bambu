@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react'
 import { clasificarCompromiso } from '@/lib/pedidos-compromiso'
+import { DIAS_SEMANA, diaSemanaDeFecha, estadoDia } from '@/lib/negocio-horario'
 import type { Pedido } from '../pedidos-client/types'
 
 const ESTADOS_ABIERTOS = ['PENDIENTE', 'EN_RUTA', 'NO_ENTREGADO']
@@ -19,7 +20,7 @@ function diaLargo(iso: string): string {
 export function PedidoReprogramar({
   pedido, hoyBogota, onMutado,
 }: {
-  pedido: Pick<Pedido, 'id' | 'numero' | 'estadoEntrega' | 'fechaEntrega'>
+  pedido: Pick<Pedido, 'id' | 'numero' | 'estadoEntrega' | 'fechaEntrega' | 'negocioHorarios'>
   hoyBogota: string
   onMutado: () => void
 }) {
@@ -34,6 +35,9 @@ export function PedidoReprogramar({
 
   if (!ESTADOS_ABIERTOS.includes(pedido.estadoEntrega)) return null
   const actual = pedido.fechaEntrega ?? null
+  // #836 F2: aviso (no bloqueo) si el negocio no atiende el día elegido.
+  const diaElegido = fecha ? diaSemanaDeFecha(fecha) : null
+  const negocioCierra = diaElegido !== null && estadoDia(pedido.negocioHorarios, diaElegido) === 'cerrado'
   const vencido = clasificarCompromiso({ fechaEntrega: actual, estadoEntrega: pedido.estadoEntrega }, hoyBogota) === 'arrastrado'
 
   function abrir() {
@@ -95,6 +99,11 @@ export function PedidoReprogramar({
             <input type="text" value={motivo} maxLength={500} onChange={(e) => setMotivo(e.target.value)} disabled={guardando}
               data-testid="reprogramar-motivo" className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
           </label>
+          {negocioCierra && diaElegido !== null && (
+            <p className="rounded-md bg-amber-100 px-2 py-1.5 text-xs text-amber-900" data-testid="reprogramar-negocio-cierra">
+              Según su horario, el negocio no atiende los {DIAS_SEMANA[diaElegido].toLowerCase()}s. Se puede preparar; confirma para continuar.
+            </p>
+          )}
           {vencido && (
             <p className="rounded-md bg-amber-100 px-2 py-1.5 text-xs text-amber-900" data-testid="reprogramar-vencido">
               Estaba vencido desde {actual ? diaLargo(actual) : ''}. El incumplimiento queda en el historial.
