@@ -29,7 +29,7 @@ describe('GET /api/cartera/abonos', () => {
 
     for (let i = 0; i < 3; i++) {
       const pedido = await testPrisma.pedido.create({
-        data: { clienteId, canal: 'DOMICILIO', total: 10000, totalPagado: 10000, saldo: 0, estadoEntrega: 'ENTREGADO', estado: 'ENTREGADO', estadoPago: 'PAGADO' },
+        data: { clienteId, canal: 'DOMICILIO', fecha: new Date(Date.now() - 5 * 86_400_000), total: 10000, totalPagado: 10000, saldo: 0, estadoEntrega: 'ENTREGADO', estado: 'ENTREGADO', estadoPago: 'PAGADO' },
       })
       const factura = await testPrisma.factura.create({
         data: { numero: `FAC-${uniqueId('f').slice(0, 8)}`, clienteId, pedidoId: pedido.id, subtotal: 10000, total: 10000, saldo: 0, montoPagado: 10000, estado: 'PAGADA' },

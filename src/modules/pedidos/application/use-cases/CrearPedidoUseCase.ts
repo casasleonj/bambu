@@ -364,6 +364,8 @@ export class CrearPedidoUseCase {
 
       const numero = await getNextNumero(tx, { model: 'pedido', field: 'numero' })
 
+      // #602/#854: una instancia única para `fecha` y, si nace entregado, `entregadoAt`.
+      const fechaPedido = new Date()
       const pedido = Pedido.create({
         id: PedidoId.from(''), // Will be assigned by Prisma
         numero,
@@ -377,7 +379,7 @@ export class CrearPedidoUseCase {
         total: Money.fromDecimal(total),
         totalPagado: Money.fromDecimal(totalPagado),
         pagos: pagosNormalizados,
-        fecha: new Date(),
+        fecha: fechaPedido,
         fechaEntrega: input.fechaEntrega,
         obs: input.obs,
         direccionEntrega: direccionEntregaSnapshot,
@@ -387,7 +389,13 @@ export class CrearPedidoUseCase {
         entregaLng: ubicacionPropia?.lng,
         createdById: input.createdById,
         // Venta en ruta: quién la vendió y cuándo (la comisión sin embarque exige ambos).
-        ...(vendidoPorId ? { entregadoPorId: vendidoPorId, entregadoAt: new Date() } : {}),
+        ...(vendidoPorId
+          ? { entregadoPorId: vendidoPorId, entregadoAt: new Date() }
+          // #602/#854: venta de mostrador que nace entregada (venta rápida o Punto entregado al
+          // crear). La entrega ocurre al vender: sin esta fecha, el pedido quedaba «Entregado»
+          // sin día de entrega y salía de las consultas por entrega. No se asigna entregador:
+          // se desconoce y asignarlo movería comisiones.
+          : estadoEntregaCreacion === 'ENTREGADO' ? { entregadoAt: fechaPedido } : {}),
       })
 
       // 7. Persist

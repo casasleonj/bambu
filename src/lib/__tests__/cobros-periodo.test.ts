@@ -20,6 +20,8 @@ function pago(
     confirmacion,
     createdAt: fecha,
     pedido: { id: 'p', numero: 901, fecha, canal: 'PUNTO' },
+    // ADR-002: correcciones ancladas al pago (ninguna en estos casos).
+    correcciones: [],
   }
 }
 function abono(overrides: Partial<CobroCartera> = {}): CobroCartera {

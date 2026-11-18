@@ -9,6 +9,9 @@ import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import type { Factura, EmpresaConfig } from './types'
 import { pedidoEnConsulta } from '@/lib/pedidos-contexto'
 import { formatPrecioUnitario, formatImportePedido as formatCurrency } from '@/lib/precio-formato'
+import { historialInternoHtml, pagosRecibidosCliente, type FormatosImpresion } from '@/lib/factura-impresion'
+import type { FilaPago } from '@/lib/factura-historial-pagos'
+import { CorregirModal } from '@/components/cartera/corregir-modal'
 
 const BRAND = {
   green: '#4CAF50',
@@ -24,7 +27,51 @@ function formatDateLong(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
 }
 
+function formatFechaHora(iso: string): string {
+  const f = new Date(iso)
+  const dia = f.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Bogota' })
+  const hora = f.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Bogota' })
+  // «17 de nov de 2026» → «17 nov 2026»: más corto para que no se parta en pantallas angostas.
+  return `${dia.replace(/ de /g, ' ')} · ${hora}`
+}
+
+/** #796: nombre legible del tipo de corrección (solo se muestra a quien puede ver su detalle). */
+const ETIQUETA_CORRECCION: Record<string, string> = {
+  MONTO: 'Monto corregido', CLIENTE: 'Cliente equivocado', FACTURA: 'Factura equivocada', NO_RECIBIDO: 'Pago no recibido',
+}
+
+/** #796: texto de estado del pago; solo lo que aún no está confirmado se marca. */
+function etiquetaConfirmacion(c: string | null): { texto: string; clase: string } | null {
+  if (c === 'REPORTADO') return { texto: 'Por confirmar', clase: 'bg-amber-100 text-amber-800' }
+  if (c === 'DISCREPANTE') return { texto: 'Con discrepancia', clase: 'bg-red-100 text-red-800' }
+  return null
+}
+
+/** Formatos de los documentos impresos (zona de Bogotá, fecha corta). */
+const FORMATOS_IMPRESION: FormatosImpresion = {
+  moneda: (n) => formatCurrency(n),
+  fecha: (iso) => new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Bogota' }).replace(/ de /g, ' '),
+  fechaHora: (iso) => formatFechaHora(iso),
+}
+
+/** Abre un documento en un iframe oculto y lo manda a imprimir (el mismo mecanismo de la factura). */
+function imprimirEnIframe(html: string): void {
+  const iframe = document.createElement('iframe')
+  iframe.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:0;height:0'
+  document.body.appendChild(iframe)
+  const doc = iframe.contentWindow?.document
+  if (!doc) { document.body.removeChild(iframe); return }
+  doc.open()
+  doc.write(html)
+  doc.close()
+  iframe.onload = () => {
+    iframe.contentWindow?.print()
+    setTimeout(() => { if (document.body.contains(iframe)) document.body.removeChild(iframe) }, 1000)
+  }
+}
+
 interface FacturaDetailProps {
+  onReintentarPagos?: () => void
   factura: Factura
   empresaConfig: EmpresaConfig
   onRegistrarAbono?: () => void
@@ -32,8 +79,17 @@ interface FacturaDetailProps {
   volverPedidos?: string | null
 }
 
-export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpenPedido,volverPedidos }: FacturaDetailProps) {
+export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpenPedido,volverPedidos, onReintentarPagos }: FacturaDetailProps) {
   const [printReady, setPrintReady] = useState(false)
+  // Evita imprimir dos veces por doble clic mientras se prepara el documento.
+  const [imprimiendo, setImprimiendo] = useState(false)
+  // #796 fase 2b: cobro que se está corrigiendo (solo ADMIN y CONTADOR reciben `corregir` del servidor).
+  const [corrigiendo, setCorrigiendo] = useState<FilaPago | null>(null)
+  const protegerImpresion = (accion: () => void) => {
+    if (imprimiendo) return
+    setImprimiendo(true)
+    try { accion() } finally { setTimeout(() => setImprimiendo(false), 1500) }
+  }
 
   useEffect(() => {
     // Bandera de hidratación SSR-safe: no se puede derivar durante el
@@ -61,7 +117,17 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
     email: factura.empresaEmail || empresaConfig.email,
   }
 
-  const handlePrint = () => {
+  const handlePrintInterno = () => protegerImpresion(() => {
+    const h = factura.historialPagos
+    if (!h || !factura.puedeVerHistorialInterno) return
+    const cuerpo = historialInternoHtml(
+      { facturaNumero: factura.numero, clienteNombre: clienteDisplayName },
+      h, FORMATOS_IMPRESION, formatFechaHora(new Date().toISOString()),
+    )
+    imprimirEnIframe(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Historial interno ${factura.numero}</title><style>body{font-family:Arial,sans-serif;margin:15mm;color:#000;background:#fff}@page{margin:15mm;size:letter}</style></head><body>${cuerpo}</body></html>`)
+  })
+
+  const handlePrint = () => protegerImpresion(() => {
     const iframe = document.createElement('iframe')
     iframe.style.position = 'absolute'
     iframe.style.top = '-9999px'
@@ -85,19 +151,8 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
       `
     }).join('')
 
-    const abonosHtml = factura.abonos && factura.abonos.length > 0
-      ? `
-        <div style="margin-bottom:20px;">
-          <h3 style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#4CAF50;margin-bottom:10px;">Historial de Pagos (${factura.abonos.length})</h3>
-          ${factura.abonos.map((abono, i) => `
-            <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;font-size:12px;">
-              <span>#${i + 1} ${formatDate(abono.fecha)} — ${abono.metodoPago}</span>
-              <span><strong>${formatCurrency(Number(abono.monto))}</strong></span>
-            </div>
-          `).join('')}
-        </div>
-      `
-      : ''
+    // #796: la factura que se ENTREGA al cliente lleva «Pagos recibidos» (fecha, medio, importe), sin información interna.
+    const abonosHtml = pagosRecibidosCliente(factura.historialPagos, pagado, FORMATOS_IMPRESION)
 
     const notasCreditoHtml = factura.notasCredito && factura.notasCredito.length > 0
       ? `
@@ -230,22 +285,30 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
         }
       }, 1000)
     }
-  }
+  })
 
   if (!printReady) return null
 
   return (
     <div className="factura-print-container" id="factura-print">
       {/* Botones de acción */}
-      <div className="flex justify-end gap-2 mb-6">
-        <Button onClick={handlePrint} variant="outline" size="sm">
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      {/* #868: en celular cada botón ocupa su línea (44 px táctiles) y puede partir su texto; desde 640 px vuelve la fila a la derecha. */}
+      <div className="flex flex-wrap gap-2 mb-6 sm:justify-end">
+        <Button onClick={handlePrint} variant="outline" size="sm" disabled={imprimiendo} data-testid="factura-imprimir-cliente"
+          className="w-full min-h-11 h-auto whitespace-normal sm:w-auto sm:min-h-9">
+          <svg className="w-4 h-4 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
           </svg>
-          Imprimir / Descargar PDF
+          Factura para el cliente
         </Button>
+        {factura.puedeVerHistorialInterno && factura.historialPagos && (
+          <Button onClick={handlePrintInterno} variant="outline" size="sm" disabled={imprimiendo} data-testid="factura-imprimir-interno"
+            className="w-full min-h-11 h-auto whitespace-normal border-orange-700 text-orange-800 hover:bg-orange-50 sm:w-auto sm:min-h-9">
+            Historial interno de pagos
+          </Button>
+        )}
         {saldo > 0 && factura.estado !== 'ANULADA' && onRegistrarAbono && factura.pedido?.estadoEntrega === 'ENTREGADO' && (
-          <Button onClick={onRegistrarAbono} size="sm" style={{ backgroundColor: BRAND.green }} className="hover:opacity-90 text-white border-0">
+          <Button onClick={onRegistrarAbono} size="sm" style={{ backgroundColor: BRAND.green }} className="w-full min-h-11 h-auto whitespace-normal hover:opacity-90 text-white border-0 sm:w-auto sm:min-h-9">
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -434,10 +497,10 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-xs font-bold text-gray-600 uppercase">Producto</TableHead>
-                      <TableHead className="text-xs font-bold text-gray-600 uppercase text-right">Cant.</TableHead>
-                      <TableHead className="text-xs font-bold text-gray-600 uppercase text-right hidden sm:table-cell">V. Unitario</TableHead>
-                      <TableHead className="text-xs font-bold text-gray-600 uppercase text-right">Subtotal</TableHead>
+                      <TableHead className="px-2 sm:px-4 text-xs font-bold text-gray-600 uppercase">Producto</TableHead>
+                      <TableHead className="px-2 sm:px-4 text-xs font-bold text-gray-600 uppercase text-right">Cant.</TableHead>
+                      <TableHead className="px-2 sm:px-4 text-xs font-bold text-gray-600 uppercase text-right hidden sm:table-cell">V. Unitario</TableHead>
+                      <TableHead className="px-2 sm:px-4 text-xs font-bold text-gray-600 uppercase text-right">Subtotal</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -446,13 +509,13 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
                       const Icon = meta.Icon
                       return (
                         <TableRow key={item.id}>
-                          <TableCell className="py-3">
+                          <TableCell className="px-2 sm:px-4 py-3">
                             <Icon size={18} className="inline-block mr-2 align-text-bottom" />
                             <span className="text-sm font-medium">{meta.label}</span>
                           </TableCell>
-                          <TableCell className="py-3 text-right text-sm">{item.cantPedido}</TableCell>
-                          <TableCell className="py-3 text-right text-sm hidden sm:table-cell">{formatPrecioUnitario(Number(item.precio))}</TableCell>
-                          <TableCell className="py-3 text-right text-sm font-bold">{formatCurrency(Number(item.subtotal))}</TableCell>
+                          <TableCell className="px-2 sm:px-4 py-3 text-right text-sm">{item.cantPedido}</TableCell>
+                          <TableCell className="px-2 sm:px-4 py-3 text-right text-sm hidden sm:table-cell">{formatPrecioUnitario(Number(item.precio))}</TableCell>
+                          <TableCell className="px-2 sm:px-4 py-3 text-right text-sm font-bold">{formatCurrency(Number(item.subtotal))}</TableCell>
                         </TableRow>
                       )
                     })}
@@ -521,6 +584,84 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
           {/* ════════════════════════════════════════
               ABONOS — Timeline (screen) / Lista simple (print)
               ════════════════════════════════════════ */}
+          {factura.historialPagosError && (
+            <div role="alert" data-testid="factura-pagos-error" className="mb-8 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              <span>No se pudo cargar los pagos de esta factura. Los totales de arriba siguen siendo válidos.</span>
+              {onReintentarPagos && <button className="rounded-lg border border-blue-600 bg-white px-3 py-1 text-xs font-semibold text-blue-700" onClick={onReintentarPagos}>Reintentar</button>}
+            </div>
+          )}
+          {factura.historialPagos ? (
+            <div className="mb-8" data-testid="factura-historial-pagos">
+              <h3 className="text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-1.5" style={{ color: BRAND.green }}>
+                Historial de pagos ({factura.historialPagos.pagos.length})
+              </h3>
+              {factura.historialPagos.pagos.length === 0 && <p className="text-sm text-gray-500" data-testid="factura-sin-pagos">Esta factura todavía no tiene pagos.</p>}
+              <div className="space-y-0">
+                {factura.historialPagos.pagos.map((p, i, arr) => {
+                  const chip = etiquetaConfirmacion(p.confirmacion)
+                  return (
+                    <div key={p.clave} className="flex gap-3" data-testid="factura-pago-fila">
+                      <div className="flex flex-col items-center">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border-2" style={{ backgroundColor: '#E8F5E9', borderColor: BRAND.green }}>
+                          <span className="text-xs font-bold" style={{ color: BRAND.green }}>{p.numero}</span>
+                        </div>
+                        {(i < arr.length - 1 || factura.historialPagos!.correcciones.length > 0) && <div className="w-0.5 flex-1 mt-1" style={{ backgroundColor: '#C8E6C9' }} />}
+                      </div>
+                      <div className="flex-1 pb-4">
+                        <div className="rounded-lg px-4 py-3 flex justify-between items-center gap-2" style={{ backgroundColor: '#E8F5E9' }}>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900">{formatFechaHora(p.fecha)}</p>
+                            <p className="text-xs text-gray-500 uppercase">{p.metodo}
+                              {chip && <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold normal-case ${chip.clase}`}>{chip.texto}</span>}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="text-lg font-bold whitespace-nowrap" style={{ color: BRAND.green }}>{formatCurrency(Number(p.monto))}</span>
+                            {p.corregir && (
+                              <div>
+                                <button type="button" data-testid="factura-pago-corregir" className="text-xs font-semibold text-blue-700 hover:underline" onClick={() => setCorrigiendo(p)}>
+                                  Corregir
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                {factura.historialPagos.correcciones.map((c) => (
+                  <div key={c.id} className="flex gap-3" data-testid="factura-correccion-fila">
+                    <div className="flex flex-col items-center">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border-2" style={{ backgroundColor: '#FFF3E0', borderColor: '#E65100' }}>
+                        <span className="text-xs font-bold" style={{ color: '#E65100' }}>↩</span>
+                      </div>
+                    </div>
+                    <div className="flex-1 pb-4">
+                      <div className="rounded-lg px-4 py-3 flex justify-between items-center gap-2 border" style={{ backgroundColor: '#FFF3E0', borderColor: '#FFE0B2' }}>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900"><b>{c.numero}</b>{c.motivo !== null ? ` · ${ETIQUETA_CORRECCION[c.tipo] ?? 'Corrección'}` : ''}</p>
+                          <p className="text-xs uppercase" style={{ color: '#92400e' }}>
+                            {formatDate(c.fecha)}{c.autorizadoPor ? ` · autorizó ${c.autorizadoPor}` : ''}{c.sobrePagoNumero ? ` · sobre el pago #${c.sobrePagoNumero}` : ''}
+                          </p>
+                        </div>
+                        <span className="text-lg font-bold whitespace-nowrap shrink-0" style={{ color: '#E65100' }}>−{formatCurrency(Number(c.monto))}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {factura.historialPagos.correcciones.length > 0 && (
+                <p className="mt-1 text-xs text-gray-500">Pagado = pagos − correcciones ({formatCurrency(factura.historialPagos.totalPagado)} − {formatCurrency(factura.historialPagos.totalCorregido)}). Una corrección no borra el pago: aparece como su propia fila.</p>
+              )}
+              {typeof factura.montoPagado === 'number' && Math.abs(factura.historialPagos.totalNeto - factura.montoPagado) > 0.005 && (
+                <p data-testid="factura-pagos-divergencia" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  El historial suma {formatCurrency(factura.historialPagos.totalNeto)} y la factura marca {formatCurrency(factura.montoPagado)} pagados. Avísale al administrador para conciliarlo.
+                </p>
+              )}
+            </div>
+          ) : (
+            <>
           {factura.abonos && factura.abonos.length > 0 && (
             <div className="mb-8">
               <h3 className="text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-1.5" style={{ color: BRAND.green }}>
@@ -557,6 +698,9 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
 
 
             </div>
+          )}
+
+            </>
           )}
 
           {/* ════════════════════════════════════════
@@ -604,6 +748,19 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
 
         </div>
       </div>
+      {corrigiendo?.corregir && (
+        <CorregirModal
+          titulo={`Corregir pago de ${corrigiendo.metodo.charAt(0) + corrigiendo.metodo.slice(1).toLowerCase()} · ${formatCurrency(corrigiendo.monto)}`}
+          contexto={<>Pago #{corrigiendo.numero} · {formatFechaHora(corrigiendo.fecha)} · Queda por revertir {formatCurrency(corrigiendo.corregir.disponible)}</>}
+          endpoint={corrigiendo.corregir.via === 'ABONO' ? `/api/cartera/abonos/${corrigiendo.corregir.id}/corregir` : `/api/pagos/${corrigiendo.corregir.id}/corregir`}
+          montoMaximo={corrigiendo.corregir.disponible}
+          queNoSeBorra={corrigiendo.origen === 'PAGO' ? 'el pago' : 'el abono'}
+          factura={{ total, montoPagado: pagado, saldo }}
+          testid="corregir-pago-modal"
+          onClose={() => setCorrigiendo(null)}
+          onDone={() => { setCorrigiendo(null); onReintentarPagos?.() }}
+        />
+      )}
     </div>
   )
 }

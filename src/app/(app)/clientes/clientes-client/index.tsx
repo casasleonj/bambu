@@ -30,6 +30,7 @@ import { ClienteStats } from './cliente-stats'
 import { ClienteSaldoFavor } from './cliente-saldo-favor'
 import { saldoFavorDeFila } from '@/lib/saldo-favor-textos'
 import { NegocioForm } from '@/components/negocio-form'
+import type { TramoHorario } from '@/lib/negocio-horario'
 import { NegocioDetailModal, type NegocioDetail } from '@/components/negocio-detail-modal'
 import { calcularAlertasCliente } from '@/app/(app)/pedidos/pedidos-client/alertas-utils'
 import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
@@ -462,8 +463,16 @@ export default function ClientesClient({
   // Guard contra respuestas stale de fetchClientes en paginación (clics rápidos).
   const pageSeqRef = useRef(0)
   const [negocioFormOpen, setNegocioFormOpen] = useState(false)
-  const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; barrioId?: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null } | null>(null)
+  const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; barrioId?: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null; horarios?: TramoHorario[] } | null>(null)
   const [viewNegocioData, setViewNegocioData] = useState<NegocioDetail | null>(null)
+  // La ficha se abre con la copia de la fila; cuando llega el detalle completo del cliente
+  // (que sí trae el horario) se completa por derivación, sin estado extra (#836).
+  const negocioFicha = useMemo<NegocioDetail | null>(() => {
+    if (!viewNegocioData || viewNegocioData.horarios !== undefined) return viewNegocioData
+    const completo = (selectedCliente?.negocios as Array<{ id: string; horarios?: TramoHorario[] }> | undefined)
+      ?.find(n => n.id === viewNegocioData.id)
+    return completo?.horarios !== undefined ? { ...viewNegocioData, horarios: completo.horarios } : viewNegocioData
+  }, [viewNegocioData, selectedCliente])
   const [showNegocioDetail, setShowNegocioDetail] = useState(false)
 
   const puedeDesactivar = userRole === 'ADMIN' || userRole === 'CONTADOR'
@@ -1375,6 +1384,7 @@ export default function ClientesClient({
       referencia: neg.referencia || null,
       linkUbicacion: neg.linkUbicacion || null,
       horaApertura: neg.horaApertura || null,
+      horarios: neg.horarios,
       rutaId: neg.ruta?.id || null,
     })
     setNegocioFormOpen(true)
@@ -2215,6 +2225,7 @@ export default function ClientesClient({
                                           referencia: neg.referencia || null,
                                           linkUbicacion: neg.linkUbicacion || null,
                                           horaApertura: neg.horaApertura || null,
+                                          horarios: neg.horarios,
                                           rutaId: neg.ruta?.id || null,
                                         })
                                         setNegocioFormOpen(true)
@@ -2531,11 +2542,11 @@ export default function ClientesClient({
           key={viewNegocioData?.id || 'closed'}
           open={showNegocioDetail}
           onClose={closeNegocioDetail}
-          negocio={viewNegocioData}
+          negocio={negocioFicha ?? viewNegocioData}
           canEdit={true}
           canDelete={puedeEliminarNegocio}
           clienteId={viewNegocioData.clienteId || selectedCliente?.id}
-          onEdit={() => viewNegocioData && handleEditNegocioFromDetail(viewNegocioData)}
+          onEdit={() => negocioFicha && handleEditNegocioFromDetail(negocioFicha)}
           onDeleted={handleNegocioDeleted}
           onGeocoded={handleNegocioGeocoded}
         />

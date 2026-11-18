@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maquetas #796 · Cobro del día vs. cartera</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#eef0f4;color:#1f2937}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:34px 0 4px}h3{font-size:13px;margin:0 0 8px;color:#475569;text-transform:uppercase;letter-spacing:.04em}
+.wrap{max-width:1500px;margin:0 auto;padding:24px}.note{color:#475569;font-size:14px;max-width:900px}
+.badge-estado{display:inline-block;background:#fef3c7;color:#92400e;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600}
+.grid{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;margin-top:12px}
+.col{flex:1 1 640px;min-width:320px}.colm{flex:0 0 390px}
+.frame{background:#f3f4f6;border:1px solid #cbd5e1;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.top{background:#1a5cff;color:#fff;padding:14px 18px;font-weight:700;font-size:17px;display:flex;justify-content:space-between}
+.body{padding:20px}.tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;display:inline-block}
+.t-cart{background:#fef3c7;color:#92400e}.t-dia{background:#dcfce7;color:#166534}.t-apx{background:#e0e7ff;color:#3730a3}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #1f2937;font-size:14px}th,td{padding:9px 10px;text-align:left;border-bottom:1px solid #e5e7eb}th{background:#f8fafc}td.r,th.r{text-align:right}
+a.l{color:#2563eb}.sel{border:1px solid #1f2937;border-radius:4px;padding:6px 10px;background:#fff;font-size:14px;display:inline-block}
+.card3{display:flex;gap:10px;margin:10px 0;flex-wrap:wrap}.k{flex:1 1 140px;border-radius:10px;padding:10px 12px;border:1px solid #c7d2fe;background:#eef2ff}.k b{display:block;font-size:20px}.k small{color:#64748b}
+.k.y{background:#fffbeb;border-color:#fde68a}.k.g{background:#f0fdf4;border-color:#bbf7d0}
+.panel{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin:10px 0;font-size:14px}.row{display:flex;justify-content:space-between;padding:3px 0}
+.before{outline:2px dashed #ef4444;outline-offset:-2px}.after{outline:2px dashed #16a34a;outline-offset:-2px}
+.lbl{font-size:12px;font-weight:700;margin:0 0 6px}.lbl.b{color:#b91c1c}.lbl.a{color:#15803d}
+.cardrow{background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:10px 12px;margin:8px 0;font-size:14px}
+.sk{height:14px;border-radius:6px;background:linear-gradient(90deg,#e5e7eb,#f3f4f6,#e5e7eb);margin:10px 0}
+.err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:8px;padding:10px 12px;font-size:14px;display:flex;justify-content:space-between;gap:8px}
+.btn{background:#1a5cff;color:#fff;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;display:inline-block}.btn.o{background:#fff;color:#1a5cff;border:1px solid #1a5cff}
+.tip{background:#1f2937;color:#fff;border-radius:8px;padding:8px 10px;font-size:12px;max-width:300px;margin:6px 0}
+.mini{font-size:12px;color:#64748b}
+</style></head><body><div class="wrap">
+<h1>#796 · Cobro del día de la venta vs. cartera</h1>
+<p class="note"><span class="badge-estado" style="background:#fee2e2;color:#991b1b">SECCIÓN 1 REEMPLAZADA · 17-nov-2026</span> <b>Decisión del PO:</b> el cobro del día de la entrega NO se lista en «Cartera — Abonos» (ni etiqueta, ni tarjeta, ni filtro). Solo se listan cobros de cartera de entregas anteriores, con las marcas «Incluye venta del día» (pago mixto) y «Fecha aproximada». Reemplaza lo aprobado en la sección 1; las secciones 2 y 3 siguen vigentes. Implementado en el commit siguiente al a610eef.  Maquetas de escritorio y móvil sobre la UI vigente (capturas reales de Cartera y Cierre en local con datos sintéticos). Cifras de ejemplo: <b>A</b> creado y entregado hoy, cobrado hoy ($23.000, abono espejo) · <b>B</b> creado ayer, entregado y cobrado hoy ($7.500) · <b>C</b> entregado hace 2 días, cobrado hoy ($10.000, abono espejo). Bordes rojos = hoy, verdes = propuesto.</p>
+
+<h2>1 · Cartera — Abonos <span class="mini">(Fase 1)</span></h2>
+<p class="note">Se conservan todas las filas y el botón «Corregir» (trazabilidad). Se agrega la columna <b>Tipo</b> y el total se separa. El pago del mismo día ya no se presenta como recuperación de cartera.</p>
+<div class="grid">
+ <div class="col"><p class="lbl b">HOY (escritorio)</p><div class="frame before"><div class="top"><span>Agua Bambú</span><span>lun, 16 nov 2026</span></div><div class="body">
+  <div style="display:flex;justify-content:space-between"><b style="font-size:20px">Cartera — Abonos</b><span>Total neto (filtro actual): <b>$ 33.000</b></span></div><br>
+  <table><tr><th>Abono</th><th>Fecha</th><th>Cliente</th><th>Factura</th><th>Método</th><th class="r">Monto</th><th class="r">Neto</th><th></th></tr>
+  <tr><td>ABO-QA-A</td><td>16/11/2026</td><td>Cliente QA</td><td>FAC-QA-A</td><td>EFECTIVO</td><td class="r">$ 23.000</td><td class="r">$ 23.000</td><td><a class="l">Corregir</a></td></tr>
+  <tr><td>ABO-QA-C</td><td>16/11/2026</td><td>Cliente QA</td><td>FAC-QA-C</td><td>EFECTIVO</td><td class="r">$ 10.000</td><td class="r">$ 10.000</td><td><a class="l">Corregir</a></td></tr></table></div></div>
+  <p class="lbl a" style="margin-top:16px">PROPUESTO (escritorio)</p><div class="frame after"><div class="top"><span>Agua Bambú</span><span>lun, 16 nov 2026</span></div><div class="body">
+  <b style="font-size:20px">Cartera — Abonos</b>
+  <div class="card3"><div class="k y"><small>Cartera recuperada (deuda de días anteriores)</small><b>$ 10.000</b></div><div class="k g"><small>Cobros del día de la venta (ya están en ventas de hoy)</small><b>$ 23.000</b></div><div class="k"><small>Total neto (filtro actual)</small><b>$ 33.000</b></div></div>
+  <span class="sel">Buscar abono / cliente / factura…</span> <span class="sel">Todos ▾</span> <span class="sel">Tipo: Todos ▾</span><br><br>
+  <table><tr><th>Abono</th><th>Fecha</th><th>Cliente</th><th>Factura</th><th>Tipo</th><th>Método</th><th class="r">Monto</th><th class="r">Neto</th><th></th></tr>
+  <tr><td>ABO-QA-A</td><td>16/11/2026</td><td>Cliente QA</td><td>FAC-QA-A</td><td><span class="tag t-dia">Cobro del día</span></td><td>EFECTIVO</td><td class="r">$ 23.000</td><td class="r">$ 23.000</td><td><a class="l">Corregir</a></td></tr>
+  <tr><td>ABO-QA-C</td><td>16/11/2026</td><td>Cliente QA</td><td>FAC-QA-C</td><td><span class="tag t-cart">Cartera anterior</span></td><td>EFECTIVO</td><td class="r">$ 10.000</td><td class="r">$ 10.000</td><td><a class="l">Corregir</a></td></tr>
+  <tr><td>ABO-QA-D</td><td>16/11/2026</td><td>Cliente QA</td><td>FAC-QA-D</td><td><span class="tag t-apx">Fecha aproximada ⓘ</span></td><td>NEQUI</td><td class="r">$ 5.000</td><td class="r">$ 5.000</td><td><a class="l">Corregir</a></td></tr></table>
+  <div class="tip">ⓘ «Fecha aproximada»: este pedido no tiene registro confiable de entrega; se clasifica por su fecha de creación. Falta conciliar.</div></div></div></div>
+ <div class="colm"><p class="lbl a">PROPUESTO (móvil 390 px)</p><div class="frame after"><div class="top"><span>Agua Bambú</span><span>16 nov</span></div><div class="body">
+  <b style="font-size:20px">Cartera — Abonos</b>
+  <div class="card3"><div class="k y"><small>Cartera recuperada</small><b>$ 10.000</b></div><div class="k g"><small>Cobros del día de la venta</small><b>$ 23.000</b></div></div>
+  <span class="sel">Buscar…</span> <span class="sel">Tipo ▾</span>
+  <div class="cardrow"><div class="row"><b>ABO-QA-A</b><span class="tag t-dia">Cobro del día</span></div><div class="row"><span>Cliente QA · FAC-QA-A</span><b>$ 23.000</b></div><div class="row"><span class="mini">16/11 · EFECTIVO</span><a class="l">Corregir</a></div></div>
+  <div class="cardrow"><div class="row"><b>ABO-QA-C</b><span class="tag t-cart">Cartera anterior</span></div><div class="row"><span>Cliente QA · FAC-QA-C</span><b>$ 10.000</b></div><div class="row"><span class="mini">16/11 · EFECTIVO</span><a class="l">Corregir</a></div></div></div></div></div>
+</div>
+<h3 style="margin-top:20px">Estados de la pantalla (escritorio y móvil)</h3>
+<div class="grid">
+ <div class="col"><div class="frame"><div class="body"><b>Carga</b><div class="sk" style="width:60%"></div><div class="sk"></div><div class="sk"></div><div class="sk" style="width:80%"></div><span class="mini">Mientras se calcula la clasificación, las tarjetas de total muestran esqueleto; no se muestran cifras parciales.</span></div></div></div>
+ <div class="col"><div class="frame"><div class="body"><b>Error</b><br><br><div class="err"><span>No se pudo clasificar los cobros. Los abonos se muestran sin tipo; los totales no son definitivos.</span><span class="btn o">Reintentar</span></div><br><span class="mini">Si falla el clasificador, la lista sigue disponible y «Corregir» no se bloquea.</span></div></div></div>
+ <div class="col"><div class="frame"><div class="body"><b>Confirmación</b><br><br>No hay acción nueva de escritura en esta pantalla: «Corregir» conserva su modal y sus confirmaciones actuales, sin cambios.</div></div></div>
+</div>
+
+<h2>2 · Cierre del día — «De dónde viene lo cobrado» <span class="mini">(Fase 1)</span></h2>
+<p class="note">Mismo bloque y mismas tarjetas. Cambia solo el reparto: B (entregado y cobrado hoy) pasa a «Ventas de hoy». El total no cambia: $ 40.500 cuadra igual.</p>
+<div class="grid">
+ <div class="col"><p class="lbl b">HOY</p><div class="frame before"><div class="body"><div class="panel" style="background:#f0fdf4;border-color:#bbf7d0"><b>💵 EFECTIVO · ENTRA A LA CAJA</b> <b style="float:right;color:#166534">$ 40.500</b><div class="row"><span>Ventas de hoy</span><span>$ 23.000</span></div><div class="row"><span>Fiados anteriores cobrados</span><span>$ 17.500</span></div></div><span class="mini">✔ Cuadra con «Cobrado hoy» ($ 40.500).</span></div></div>
+ <p class="lbl a" style="margin-top:16px">PROPUESTO</p><div class="frame after"><div class="body"><div class="panel" style="background:#f0fdf4;border-color:#bbf7d0"><b>💵 EFECTIVO · ENTRA A LA CAJA</b> <b style="float:right;color:#166534">$ 40.500</b><div class="row"><span>Ventas de hoy <span class="mini">(entregadas hoy)</span></span><span>$ 30.500</span></div><div class="row"><span>Fiados anteriores cobrados <span class="mini">(entregas de días previos)</span></span><span>$ 10.000</span></div><div class="row"><span class="mini">↳ 1 cobro con fecha aproximada · <a class="l">ver</a></span><span class="mini">$ 5.000 en ventas de hoy</span></div></div><span class="mini">✔ Cuadra con «Cobrado hoy» ($ 40.500). Cartera cobrada hoy en Cartera — Abonos: $ 10.000.</span></div></div></div>
+ <div class="colm"><p class="lbl a">PROPUESTO (móvil)</p><div class="frame after"><div class="body"><div class="panel" style="background:#f0fdf4;border-color:#bbf7d0"><b>💵 EFECTIVO</b> <b style="float:right">$ 40.500</b><div class="row"><span>Ventas de hoy</span><span>$ 30.500</span></div><div class="row"><span>Fiados anteriores</span><span>$ 10.000</span></div><div class="row mini"><span>1 con fecha aproximada · ver</span><span></span></div></div><span class="mini">✔ Cuadra con «Cobrado hoy».</span></div></div></div>
+</div>
+
+<h2>3 · «Quedó fiado» — hoy en vivo vs. foto al corte <span class="mini">(Fase 2, snapshot diario)</span></h2>
+<p class="note">Hoy: cifra <b>provisional</b>, en vivo. Días pasados: <b>foto al corte (23:59 Bogotá)</b>; lo que se cobra después baja el «pendiente actual», no la foto. Si la foto es reconstruida (6 → 16-nov), se rotula.</p>
+<div class="grid">
+ <div class="col"><div class="frame after"><div class="body">
+  <b>Hoy · lun 16 nov</b><div class="card3"><div class="k y"><small>Quedó fiado <span class="tag t-apx">Provisional · en vivo</span></small><b>$ 0</b></div></div>
+  <b>Ayer · dom 15 nov</b><div class="card3"><div class="k y"><small>Quedó fiado al corte <span class="tag t-dia">Foto 15-nov 23:59</span></small><b>$ 30.000</b></div><div class="k"><small>Pendiente hoy de ese fiado</small><b>$ 20.000</b></div></div>
+  <div class="panel"><div class="row"><span>Cobrado después del corte</span><span>$ 10.000 <span class="mini">(16-nov, cartera)</span></span></div></div>
+  <div class="panel"><b>Fecha reconstruida</b> <span class="tag t-apx">Reconstruida</span><br><span class="mini">Para el 09-nov: calculada con los hechos de entrega disponibles. Puede diferir de lo visto ese día.</span></div></div></div></div>
+ <div class="colm"><div class="frame after"><div class="body"><b>Ayer (móvil)</b><div class="k y" style="margin:8px 0"><small>Quedó fiado al corte <span class="tag t-dia">Foto 15-nov</span></small><b>$ 30.000</b></div><div class="k"><small>Pendiente hoy</small><b>$ 20.000</b></div><br><div class="err" style="background:#fffbeb;border-color:#fde68a;color:#92400e">Sin foto para este día. <span class="btn o">Ver pendiente actual</span></div></div></div></div>
+</div>
+<p class="mini" style="margin-top:30px">No incluido: cambios en Pedidos, Dashboard, Caja ni cierres guardados. Colores, tarjetas, iconos y tipografía respetan los vigentes.</p>
+</div></body></html>

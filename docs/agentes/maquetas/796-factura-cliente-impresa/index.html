@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maquetas #796 · Factura impresa para el cliente</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#eef0f4;color:#1f2937}
+.wrap{max-width:1500px;margin:0 auto;padding:24px}h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:34px 0 4px}.note{color:#475569;font-size:14px;max-width:980px}
+.badge{display:inline-block;background:#fef3c7;color:#92400e;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600}
+.grid{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;margin-top:12px}.col{flex:1 1 520px;min-width:300px}.colm{flex:0 0 390px}
+.lbl{font-size:12px;font-weight:700;margin:0 0 6px;color:#15803d}.lbl.b{color:#b91c1c}.lbl.i{color:#7c2d12}
+.paper{background:#fff;border:1px solid #94a3b8;padding:24px 28px;font-family:Arial,sans-serif;color:#000;font-size:12px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+.after{outline:2px dashed #16a34a;outline-offset:-2px}.before{outline:2px dashed #ef4444;outline-offset:-2px}.interno{outline:2px dashed #c2410c;outline-offset:-2px}
+.hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}.hd h4{font-size:26px;margin:0;font-weight:900}.mut{color:#666}
+.sec{font-size:11px;font-weight:bold;text-transform:uppercase;color:#4CAF50;margin:16px 0 8px;border-bottom:2px solid #4CAF50;padding-bottom:3px}
+.sec.n{color:#E65100;border-color:#E65100}.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee}.row.n{color:#E65100}
+.tot{display:flex;justify-content:space-between;padding:6px 0;font-size:13px}.tot.big{font-size:18px;font-weight:900;color:#4CAF50}.tot.s{color:#b91c1c;font-weight:700}
+.wm{margin-top:14px;padding:6px 8px;background:#fff7ed;border:1px solid #fdba74;color:#9a3412;font-weight:700;text-align:center;font-size:11px;text-transform:uppercase}
+.pantalla{background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:14px}.btns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.btn{border-radius:8px;padding:7px 12px;font-size:13px;font-weight:700;display:inline-block;border:1px solid #334155;background:#fff;color:#0f172a}.btn.v{background:#4CAF50;border-color:#4CAF50;color:#fff}.btn.i{border-color:#c2410c;color:#9a3412}
+.err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:8px;padding:10px 12px;font-size:13px;margin-top:10px}
+.tab{width:100%;border-collapse:collapse;font-size:12px}.tab td,.tab th{padding:6px 8px;border:1px solid #cbd5e1;text-align:left;vertical-align:top}.tab th{background:#f1f5f9}
+.small{font-size:12px;color:#64748b}
+</style></head><body><div class="wrap">
+<h1>#796 · Factura impresa: una para el cliente y otra interna</h1>
+<p class="note"><span class="badge">PENDIENTE DE APROBACIÓN DEL PO</span> Reemplaza la sección «Factura impresa / PDF» de la maqueta del historial de pagos (que mostraba al cliente «por confirmar», correcciones y quién autorizó). <b>Decisión del PO (17-nov-2026):</b> el historial detallado sirve al usuario del sistema, no al cliente. La pantalla del historial no cambia. Datos de ejemplo, no reales. Esta factura es el documento interno FAC; no se presenta como documento fiscal (ver #840).</p>
+
+<h2>1 · Botones del detalle de factura (escritorio y móvil)</h2>
+<div class="grid">
+ <div class="col"><p class="lbl b">HOY</p><div class="pantalla before"><div class="btns"><span class="btn">🖨 Imprimir / Descargar PDF</span><span class="btn v">Registrar Abono</span></div></div>
+  <p class="lbl" style="margin-top:14px">PROPUESTO — ADMIN y CONTADOR</p><div class="pantalla after"><div class="btns"><span class="btn">🖨 Imprimir / Descargar PDF <span class="small">(cliente)</span></span><span class="btn i">🗂 Historial interno de pagos</span><span class="btn v">Registrar Abono</span></div></div>
+  <p class="lbl" style="margin-top:14px">PROPUESTO — ASISTENTE</p><div class="pantalla after"><div class="btns"><span class="btn">🖨 Imprimir / Descargar PDF <span class="small">(cliente)</span></span></div><p class="small" style="margin:8px 0 0">No ve «Historial interno»: hoy tampoco ve las correcciones.</p></div></div>
+ <div class="colm"><p class="lbl">PROPUESTO (móvil 390 px)</p><div class="pantalla after"><div class="btns" style="flex-direction:column;align-items:stretch"><span class="btn" style="text-align:center">🖨 Imprimir / Descargar PDF</span><span class="btn i" style="text-align:center">🗂 Historial interno de pagos</span><span class="btn v" style="text-align:center">Registrar Abono</span></div></div></div>
+</div>
+
+<h2>2 · Factura para el cliente (la que se entrega)</h2>
+<p class="note">Solo lo que un cliente necesita: qué compró, cuánto pagó y cuánto debe. Sin estados internos, sin números de corrección, sin quién autorizó, sin motivos. Cada pago aparece una vez, también el que no tiene abono.</p>
+<div class="grid"><div class="col"><div class="paper after">
+  <div class="hd"><div><b>AGUA BAMBÚ</b><div class="mut">Agua Bambú SAS · NIT 900.123.456-7</div></div><div style="text-align:right"><h4>FACTURA</h4><div class="mut"><b>No. FAC-QA-F</b></div></div></div>
+  <div class="row"><span class="mut">Cliente</span><b>Cliente de ejemplo</b></div><div class="row"><span class="mut">Fecha de emisión</span><span>17 de noviembre de 2026</span></div>
+  <div class="sec">Detalle</div>
+  <div class="row"><span>Paca de agua × 20</span><b>$46.000,00</b></div>
+  <div class="tot big"><span>TOTAL</span><span>$46.000,00</span></div>
+  <div class="sec">Pagos recibidos</div>
+  <div class="row"><span>17 nov 2026 — Efectivo</span><b>$35.000,00</b></div>
+  <div class="row"><span>17 nov 2026 — Nequi</span><b>$5.000,00</b></div>
+  <div class="row"><span>Ajuste de pagos</span><b>−$3.000,00</b></div>
+  <div class="tot"><span>Total pagado</span><b>$37.000,00</b></div>
+  <div class="tot s"><span>Saldo pendiente</span><span>$9.000,00</span></div>
+  <p class="mut" style="margin-top:14px;font-size:11px">Gracias por su compra — Agua Bambú SAS</p></div></div>
+ <div class="col"><table class="tab"><tr><th>Decisión</th><th>Propuesta</th><th>Alternativa</th></tr>
+  <tr><td><b>Pago aún «por confirmar»</b></td><td>Se lista como recibido, sin etiqueta (el saldo ya lo cuenta como pagado)</td><td>Ocultarlo hasta confirmar → el total pagado no coincidiría con el saldo</td></tr>
+  <tr><td><b>Corrección de un pago</b></td><td>Una sola línea neutra «Ajuste de pagos», sin motivo ni responsable</td><td>No mostrarla → la suma de los pagos no daría el total pagado</td></tr>
+  <tr><td><b>Pago con discrepancia</b></td><td>Igual que «por confirmar»: sin etiqueta para el cliente</td><td>—</td></tr>
+  <tr><td><b>Factura sin pagos</b></td><td>Se omite «Pagos recibidos»; se imprime Total y Saldo</td><td>—</td></tr></table></div></div>
+
+<h2>3 · Historial interno de pagos (solo ADMIN y CONTADOR)</h2>
+<p class="note">Es el diseño ya aprobado del historial, impreso aparte y marcado como interno para que no se entregue por error.</p>
+<div class="grid"><div class="col"><div class="paper interno">
+  <div class="hd"><div><b>HISTORIAL INTERNO DE PAGOS</b><div class="mut">Factura FAC-QA-F · Cliente de ejemplo</div></div><div class="mut" style="text-align:right">Impreso 18 nov 2026<br>por Administración</div></div>
+  <div class="sec">Historial de pagos (2)</div>
+  <div class="row"><span>#1 17 nov 2026 · 4:00 p. m. — EFECTIVO</span><b>$35.000,00</b></div>
+  <div class="row"><span>#2 17 nov 2026 · 5:40 p. m. — NEQUI <b style="color:#92400e">(por confirmar)</b></span><b>$5.000,00</b></div>
+  <div class="sec n">Correcciones de pagos (1)</div>
+  <div class="row n"><span><b>COR-00012</b> 18 nov 2026 · Pago no recibido · autorizó Administración (sobre el pago #1)</span><b>−$3.000,00</b></div>
+  <div class="tot"><span>Total pagado neto</span><b>$37.000,00</b></div>
+  <div class="wm">Documento de uso interno · no entregar al cliente</div></div></div></div>
+
+<h2>4 · Estados</h2>
+<div class="grid">
+ <div class="col"><div class="pantalla"><b>Generando el documento</b><div style="height:12px;border-radius:6px;background:#e5e7eb;margin:10px 0;width:60%"></div><div class="small">Mientras se prepara, el botón queda deshabilitado (evita imprimir dos veces).</div></div></div>
+ <div class="col"><div class="pantalla"><b>Error del historial</b><div class="err">No se pudo cargar los pagos de esta factura. La factura del cliente se imprime solo con Total, Total pagado y Saldo; el historial interno no está disponible. <b>Reintentar</b></div></div></div>
+ <div class="col"><div class="pantalla"><b>Confirmación</b><p class="small" style="margin:8px 0 0">Imprimir no modifica nada: no hay paso de confirmación. El navegador abre su cuadro de impresión como hoy.</p></div></div>
+</div>
+<p class="note" style="margin-top:26px"><b>No incluido:</b> emisión de documento fiscal o factura electrónica, notas de crédito (se imprimen como hoy) y el historial de la pantalla (ya aprobado). Estilos, logo y tipografía respetan los vigentes.</p>
+</div></body></html>

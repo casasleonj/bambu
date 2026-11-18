@@ -1,3 +1,5 @@
+import type { HistorialPagos } from '@/lib/factura-historial-pagos'
+
 export interface Factura {
   id: string
   numero: string
@@ -29,6 +31,11 @@ export interface Factura {
     pagos?: Pago[]
   }
   abonos?: Abono[]
+  /** #796: historial armado desde los pagos (viene aparte en la respuesta de la API). */
+  historialPagos?: HistorialPagos | null
+  historialPagosError?: boolean
+  /** Lo decide el servidor: solo ADMIN y CONTADOR pueden imprimir el historial interno. */
+  puedeVerHistorialInterno?: boolean
   notasCredito?: NotaCredito[]
   createdBy?: {
     username: string

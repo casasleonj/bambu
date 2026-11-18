@@ -1,4 +1,5 @@
-import { getTodayRange } from '@/lib/dates'
+import { todayStringBogota } from '@/lib/dates'
+import { clasificarCompromiso } from '@/lib/pedidos-compromiso'
 import type { PedidoCantidades } from '@/lib/embarque-auto'
 
 /**
@@ -29,11 +30,12 @@ export interface PedidoSeleccionable extends PedidoCantidades {
 
 export type UrgenciaBucket = 'vencido' | 'hoy_con_hora' | 'hoy_sin_hora' | 'sin_fecha' | 'futuro'
 
-function bucketUrgencia(p: PedidoSeleccionable, inicioHoy: Date, finHoy: Date): UrgenciaBucket {
-  if (!p.fechaEntrega) return 'sin_fecha'
-  const f = new Date(p.fechaEntrega)
-  if (f < inicioHoy) return 'vencido'
-  if (f > finHoy) return 'futuro'
+/** #836 XMOD: «hoy / vencido / futuro» sale de la regla única `clasificarCompromiso` (día de Bogotá). */
+function bucketUrgencia(p: PedidoSeleccionable, hoy: string): UrgenciaBucket {
+  const c = clasificarCompromiso({ fechaEntrega: p.fechaEntrega, estadoEntrega: p.estadoEntrega }, hoy)
+  if (c === 'sin_fecha' || c === 'cerrado') return 'sin_fecha'
+  if (c === 'arrastrado') return 'vencido'
+  if (c === 'programado') return 'futuro'
   return p.horaPreferida ? 'hoy_con_hora' : 'hoy_sin_hora'
 }
 
@@ -61,19 +63,19 @@ export function filtrarPedidosSeleccionables(
   pedidos: PedidoSeleccionable[],
   opciones: FiltrarOpciones = {},
 ): Array<PedidoSeleccionable & { _bucket: UrgenciaBucket }> {
-  const { startOfDay: inicioHoy, endOfDay: finHoy } = getTodayRange()
+  const hoy = todayStringBogota()
   const buscar = (opciones.buscar ?? '').trim().toLowerCase()
 
   return pedidos
     .filter((p) => {
       if (p.embarqueId) return false
       if (p.estadoEntrega !== 'PENDIENTE' && p.estadoEntrega !== 'NO_ENTREGADO') return false
-      const bucket = bucketUrgencia(p, inicioHoy, finHoy)
+      const bucket = bucketUrgencia(p, hoy)
       if (bucket === 'futuro' && !opciones.verFuturos) return false
       if (buscar && !nombreVisible(p).includes(buscar)) return false
       return true
     })
-    .map((p) => ({ ...p, _bucket: bucketUrgencia(p, inicioHoy, finHoy) }))
+    .map((p) => ({ ...p, _bucket: bucketUrgencia(p, hoy) }))
     .sort((a, b) => {
       const d = ORDEN[a._bucket] - ORDEN[b._bucket]
       if (d !== 0) return d

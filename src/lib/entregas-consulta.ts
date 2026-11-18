@@ -1,5 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { CAPTURA_ENTREGA_PEDIDO, leerMetadata } from "./entrega-fisica-viva";
+import { esVentaMostradorEntregadaAlVender } from "./venta-mostrador";
+
+export { esVentaMostradorEntregadaAlVender };
 
 export interface EntregaConsulta {
   id: string;
@@ -138,6 +141,9 @@ export async function leerEntregasConsulta(
       },
       select: {
         id: true,
+        canal: true,
+        estadoEntrega: true,
+        fecha: true,
         entregadoAt: true,
         entregadoPorId: true,
         items: { select: { producto: true, cantEntrega: true } },
@@ -292,6 +298,31 @@ export async function leerEntregasConsulta(
         e.incompleto = true;
         if (exceso) e.cantidades = null;
       }
+    const alVender = [...porProducto]
+      .filter(([, cantidad]) => cantidad > 0)
+      .map(([producto, cantidad]) => ({ producto, cantidad }));
+    if (
+      !evidencias.length &&
+      p.entregadoAt &&
+      alVender.length &&
+      esVentaMostradorEntregadaAlVender({
+        canal: p.canal,
+        estadoEntrega: p.estadoEntrega,
+        fecha: p.fecha,
+        entregadoAt: p.entregadoAt,
+      })
+    ) {
+      resultado.push({
+        id: `historico:${p.id}`,
+        pedidoId: p.id,
+        fecha: p.entregadoAt,
+        repartidorId: p.entregadoPorId,
+        cantidades: alVender,
+        fuente: "HISTORICO",
+        precisionDia: false,
+      });
+      continue;
+    }
     if ((!evidencias.length || incompleto) && p.entregadoAt)
       resultado.push({
         id: `historico:${p.id}`,

@@ -7,16 +7,22 @@ import { construirResumenCierre } from '@/lib/cierre-resumen'
 vi.mock('@/lib/comision-pagada', () => ({ comisionesDelCierre: vi.fn(async () => ({ sellador: 0, pagadoRepartidores: 0, total: 0, repartidores: [] })) }))
 vi.mock('@/lib/cobro-cartera', () => ({ resumirAbonosDelDia: vi.fn(async () => ({ total: 0, abonosIndependientes: 0, ajustesDeCobros: 0 })) }))
 vi.mock('@/lib/sueldos-pendientes', () => ({ sueldosPendientesAl: vi.fn(async () => []) }))
-const pedido = { fecha: new Date('2026-03-10T17:00:00Z') } // #631: la fecha del pedido separa ventas de hoy y fiados anteriores
+const pedido = { fecha: new Date('2026-03-10T17:00:00Z'), numero: 1 } // #631: la fecha del pedido separa ventas de hoy y fiados anteriores
 const pagos = [
-  { metodo: 'EFECTIVO', monto: '123.10', pedido }, { metodo: 'TRANSFERENCIA', monto: '234.20', pedido },
-  { metodo: 'NEQUI', monto: '345.30', pedido }, { metodo: 'DAVIPLATA', monto: '456.40', pedido }, { metodo: 'BONO', monto: '567.00', pedido },
+  { id: 'g1', pedidoId: 'ped-1', metodo: 'EFECTIVO', monto: '123.10', pedido }, { id: 'g2', pedidoId: 'ped-1', metodo: 'TRANSFERENCIA', monto: '234.20', pedido },
+  { id: 'g3', pedidoId: 'ped-1', metodo: 'NEQUI', monto: '345.30', pedido }, { id: 'g4', pedidoId: 'ped-1', metodo: 'DAVIPLATA', monto: '456.40', pedido },
+  { id: 'g5', pedidoId: 'ped-1', metodo: 'BONO', monto: '567.00', pedido },
 ]
+// #796: pedido que lee el clasificador (creado y entregado ese día: todo es venta de hoy).
+const pedidoClasificable = {
+  id: 'ped-1', fecha: pedido.fecha, estadoEntrega: 'ENTREGADO', total: 1726.0, entregadoAt: pedido.fecha, factura: null, abonos: [],
+  pagos: pagos.map((g) => ({ id: g.id, createdAt: pedido.fecha, monto: g.monto })),
+}
 const pagoFind = vi.fn()
 const ventas = [{ id: 'venta-sintetica', origen: 'PEDIDO', estadoEntrega: 'ENTREGADO', total: 500, totalPagado: 120, saldo: 380, cPacaAguaEnt: 0, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }]
 const tx = {
   embarque: { findMany: vi.fn(async () => []) },
-  pedido: { findMany: vi.fn(async ({ where }: { where: { estadoEntrega: unknown } }) => typeof where.estadoEntrega === 'string' ? [] : ventas), groupBy: vi.fn(async () => []) },
+  pedido: { findMany: vi.fn(async ({ where, select }: { where: { estadoEntrega?: unknown }; select?: { pagos?: unknown } }) => select?.pagos ? [pedidoClasificable] : typeof where.estadoEntrega === 'string' ? [] : ventas), groupBy: vi.fn(async () => []) },
   produccion: { findMany: vi.fn(async () => []) },
   cierreDia: { findFirst: vi.fn(async () => null) },
   config: { findMany: vi.fn(async () => []) },
@@ -46,7 +52,7 @@ describe('cierre: ventas y caja mantienen sus fuentes', () => {
       where: {
         createdAt: { gte: new Date('2026-03-10T05:00:00Z'), lt: new Date('2026-03-11T05:00:00Z') },
         regularizacionId: null, pedido: { estadoEntrega: { notIn: ['CANCELADO', 'ANULADO'] } },
-      }, select: { metodo: true, monto: true, pedido: { select: { fecha: true } } },
+      }, select: { id: true, pedidoId: true, metodo: true, monto: true, pedido: { select: { fecha: true, numero: true } } },
     })
   })
   it('no inventa cobros cuando no hay movimientos de pago', async () => {

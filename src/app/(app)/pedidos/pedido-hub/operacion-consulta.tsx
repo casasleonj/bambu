@@ -16,7 +16,9 @@ import type { AccionKey, Pedido } from "./types";
 import { fechaConsulta } from "./fecha-consulta";
 import { etiquetaArrastre } from "./arrastrados";
 import { NotaPedido } from "./nota-pedido";
+import { CompromisoChip, CierreNegocioChip } from "./compromiso-chip";
 import { importesEntregaPedido } from "@/lib/valor-entregado-pedido";
+import type { GrupoBarrioConsulta } from "@/lib/pedidos-consulta";
 import styles from "./operacion-consulta.module.css";
 
 export interface AccionesConsulta {
@@ -27,6 +29,11 @@ export interface AccionesConsulta {
   onVerFactura: (pedido: Pedido) => void;
   onCorregirPendiente?: (id: string) => void;
   onDescartarPendiente?: (id: string) => void;
+  /** #836 F3: totales por barrio de la consulta completa (solo con «Agrupar por barrio»). */
+  grupos?: GrupoBarrioConsulta[];
+  /** #836 F3: clave del único barrio que se está viendo, si hay. */
+  grupoActivo?: string;
+  onGrupoBarrio?: (clave: string | null) => void;
 }
 function interceptar(e: MouseEvent<HTMLAnchorElement>, abrir: () => void) {
   e.stopPropagation();
@@ -187,6 +194,8 @@ export function OperacionConsulta({
                     {etiquetaArrastre(p.fecha, hoyBogota)}
                   </p>
                 )}
+                <CompromisoChip id={p.id} pedido={p} hoyBogota={hoyBogota} />
+                <CierreNegocioChip id={p.id} pedido={p} />
                 <p
                   className={`${styles.meta} truncate`}
                   data-testid={`operacion-barrio-${p.id}`}

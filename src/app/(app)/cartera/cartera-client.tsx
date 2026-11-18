@@ -4,10 +4,8 @@
 // centro de corrección. Solo ADMIN + CONTADOR (gate del proxy vía view:cartera).
 
 import { useCallback, useEffect, useState } from 'react'
-import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
-import { Modal } from '@/components/modal'
-import { generateUUID } from '@/lib/uuid'
+import { CorregirModal } from '@/components/cartera/corregir-modal'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 
 interface Correccion {
@@ -34,14 +32,36 @@ interface AbonoRow {
   factura: { id: string; numero: string } | null
   pedido: { id: string; numero: number; estadoEntrega: string } | null
   correcciones: Correccion[]
+  /** #796: null si el cobro no se pudo clasificar. */
+  tipoCobro?: TipoCobro | null
+  fechaAproximada?: boolean
+  /** #796: porción de deuda de jornadas anteriores (lo que Cartera muestra y suma); null si no se pudo clasificar. */
+  montoCartera?: number | null
+  netoCartera?: number | null
 }
 
-const TIPOS: { value: string; label: string; hint: string }[] = [
-  { value: 'MONTO', label: 'Monto equivocado', hint: 'Se capturó de más. Podés revertir un monto parcial.' },
-  { value: 'CLIENTE', label: 'Cliente equivocado', hint: 'El abono se aplicó al cliente que no era.' },
-  { value: 'FACTURA', label: 'Factura equivocada', hint: 'El abono se aplicó a la factura que no era.' },
-  { value: 'NO_RECIBIDO', label: 'Pago no recibido', hint: 'El dinero nunca entró. Abre un caso de responsabilidad.' },
-]
+type TipoCobro = 'COBRO_DEL_DIA' | 'CARTERA' | 'MIXTO'
+
+/** Importe que Cartera muestra: solo la deuda de jornadas anteriores; el resto del cobro fue venta del día. */
+function importeCartera(r: AbonoRow): { monto: number; neto: number; mixto: boolean } {
+  const mixto = r.tipoCobro === 'MIXTO' && r.montoCartera != null && r.netoCartera != null
+  return mixto ? { monto: r.montoCartera ?? r.monto, neto: r.netoCartera ?? r.montoNeto, mixto } : { monto: r.monto, neto: r.montoNeto, mixto: false }
+}
+
+/** #796: esta lista solo trae cobros de cartera (entregas de días anteriores); el cobro del día de la entrega no se lista. */
+function Marcas({ r }: { r: AbonoRow }) {
+  if (r.tipoCobro !== 'MIXTO' && !r.fechaAproximada) return null
+  return (
+    <span className="ml-2 inline-flex flex-wrap items-center gap-1 align-middle">
+      {r.tipoCobro === 'MIXTO' && (
+        <span title="Este pago cubrió una entrega anterior y una del mismo día. Aquí solo se muestra la parte de la entrega anterior." className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-800">Parte de un pago mayor</span>
+      )}
+      {r.fechaAproximada && (
+        <span title="Este pedido figura entregado pero no tiene registro de la entrega; se clasificó por su fecha de creación. Falta conciliar." className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-800">Fecha aproximada ⓘ</span>
+      )}
+    </span>
+  )
+}
 
 export default function CarteraClient() {
   const [rows, setRows] = useState<AbonoRow[]>([])
@@ -50,6 +70,7 @@ export default function CarteraClient() {
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalNeto, setTotalNeto] = useState(0)
+  const [sinClasificar, setSinClasificar] = useState(false)
   const [estado, setEstado] = useState<'' | 'corregido' | 'sin-corregir'>('')
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('') // valor debounced que va al server
@@ -87,6 +108,7 @@ export default function CarteraClient() {
       setRows(json.data ?? [])
       setTotalPages(json.totalPages ?? 1)
       setTotalNeto(json.totales?.totalNeto ?? 0)
+      setSinClasificar(json.totales?.clasificacionDisponible === false)
     } catch {
       setError('No se pudo cargar la lista de abonos.')
     } finally {
@@ -117,6 +139,13 @@ export default function CarteraClient() {
         </div>
       </div>
 
+      {!loading && !error && sinClasificar && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" data-testid="cartera-sin-clasificar">
+          <span>No se pudo clasificar los cobros. Se muestran todos los abonos, incluidos los que se cobraron el mismo día de la entrega.</span>
+          <button className="rounded-lg border border-blue-600 bg-white px-3 py-1 text-xs font-semibold text-blue-700" onClick={() => load()}>Reintentar</button>
+        </div>
+      )}
+
       <div className="flex gap-2 flex-wrap">
         <input
           className="border rounded px-3 py-1.5 text-sm"
@@ -139,10 +168,34 @@ export default function CarteraClient() {
       </div>
 
       {error && <div className="text-sm text-red-600">{error}</div>}
-      {loading && <div className="text-sm text-gray-500">Cargando…</div>}
+      {loading && (
+        <div className="space-y-2" aria-busy="true" data-testid="cartera-cargando">
+          <div className="text-sm text-gray-500">Cargando…</div>
+          <div className="h-4 w-3/5 animate-pulse rounded bg-gray-200" />
+          <div className="h-4 animate-pulse rounded bg-gray-200" />
+          <div className="h-4 w-4/5 animate-pulse rounded bg-gray-200" />
+        </div>
+      )}
 
       {!loading && !error && (
-        <div className="overflow-x-auto border rounded">
+        <div className="space-y-2 md:hidden" data-testid="cartera-tarjetas">
+          {filtered.map((r) => (
+            <div key={r.id} className="rounded-xl border bg-white p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2"><b>{r.numero}</b><Marcas r={r} /></div>
+              <div className="mt-1 flex justify-between gap-2"><span>{r.cliente?.nombre ?? '—'} · {r.factura?.numero ?? '—'}</span><b>{formatCurrency(importeCartera(r).neto)}</b></div>
+              {importeCartera(r).mixto && <div className="text-[11px] text-gray-500">de {formatCurrency(r.monto)} cobrados; el resto fue venta del día</div>}
+              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500">
+                <span>{new Date(r.fecha).toLocaleDateString('es-CO')} · {r.metodoPago}</span>
+                <button className="text-sm text-blue-600 hover:underline disabled:text-gray-400" disabled={r.montoNeto <= 0} onClick={() => setCorrigiendo(r)}>Corregir</button>
+              </div>
+            </div>
+          ))}
+          {filtered.length === 0 && <div className="px-3 py-6 text-center text-gray-500">Sin abonos.</div>}
+        </div>
+      )}
+
+      {!loading && !error && (
+        <div className="hidden overflow-x-auto border rounded md:block">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 text-left">
               <tr>
@@ -159,19 +212,22 @@ export default function CarteraClient() {
             <tbody>
               {filtered.map((r) => (
                 <tr key={r.id} className="border-t">
-                  <td className="px-3 py-2 font-medium">{r.numero}</td>
+                  <td className="px-3 py-2 font-medium">{r.numero}<Marcas r={r} /></td>
                   <td className="px-3 py-2 whitespace-nowrap">{new Date(r.fecha).toLocaleDateString('es-CO')}</td>
                   <td className="px-3 py-2">{r.cliente?.nombre ?? '—'}</td>
                   <td className="px-3 py-2">{r.factura?.numero ?? '—'}</td>
                   <td className="px-3 py-2">{r.metodoPago}</td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(r.monto)}</td>
+                  <td className="px-3 py-2 text-right">
+                    {formatCurrency(importeCartera(r).monto)}
+                    {importeCartera(r).mixto && <div className="text-[11px] font-normal text-gray-500">de {formatCurrency(r.monto)} cobrados</div>}
+                  </td>
                   <td className="px-3 py-2 text-right">
                     {r.corregido ? (
                       <span className="text-amber-700" title={`Revertido ${formatCurrency(r.montoRevertido)}`}>
-                        {formatCurrency(r.montoNeto)}
+                        {formatCurrency(importeCartera(r).neto)}
                       </span>
                     ) : (
-                      formatCurrency(r.montoNeto)
+                      formatCurrency(importeCartera(r).neto)
                     )}
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -217,7 +273,12 @@ export default function CarteraClient() {
 
       {corrigiendo && (
         <CorregirModal
-          abono={corrigiendo}
+          titulo={`Corregir abono ${corrigiendo.numero}`}
+          contexto={<>Cliente <b>{corrigiendo.cliente?.nombre}</b> · Monto {formatCurrency(corrigiendo.monto)} · Neto sin revertir {formatCurrency(corrigiendo.montoNeto)}</>}
+          endpoint={`/api/cartera/abonos/${corrigiendo.id}/corregir`}
+          montoMaximo={corrigiendo.montoNeto}
+          queNoSeBorra="el abono original"
+          testid="corregir-abono-modal"
           onClose={() => setCorrigiendo(null)}
           onDone={() => {
             setCorrigiendo(null)
@@ -226,116 +287,5 @@ export default function CarteraClient() {
         />
       )}
     </div>
-  )
-}
-
-function CorregirModal({
-  abono,
-  onClose,
-  onDone,
-}: {
-  abono: AbonoRow
-  onClose: () => void
-  onDone: () => void
-}) {
-  const [tipo, setTipo] = useState('MONTO')
-  const [montoRevertido, setMontoRevertido] = useState('')
-  const [motivo, setMotivo] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const hint = TIPOS.find((t) => t.value === tipo)?.hint
-
-  async function submit() {
-    if (motivo.trim().length === 0) {
-      toast.error('El motivo es obligatorio')
-      return
-    }
-    setSubmitting(true)
-    try {
-      const body: Record<string, unknown> = { tipo, motivo: motivo.trim(), correccionOfflineId: generateUUID() }
-      if (tipo === 'MONTO' && montoRevertido) body.montoRevertido = Number(montoRevertido)
-      const res = await fetch(`/api/cartera/abonos/${abono.id}/corregir`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-        credentials: 'include',
-        signal: AbortSignal.timeout(10_000),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast.error(json?.error?.message ?? json?.error ?? 'No se pudo aplicar la corrección')
-        return
-      }
-      toast.success(`Corrección ${json.correccion?.numero ?? ''} aplicada`)
-      onDone()
-    } catch {
-      toast.error('Error de red al aplicar la corrección')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Modal open onClose={onClose} title={`Corregir abono ${abono.numero}`} data-testid="corregir-abono-modal">
-      <div className="space-y-3 p-1 text-sm">
-        <div className="text-gray-600">
-          Cliente <b>{abono.cliente?.nombre}</b> · Monto {formatCurrency(abono.monto)} · Neto sin revertir{' '}
-          {formatCurrency(abono.montoNeto)}
-        </div>
-
-        <label className="block">
-          <span className="text-gray-700">Tipo de corrección</span>
-          <select className="mt-1 w-full border rounded px-2 py-1.5" value={tipo} onChange={(e) => setTipo(e.target.value)}>
-            {TIPOS.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {hint && <p className="text-xs text-gray-500">{hint}</p>}
-
-        {tipo === 'MONTO' && (
-          <label className="block">
-            <span className="text-gray-700">Monto a revertir (vacío = todo el neto: {formatCurrency(abono.montoNeto)})</span>
-            <input
-              type="number"
-              min={0}
-              max={abono.montoNeto}
-              className="mt-1 w-full border rounded px-2 py-1.5"
-              value={montoRevertido}
-              onChange={(e) => setMontoRevertido(e.target.value)}
-            />
-          </label>
-        )}
-
-        <label className="block">
-          <span className="text-gray-700">Motivo (obligatorio)</span>
-          <textarea
-            className="mt-1 w-full border rounded px-2 py-1.5"
-            rows={3}
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-          />
-        </label>
-
-        <div className="rounded bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800">
-          Esto NO borra el abono original. Registra una reversión trazable (COR-…) y recalcula el saldo del
-          pedido y la factura.
-        </div>
-
-        <div className="flex justify-end gap-2 pt-1">
-          <button className="px-3 py-1.5 rounded border" onClick={onClose} disabled={submitting}>
-            Cancelar
-          </button>
-          <button
-            className="px-3 py-1.5 rounded bg-blue-600 text-white disabled:opacity-50"
-            onClick={submit}
-            disabled={submitting}
-          >
-            {submitting ? 'Aplicando…' : 'Aplicar corrección'}
-          </button>
-        </div>
-      </div>
-    </Modal>
   )
 }

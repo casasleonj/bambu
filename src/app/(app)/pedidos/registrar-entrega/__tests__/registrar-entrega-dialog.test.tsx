@@ -46,6 +46,26 @@ describe('RegistrarEntregaDialog', () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ promesaPagoFecha: promesa, itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 4 }] })
   })
 
+  it('#848 la cantidad es lo entregado ahora, arranca en el total y muestra cuánto quedará pendiente', () => {
+    render(<RegistrarEntregaDialog pedido={{ ...parcial, items: [{ producto: 'PACA_AGUA', cantPedido: 5, cantEntrega: 0, precio: 2000 }] }} repartidores={REPARTIDORES} onClose={vi.fn()} onRegistrado={vi.fn()} />)
+    fireEvent.click(screen.getByTestId('alcance-menos'))
+    expect(screen.queryByText(/\(faltan/)).toBeNull()
+    expect(screen.getByText('Pedidas 5 · ya entregadas 0')).toBeInTheDocument()
+    expect(screen.getByText('¿Cuántas entregas ahora?')).toBeInTheDocument()
+    const campo = screen.getByLabelText('Cantidad entregada de Paca Agua')
+    expect(campo).toHaveValue(5)
+    expect(screen.getByTestId('quedaran-PACA_AGUA')).toHaveTextContent('No quedará nada por entregar')
+    fireEvent.change(campo, { target: { value: '2' } })
+    expect(screen.getByTestId('quedaran-PACA_AGUA')).toHaveTextContent('Quedarán 3 por entregar')
+  })
+
+  it('#848 con entregas previas, la línea muestra pedidas y ya entregadas', () => {
+    render(<RegistrarEntregaDialog pedido={{ ...parcial, items: [{ producto: 'PACA_AGUA', cantPedido: 5, cantEntrega: 2, precio: 2000 }] }} repartidores={REPARTIDORES} onClose={vi.fn()} onRegistrado={vi.fn()} />)
+    fireEvent.click(screen.getByTestId('alcance-menos'))
+    expect(screen.getByText('Pedidas 5 · ya entregadas 2')).toBeInTheDocument()
+    expect(screen.getByLabelText('Cantidad entregada de Paca Agua')).toHaveValue(3)
+  })
+
   it('#656 no pide promesa cuando el anticipo cubre toda la entrega parcial', () => {
     render(<RegistrarEntregaDialog pedido={{ ...parcial, totalPagado: 8000 }} repartidores={REPARTIDORES} fiadoParcialActivo onClose={vi.fn()} onRegistrado={vi.fn()} />)
     elegirParcial()

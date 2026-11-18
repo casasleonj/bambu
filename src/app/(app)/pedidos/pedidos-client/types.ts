@@ -45,6 +45,10 @@ export interface Pedido {
   telefonoCli: string
   zonaCli: string
   barrioCli: string
+  /** #836 F3: grupo de barrio de la fila; solo en la consulta con `agrupar=barrio`. */
+  grupoBarrio?: { clave: string; etiqueta: string }
+  /** #836 F2: horario semanal del negocio (solo si está configurado), para avisar «cierra ese día». */
+  negocioHorarios?: Array<{ diaSemana: number; desde: string; hasta: string }>
   /** Ubicación propia del pedido (destino de la entrega); `lat`/`lng` son las efectivas. */
   entregaLat?: number | null
   entregaLng?: number | null

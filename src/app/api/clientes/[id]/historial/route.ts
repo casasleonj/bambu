@@ -97,11 +97,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // ADR-CORRECCION-MONETARIA-001 D.5: correcciones de abono del cliente,
       // filtradas por SU PROPIA fecha (`createdAt`), no por la de la factura.
       prisma.correccionAbono.findMany({
-        where: { abono: { clienteId: id }, ...(fechaFilter ? { createdAt: fechaFilter } : {}) },
+        // ADR-002: una corrección puede estar anclada a un abono o, si el pago no tiene abono, al pago del cliente.
+        where: { OR: [{ abono: { clienteId: id } }, { pago: { pedido: { clienteId: id } } }], ...(fechaFilter ? { createdAt: fechaFilter } : {}) },
         orderBy: { createdAt: 'desc' },
         take: 200,
         include: {
           abono: { select: { numero: true, factura: { select: { id: true, numero: true } } } },
+          pago: { select: { metodo: true, pedido: { select: { numero: true, factura: { select: { id: true } } } } } },
           autorizadoPor: { select: { username: true } },
         },
       }),
@@ -216,9 +218,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         descripcion: c.motivo,
         monto: -Number(c.montoRevertido),
         numero: c.numero,
-        link: c.abono.factura ? `/facturas?openFactura=${c.abono.factura.id}` : undefined,
+        link: (() => {
+          const facturaId = c.abono?.factura?.id ?? c.pago?.pedido?.factura?.id
+          return facturaId ? `/facturas?openFactura=${facturaId}` : undefined
+        })(),
         metadata: {
-          abono: c.abono.numero,
+          // Ancla de la corrección: el abono, o el pago cuando este no tiene abono (ADR-002).
+          abono: c.abono?.numero ?? (c.pago ? `Pago ${c.pago.metodo} · pedido #${c.pago.pedido.numero}` : null),
           autorizadoPor: c.autorizadoPor?.username ?? null,
           responsibilityCaseId: c.responsibilityCaseId ?? null,
         },

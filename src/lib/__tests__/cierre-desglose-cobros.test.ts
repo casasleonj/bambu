@@ -89,3 +89,38 @@ describe('#631 detallarPorConfirmar', () => {
     expect(r[1]).toMatchObject({ clienteId: null, cliente: 'Sin cliente', factura: null })
   })
 })
+
+describe('#796 desglosarCobros con clasificación por fecha de entrega', () => {
+  it('un pedido creado ayer pero entregado y cobrado hoy cuenta como venta de hoy', () => {
+    const d = desglosarCobros([
+      { metodo: 'EFECTIVO', monto: 7500, pedidoFecha: ayer, clasificacion: { ventaDiaCentavos: 750000, carteraCentavos: 0, aproximado: false } },
+    ], desde, hasta, sinAbonos, 7500)
+    expect(d.ventasHoy.efectivo).toBe(7500)
+    expect(d.fiadosAnteriores.total).toBe(0)
+    expect(d.cuadra).toBe(true)
+  })
+
+  it('parte un cobro en venta de hoy y cartera sin perder centavos y respeta el medio', () => {
+    const d = desglosarCobros([
+      { metodo: 'NEQUI', monto: 250, pedidoFecha: hoy, clasificacion: { ventaDiaCentavos: 15000, carteraCentavos: 10000, aproximado: false } },
+    ], desde, hasta, sinAbonos, 250)
+    expect(d.ventasHoy.porMetodo).toEqual({ NEQUI: 150 })
+    expect(d.fiadosAnteriores.porMetodo).toEqual({ NEQUI: 100 })
+    expect(d.digital).toBe(250)
+    expect(d.cuadra).toBe(true)
+  })
+
+  it('lista los cobros de fecha aproximada con su pedido y monto', () => {
+    const d = desglosarCobros([
+      { metodo: 'EFECTIVO', monto: 5000, pedidoFecha: hoy, pedidoNumero: 1163, clasificacion: { ventaDiaCentavos: 500000, carteraCentavos: 0, aproximado: true } },
+      { metodo: 'EFECTIVO', monto: 3000, pedidoFecha: hoy, pedidoNumero: 1164, clasificacion: { ventaDiaCentavos: 300000, carteraCentavos: 0, aproximado: false } },
+    ], desde, hasta, sinAbonos, 8000)
+    expect(d.aproximados).toEqual({ cantidad: 1, monto: 5000, pedidos: [1163] })
+  })
+
+  it('sin clasificación conserva la regla anterior por fecha del pedido', () => {
+    const d = desglosarCobros([{ metodo: 'EFECTIVO', monto: 100, pedidoFecha: ayer }], desde, hasta, sinAbonos, 100)
+    expect(d.fiadosAnteriores.efectivo).toBe(100)
+    expect(d.aproximados?.cantidad).toBe(0)
+  })
+})

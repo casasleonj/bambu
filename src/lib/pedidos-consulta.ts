@@ -21,6 +21,12 @@ export interface ResumenConsultaPedidos {
   exigiblesPorConciliar?: number;
   cobros: Omit<CobrosPeriodo, "movimientos"> | null;
 }
+/** #836 F3: grupo de barrio con el total REAL de la consulta completa (no de la página). */
+export interface GrupoBarrioConsulta {
+  clave: string;
+  etiqueta: string;
+  total: number;
+}
 export interface ResultadoConsultaPedidos {
   consultaKey: string;
   pedidos: Pedido[];
@@ -36,6 +42,8 @@ export interface ResultadoConsultaPedidos {
     /** Atributo propio del trabajador (#633), no derivado de asignaciones ni del rol. */
     usaMoto: boolean;
   }>;
+  /** #836 F3: totales por barrio de TODO el conjunto filtrado; solo con `agrupar=barrio`. */
+  grupos?: GrupoBarrioConsulta[];
   /** Actividad física destacada, independiente del listado por fecha del pedido. */
   destacadas?: EntregaDestacada[];
   destacadasTotal?: number;
@@ -78,8 +86,15 @@ export interface FiltrosConsultaPedidos {
     | "esperandoPago"
     | "pendientesN2"
     | "excepciones"
-    | "entregaParcial";
+    | "entregaParcial"
+    // #836 F1: vista por FECHA PROMETIDA (`Pedido.fechaEntrega`), no por fecha de pedido.
+    | "paraHoy" // prevista hoy + atrasada abierta
+    | "programados"; // prevista para un día futuro
   conRecurrencia: boolean;
+  /** #836 F3: agrupa la lista por barrio efectivo (servidor, conjunto completo). */
+  agrupar: "" | "barrio";
+  /** #836 F3: solo los pedidos de un grupo de barrio (clave de `grupos`). */
+  grupoBarrio: string;
   resumen: boolean;
   page: number;
   pageSize: number;
@@ -104,6 +119,8 @@ export const clavesConsultaPedidos = [
   "clienteId",
   "foco",
   "conRecurrencia",
+  "agrupar",
+  "grupoBarrio",
   "resumen",
   "page",
   "pageSize",
@@ -133,6 +150,14 @@ function lista(
   )
     throw new FiltroPedidosError(`Revisa el filtro «${key}».`);
   return items;
+}
+/** Clave de grupo: `sin-barrio`, `b:<id>` o `t:<texto normalizado>`; acotada y sin comodines. */
+function leerGrupoBarrio(p: URLSearchParams): string {
+  const v = p.get("grupoBarrio") || "";
+  if (!v) return "";
+  if (v.length > 120 || !/^(sin-barrio|[bt]:[^\u0000-\u001f]+)$/.test(v))
+    throw new FiltroPedidosError("Revisa el filtro «grupoBarrio».");
+  return v;
 }
 function pagina(
   p: URLSearchParams,
@@ -254,10 +279,14 @@ export function leerFiltrosConsulta(
         "pendientesN2",
         "excepciones",
         "entregaParcial",
+        "paraHoy",
+        "programados",
       ],
       "",
     ),
     conRecurrencia: p.get("conRecurrencia") === "true",
+    agrupar: opcion(p, "agrupar", ["", "barrio"], ""),
+    grupoBarrio: leerGrupoBarrio(p),
     resumen: p.has("resumen")
       ? p.get("resumen") === "1"
       : [
@@ -278,6 +307,8 @@ export function leerFiltrosConsulta(
           "all",
           "foco",
           "conRecurrencia",
+          "agrupar",
+          "grupoBarrio",
         ].some((k) => p.has(k)),
     page: pagina(p, "page", 1, 100000),
     pageSize: pagina(p, "pageSize", 25, 100),
@@ -336,10 +367,46 @@ export function parametrosConsulta(f: FiltrosConsultaPedidos): URLSearchParams {
   p.set("registro", f.registro);
   p.set("pago", f.pago);
   if (f.conRecurrencia) p.set("conRecurrencia", "true");
+  if (f.agrupar) p.set("agrupar", f.agrupar);
+  if (f.grupoBarrio) p.set("grupoBarrio", f.grupoBarrio);
   p.set("resumen", f.resumen ? "1" : "0");
   p.set("page", String(f.page));
   p.set("pageSize", String(f.pageSize));
   return p;
+}
+
+/**
+ * #854: base temporal que realmente rige la consulta. «Entregado» como único estado de
+ * entrega, con rango y sin gestión (foco), significa «entregado en ese período», es decir,
+ * fecha efectiva de entrega, no «pedido hecho en ese período que hoy está entregado». Es el
+ * mismo resultado de elegir «Entrega registrada» (mismos lectores). Con otros estados
+ * mezclados, «Creación registrada» o «Cobro registrado», la base elegida se respeta. Es
+ * derivada: no se guarda en la URL ni en el borrador, así quitar el chip devuelve la base.
+ */
+/** #854: «Entregado» es el único estado de entrega elegido. */
+export function entregadoComoUnicoEstado(
+  f: Pick<FiltrosConsultaPedidos, "estadoEntrega">,
+): boolean {
+  return f.estadoEntrega.length === 1 && f.estadoEntrega[0] === "ENTREGADO";
+}
+
+export function baseEfectiva(
+  f: Pick<FiltrosConsultaPedidos, "fechaBase" | "estadoEntrega" | "foco" | "all" | "desde" | "hasta">,
+): FechaConsulta {
+  if (
+    f.fechaBase === "pedido" &&
+    !f.all &&
+    (f.desde || f.hasta) &&
+    f.foco === "" &&
+    entregadoComoUnicoEstado(f)
+  )
+    return "entrega";
+  return f.fechaBase;
+}
+
+/** #836 F1: focos que consultan por fecha prometida e ignoran el rango de fecha de pedido. */
+export function esFocoCompromiso(foco: FiltrosConsultaPedidos["foco"]): foco is "paraHoy" | "programados" {
+  return foco === "paraHoy" || foco === "programados";
 }
 
 /** #797: estados que cuentan como «pendiente de días anteriores». */
@@ -366,6 +433,7 @@ export function filtrosArrastrados(
   hoy = getTodayString(),
 ): FiltrosConsultaPedidos | null {
   if (f.fechaBase !== "pedido" || f.all || !f.desde) return null;
+  if (esFocoCompromiso(f.foco)) return null; // #836: la vista por fecha prometida no mezcla arrastrados.
   if (f.registro === "anulados") return null;
   if (f.desde > hoy || (f.hasta && f.hasta < hoy)) return null;
   const estadoEntrega = f.estadoEntrega.length
@@ -383,6 +451,8 @@ export function filtrosArrastrados(
     all: false,
     registro: "activos",
     estadoEntrega,
+    agrupar: "",
+    grupoBarrio: "",
     resumen: false,
     page: 1,
     pageSize: MAX_ARRASTRADOS,

@@ -5,6 +5,7 @@ import { pedidoItemsResumen } from '../pedido-items'
 import { deriveOperacion, origenLabel, embarqueLinea } from './derive-operacion'
 import type { AccionKey, DeriveContext, Pedido } from './types'
 import { OperacionConsulta,type AccionesConsulta } from './operacion-consulta'
+import { GrupoBarrioEncabezado } from './grupo-barrio-encabezado'
 
 const money = (n: number) => new Intl.NumberFormat('es-CO').format(Number(n) || 0)
 
@@ -153,6 +154,36 @@ export function OperacionList({
         title="No hay operaciones"
         description="Ajustá los filtros o creá una nueva operación."
       />
+    )
+  }
+
+  if (consulta && pedidos.some((p) => p.grupoBarrio)) {
+    // #836 F3: bloques consecutivos por barrio, cada uno con su encabezado y el total real.
+    const bloques: Array<{ clave: string; etiqueta: string; filas: Pedido[] }> = []
+    for (const p of pedidos) {
+      const g = p.grupoBarrio
+      const ultimo = bloques[bloques.length - 1]
+      if (ultimo && g && ultimo.clave === g.clave) ultimo.filas.push(p)
+      else bloques.push({ clave: g?.clave ?? 'sin-barrio', etiqueta: g?.etiqueta ?? 'Sin barrio', filas: [p] })
+    }
+    return (
+      <div data-testid="pedidos-agrupados-barrio">
+        {bloques.map((b, i) => {
+          const total = consulta.grupos?.find((g) => g.clave === b.clave)?.total ?? b.filas.length
+          return (
+            <section key={`${b.clave}-${i}`} aria-label={`Barrio ${b.etiqueta}`}>
+              <GrupoBarrioEncabezado
+                grupo={{ clave: b.clave, etiqueta: b.etiqueta, total }}
+                enPagina={b.filas.length}
+                soloEste={consulta.grupoActivo === b.clave}
+                onSoloEste={consulta.onGrupoBarrio ? () => consulta.onGrupoBarrio!(b.clave) : undefined}
+                onTodos={consulta.onGrupoBarrio ? () => consulta.onGrupoBarrio!(null) : undefined}
+              />
+              <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre}/>
+            </section>
+          )
+        })}
+      </div>
     )
   }
 

@@ -163,6 +163,13 @@ export default function CierreDesgloseCobros({ data }: { data: CierreData | null
               </div>
             )}
           </div>
+          {d.aproximados && d.aproximados.cantidad > 0 && (
+            <p data-testid="cierre-cobros-aproximados" className="mt-2 rounded-lg bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
+              ↳ {d.aproximados.cantidad === 1 ? '1 cobro' : `${d.aproximados.cantidad} cobros`} ({formatCurrency(d.aproximados.monto)}) con fecha aproximada:
+              {' '}el pedido figura entregado pero no tiene registro de la entrega, así que se clasificó por su fecha de creación
+              {d.aproximados.pedidos.length > 0 && <> (pedidos {d.aproximados.pedidos.map((n) => `#${n}`).join(', ')})</>}. Falta conciliar.
+            </p>
+          )}
           {d.cuadra ? (
             <p data-testid="cierre-desglose-cuadra" className="mt-2 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-700">
               ✔ Cuadra con «Cobrado hoy» ({formatCurrency(d.esperado)}).

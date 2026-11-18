@@ -82,5 +82,13 @@ describe('Venta de PUNTO con cliente nace entregada (opción A)', () => {
     expect(row.estadoPago).toBe(esperado === 'ENTREGADO' ? 'PAGADO' : 'ANTICIPADO')
     expect(row.items.every((i) => i.cantEntrega === (esperado === 'ENTREGADO' ? i.cantPedido : 0))).toBe(true)
     expect(row.embarqueId).toBeNull()
+    // #602/#854: nace entregada → guarda el día de la entrega (la misma hora de la venta); pendiente → sin fecha.
+    if (esperado === 'ENTREGADO') {
+      expect(row.entregadoAt, 'entregadoAt de la venta entregada').not.toBeNull()
+      expect(row.entregadoAt?.getTime()).toBe(row.fecha.getTime())
+      expect(row.entregadoPorId, 'no se asigna entregador desconocido').toBeNull()
+    } else {
+      expect(row.entregadoAt).toBeNull()
+    }
   })
 })

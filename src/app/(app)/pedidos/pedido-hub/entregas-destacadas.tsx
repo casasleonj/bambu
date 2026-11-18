@@ -11,14 +11,15 @@ import type {
 const etiquetas: Record<EstadoEntregaAlCorte, string> = {
   PARCIAL: "Parcial en la fecha",
   COMPLETADO_TRAS_PARCIAL: "Completado tras parcial",
-  PRIMERA_ENTREGA: "Primera entrega del pedido",
+  // #847: «Primera entrega» sugería que faltaba algo; este estado ya está completo.
+  PRIMERA_ENTREGA: "✓ Completado",
   COMPLETADO: "Entregado en la fecha",
   POR_CONCILIAR: "Por conciliar",
 };
 const tonos: Record<EstadoEntregaAlCorte, string> = {
   PARCIAL: "bg-amber-100 text-amber-900",
   COMPLETADO_TRAS_PARCIAL: "bg-emerald-50 text-emerald-800",
-  PRIMERA_ENTREGA: "bg-blue-50 text-blue-800",
+  PRIMERA_ENTREGA: "bg-emerald-50 text-emerald-800",
   COMPLETADO: "bg-emerald-50 text-emerald-800",
   POR_CONCILIAR: "bg-stone-100 text-stone-700",
 };
@@ -43,15 +44,18 @@ function cantidades(xs: CantidadEntrega[]) {
 }
 function Hito({
   hito,
+  ocultarCompletado = false,
 }: {
   hito: EntregaDestacada["hitos"][number];
+  /** #847: el estado «✓ Completado» ya está en la cabecera de la tarjeta. */
+  ocultarCompletado?: boolean;
 }) {
   return (
     <li className="flex flex-wrap items-start gap-x-2 gap-y-0.5 text-xs text-stone-700">
       <time className="font-semibold" dateTime={hito.fecha}>{fecha(hito.fecha)}</time>
       <span aria-hidden="true">·</span>
       <span>{cantidades(hito.cantidades)}</span>
-      {hito.completado && <span className="font-semibold text-emerald-800">✓ Completado</span>}
+      {hito.completado && !ocultarCompletado && <span className="font-semibold text-emerald-800">✓ Completado</span>}
       {hito.porConciliar && <span className="font-semibold text-amber-800">Por conciliar</span>}
     </li>
   );
@@ -151,6 +155,12 @@ export function EntregasDestacadas({
         <div className="grid gap-2 lg:grid-cols-2">
           {entregas.map((e) => {
             const posteriores = !!e.fechaCompletado && !!hasta && e.fechaCompletado > hasta;
+            // #847: pedido anterior entregado completo en un solo día: el estado va
+            // en la cabecera y no se repite en la fila ni en el pie.
+            const completadoEnCabecera =
+              e.estadoAlCorte === "PRIMERA_ENTREGA" &&
+              e.hitos.length === 1 &&
+              e.fechaCompletado === e.hitos[0].fecha;
             return (
               <article
                 key={e.pedidoId}
@@ -180,7 +190,9 @@ export function EntregasDestacadas({
                 <div className="border-t border-stone-200 pt-2">
                   <p className="mb-1 text-xs font-semibold text-stone-700">Fechas de entrega</p>
                   <ol className="space-y-1">
-                    {e.hitos.slice(0, 2).map((h) => <Hito key={h.fecha} hito={h} />)}
+                    {e.hitos.slice(0, 2).map((h) => (
+                      <Hito key={h.fecha} hito={h} ocultarCompletado={completadoEnCabecera} />
+                    ))}
                   </ol>
                   {e.hitos.length > 2 && (
                     <details className="mt-1 text-xs text-blue-800">
@@ -193,7 +205,7 @@ export function EntregasDestacadas({
                     </details>
                   )}
                 </div>
-                {e.fechaCompletado ? (
+                {completadoEnCabecera ? null : e.fechaCompletado ? (
                   <p className="text-xs font-semibold text-emerald-800">
                     {posteriores ? "Completado posteriormente: " : "Completado el "}
                     {fecha(e.fechaCompletado)}

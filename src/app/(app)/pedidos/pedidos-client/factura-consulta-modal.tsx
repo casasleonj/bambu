@@ -32,7 +32,7 @@ export function FacturaConsultaModal({ documento, onClose, onOpenPedido,onVolver
         const data = await res.json()
         if (!data.factura || data.factura.id !== documento.id) throw new Error('No se pudo identificar la factura solicitada.')
         if (documento.pedidoId && data.factura.pedidoId !== documento.pedidoId) throw new Error('La factura recibida no corresponde al pedido solicitado.')
-        if (!controller.signal.aborted) setFactura(data.factura)
+        if (!controller.signal.aborted) setFactura({ ...data.factura, historialPagos: data.historialPagos ?? null, historialPagosError: data.historialPagosError === true, puedeVerHistorialInterno: data.puedeVerHistorialInterno === true })
       }).catch(err => { if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'No se pudo consultar la factura.') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
@@ -44,7 +44,7 @@ export function FacturaConsultaModal({ documento, onClose, onOpenPedido,onVolver
     <div className="min-h-0 overflow-y-auto p-4">
       {loading && <p role="status">Cargando factura…</p>}
       {error && <div role="alert"><h3 className="font-semibold">No se pudo abrir la factura</h3><p className="mt-2 text-sm">{error} Conservamos la vista de origen.</p><button className="mt-3 min-h-11 rounded border px-4" onClick={() => setRetry(n => n + 1)}>Reintentar</button></div>}
-      {factura && <FacturaDetail factura={factura} empresaConfig={{ nombre: factura.empresaNombre || 'Agua Bambú',
+      {factura && <FacturaDetail factura={factura} onReintentarPagos={() => setRetry(n => n + 1)} empresaConfig={{ nombre: factura.empresaNombre || 'Agua Bambú',
         nit: factura.empresaNit || '', direccion: factura.empresaDireccion || '', telefono: factura.empresaTelefono || '', email: factura.empresaEmail || '' }}
         volverPedidos={documento?.consulta} onOpenPedido={id => { onClose(); onOpenPedido(id) }} />}
     </div>

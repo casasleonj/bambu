@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { NegocioHorarioEditor } from '@/components/negocio-horario-editor'
+import { normalizarHorario, validarHorario, type TramoHorario } from '@/lib/negocio-horario'
 import { Modal } from '@/components/modal'
 import { InfoBanner } from '@/components/tooltip'
 import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
@@ -55,6 +57,8 @@ interface NegocioFormProps {
     linkUbicacion: string | null
     horaApertura: string | null
     rutaId: string | null
+    /** #836 F2: horario semanal actual del negocio. */
+    horarios?: TramoHorario[]
   } | null
 }
 
@@ -82,6 +86,12 @@ export function NegocioForm({
       : emptyFormData,
   )
 
+  // #836 F2: el horario semanal se edita aparte de los datos del negocio; solo se envía si cambió.
+  const horarioInicial = normalizarHorario(editData?.horarios ?? [])
+  const [horarios, setHorarios] = useState<TramoHorario[]>(horarioInicial)
+  const [erroresHorario, setErroresHorario] = useState<string[]>([])
+  const erroresVivosHorario = validarHorario(horarios)
+
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
 
@@ -93,6 +103,13 @@ export function NegocioForm({
       setFormError('El nombre del negocio es requerido')
       return
     }
+    const errHorario = validarHorario(horarios)
+    setErroresHorario(errHorario)
+    if (errHorario.length) {
+      setFormError('Revisa el horario de atención antes de guardar.')
+      return
+    }
+    const horarioCambio = JSON.stringify(normalizarHorario(horarios)) !== JSON.stringify(horarioInicial)
 
     setSaving(true)
     try {
@@ -110,6 +127,8 @@ export function NegocioForm({
         linkUbicacion: formData.linkUbicacion.trim() || undefined,
         horaApertura: formData.horaApertura || undefined,
         rutaId: formData.rutaId || null,
+        // Solo si cambió (o al crear con horario): editar otros datos no reescribe el horario.
+        ...((isEdit ? horarioCambio : horarios.length > 0) ? { horarios: normalizarHorario(horarios) } : {}),
       }
 
       const res = await fetch(url, {
@@ -121,6 +140,7 @@ export function NegocioForm({
       const data = await res.json()
 
       if (!res.ok || !data.success) {
+        if (Array.isArray(data.formErrors) && data.formErrors.length > 1) setErroresHorario(data.formErrors)
         setFormError(data.error || data.formErrors?.[0] || 'Error al guardar')
         return
       }
@@ -222,7 +242,7 @@ export function NegocioForm({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Hora de apertura</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Hora de apertura <span className="font-normal text-gray-400">(antiguo)</span></label>
             <input
               type="time"
               value={formData.horaApertura}
@@ -231,6 +251,14 @@ export function NegocioForm({
             />
           </div>
         </div>
+
+        <NegocioHorarioEditor
+          value={horarios}
+          onChange={(v) => { setHorarios(v); setErroresHorario([]) }}
+          // Errores mientras se edita; si no hay, los que devolvió el servidor.
+          errores={erroresVivosHorario.length ? erroresVivosHorario : erroresHorario}
+          disabled={saving}
+        />
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Link de Google Maps</label>
