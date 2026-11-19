@@ -10,6 +10,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - '.github/workflows/ci-nightly.yml'
       - '.github/workflows/ci.yml'
@@ -40,6 +41,19 @@ jobs:
         with:
           node-version: 22
       - run: node --test scripts/ci/__tests__/reuso-ci.node.test.mjs scripts/ci/__tests__/reporte-nocturno.node.test.mjs
+
+  # Explicit, read-only validation of the real reusable suite from an internal PR.
+  # Label only ADDS tests; the regular CI cannot be skipped with it.
+  validate-reusable:
+    name: Nightly validation (isolated PR)
+    needs: policy-tests
+    if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-nightly-validation' && github.event.pull_request.head.repo.full_name == github.repository
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+    with:
+      nightly_full: true
+      pedidos_v2: false
 
   plan:
     name: Nightly decision (read-only)
