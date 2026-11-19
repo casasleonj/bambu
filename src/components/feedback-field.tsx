@@ -124,7 +124,7 @@ export function FeedbackField({
   return (
     <div className={className}>
       {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+        <label htmlFor={fieldId} className="block text-sm font-medium text-gray-700 mb-1.5">
           {label}
           {required && <span className="text-red-500 ml-0.5" aria-label="obligatorio">*</span>}
         </label>
@@ -138,8 +138,11 @@ export function FeedbackField({
         )}
 
         <input
+          id={fieldId}
           type={type}
           value={value}
+          required={required}
+          aria-required={required}
           onChange={handleChange}
           onFocus={() => setFocused(true)}
           onBlur={handleBlur}
