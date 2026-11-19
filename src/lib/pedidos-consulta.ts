@@ -285,7 +285,15 @@ export function leerFiltrosConsulta(
       "",
     ),
     conRecurrencia: p.get("conRecurrencia") === "true",
-    agrupar: opcion(p, "agrupar", ["", "barrio"], ""),
+    // #859: solo la entrada operativa sin filtros usa agrupación territorial inicial.
+    // Una selección explícita de lista general (agrupar=) y las consultas
+    // históricas/filtradas conservan su comportamiento anterior.
+    agrupar: opcion(
+      p, "agrupar", ["", "barrio"],
+      !all && !p.has("desde") && !p.has("hasta") &&
+      !["fechaBase", "foco", "search", "estadoEntrega", "estadoPago", "registro", "canal", "origen", "clienteId", "pago", "repartidorId", "grupoBarrio"].some(k => p.has(k))
+        ? "barrio" : "",
+    ),
     grupoBarrio: leerGrupoBarrio(p),
     resumen: p.has("resumen")
       ? p.get("resumen") === "1"
