@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { getPresetDate, getTodayString } from "@/lib/dates";
 import {
   baseEfectiva,
+  esFocoCompromiso,
   leerFiltrosConsulta,
   parametrosConsulta,
   type FiltrosConsultaPedidos,
@@ -207,6 +208,8 @@ export function FiltrosConsulta({
     !(draft.desde === ayer && draft.hasta === ayer) &&
     !(draft.desde === ayer && draft.hasta === hoy);
   const canales = canalesVisibles(draft);
+  // #851: en las vistas por fecha prometida el período no se aplica; no se muestra.
+  const compromiso = esFocoCompromiso(draft.foco);
   const hayAlgo = activos.length > 0 || Boolean(draft.search) || esRango;
 
   return (
@@ -215,6 +218,7 @@ export function FiltrosConsulta({
       aria-label="Filtros de Pedidos"
       data-testid="consulta-filtros"
     >
+      {!compromiso && (
       <div className="flex flex-wrap gap-2">
         {(
           [
@@ -242,6 +246,7 @@ export function FiltrosConsulta({
           );
         })}
       </div>
+      )}
       <div className="mt-3 flex min-w-0 items-end gap-2">
         <label className="min-w-0 flex-1 text-xs font-semibold text-slate-600">
           Buscar pedido, cliente, negocio o creador
@@ -453,6 +458,7 @@ export function FiltrosConsulta({
             )}
           </div>
 
+          {!compromiso && (<>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="text-xs font-semibold text-slate-600">
               Usar la fecha y hora de
@@ -518,6 +524,7 @@ export function FiltrosConsulta({
             arriba. La hora final incluye todo ese minuto; entre fechas
             distintas es un intervalo continuo.
           </p>
+          </>)}
           <div
             role="group"
             aria-label="Estado del registro"

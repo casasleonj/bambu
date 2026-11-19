@@ -204,8 +204,8 @@ export function OperacionList({
   if (pedidos.length === 0) {
     return (
       <EmptyState
-        title="No hay operaciones"
-        description="Ajustá los filtros o creá una nueva operación."
+        title={consulta?.vacioCompromiso?.vacioTitulo ?? "No hay operaciones"}
+        description={consulta?.vacioCompromiso?.vacioDescripcion ?? "Ajustá los filtros o creá una nueva operación."}
       />
     )
   }

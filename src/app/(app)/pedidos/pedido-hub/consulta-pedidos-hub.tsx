@@ -20,6 +20,7 @@ import { ResumenConsulta } from "./resumen-consulta";
 import { RecurrentesDelDia } from "./recurrentes-del-dia";
 import { fechaLecturaConsulta } from "./fecha-consulta";
 import { getTodayString } from "@/lib/dates";
+import { rotulosCompromiso } from "@/lib/pedidos-compromiso-rotulos";
 import {
   derivarEstadoBusqueda,
   textoVolver,
@@ -158,7 +159,33 @@ export function ConsultaPedidosHub(props: Props) {
     (estadoBusqueda.tipo === "normal" || estadoBusqueda.tipo === "resultado");
   // El título de la lista va dentro de PedidoHub (después de los pendientes
   // anteriores) cuando se dibuja la lista; en los demás estados va solo.
-  const encabezado = (
+  // #851: la vista por fecha prometida lleva su propio título y no muestra la
+  // etiqueta de «Fecha del pedido» (esa fecha no se aplica en ella).
+  const compromiso = enExpansion ? null : rotulosCompromiso(filtrosLeidos?.foco);
+  const estadoLinea =
+    estadoBusqueda.tipo === "cargando"
+      ? "Buscando…"
+      : estadoBusqueda.tipo === "error"
+        ? "No se pudo buscar"
+        : datos
+          ? `${datos.total} resultado(s) de toda la consulta`
+          : "Consultando…";
+  const encabezado = compromiso ? (
+    <div className="mb-3" data-testid="encabezado-compromiso">
+      <p className="text-xs text-slate-500">
+        Por fecha prometida de entrega · {estadoLinea} · hora de Colombia ·{" "}
+        <button
+          type="button"
+          className="min-h-11 text-blue-700 underline"
+          onClick={() =>
+            filtrosLeidos && aplicar({ ...filtrosLeidos, foco: "", page: 1 })
+          }
+        >
+          Ver por fecha del pedido
+        </button>
+      </p>
+    </div>
+  ) : (
     <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
       <div>
         <h2 className="text-lg font-bold text-slate-800">
@@ -169,14 +196,7 @@ export function ConsultaPedidosHub(props: Props) {
               : "Pedidos de hoy"}
         </h2>
         <p className="mt-1 text-xs text-slate-500">
-          {estadoBusqueda.tipo === "cargando"
-            ? "Buscando…"
-            : estadoBusqueda.tipo === "error"
-              ? "No se pudo buscar"
-              : datos
-                ? `${datos.total} resultado(s) de toda la consulta`
-                : "Consultando…"}{" "}
-          · hora de Colombia
+          {estadoLinea} · hora de Colombia
         </p>
       </div>
       <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800">
@@ -466,6 +486,7 @@ export function ConsultaPedidosHub(props: Props) {
                   grupos: datos?.grupos,
                   grupoActivo: filtrosLeidos?.grupoBarrio || undefined,
                   franjas: filtrosLeidos?.foco === "paraHoy",
+                  vacioCompromiso: rotulosCompromiso(filtrosLeidos?.foco) ?? undefined,
                   onGrupoBarrio: filtrosLeidos
                     ? (clave) => aplicar({ ...filtrosLeidos, grupoBarrio: clave ?? "", page: 1 })
                     : undefined,
