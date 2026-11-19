@@ -93,6 +93,28 @@ describe("#836 F3 — consulta agrupada por barrio (Postgres real)", () => {
     expect(new Set(secuencia).size).toBe(secuencia.length); // cada grupo es un bloque continuo
   });
 
+
+  it("#859: un barrio de la última página pasa a la primera sin duplicar pedidos ni alterar FIFO al volver", async () => {
+    const base = await q("pageSize=25&page=1");
+    const villa = base.grupos!.find(g => g.etiqueta === "Villa Nueva")!;
+    const sin = base.grupos!.find(g => g.etiqueta === "Sin barrio")!;
+    const total = base.total;
+    const ordenManual = encodeURIComponent(villa.clave);
+    const primera = await q(`pageSize=25&page=1&recorrido=${ordenManual}`);
+    expect(primera.grupos![0].clave).toBe(villa.clave);
+    expect(primera.pedidos[0].grupoBarrio!.clave).toBe(villa.clave);
+    const ids: string[] = [];
+    for (let page = 1; page <= Math.ceil(total / 25); page++) {
+      const actual = await q(`pageSize=25&page=${page}&recorrido=${ordenManual}`);
+      ids.push(...actual.pedidos.map(p => p.id));
+    }
+    expect(ids).toHaveLength(total);
+    expect(new Set(ids).size).toBe(total);
+    const restaurado = await q("pageSize=25&page=1");
+    expect(restaurado.grupos!.map(g => g.clave)).toEqual(base.grupos!.map(g => g.clave));
+    expect(restaurado.grupos!.at(-1)!.clave).toBe(sin.clave);
+  });
+
   it("A13: el barrio del pedido gana sobre el del cliente; alias y otra tilde/mayúscula cuentan en su barrio", async () => {
     const r = await q("pageSize=100&page=1&grupoBarrio=" + encodeURIComponent(`b:${ids.villa}`));
     const idsVilla = new Set(r.pedidos.map((p) => p.id));
