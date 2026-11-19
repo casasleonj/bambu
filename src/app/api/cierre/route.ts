@@ -15,6 +15,7 @@ import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { whereEmbarquesPendientesCierreDia } from '@/lib/cierre-dia-embarques'
 import { CobrosSinConciliarError } from '@/lib/cobro-cartera'
 import { construirResumenCierre } from '@/lib/cierre-resumen'
+import { VentasCierreSinConciliarError } from '@/lib/cierre-ajustes-ventas'
 import { calcularNetoCierre, calcularEfectivoEsperado } from '@/lib/cierre-totales'
 import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
 import { diasObligatoriosAntesDe, type DiaHueco } from '@/lib/cierre-huecos'
@@ -252,6 +253,7 @@ export async function POST(request: NextRequest) {
         // #511/#513: el snapshot completo sale del mismo resumen que el preview,
         // dentro de esta transacción. No se guardan cifras aportadas por el navegador.
         const { cierre: resumen } = await construirResumenCierre(tx, fechaStr)
+        if (resumen.ventasPorConciliar.length) throw new VentasCierreSinConciliarError()
         const { totalVentas, cobrado, fiado, efectivo, transferencia, nequi, daviplata, bono, cobroVentasHoy, cobroCartera } = resumen
         const gastosTotal = resumen.totalGastos
         const comisiones = resumen.comisionesAuto
@@ -344,6 +346,7 @@ export async function POST(request: NextRequest) {
       return apiSuccess({ cierre }, 201)
 
     } catch (error) {
+      if (error instanceof VentasCierreSinConciliarError) return apiError(error.message, 409, { code: 'VENTAS_PENDIENTES_CONCILIACION' })
       if (error instanceof CobrosSinConciliarError) return apiError(error.message, 409, {
         code: error.code, cobrosPendientes: error.cobros.map(({ referencia, importe }) => ({ referencia, importe })),
       })

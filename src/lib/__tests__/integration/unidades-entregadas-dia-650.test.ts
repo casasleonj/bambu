@@ -104,6 +104,8 @@ describe('unidadesEntregadasDelDia (#650 2b)', () => {
       expect(ventas.total).toBe(cantidad * 2300)
       expect(ventas.desglose).toEqual([{ producto: 'PACA_HIELO', canal: 'DOMICILIO', cantidad, precio: 2300, subtotal: cantidad * 2300 }])
       expect(cierre.cierre.hieloVendido).toBe(cantidad)
+      expect(cierre.cierre.totalVentas).toBe(cantidad * 2300)
+      expect(cierre.cierre.ventasEntregadasDelDia).toBe(ventas.total)
       expect(prod.hieloVendido).toBe(cantidad)
     }
   })

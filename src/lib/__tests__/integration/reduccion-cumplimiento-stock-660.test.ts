@@ -135,7 +135,8 @@ describe('#660 reducción y conservación física/financiera', () => {
     expect(await unidadesEntregadasDelDia(db, rango(ayer))).toEqual(ayerAntes)
     expect(await unidadesEntregadasDelDia(db, rango(fechaHoy()))).toEqual(hoyAntes)
     const nuevo = await construirResumenCierre(db, fechaHoy())
-    expect(nuevo.cierre.totalVentas).toBe(cierre.cierre.totalVentas - p.precio * 15)
+    // #885 PO: la demanda nunca entregada no fue venta de ayer ni de hoy.
+    expect(nuevo.cierre.totalVentas).toBe(cierre.cierre.totalVentas)
     expect(nuevo.cierre.cobrado).toBe(cierre.cierre.cobrado)
   })
   it('un acumulado legacy mayor al canónico no inventa unidades ni marca entrega completa', async () => {
