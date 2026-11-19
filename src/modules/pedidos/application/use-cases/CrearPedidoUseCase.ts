@@ -477,6 +477,22 @@ export class CrearPedidoUseCase {
         usuarioId: input.createdById,
       }, tx)
 
+      // #795: la venta que nace entregada conserva su hecho físico explícito.
+      // Reutiliza la captura de entregas; no inventa una misión ni otro cobro.
+      if (estadoEntregaCreacion === 'ENTREGADO' && saved.items.some(i => i.cantRegaloPedido > 0)) {
+        await logAudit({ entidad: 'Pedido', registroId: saved.id.get(), accion: 'UPDATE', usuarioId: input.createdById,
+          datos: { accion: 'ENTREGA', consultaEntrega: {
+            version: 1, regalosPedido: true, eventoEntregaId: null,
+            precisionFecha: input.fecha && !vendidoPorId ? 'DIA' : 'INSTANTE',
+            fecha: (saved.entregadoAt ?? fechaPedido).toISOString(), repartidorId: vendidoPorId ?? null,
+            cantidades: saved.items.map(i => ({ producto: i.producto,
+              cantidad: i.cantEntrega + i.cantRegaloEntrega,
+              cantidadConPrecio: i.cantEntrega, cantidadRegalo: i.cantRegaloEntrega,
+            })),
+          } },
+        }, tx)
+      }
+
       // FASE 5 (ADR-MONETARIO-001, §12): proyección de auditoría de los pagos
       // iniciales, en la MISMA transacción del Pago.
       if (totalPagado > 0) {

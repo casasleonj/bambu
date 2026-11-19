@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { testPrisma as db, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { crearPedidoUseCase, previewPedidoUseCase, actualizarPedidoUseCase } from '@/modules/pedidos'
+import { leerEntregasConsulta } from '@/lib/entregas-consulta'
+import { calcularComisionRepartidor } from '@/lib/comision-repartidor'
+import { startOfDayBogota, endOfDayBogota, todayStringBogota } from '@/lib/dates'
 
 vi.mock('next/cache', () => ({
   unstable_cache: <Args extends unknown[], Result>(fn: (...args: Args) => Result) => fn,
@@ -35,6 +38,13 @@ describe('#795 · creación y edición con regalos en PostgreSQL', () => {
     const audit = await db.historial.findMany({ where: { entidad: 'Pedido', registroId: pedido.id, accion: 'CREATE' } })
     expect(audit).toHaveLength(1)
     expect(JSON.stringify(audit)).toContain('Regalo acordado')
+    const hechos = await leerEntregasConsulta(db, { ids: [pedido.id] })
+    if (origen === 'VENTA_RAPIDA') {
+      expect(hechos).toHaveLength(1)
+      expect(hechos[0]).toMatchObject({ fuente: 'AUDITORIA', regalosPedido: true,
+        cantidades: [{ producto: 'PACA_AGUA', cantidad: 63, cantidadRegalo: 3 }] })
+      expect(hechos[0].incompleto).not.toBe(true)
+    } else expect(hechos).toHaveLength(0)
   })
   it('rechaza autorización de asistente/repartidor sin crear cliente, pedido, factura o pagos', async () => {
     for (const createdByRole of ['ASISTENTE', 'REPARTIDOR']) {
@@ -46,6 +56,27 @@ describe('#795 · creación y edición con regalos en PostgreSQL', () => {
       expect(await db.cliente.count({ where: { telefono } })).toBe(0)
       expect(await db.factura.count()).toBe(antes)
     }
+  })
+  it('venta en ruta conserva el hecho atribuido y comisiona 63 una sola vez al reintentar', async () => {
+    await db.config.upsert({ where: { clave: 'GESTION_ADMIN_SIN_EMBARQUE' },
+      create: { clave: 'GESTION_ADMIN_SIN_EMBARQUE', valor: 'true' }, update: { valor: 'true' } })
+    const repartidor = await db.trabajador.create({ data: { nombre: 'Repartidor sintético de regalos', rol: 'REPARTIDOR', usaMoto: true } })
+    const comando = { clienteId: await cliente(), canal: 'DOMICILIO' as const, origen: 'VENTA_RAPIDA' as const,
+      items, offlineId: randomUUID(), createdById: adminId, createdByRole: 'ADMIN', vendidoPorId: repartidor.id,
+      pagos: [{ metodo: 'EFECTIVO', monto: 138000 }] }
+    const { pedido } = await crearPedidoUseCase.execute(comando)
+    expect((await crearPedidoUseCase.execute(comando)).deduped).toBe(true)
+    const hechos = await leerEntregasConsulta(db, { ids: [pedido.id] })
+    expect(hechos).toHaveLength(1)
+    expect(hechos[0]).toMatchObject({ repartidorId: repartidor.id, fuente: 'AUDITORIA',
+      cantidades: [{ producto: 'PACA_AGUA', cantidad: 63, cantidadRegalo: 3 }] })
+    const dia = todayStringBogota()
+    const comision = await calcularComisionRepartidor(db, repartidor.id, startOfDayBogota(dia), endOfDayBogota(dia),
+      { agua: 200, hielo: 200, botellon: 200 })
+    expect(comision.entregasAgua).toBe(63)
+    expect(comision.total).toBe(12600)
+    expect(comision.revisiones).toEqual([])
+    expect(await db.pago.count({ where: { pedidoId: pedido.id } })).toBe(1)
   })
   it('edición y relectura conservan autorización, y otra concesión audita ambas versiones', async () => {
     const { pedido } = await crearPedidoUseCase.execute({ clienteId: await cliente(), canal: 'PUNTO', items, createdById: adminId, createdByRole: 'ADMIN' })
