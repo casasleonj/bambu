@@ -7,7 +7,7 @@ import type { GrupoBarrioConsulta } from "@/lib/pedidos-consulta";
 export function GrupoBarrioEncabezado({
   grupo, enPagina, soloEste, onSoloEste, onTodos,
 }: {
-  grupo: Pick<GrupoBarrioConsulta, "clave" | "etiqueta" | "total">;
+  grupo: GrupoBarrioConsulta;
   /** Filas de este grupo visibles en esta página. */
   enPagina: number;
   soloEste: boolean;
@@ -27,6 +27,14 @@ export function GrupoBarrioEncabezado({
         <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-stone-700" data-testid={`grupo-barrio-total-${grupo.clave}`}>
           {grupo.total} {grupo.total === 1 ? "pedido" : "pedidos"}
         </span>
+        {grupo.unidadesPendientes !== undefined && (
+          <span className="ml-2 text-xs font-semibold text-stone-700">
+            · Por entregar: {grupo.unidadesPendientes}
+            {Object.entries(grupo.remanentes ?? {}).filter(([, n]) => n > 0).map(([producto, cantidad]) => (
+              <span key={producto} className="ml-2 font-normal">{producto.replaceAll("_", " ")} {cantidad}</span>
+            ))}
+          </span>
+        )}
         {parcial && (
           <span className="ml-2 text-xs font-normal text-stone-600">
             · aquí {enPagina}; el resto sigue en las otras páginas
