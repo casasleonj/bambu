@@ -18,9 +18,8 @@ export function ListaVentasProvisionales({ fecha, refreshKey, onElegir }: { fech
   const [retry,setRetry]=useState(0)
   useEffect(()=>{
     const ctrl = new AbortController()
-    setError(false)
     fetch('/api/cierre/regularizacion-ventas',{signal:ctrl.signal,cache:'no-store'})
-      .then(async r=>{ if(!r.ok)throw Error(); const j=await r.json(); if(!Array.isArray(j.pendientes))throw Error(); if(!ctrl.signal.aborted)setLista(j.pendientes) })
+      .then(async r=>{ if(!r.ok)throw Error(); const j=await r.json(); if(!Array.isArray(j.pendientes))throw Error(); if(!ctrl.signal.aborted){setError(false);setLista(j.pendientes)} })
       .catch(()=>{if(!ctrl.signal.aborted){setLista(null);setError(true)}})
     return ()=>ctrl.abort()
   },[fecha,refreshKey,retry])
