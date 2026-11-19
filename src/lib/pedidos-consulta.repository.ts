@@ -431,7 +431,7 @@ async function leerConsultaPedidos(
             (posicionesFIFO.get(b.clave) ?? Number.MAX_SAFE_INTEGER) ||
             a.etiqueta.localeCompare(b.etiqueta)
           );
-        // El recorrido manual se aplica a TODO el conjunto ANTES de cortar páginas.
+        // El recorrido manual se aplica al conjunto completo antes de paginar.
         // Los barrios no incluidos conservan su orden FIFO relativo.
         if (f.recorrido?.length) {
           const posicionesManual = new Map(f.recorrido.map((clave, i) => [clave, i]));
