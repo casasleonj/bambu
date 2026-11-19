@@ -1,5 +1,6 @@
 import type { Pedido } from '../pedidos-client/types'
 import { formatoTramo } from '@/lib/tramo-volumen'
+import { telefonoWhatsapp } from '@/lib/whatsapp'
 
 export type AccionDetalleKey = 'editar' | 'enviar' | 'cancelar' | 'entregar' | 'entregar-retiro' | 'volver-pendiente' | 'anular' | 'registrar-entrega' | 'corregir-canal'
 
@@ -121,12 +122,8 @@ export function lineaDeTiempo(p: Pedido): PasoTiempo[] {
   ]
 }
 
-/** Deja solo dígitos; antepone 57 (Colombia) si faltan. */
-export function telefonoWhatsapp(telefono: string): string | null {
-  const d = telefono.replace(/\D/g, '')
-  if (d.length < 7) return null
-  return d.length === 10 ? `57${d}` : d
-}
+// Movida a `@/lib/whatsapp` (#845) para reutilizarla; se re-exporta para no romper importadores.
+export { telefonoWhatsapp }
 
 export interface LinksContacto {
   llamar: string | null

@@ -12,6 +12,8 @@ export type AuditAction =
   | 'FORCE_LOGOUT'
   /** PlantillaRecurrente: un intento de generación (GENERADO, SALTADO:<motivo> o ERROR). */
   | 'GENERACION'
+  /** Cliente: se preparó el envío del resumen de facturas (PDF/WhatsApp). No prueba entrega ni lectura. */
+  | 'COMPARTIR'
 
 export interface AuditEntry {
   /** #515: identidad estable para el resultado de un cobro reintentable. */

@@ -13,6 +13,7 @@ import {
   userCan,
   canCreatePedidos,
   canReadFacturas,
+  canCompartirResumenFacturas,
   getUserPermissions,
   isRouteAllowed,
   getRedirectForRole,
@@ -102,6 +103,9 @@ describe('ASISTENTE permissions (contrato de negocio en e2e/roles-permisos.spec.
   it('NO puede ver cierre ni productos (páginas restringidas)', () => {
     expect(userCan(ROLES.ASISTENTE, 'view:cierre')).toBe(false)
     expect(userCan(ROLES.ASISTENTE, 'view:productos')).toBe(false)
+    // #758: el consolidado de facturas sigue la misma regla de lectura que /facturas (#556).
+    expect(userCan(ROLES.ASISTENTE, 'view:resumen-facturas')).toBe(true)
+    expect(isRouteAllowed('/resumen-facturas', ROLES.ASISTENTE)).toBe(true)
   })
 
   it('isRouteAllowed refleja el mismo contrato', () => {
@@ -194,5 +198,16 @@ describe('#556 lectura de facturas', () => {
   })
   it('la navegación y la API dicen lo mismo para ASISTENTE (la contradicción que motivó #556)', () => {
     expect(userCan(ROLES.ASISTENTE, 'view:facturas')).toBe(canReadFacturas(ROLES.ASISTENTE))
+  })
+})
+
+describe('canCompartirResumenFacturas (#845)', () => {
+  it('ADMIN y ASISTENTE comparten; CONTADOR, REPARTIDOR, SELLADOR y sin rol no', () => {
+    expect(canCompartirResumenFacturas(ROLES.ADMIN)).toBe(true)
+    expect(canCompartirResumenFacturas(ROLES.ASISTENTE)).toBe(true)
+    expect(canCompartirResumenFacturas(ROLES.CONTADOR)).toBe(false)
+    expect(canCompartirResumenFacturas(ROLES.REPARTIDOR)).toBe(false)
+    expect(canCompartirResumenFacturas(ROLES.SELLADOR)).toBe(false)
+    expect(canCompartirResumenFacturas(undefined)).toBe(false)
   })
 })
