@@ -33,7 +33,7 @@ test.describe("#861 — error del API en el formulario de Negocio", () => {
       await expect(page.getByText(/Objects are not valid as a React child/)).toHaveCount(0);
       // el formulario sigue ahí para reintentar y conserva lo escrito
       await expect(page.getByRole("button", { name: "Actualizar" })).toBeVisible();
-      await expect(page.locator('input[type="text"]').first()).toHaveValue("Tienda 861");
+      await expect(page.locator('form input[type="text"]').first()).toHaveValue("Tienda 861");
     });
   }
 });
