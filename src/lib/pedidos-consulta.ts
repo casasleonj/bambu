@@ -294,7 +294,7 @@ export function leerFiltrosConsulta(
     // #859: solo la entrada operativa sin filtros usa agrupación territorial inicial.
     // Una selección explícita de lista general (agrupar=) y las consultas
     // históricas/filtradas conservan su comportamiento anterior.
-    agrupar: opcion(
+    agrupar: p.has("agrupar") && p.get("agrupar") === "" ? "" : opcion(
       p, "agrupar", ["", "barrio"],
       !all && !p.has("desde") && !p.has("hasta") &&
       !["fechaBase", "foco", "search", "estadoEntrega", "estadoPago", "registro", "canal", "origen", "clienteId", "pago", "repartidorId", "grupoBarrio"].some(k => p.has(k))
