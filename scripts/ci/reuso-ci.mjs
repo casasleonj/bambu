@@ -1,5 +1,5 @@
 // #896: deduplicacion de regresion suplementaria, no certificacion de release.
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
 export const MAX_AGE_MS = 24 * 60 * 60 * 1000
@@ -105,7 +105,8 @@ async function main() {
       result=await decideNight(ctx,lists.flat(),jobs)
     } else result=await decideNight(ctx,[],jobs)
   } catch(error) { result={runFull:ctx.event!=='push',reason:'evidence-unavailable',detail:String(error.message).slice(0,200),canSkipRelease:false} }
-  const report={...result,sha:ctx.sha,event:ctx.event,canSkipRelease:false}
+  const report={...result,sha:ctx.sha,event:ctx.event,run:ctx.currentRun,attempt:Number(e.GITHUB_RUN_ATTEMPT),decisionAt:ctx.now,canSkipRelease:false}
+  if(e.NIGHT_DECISION_FILE && ['schedule','workflow_dispatch'].includes(ctx.event)) writeFileSync(e.NIGHT_DECISION_FILE,JSON.stringify(report,null,2)+'\n')
   console.log(JSON.stringify(report))
   appendFileSync(e.GITHUB_OUTPUT,`run_full=${report.runFull}\nreason=${report.reason}\n`)
   if(e.GITHUB_STEP_SUMMARY) appendFileSync(e.GITHUB_STEP_SUMMARY,`### CI #896\n\n\`\`\`json\n${JSON.stringify(report,null,2)}\n\`\`\`\n`)
