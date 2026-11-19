@@ -257,7 +257,7 @@ export function OperacionList({
     return (
       <div data-testid="pedidos-agrupados-barrio">
         <div className="my-2 flex flex-wrap items-center gap-2 text-xs">
-          <Link href={urlRecorrido([])} aria-label="Volver al orden FIFO"
+          <Link scroll={false} href={urlRecorrido([])} aria-label="Volver al orden FIFO"
             className={`rounded-md border px-3 py-1.5 ${!modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>FIFO</Link>
           <button type="button" aria-pressed={modoRecorrido} onClick={() => setModoRecorrido(true)}
             className={`rounded-md border px-3 py-1.5 ${modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>Recorrido</button>
@@ -273,7 +273,7 @@ export function OperacionList({
                 ))}
               </select>
               {barrioSeleccionado && ordenEfectivo.includes(barrioSeleccionado) ? (
-                <Link href={priorizarUrl(barrioSeleccionado)} data-testid="recorrido-priorizar"
+                <Link scroll={false} href={priorizarUrl(barrioSeleccionado)} data-testid="recorrido-priorizar"
                   className="rounded-md bg-stone-800 px-3 py-1.5 text-white">Llevar al primero</Link>
               ) : (
                 <span aria-disabled="true" className="rounded-md bg-stone-400 px-3 py-1.5 text-white">Llevar al primero</span>
@@ -295,9 +295,9 @@ export function OperacionList({
               />
               {modoRecorrido && (
                 <div className="mb-1 flex gap-2">
-                  <Link href={moverUrl(b.clave, -1)} aria-label={`Subir ${b.etiqueta}`} aria-disabled={ordenEfectivo.indexOf(b.clave) === 0}
+                  <Link scroll={false} href={moverUrl(b.clave, -1)} aria-label={`Subir ${b.etiqueta}`} aria-disabled={ordenEfectivo.indexOf(b.clave) === 0}
                     className={`rounded border px-2 py-1 text-xs ${ordenEfectivo.indexOf(b.clave) === 0 ? 'pointer-events-none opacity-40' : ''}`}>↑ Subir</Link>
-                  <Link href={moverUrl(b.clave, 1)} aria-label={`Bajar ${b.etiqueta}`} aria-disabled={ordenEfectivo.indexOf(b.clave) === ordenEfectivo.length - 1}
+                  <Link scroll={false} href={moverUrl(b.clave, 1)} aria-label={`Bajar ${b.etiqueta}`} aria-disabled={ordenEfectivo.indexOf(b.clave) === ordenEfectivo.length - 1}
                     className={`rounded border px-2 py-1 text-xs ${ordenEfectivo.indexOf(b.clave) === ordenEfectivo.length - 1 ? 'pointer-events-none opacity-40' : ''}`}>↓ Bajar</Link>
                 </div>
               )}

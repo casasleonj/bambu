@@ -385,6 +385,8 @@ export function parametrosConsulta(f: FiltrosConsultaPedidos): URLSearchParams {
   // Preserve explicit ungrouped selection; absence means operational barrio default.
   p.set("agrupar", f.agrupar);
   if (f.grupoBarrio) p.set("grupoBarrio", f.grupoBarrio);
+  // #903: la prioridad manual de barrios (Recorrido) debe viajar al servidor.
+  f.recorrido?.forEach((clave) => p.append("recorrido", clave));
   p.set("resumen", f.resumen ? "1" : "0");
   p.set("page", String(f.page));
   p.set("pageSize", String(f.pageSize));
