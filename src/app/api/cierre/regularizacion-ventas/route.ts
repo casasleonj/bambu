@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireRole } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { apiError, apiSuccess } from '@/lib/api-response'
 import { startOfDayInBogota, dayInBogota } from '@/lib/date-helpers'
 import { Prisma } from '@prisma/client'
@@ -9,10 +9,12 @@ import { executeSerializableWithRetry } from '@/lib/serializable'
 import { logAudit } from '@/lib/audit'
 import { huellaConciliacion } from '@/lib/cierre-conciliacion-ventas'
 import { claveRegularizacion, ENTIDAD_REGULARIZACION, leerRegularizaciones, listarProvisionales,
-  leerSnapshotProvisional, SolicitudRegularizacion, proyectarRegularizacion } from '@/lib/cierre-ventas-provisional'
+  leerSnapshotProvisional, SolicitudRegularizacion, proyectarRegularizacion, pedidosConReversaRegistrada } from '@/lib/cierre-ventas-provisional'
 class Conflicto extends Error {}
 export async function GET() {
-  const auth = await requireRole(['ADMIN','ASISTENTE','CONTADOR'])
+  const sesion = await requireAuth()
+  if (sesion instanceof Response) return sesion
+  const auth = await requireRole(['ADMIN','ASISTENTE','CONTADOR'], sesion)
   if (auth instanceof Response) return auth
   try {
     return apiSuccess({ pendientes: await prisma.$transaction(tx => listarProvisionales(tx),
@@ -20,7 +22,9 @@ export async function GET() {
   } catch { return apiError('No se pudo verificar la lista de ventas provisionales.', 500) }
 }
 export async function POST(request: NextRequest) {
-  const auth = await requireRole('ADMIN')
+  const sesion = await requireAuth()
+  if (sesion instanceof Response) return sesion
+  const auth = await requireRole('ADMIN', sesion)
   if (auth instanceof Response) return auth
   if (!auth.user?.id) return apiError('No autorizado',401)
   const actor = auth.user.id
@@ -40,6 +44,16 @@ export async function POST(request: NextRequest) {
       if (!caso || (caso.revision?.id ?? null) !== d.revisionEsperada) throw new Conflicto('La revisión cambió. Actualiza la consulta.')
       if (d.operacion === 'REVOCAR' ? caso.revision?.operacion !== 'RESOLVER' : caso.revision?.operacion === 'RESOLVER')
         throw new Conflicto('Retira la decisión anterior antes de sustituirla.')
+      if (d.operacion === 'RESOLVER' && d.centavos > 0) {
+        // Un pedido terminal no puede generar dos descuentos positivos.
+        const otra = await pedidosConReversaRegistrada(tx, inicio, [caso.pedidoId])
+        const misma = previo.casos.some(p => p.id !== caso.id && p.pedidoId === caso.pedidoId &&
+          p.revision?.operacion === 'RESOLVER' && p.revision.centavos > 0)
+        const original = (c.reporte as { ajustesVentasDetalle?: { pedidoId: string; centavos: number }[] } | null)
+          ?.ajustesVentasDetalle?.some(a => a.pedidoId === caso.pedidoId && a.centavos > 0)
+        if (otra.has(caso.pedidoId) || misma || original)
+          throw new Conflicto('Ya hay un ajuste de venta registrado para este pedido. Verifica el cierre anterior; no lo descuentas dos veces.')
+      }
       const registroId = claveRegularizacion(c.id, caso.id)
       const version = (caso.revision?.version ?? 0)+1
       const id = huellaConciliacion([registroId,version])

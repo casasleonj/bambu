@@ -9,6 +9,7 @@ const motivos: Record<string,string> = {
   CUMPLIMIENTO_NO_VERIFICADO:'Entregas sin evidencia completa',
   VENTA_PREVIA_SIN_DETALLE_DE_CIERRE:'Cierre anterior sin detalle de la venta',
   NOTA_SIN_REVERSA_IDENTIFICADA:'Nota sin origen comercial identificado',
+  REVERSA_YA_REGISTRADA:'Ajuste del pedido registrado en otro cierre',
 }
 
 export function ListaVentasProvisionales({ fecha, refreshKey, onElegir }: { fecha:string; refreshKey:number; onElegir:(f:string)=>void }) {

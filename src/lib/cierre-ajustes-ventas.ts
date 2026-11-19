@@ -3,6 +3,8 @@ import { dayInBogota, startOfDayInBogota } from '@/lib/date-helpers'
 import { leerEntregasConsulta, type EntregaConsulta } from '@/lib/entregas-consulta'
 import { huellaConciliacion, leerUltimasConciliaciones, lineasCoinciden, type CasoConciliacionVenta, type ConciliacionVentaAplicada } from '@/lib/cierre-conciliacion-ventas'
 
+import { pedidosConReversaRegistrada } from '@/lib/cierre-ventas-provisional'
+
 type Db = Pick<Prisma.TransactionClient, 'pedido' | 'historial' | 'embarqueMovimiento' | 'cierreDia' | 'pedidoReduccionComercial'>
 type Nota = { id: string; pedidoId: string; monto: unknown }
 type Rango = { start: Date; end: Date }
@@ -122,6 +124,7 @@ export async function leerAjustesVentasCierre(db: Db, rango: Rango, notas: reado
     select: { id: true, fecha: true, horaCierre: true, reporte: true },
   }) : []
   const porDia = new Map(cierres.map(c => [dayInBogota(c.fecha), c]))
+  const reversasYaRegistradas = await pedidosConReversaRegistrada(db, rango.start, ids)
   for (const pedidoId of ids) {
     const p = porPedido.get(pedidoId)
     const revisar = (motivo: string) => porConciliar.push({ pedidoId, motivo, ...(p ? { numero: p.numero } : {}) })
@@ -157,6 +160,7 @@ export async function leerAjustesVentasCierre(db: Db, rango: Rango, notas: reado
     })
     const faltantes = anteriores.filter((_, i) => valores[i] === null)
     let manual = 0
+    let aplicada: ConciliacionVentaAplicada | undefined
     if (faltantes.length) {
       const huella = huellaConciliacion([
         dia, pedidoId, historial[0].toISOString(),
@@ -172,9 +176,11 @@ export async function leerAjustesVentasCierre(db: Db, rango: Rango, notas: reado
         continue
       }
       manual = decision.lineas.reduce((s, l) => s + l.centavos, 0)
-      conciliacionesAplicadas.push({ pedidoId, numero: p.numero, huella, revision: decision.id, lineas: decision.lineas })
+      aplicada = { pedidoId, numero: p.numero, huella, revision: decision.id, lineas: decision.lineas }
     }
     const centavos = valores.reduce<number>((s, v) => s + (v ?? 0), manual)
+    if (centavos > 0 && reversasYaRegistradas.has(pedidoId)) { revisar('REVERSA_YA_REGISTRADA'); continue }
+    if (aplicada) conciliacionesAplicadas.push(aplicada)
     ajusteCentavos += centavos
     ajustes.push({ pedidoId, centavos, dias: anteriores })
     // La nota es documental: no equivale al ajuste, sobre todo si hubo

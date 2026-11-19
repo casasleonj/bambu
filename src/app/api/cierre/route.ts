@@ -153,13 +153,18 @@ export async function GET(request: NextRequest) {
         correccionesPosteriores: await leerCorreccionesPosterioresAlCierre(prisma, { fecha: startOfDay, createdAt: cierreExistente.createdAt }),
       }
       const regularizacionVentas = (await leerRegularizaciones(prisma, [cierreExistente])).get(cierreExistente.id) ?? null
+      // No amplía la brecha de lectura preexistente a referencias documentales nuevas.
+      if (regularizacionVentas) {
+        const permiso = await requireRole(['ADMIN','ASISTENTE','CONTADOR'], authResult)
+        if (permiso instanceof Response) return permiso
+      }
       return apiSuccess({
         status: 'CERRADO',
         embarquesPendientes: [],
         cierre: {
           ...reporte,
           regularizacionVentas,
-          ventasTotalCertificado: regularizacionVentas ? regularizacionVentas.totalCertificado : Number(cierreExistente.totalVentas),
+          ...(regularizacionVentas ? { ventasTotalCertificado: regularizacionVentas.totalCertificado } : {}),
           numPedidos: cierreExistente.numPedidos,
           totalVentas: Number(cierreExistente.totalVentas),
           cobrado: Number(cierreExistente.cobrado), fiado: Number(cierreExistente.fiado),

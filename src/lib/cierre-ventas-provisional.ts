@@ -5,7 +5,7 @@ import { dayInBogota } from '@/lib/date-helpers'
 
 // Solo ajustes comerciales inciertos. No se difiere la lectura de cobros,
 // ni precios de entregas de hoy, ni un fallo de inventario.
-const motivos = z.enum(['REVERSA_AMBIGUA', 'CUMPLIMIENTO_NO_VERIFICADO', 'VENTA_PREVIA_SIN_DETALLE_DE_CIERRE', 'NOTA_SIN_REVERSA_IDENTIFICADA'])
+const motivos = z.enum(['REVERSA_AMBIGUA', 'CUMPLIMIENTO_NO_VERIFICADO', 'VENTA_PREVIA_SIN_DETALLE_DE_CIERRE', 'NOTA_SIN_REVERSA_IDENTIFICADA', 'REVERSA_YA_REGISTRADA'])
 const caso = z.object({ id: z.string().length(64), pedidoId: z.string().min(1), motivo: motivos, numero: z.number().int().nullable() })
 const snapshot = z.object({ version: z.literal(1), huella: z.string().length(64), subtotalCentavos: z.number().int(), casos: z.array(caso).min(1) })
 export type VentasProvisional = z.infer<typeof snapshot>
@@ -111,4 +111,37 @@ export async function listarProvisionales(db: Pick<Prisma.TransactionClient, 'ci
     const r = estados.get(c.id)
     return r?.pendientes ? [{ fecha: dayInBogota(c.fecha), pendientes: r.pendientes }] : []
   })
+}
+
+
+/** Una reversa terminal se contabiliza una sola vez por pedido. Se busca
+ * tanto en cierres originales como en suplementos vigentes de otros días.
+ * No deducir de una nota ni sumar ajustes ya consolidados. */
+export async function pedidosConReversaRegistrada(
+  db: Pick<Prisma.TransactionClient, 'cierreDia' | 'historial'>, fecha: Date, ids: readonly string[],
+) {
+  const resultado = new Set<string>()
+  if (!ids.length) return resultado
+  const unicos = [...new Set(ids)]
+  const cierres = await db.cierreDia.findMany({
+    where: { fecha: { not: fecha }, OR: unicos.flatMap(pedidoId => [
+      { reporte: { path: ['ajustesVentasDetalle'], array_contains: [{ pedidoId }] } },
+      { reporte: { path: ['ventasProvisional', 'casos'], array_contains: [{ pedidoId }] } },
+    ]) },
+    select: { id: true, fecha: true, totalVentas: true, reporte: true },
+  })
+  const buscados = new Set(unicos)
+  for (const c of cierres) {
+    const r = c.reporte as { ajustesVentasDetalle?: { pedidoId: string; centavos: number }[] } | null
+    for (const a of r?.ajustesVentasDetalle ?? []) if (buscados.has(a.pedidoId) && a.centavos > 0) resultado.add(a.pedidoId)
+  }
+  const suplementos = await leerRegularizaciones(db, cierres)
+  for (const s of suplementos.values()) for (const c of s.casos)
+    if (buscados.has(c.pedidoId) && c.revision?.operacion === 'RESOLVER' && c.revision.centavos > 0) resultado.add(c.pedidoId)
+  return resultado
+}
+
+export function estadoVentasCierre<T extends { totalVentas: unknown }>(c: T, r?: RegularizacionVentas) {
+  return r ? { ...c, ventasEstadoActual: r.estado, ventasTotalCertificado: r.totalCertificado,
+    ventasSubtotalIdentificado: r.subtotalIdentificado } : c
 }

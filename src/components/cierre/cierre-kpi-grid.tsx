@@ -73,7 +73,7 @@ export function CierreDetalleVentas({ data, onConciliar }: { data: CierreData | 
   if (!data) return null
   const entrega = data.ventasCriterio === 'ENTREGA_V1'
   const pendientes = data.regularizacionVentas ? [] : data.ventasPorConciliar ?? []
-  const motivos: Record<string, string> = { REVERSA_AMBIGUA: 'Fecha o evidencia de anulación sin verificar', CUMPLIMIENTO_NO_VERIFICADO: 'Entregas sin evidencia completa', VENTA_PREVIA_SIN_DETALLE_DE_CIERRE: 'Cierre anterior sin detalle de la venta', NOTA_SIN_REVERSA_IDENTIFICADA: 'Nota sin origen comercial identificado', PRECIO_ENTREGA_NO_VERIFICADO: 'Precio de entrega sin verificar' }
+  const motivos: Record<string, string> = { REVERSA_YA_REGISTRADA: 'Ajuste del pedido registrado en otro cierre', REVERSA_AMBIGUA: 'Fecha o evidencia de anulación sin verificar', CUMPLIMIENTO_NO_VERIFICADO: 'Entregas sin evidencia completa', VENTA_PREVIA_SIN_DETALLE_DE_CIERRE: 'Cierre anterior sin detalle de la venta', NOTA_SIN_REVERSA_IDENTIFICADA: 'Nota sin origen comercial identificado', PRECIO_ENTREGA_NO_VERIFICADO: 'Precio de entrega sin verificar' }
   const hayExtras = (data.ventasPorOrigen?.length ?? 0) > 0 || data.facturasEmitidas > 0 || (data.embarques?.length ?? 0) > 0
     || !!(data.pedidosCanceladosCount || data.pedidosNoEntregadosCount || data.pedidosAnuladosCount)
     || data.clientesNuevos > 0 || data.descuentosRepartidorCount > 0
