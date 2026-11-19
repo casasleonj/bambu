@@ -100,6 +100,7 @@ describe("#836 F3 — consulta agrupada por barrio (Postgres real)", () => {
     const sin = base.grupos!.find(g => g.etiqueta === "Sin barrio")!;
     const total = base.total;
     const ordenManual = encodeURIComponent(villa.clave);
+    expect(leerFiltrosConsulta(new URLSearchParams(`recorrido=${ordenManual}`)).recorrido).toEqual([villa.clave]);
     const primera = await q(`pageSize=25&page=1&recorrido=${ordenManual}`);
     expect(primera.grupos![0].clave).toBe(villa.clave);
     expect(primera.pedidos[0].grupoBarrio!.clave).toBe(villa.clave);
