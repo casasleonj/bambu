@@ -126,14 +126,22 @@ async function getJobs(api,run) {
 }
 async function main() {
   const e=process.env, repo=e.GITHUB_REPOSITORY
-  if(e.GITHUB_EVENT_NAME!=='workflow_run'||e.GITHUB_REF!=='refs/heads/main') throw Error('Only trusted reporter event on main')
-  const payload=JSON.parse(readFileSync(e.GITHUB_EVENT_PATH,'utf8'))
-  const claim=payload.workflow_run
-  if(payload.action!=='completed'||!trusted(claim,repo)) throw Error('Untrusted workflow event')
-  const api=client(repo,e.GH_TOKEN)
-  const run=await api.get('/actions/runs/'+claim.id+'/attempts/'+claim.run_attempt)
-  if(!trusted(run,repo)||!sameAttempt(claim,run)) throw Error('Workflow identity mismatch')
-  const mode=process.argv[2]
+  if(e.GITHUB_REF!=='refs/heads/main') throw Error('Only reporter event on main')
+  const api=client(repo,e.GH_TOKEN),mode=process.argv[2]
+  let run
+  if(e.GITHUB_EVENT_NAME==='workflow_run'){
+    const payload=JSON.parse(readFileSync(e.GITHUB_EVENT_PATH,'utf8'))
+    const claim=payload.workflow_run
+    if(payload.action!=='completed'||!trusted(claim,repo)) throw Error('Untrusted workflow event')
+    run=await api.get('/actions/runs/'+claim.id+'/attempts/'+claim.run_attempt)
+    if(!trusted(run,repo)||!sameAttempt(claim,run)) throw Error('Workflow identity mismatch')
+  }else if(e.GITHUB_EVENT_NAME==='workflow_dispatch'&&mode==='incident'){
+    if(!/^[1-9][0-9]*$/.test(e.REPORT_RUN_ID??'')||!/^[1-9][0-9]*$/.test(e.REPORT_RUN_ATTEMPT??'')) throw Error('Invalid replay IDs')
+    const id=Number(e.REPORT_RUN_ID),attempt=Number(e.REPORT_RUN_ATTEMPT)
+    if(!validId(id)||!validId(attempt)) throw Error('Invalid replay IDs')
+    run=await api.get('/actions/runs/'+id+'/attempts/'+attempt)
+    if(!trusted(run,repo)||run.id!==id||run.run_attempt!==attempt) throw Error('Invalid replay source')
+  }else throw Error('Untrusted reporter trigger')
   let result
   if(mode==='incident'){
     if(success(run)) throw Error('Successful run is not an incident')
