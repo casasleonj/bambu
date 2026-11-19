@@ -1,5 +1,6 @@
 'use client'
 
+import { rotulosCompromiso } from '@/lib/pedidos-compromiso-rotulos'
 import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -1991,7 +1992,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
                   ? 'Pedidos atrasados sin asignar'
                   : enRiesgoParam
                     ? 'Pedidos en riesgo'
-                    : getTituloFecha(desdeUrl, hastaUrl, allFromUrl)}
+                    : (hubMode && activeTab === 'hoy' ? rotulosCompromiso(shallowParams.get('foco'))?.titulo : undefined) ?? getTituloFecha(desdeUrl, hastaUrl, allFromUrl)}
           </h1>
           {hubMode && activeTab==='hoy' && !atrasadosParam && !enRiesgoParam && <Link href="/recurrentes" className="inline-flex min-h-11 items-center rounded-lg border border-stone-200 bg-white px-3 text-sm font-semibold text-slate-700">↻ Habituales</Link>}
         </div>

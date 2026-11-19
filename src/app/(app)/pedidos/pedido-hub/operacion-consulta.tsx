@@ -36,6 +36,8 @@ export interface AccionesConsulta {
   onGrupoBarrio?: (clave: string | null) => void;
   /** #836 F2b: «Para hoy» agrupa por tiempo restante (Ya toca / Normales / Más tarde hoy). */
   franjas?: boolean;
+  /** #851: mensaje de la vista por fecha prometida cuando no hay pedidos. */
+  vacioCompromiso?: { vacioTitulo: string; vacioDescripcion: string };
 }
 function interceptar(e: MouseEvent<HTMLAnchorElement>, abrir: () => void) {
   e.stopPropagation();
