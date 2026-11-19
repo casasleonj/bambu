@@ -219,7 +219,7 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
   const onReceived = useCallback((preview: PreviewPedidoResult, revision: number) => dispatch({ type: 'PREVIEW_RECEIVED', preview, revision }), [])
   const onError = useCallback((kind: WorkspaceErrorKind, message: string, revision: number) => dispatch({ type: 'PREVIEW_ERROR', kind, message, revision }), [])
 
-  usePreview(state.draft, { onPending, onReceived, onError }, { pedidoId: pedidoInicial?.id, borradorId: modoEdicion ? undefined : claveBorrador, revision: state.previewRevision })
+  usePreview(state.draft, { onPending, onReceived, onError }, { pedidoId: pedidoInicial?.id, borradorId: modoEdicion ? undefined : claveBorrador, revision: state.previewRevision, enabled: !state.sinConexion || (state.phase !== 'COMMITTING' && state.phase !== 'COMMITTED') })
 
   // #408: aviso (no bloqueo) de venta repetida. Se confirma por venta señalada; si cambia el aviso, hay que volver a marcar.
   const ventaRepetida = !modoEdicion ? state.preview?.ventaRepetida : undefined

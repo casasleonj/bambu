@@ -17,12 +17,12 @@ export interface UsePreviewCallbacks {
  * al reducer para descartar respuestas previas al próximo effect.
  * El commit conserva su propia validación.
  */
-export function usePreview(draft: DraftPedido, cb: UsePreviewCallbacks, opts?: { pedidoId?: string; borradorId?: string; revision?: number }): void {
+export function usePreview(draft: DraftPedido, cb: UsePreviewCallbacks, opts?: { pedidoId?: string; borradorId?: string; revision?: number; enabled?: boolean }): void {
   const cbRef = useRef(cb)
   useEffect(() => { cbRef.current = cb }, [cb])
   const key = previewRequestKey(draft, opts?.pedidoId, opts?.borradorId)
   const revision = opts?.revision ?? 0
-  const previewable = isPreviewable(draft)
+  const previewable = opts?.enabled !== false && isPreviewable(draft)
 
   useEffect(() => {
     if (!previewable) return

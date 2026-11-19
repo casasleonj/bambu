@@ -120,6 +120,8 @@ export interface WorkspaceState {
    * B-20 (#347): el último preview falló por RED (no por una respuesta del
    * servidor). Permite guardar el borrador de un pedido NUEVO sin conexión
    * (se encola con su clave de borrador); el servidor valida todo al sincronizar.
+   * Se conserva al editar solo los pagos de ese mismo pedido; una respuesta
+   * vigente del servidor o un cambio de los demás datos lo invalida.
    */
   sinConexion: boolean
   error: { kind: WorkspaceErrorKind; message: string } | null

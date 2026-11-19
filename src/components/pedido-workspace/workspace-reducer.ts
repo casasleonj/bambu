@@ -70,8 +70,13 @@ function afterDraftChange(state: WorkspaceState, draft: DraftPedido): WorkspaceS
   if (!draft.clienteId && !draft.clienteNuevo) phase = 'EMPTY'
   else if (hasItems(draft)) phase = 'DRAFTING'
   else phase = 'CONTEXT_READY'
+  // #347: corregir/registrar el pago de una venta ya offline no corta el flujo.
+  // Solo conserva el fallo de transporte YA aceptado y para el mismo pedido
+  // (excepto pagos); cambiar comprador, destino o cantidades exige comprobar de nuevo.
+  const conservaOffline = state.sinConexion && !state.previewPedidoId && phase === 'DRAFTING' &&
+    previewRequestKey({ ...state.draft, pagos: [] }) === previewRequestKey({ ...draft, pagos: [] })
   // un cambio en el draft invalida también el motivo de revisión capturado.
-  return { ...state, phase, draft, previewRevision: state.previewRevision + 1, preview: null, previewPending: false, sinConexion: false, reviewMotivo: '', error: null }
+  return { ...state, phase, draft, previewRevision: state.previewRevision + 1, preview: null, previewPending: false, sinConexion: conservaOffline, reviewMotivo: '', error: null }
 }
 
 function acceptsPreview(state: WorkspaceState, revision: number): boolean {
@@ -214,7 +219,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
           state.draft.pagos[0].monto === total
         if (!sincronizado && total > 0) {
           return {
-            ...afterDraftChange(state, { ...state.draft, pagos: [{ metodo: metodoCompleto, monto: total }] }),
+            ...afterDraftChange({ ...state, sinConexion: false }, { ...state.draft, pagos: [{ metodo: metodoCompleto, monto: total }] }),
             previewPending: false,
           }
         }
@@ -248,7 +253,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return { ...state, phase: hasItems(state.draft) ? 'DRAFTING' : 'CONTEXT_READY', reviewMotivo: '' }
     case 'COMMIT_START':
       if (state.phase !== 'PREVIEW_READY' && state.phase !== 'AUTHORIZATION_REQUIRED' && !(state.sinConexion && state.phase === 'DRAFTING')) return state
-      return { ...state, phase: 'COMMITTING', error: null }
+      return { ...state, phase: 'COMMITTING', previewPending: false, error: null }
     case 'COMMIT_SUCCESS':
       return { ...state, phase: 'COMMITTED' }
     case 'COMMIT_CONFLICT':
@@ -268,8 +273,8 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
 export function canCommit(state: WorkspaceState, accion: 'crear' | 'actualizar' = 'crear'): boolean {
   // B-20: sin red no hay preview. Solo se puede GUARDAR un pedido nuevo (la
   // edición es un PUT que no se encola) y el servidor valida al sincronizar.
+  if (state.sinConexion && !state.previewPedidoId && accion === 'crear' && state.phase === 'DRAFTING' && isPreviewable(state.draft)) return true
   if (state.previewPending) return false
-  if (state.sinConexion && accion === 'crear' && state.phase === 'DRAFTING') return true
   if (state.phase !== 'PREVIEW_READY') return false
   return state.preview?.allowedActions.includes(accion) ?? false
 }
