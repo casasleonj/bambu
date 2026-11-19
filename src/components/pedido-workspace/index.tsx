@@ -196,7 +196,7 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
         // es una elección explícita y exige dirección (P1-2).
         ? { ...EMPTY_DRAFT, origen: 'VENTA_RAPIDA' as const, canal: ventaEnRuta ? 'DOMICILIO' as const : 'PUNTO' as const, clienteId: 'CONSUMIDOR_FINAL', entregado: true, ...(ventaEnRuta ? { ventaEnRuta: true } : {}), ...initialDraft }
         : { ...EMPTY_DRAFT, origen: 'PEDIDO' as const, ...initialDraft },
-    initWorkspace,
+    (draft) => initWorkspace(draft, pedidoInicial?.id),
   )
 
   const [searchTerm, setSearchTerm] = useState('')
@@ -215,11 +215,11 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
   // «Recibido en efectivo» (ayuda de caja, #828): se eleva para el aviso de cobro; NO se envía ni se guarda.
   const [recibidoEfectivo, setRecibidoEfectivo] = useState('')
 
-  const onPending = useCallback(() => dispatch({ type: 'PREVIEW_PENDING' }), [])
-  const onReceived = useCallback((preview: PreviewPedidoResult) => dispatch({ type: 'PREVIEW_RECEIVED', preview }), [])
-  const onError = useCallback((kind: WorkspaceErrorKind, message: string) => dispatch({ type: 'PREVIEW_ERROR', kind, message }), [])
+  const onPending = useCallback((revision: number) => dispatch({ type: 'PREVIEW_PENDING', revision }), [])
+  const onReceived = useCallback((preview: PreviewPedidoResult, revision: number) => dispatch({ type: 'PREVIEW_RECEIVED', preview, revision }), [])
+  const onError = useCallback((kind: WorkspaceErrorKind, message: string, revision: number) => dispatch({ type: 'PREVIEW_ERROR', kind, message, revision }), [])
 
-  usePreview(state.draft, { onPending, onReceived, onError }, { pedidoId: pedidoInicial?.id, borradorId: modoEdicion ? undefined : claveBorrador })
+  usePreview(state.draft, { onPending, onReceived, onError }, { pedidoId: pedidoInicial?.id, borradorId: modoEdicion ? undefined : claveBorrador, revision: state.previewRevision, enabled: !state.sinConexion || (state.phase !== 'COMMITTING' && state.phase !== 'COMMITTED') })
 
   // #408: aviso (no bloqueo) de venta repetida. Se confirma por venta señalada; si cambia el aviso, hay que volver a marcar.
   const ventaRepetida = !modoEdicion ? state.preview?.ventaRepetida : undefined
