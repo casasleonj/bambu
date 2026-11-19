@@ -136,7 +136,7 @@ describe("GrupoBarrioEncabezado", () => {
 });
 
 describe("filtro «Agrupar por barrio»", () => {
-  const f0 = leerFiltrosConsulta(new URLSearchParams(), "2026-11-09");
+  const f0 = leerFiltrosConsulta(new URLSearchParams("agrupar="), "2026-11-09");
   it("alterna, y al desactivar también quita el barrio elegido", () => {
     const on = alternarAgrupar(f0);
     expect(on.agrupar).toBe("barrio");
