@@ -140,10 +140,10 @@ jobs:
       - name: Classify diff (declarative vs. requires E2E)
         id: classify
         run: |
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
+          if [ "${{ inputs.nightly_full }}" = "true" ] || [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "e2e_required=true" >> "$GITHUB_OUTPUT"
             echo "skill_declarativa=false" >> "$GITHUB_OUTPUT"
-            echo "No es un pull_request (evento: ${{ github.event_name }}) — el E2E completo siempre corre."
+            echo "Regresión full o evento no PR: el E2E completo siempre corre."
             exit 0
           fi
 
@@ -815,7 +815,7 @@ jobs:
       # y no autoriza omisiones. Se verifica el estado real de jobs por API.
       - name: Record candidate identity (shadow only)
         id: candidate-marker
-        if: success() && github.event_name == 'pull_request' && needs.detect-changes.outputs.e2e_required == 'true' && needs.e2e.result == 'success' && needs.e2e-hub.result == 'success' && needs.integration.result == 'success'
+        if: success() && !inputs.nightly_full && github.event_name == 'pull_request' && needs.detect-changes.outputs.e2e_required == 'true' && needs.e2e.result == 'success' && needs.e2e-hub.result == 'success' && needs.integration.result == 'success'
         continue-on-error: true
         run: |
           printf '{"sha":"%s","run":%s,"attempt":%s,"event":"pull_request","canSkipRelease":false}\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > "$RUNNER_TEMP/ci-candidate.json"
