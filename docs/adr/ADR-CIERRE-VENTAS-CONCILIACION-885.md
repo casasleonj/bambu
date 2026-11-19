@@ -1,0 +1,9 @@
+# #885 — Conciliación de ventas históricas (propuesta técnica en borrador)
+
+El importe entregado vigente del día y la reversa de ventas ya reconocidas son magnitudes distintas de cobros y notas crédito.
+
+- Si un cierre anterior con proyección ENTREGA_V1 íntegra y posterior a la anulación no contiene esa venta, no se resta una venta que nunca figuró en ese cierre. No modifica el histórico ni pretende reconstruir el informe a una fecha pasada.
+- Cuando se conoce el hecho terminal y los días de entrega, pero falta el importe reconocido de uno o varios días, solo ADMIN registra una declaración por día respaldada por referencia documental. Cero exige evidencia de no reconocimiento. El servicio no verifica físicamente un documento externo: conserva la declaración y su referencia, nunca presenta el monto como inferencia automática ni usa el importe de la nota crédito. Se exige que la evidencia de entrega, reversa, notas y cierres previos no haya cambiado.
+- La revisión es append-only en Historial (entidad exclusiva ConciliacionVentaCierre, ID/version por día de ajuste y pedido). Puede revocarse antes del cierre; cierre y reconciliación comparten lock y transacción serializable. El snapshot conserva la revisión aplicada. No se alteran pedidos, cobros, caja, inventario ni cierres guardados.
+- Si faltan hechos físicos/fecha de reversa o no existe evidencia documental recuperable, no se inventa un importe ni se autoriza un bypass. Este caso precisa reconstrucción verificable o decisión explícita del PO sobre cierre provisional y posterior regularización. La regla #306 de no saltar días con movimiento sigue vigente.
+- Pendientes antes de merge: validar uso de Historial como registro de decisión comercial (retención, permisos, reconstrucción), seguridad, pruebas unitarias/integración/E2E y revisión visual. La ausencia de venta en un cierre tardío debe distinguirse de una reconstrucción histórica a fecha de entrega; no reescribir snapshots.

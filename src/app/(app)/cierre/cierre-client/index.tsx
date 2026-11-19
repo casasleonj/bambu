@@ -672,7 +672,10 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         </div>
         <CierreKpiGrid data={data} />
         <CierreDesgloseCobros data={data} />
-        <CierreDetalleVentas data={data} />
+        <CierreDetalleVentas data={data} onConciliar={userRole === 'ADMIN' ? () => {
+          const signal = abortControllerRef.current?.signal
+          if (signal && !signal.aborted) void fetchCierre(fecha, signal)
+        } : undefined} />
       </CierreSection>
 
       {/* Section 2: Inventario */}

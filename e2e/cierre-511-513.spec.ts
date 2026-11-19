@@ -139,6 +139,40 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     expect(await prisma.cierreDia.count()).toBe(0)
   })
 
+  test('#885: administrador concilia y retira una venta histórica sin alterar el cierre anterior', async ({ page }, testInfo) => {
+    await preparar()
+    const anterior = '2001-01-06'
+    const terminal = await prisma.pedido.findFirstOrThrow({ where: { estadoEntrega: 'ANULADO', fecha: instante } })
+    const diaAnterior = new Date(`${anterior}T12:00:00-05:00`)
+    await prisma.pedido.update({ where: { id: terminal.id }, data: { fecha: diaAnterior, entregadoAt: diaAnterior } })
+    const entrega = await prisma.historial.findFirstOrThrow({ where: { registroId: terminal.id, datos: { contains: 'consultaEntrega' } } })
+    const datos = JSON.parse(entrega.datos)
+    datos.consultaEntrega.fecha = diaAnterior.toISOString()
+    await prisma.historial.update({ where: { id: entrega.id }, data: { fecha: diaAnterior, datos: JSON.stringify(datos) } })
+    const previo = await prisma.cierreDia.create({ data: {
+      fecha: new Date(`${anterior}T00:00:00-05:00`), horaCierre: new Date(`${anterior}T22:00:00-05:00`),
+      totalVentas: 5000, reporte: { totalVentas: 5000 },
+    } })
+    await loginAs(page, 'admin')
+    await goto(page, `/cierre?fecha=${fecha}`)
+    await page.getByText('Conciliar venta anterior', { exact: true }).click()
+    await page.getByLabel(`Valor reconocido (${anterior})`, { exact: true }).fill('5000')
+    await page.getByLabel(`Referencia documental (${anterior})`, { exact: true }).fill('Reporte original del día 06, fila de venta 2')
+    const boton = page.getByRole('button', { name: 'Registrar conciliación', exact: true })
+    await expect(boton).toBeDisabled()
+    await page.getByLabel('Verifiqué los importes y sus referencias documentales.').check()
+    await capturar(page, testInfo, 'conciliacion-ventas-formulario')
+    await boton.click()
+    await expect(page.getByTestId('cierre-kpi-ventas')).toContainText('15.000')
+    await expect(page.getByTestId('cierre-ventas-por-conciliar')).toHaveCount(0)
+    await expect(page.getByTestId('cierre-conciliaciones-aplicadas')).toBeVisible()
+    await page.getByText('Retirar conciliación', { exact: true }).click()
+    await page.getByLabel('Confirmo que quiero volver a dejar pendiente esta revisión.').check()
+    await page.getByRole('button', { name: 'Retirar y dejar pendiente', exact: true }).click()
+    await expect(page.getByTestId('cierre-ventas-por-conciliar')).toBeVisible()
+    expect(await prisma.cierreDia.findUnique({ where: { id: previo.id } })).toEqual(previo)
+  })
+
   test('legado sin evidencia muestra referencias y bloquea solo la fecha afectada', async ({ page }, testInfo) => {
     await preparar(true)
     await loginAs(page, 'admin')

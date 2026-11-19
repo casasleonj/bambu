@@ -9,7 +9,7 @@ import { startOfDayInBogota } from '@/lib/date-helpers'
 const actor = { id: 'placeholder', role: 'ADMIN' }
 vi.mock('@/lib/auth-check', () => ({
   requireAuth: vi.fn(async () => ({ user: actor })),
-  requireRole: vi.fn(async () => ({ user: actor })),
+  requireRole: vi.fn(async (roles: string | string[]) => (Array.isArray(roles) ? roles : [roles]).includes(actor.role) ? ({ user: actor }) : new Response(null, { status: 403 })),
 }))
 vi.mock('next/cache', () => ({ unstable_cache: (fn: unknown) => fn, revalidateTag: vi.fn() }))
 vi.mock('@/lib/realtime', () => ({ publishRealtimeEvent: vi.fn(async () => {}) }))
@@ -17,6 +17,7 @@ vi.mock('@/lib/notifications/notify-event', () => ({ notifyEvent: vi.fn(async ()
 vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn(async () => {}) }))
 
 import { GET as preview, POST as cerrar } from '@/app/api/cierre/route'
+import { POST as conciliarVentas } from '@/app/api/cierre/conciliacion-ventas/route'
 import { POST as pagarFiado } from '@/app/api/pedidos/pagar-fiado/route'
 import { POST as abonar } from '@/app/api/abonos/route'
 import { verificarIntegridad } from '@/lib/integridad/verificar'
@@ -140,6 +141,55 @@ describe('auditoría adversarial del cierre #511 / #513', () => {
       monto: 3000, motivo: 'Prueba', fecha: mediodia(dia) } })
     expect(await leer(dia)).toMatchObject({ ajustesVentasAnteriores: 0, totalNotasCredito: 3000,
       ventasPorConciliar: [{ pedidoId: anulado.p.id, motivo: 'VENTA_PREVIA_SIN_DETALLE_DE_CIERRE' }] })
+  })
+
+  it('#885: concilia solo el importe histórico acreditado, revoca, impide duplicados y congela al cerrar', async () => {
+    const dia = '2026-03-25', anterior = '2026-03-24'
+    const vigente = await pedido(dia, 10000)
+    await evidenciaEntrega(vigente.p.id, [{ dia, cantidad: 4 }], 2500)
+    const anulado = await pedido(anterior, 0, { anulado: true })
+    await evidenciaEntrega(anulado.p.id, [{ dia: anterior, cantidad: 2 }], 2500)
+    await evidenciaAnulacion(anulado.p.id, dia, false)
+    const anteriorGuardado = await testPrisma.cierreDia.create({ data: {
+      fecha: startOfDayInBogota(anterior), horaCierre: new Date(`${anterior}T22:00:00-05:00`),
+      totalVentas: 7000, reporte: { totalVentas: 7000 },
+    } })
+    await registrarBaseDia(dia, 10000)
+    const c = (await leer(dia)).ventasPorConciliar[0].conciliacion
+    expect(c.dias).toEqual([anterior])
+    const body = { fecha: dia, pedidoId: anulado.p.id, huella: c.huella, revisionEsperada: c.revision,
+      operacion: 'RESOLVER', confirmoEvidencia: true, lineas: [{ dia: anterior, centavos: 500000, referencia: 'Reporte original #24, fila de venta 2' }] }
+    const post = (data: unknown) => conciliarVentas(request('/api/cierre/conciliacion-ventas', data))
+    actor.role = 'ASISTENTE'
+    try { expect((await post(body)).status).toBe(403) } finally { actor.role = 'ADMIN' }
+    expect((await post({ ...body, huella: 'a'.repeat(64) })).status).toBe(409)
+    expect((await post({ ...body, lineas: [] })).status).toBe(409)
+    expect((await post(body)).status).toBe(201)
+    expect((await post(body)).status).toBe(409)
+    let aplicado = await leer(dia)
+    expect(aplicado).toMatchObject({ totalVentas: 5000, ajustesVentasAnteriores: 5000, ventasPorConciliar: [] })
+    const v = aplicado.conciliacionesVentasAplicadas[0]
+    expect((await post({ ...body, operacion: 'REVOCAR', lineas: [], revisionEsperada: v.revision })).status).toBe(201)
+    const nuevo = (await leer(dia)).ventasPorConciliar[0].conciliacion
+    expect((await post({ ...body, huella: nuevo.huella, revisionEsperada: nuevo.revision })).status).toBe(201)
+    expect((await cerrar(request('/api/cierre', payload(dia)))).status).toBe(201)
+    aplicado = await leer(dia)
+    expect(aplicado.totalVentas).toBe(5000)
+    expect(aplicado.conciliacionesVentasAplicadas).toHaveLength(1)
+    expect((await post({ ...body, operacion: 'REVOCAR', lineas: [], revisionEsperada: aplicado.conciliacionesVentasAplicadas[0].revision })).status).toBe(409)
+    expect(await testPrisma.cierreDia.findUnique({ where: { id: anteriorGuardado.id } })).toEqual(anteriorGuardado)
+    expect(await testPrisma.historial.count({ where: { entidad: 'ConciliacionVentaCierre' } })).toBe(3)
+  })
+
+  it('#885: cierre tardío anterior sin la venta no provoca una segunda resta', async () => {
+    const dia = '2026-03-27', anterior = '2026-03-26'
+    const anulado = await pedido(anterior, 0, { anulado: true })
+    await evidenciaEntrega(anulado.p.id, [{ dia: anterior, cantidad: 2 }], 2500)
+    await evidenciaAnulacion(anulado.p.id, dia, false)
+    await testPrisma.cierreDia.create({ data: { fecha: startOfDayInBogota(anterior), horaCierre: new Date(`${dia}T18:00:00-05:00`),
+      totalVentas: 0, reporte: { ventasCriterio: 'ENTREGA_V1', ventasEntregadasDelDia: 0, ventasPorConciliar: [], ventasEntregaPorPedido: [] },
+    } })
+    expect(await leer(dia)).toMatchObject({ totalVentas: 0, ajustesVentasAnteriores: 0, ventasPorConciliar: [] })
   })
 
   it('#513: un abono independiente de igual importe a un Pago reciente también cuenta', async () => {

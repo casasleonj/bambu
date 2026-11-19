@@ -8,6 +8,7 @@ import { AyudaTermino } from '@/components/ui/ayuda-termino'
 import { Desplegable } from '@/components/ui/desplegable'
 import { formatCurrency } from '@/lib/utils'
 import type { CierreData } from '@/app/(app)/cierre/cierre-client/types'
+import { ResolverVentaHistorica, ConciliacionesVentasAplicadas } from './resolver-venta-historica'
 
 const ORIGEN_LABELS: Record<string, string> = {
   PEDIDO: 'Pedido',
@@ -67,7 +68,7 @@ export function CierreKpiGrid({ data }: { data: CierreData | null }) {
   )
 }
 
-export function CierreDetalleVentas({ data }: { data: CierreData | null }) {
+export function CierreDetalleVentas({ data, onConciliar }: { data: CierreData | null; onConciliar?: () => void }) {
   if (!data) return null
   const entrega = data.ventasCriterio === 'ENTREGA_V1'
   const pendientes = data.ventasPorConciliar ?? []
@@ -80,8 +81,9 @@ export function CierreDetalleVentas({ data }: { data: CierreData | null }) {
       {pendientes.length > 0 && <div role="status" data-testid="cierre-ventas-por-conciliar" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
         <p className="font-semibold">Ventas por conciliar</p>
         <p>El importe es parcial. No se puede cerrar hasta verificar las referencias con administración.</p>
-        <ul className="mt-2 space-y-1">{pendientes.map((p, i) => <li key={`${p.pedidoId}-${p.motivo}-${i}`}>{p.numero == null ? 'Pedido sin número' : `Pedido #${p.numero}`}: {motivos[p.motivo] ?? 'Evidencia pendiente'}</li>)}</ul>
+        <ul className="mt-2 space-y-1">{pendientes.map((p, i) => <li key={`${p.pedidoId}-${p.motivo}-${i}`}>{p.numero == null ? 'Pedido sin número' : `Pedido #${p.numero}`}: {motivos[p.motivo] ?? 'Evidencia pendiente'}{onConciliar && p.conciliacion && <ResolverVentaHistorica key={`${data.fecha}-${p.conciliacion.huella}-${p.conciliacion.revision}`} fecha={data.fecha} pendiente={p} onCambio={onConciliar} />}</li>)}</ul>
       </div>}
+      <ConciliacionesVentasAplicadas data={data} onCambio={onConciliar} />
       {entrega ? (
         <Desplegable testid="cierre-ventas-calculo" tono="violeta" icono="📊" titulo="De dónde salen las ventas del día" resumen={pendientes.length ? 'Por conciliar' : formatMoney(data.totalVentas)} ayuda="Las ventas se atribuyen al día en que se entregan. Los ajustes de ventas anteriores se separan de las notas de crédito documentales.">
           <dl className="divide-y divide-slate-100">
