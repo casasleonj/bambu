@@ -17,7 +17,7 @@ const ORIGEN_LABELS: Record<string, string> = {
 
 const formatMoney = formatCurrency
 
-export function CierreKpiGrid({ data }: { data: CierreData | null }) {
+export function CierreKpiGrid({ data, onReintentarFiado }: { data: CierreData | null; onReintentarFiado?: () => void }) {
   if (!data) return null
   const d = data.desgloseCobros
   const cobrado = data.cobroVentasHoy + data.cobroCartera
@@ -52,15 +52,71 @@ export function CierreKpiGrid({ data }: { data: CierreData | null }) {
           <p className="text-[11px] text-slate-500">Incluye cobros de pedidos de otros días.</p>
         )}
       </div>
-      <div data-testid="cierre-kpi-fiado" className="rounded-xl border border-amber-300 bg-amber-50 p-3 min-w-0">
-        <div className="flex items-center text-xs font-semibold text-slate-600">
-          Quedó fiado
-          <AyudaTermino texto={data.valorComercialPedidosDelDia === undefined ? 'Saldo conservado por este cierre histórico; puede incluir mercancía pendiente según su definición original.' : 'Saldo actual por cobrar de la mercancía entregada en pedidos de esta fecha. Incluye entregas parciales, sin cobrar lo que falta entregar. Un pago posterior se registra en la caja de su fecha de recepción.'} />
-        </div>
-        <div className="text-2xl font-extrabold tabular-nums text-amber-800">{formatMoney(totalFiado)}</div>
-        {(data.parcialesPorConciliar?.length ?? 0) > 0 && <p role="status" className="mt-1 text-xs font-semibold text-amber-900">Subtotal identificado. Hay {data.parcialesPorConciliar!.length} entregas por conciliar; no se supone deuda cero.</p>}
-        <p className="text-[11px] text-slate-500">{fiados ? `${fiados.length} pedido${fiados.length === 1 ? '' : 's'} de hoy con saldo.` : 'Saldo de los pedidos de esta fecha.'}</p>
+      <TarjetaFiado data={data} totalFiado={totalFiado} cantidadHoy={fiados?.length} onReintentar={onReintentarFiado} />
+    </div>
+  )
+}
+
+/** «15 nov»: el día de corte, en Bogotá. */
+const diaCorteLegible = (dia: string): string =>
+  new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${dia}T12:00:00Z`)).replace('.', '')
+
+/**
+ * #796 fase 2. Día en curso: igual que siempre (saldo actual). Día pasado SIN cierre guardado: «Fiado al corte» (no baja
+ * porque hoy se cobre) junto a «Pendiente hoy». Día con cierre guardado: su cifra guardada, sin recalcular, y lo pendiente hoy.
+ */
+function TarjetaFiado({ data, totalFiado, cantidadHoy, onReintentar }: { data: CierreData; totalFiado: number; cantidadHoy: number | undefined; onReintentar?: () => void }) {
+  const fa = data.fiadoAlCorte
+  const aCorte = fa?.estado === 'AL_CORTE'
+  const guardado = fa?.estado === 'GUARDADO'
+  const error = fa?.estado === 'ERROR'
+  const importe = aCorte ? (fa.total ?? 0) : totalFiado
+  const dudosos = aCorte ? (fa.aproximados ?? []) : []
+  const ayuda = aCorte
+    ? 'Lo que quedó sin pagar de la mercancía entregada en los pedidos de esta fecha, a las 12 de la noche de ese día. Un pago de hoy no lo baja: hoy se registra como cobro de cartera.'
+    : data.valorComercialPedidosDelDia === undefined
+      ? 'Saldo conservado por este cierre histórico; puede incluir mercancía pendiente según su definición original.'
+      : 'Saldo actual por cobrar de la mercancía entregada en pedidos de esta fecha. Incluye entregas parciales, sin cobrar lo que falta entregar. Un pago posterior se registra en la caja de su fecha de recepción.'
+  return (
+    <div data-testid="cierre-kpi-fiado" className="rounded-xl border border-amber-300 bg-amber-50 p-3 min-w-0">
+      <div className="flex flex-wrap items-center gap-1 text-xs font-semibold text-slate-600">
+        {aCorte ? 'Fiado al corte' : 'Quedó fiado'}
+        <AyudaTermino texto={ayuda} />
+        {aCorte && <span data-testid="fiado-chip-corte" className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">fin del {diaCorteLegible(fa.diaCorte)}</span>}
+        {guardado && <span data-testid="fiado-chip-guardado" className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-800">cierre guardado{data.horaCierre ? ` el ${new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' }).format(new Date(data.horaCierre)).replace('.', '')}` : ''}</span>}
+        {dudosos.length > 0 && <span data-testid="fiado-chip-aproximado" className="rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-800">aproximado</span>}
       </div>
+      {error ? (
+        <>
+          <div className="text-2xl font-extrabold tabular-nums text-amber-800">—</div>
+          <div role="alert" data-testid="fiado-error" className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+            No se pudo calcular el fiado de ese día. No se cambió nada.
+            {onReintentar && <button type="button" onClick={onReintentar} className="mt-2 block min-h-11 rounded-lg border border-red-700 bg-white px-3 text-sm font-semibold text-red-800 md:min-h-9">Reintentar</button>}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="text-2xl font-extrabold tabular-nums text-amber-800">{formatMoney(importe)}</div>
+          {(data.parcialesPorConciliar?.length ?? 0) > 0 && <p role="status" className="mt-1 text-xs font-semibold text-amber-900">Subtotal identificado. Hay {data.parcialesPorConciliar!.length} entregas por conciliar; no se supone deuda cero.</p>}
+          {aCorte || guardado ? (
+            <>
+              <p className="text-[11px] text-slate-500">{aCorte ? 'Lo que quedó sin pagar de lo entregado hasta ese día. No baja aunque hoy se cobre.' : 'Cifra guardada al cerrar. No se recalcula.'}</p>
+              {fa?.pendienteHoy !== undefined && (
+                <p data-testid="fiado-pendiente-hoy" className="mt-1 text-xs font-semibold text-slate-700">
+                  Pendiente hoy: {formatMoney(fa.pendienteHoy)} <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">en vivo</span>
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-[11px] text-slate-500">{cantidadHoy !== undefined ? `${cantidadHoy} pedido${cantidadHoy === 1 ? '' : 's'} de hoy con saldo.` : 'Saldo de los pedidos de esta fecha.'}</p>
+          )}
+          {dudosos.length > 0 && (
+            <p data-testid="fiado-aproximado" role="status" className="mt-2 rounded-lg border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
+              {dudosos.length} pedido{dudosos.length === 1 ? '' : 's'} sin dato completo ({dudosos.map(d => `#${d.numero}`).join(', ')}); se dejaron fuera en vez de inventar la cifra.
+            </p>
+          )}
+        </>
+      )}
     </div>
   )
 }

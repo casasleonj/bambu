@@ -1,5 +1,6 @@
 import type { DesgloseCobros, FiadoDelDia, GastoDelDia, PagoPorConfirmarDetalle } from '@/lib/cierre-desglose-cobros'
 import type { AbonoDelDia, CorreccionDelDia } from '@/lib/cobro-cartera'
+import type { FiadoAlCorteDelDia } from '@/lib/fiado-al-corte-dia'
 export interface VentaPorOrigen {
   origen: string
   total: number
@@ -78,6 +79,8 @@ export interface CierreData {
   /** #631: de dónde viene lo cobrado y a quién se fió (cierres anteriores no lo traen). */
   desgloseCobros?: DesgloseCobros
   fiadosDelDia?: FiadoDelDia[]
+  /** #796 fase 2: solo al consultar un día anterior a hoy. Fiado al corte (fin del día de Bogotá) y lo que sigue pendiente hoy. */
+  fiadoAlCorte?: FiadoAlCorteDelDia
   /** #646: cada gasto del día (descripción, categoría, hora, quién registró, importe). */
   gastosDelDia?: GastoDelDia[]
   /** #646: cuáles son los abonos (suman) y las correcciones (restan) de cobros del día. */

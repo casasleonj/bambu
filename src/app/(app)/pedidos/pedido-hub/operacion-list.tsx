@@ -6,6 +6,7 @@ import { deriveOperacion, origenLabel, embarqueLinea } from './derive-operacion'
 import type { AccionKey, DeriveContext, Pedido } from './types'
 import { OperacionConsulta,type AccionesConsulta } from './operacion-consulta'
 import { useState } from 'react'
+import Link from 'next/link'
 import { GrupoBarrioEncabezado } from './grupo-barrio-encabezado'
 import { useAhora } from '@/hooks/use-ahora'
 import { ordenarPorFranja, type Franja } from '@/lib/pedidos-franja'
@@ -201,6 +202,25 @@ function ListaPorFranja({
 export function OperacionList({
   pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen, consulta, arrastre,
 }: OperacionListProps) {
+  // #859: recorrido manual temporal de la vista, sin alterar FIFO del servidor.
+  const [modoRecorrido, setModoRecorrido] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('recorrido'))
+  const [barrioSeleccionado, setBarrioSeleccionado] = useState("")
+  const searchParams = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search)
+  const clavesGlobales = consulta?.grupos?.map(g => g.clave) ?? []
+  const clavesManuales = searchParams.getAll('recorrido')
+  const ordenRecorrido = [
+    ...clavesManuales.filter(clave => clavesGlobales.includes(clave)),
+    ...clavesGlobales.filter(clave => !clavesManuales.includes(clave)),
+  ]
+  const urlRecorrido = (orden: string[]) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('recorrido')
+    // Persist only explicit priorities: the server appends all other barrios in FIFO order.
+    for (const clave of orden.slice(0, 20)) params.append('recorrido', clave)
+    params.set('agrupar', 'barrio')
+    params.set('page', '1')
+    return '?' + params.toString()
+  }
   if (pedidos.length === 0) {
     return (
       <EmptyState
@@ -223,19 +243,64 @@ export function OperacionList({
       if (ultimo && g && ultimo.clave === g.clave) ultimo.filas.push(p)
       else bloques.push({ clave: g?.clave ?? 'sin-barrio', etiqueta: g?.etiqueta ?? 'Sin barrio', filas: [p] })
     }
+    const ordenEfectivo = ordenRecorrido
+    const bloquesVisibles = bloques
+    const priorizarUrl = (clave: string) => urlRecorrido([clave, ...clavesManuales.filter(k => k !== clave)])
+    const moverUrl = (clave: string, desplazamiento: number) => {
+      const actual = [...ordenEfectivo]
+      const indice = actual.indexOf(clave)
+      const destino = indice + desplazamiento
+      if (indice < 0 || destino < 0 || destino >= actual.length) return urlRecorrido(actual)
+      ;[actual[indice], actual[destino]] = [actual[destino], actual[indice]]
+      return urlRecorrido(actual.slice(0, destino + 1))
+    }
     return (
       <div data-testid="pedidos-agrupados-barrio">
-        {bloques.map((b, i) => {
+        <div className="my-2 flex flex-wrap items-center gap-2 text-xs">
+          <Link href={urlRecorrido([])} aria-label="Volver al orden FIFO"
+            className={`rounded-md border px-3 py-1.5 ${!modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>FIFO</Link>
+          <button type="button" aria-pressed={modoRecorrido} onClick={() => setModoRecorrido(true)}
+            className={`rounded-md border px-3 py-1.5 ${modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>Recorrido</button>
+          {modoRecorrido && (
+            <>
+              <label htmlFor="recorrido-barrio" className="font-medium text-stone-700">Priorizar barrio</label>
+              <select id="recorrido-barrio" data-testid="recorrido-barrio-select"
+                value={barrioSeleccionado} onChange={e => setBarrioSeleccionado(e.target.value)}
+                className="max-w-full rounded-md border border-stone-400 bg-white px-2 py-1.5">
+                <option value="">Selecciona cualquier barrio</option>
+                {(consulta.grupos ?? []).map(g => (
+                  <option key={g.clave} value={g.clave}>{g.etiqueta} ({g.total} pedidos)</option>
+                ))}
+              </select>
+              {barrioSeleccionado && ordenEfectivo.includes(barrioSeleccionado) ? (
+                <Link href={priorizarUrl(barrioSeleccionado)} data-testid="recorrido-priorizar"
+                  className="rounded-md bg-stone-800 px-3 py-1.5 text-white">Llevar al primero</Link>
+              ) : (
+                <span aria-disabled="true" className="rounded-md bg-stone-400 px-3 py-1.5 text-white">Llevar al primero</span>
+              )}
+              <span className="text-stone-500">Orden global temporal, sin guardar preferencias.</span>
+            </>
+          )}
+        </div>
+        {bloquesVisibles.map((b, i) => {
           const total = consulta.grupos?.find((g) => g.clave === b.clave)?.total ?? b.filas.length
           return (
             <section key={`${b.clave}-${i}`} aria-label={`Barrio ${b.etiqueta}`}>
               <GrupoBarrioEncabezado
-                grupo={{ clave: b.clave, etiqueta: b.etiqueta, total }}
+                grupo={consulta.grupos?.find((g) => g.clave === b.clave) ?? { clave: b.clave, etiqueta: b.etiqueta, total }}
                 enPagina={b.filas.length}
                 soloEste={consulta.grupoActivo === b.clave}
                 onSoloEste={consulta.onGrupoBarrio ? () => consulta.onGrupoBarrio!(b.clave) : undefined}
                 onTodos={consulta.onGrupoBarrio ? () => consulta.onGrupoBarrio!(null) : undefined}
               />
+              {modoRecorrido && (
+                <div className="mb-1 flex gap-2">
+                  <Link href={moverUrl(b.clave, -1)} aria-label={`Subir ${b.etiqueta}`} aria-disabled={ordenEfectivo.indexOf(b.clave) === 0}
+                    className={`rounded border px-2 py-1 text-xs ${ordenEfectivo.indexOf(b.clave) === 0 ? 'pointer-events-none opacity-40' : ''}`}>↑ Subir</Link>
+                  <Link href={moverUrl(b.clave, 1)} aria-label={`Bajar ${b.etiqueta}`} aria-disabled={ordenEfectivo.indexOf(b.clave) === ordenEfectivo.length - 1}
+                    className={`rounded border px-2 py-1 text-xs ${ordenEfectivo.indexOf(b.clave) === ordenEfectivo.length - 1 ? 'pointer-events-none opacity-40' : ''}`}>↓ Bajar</Link>
+                </div>
+              )}
               <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre}/>
             </section>
           )

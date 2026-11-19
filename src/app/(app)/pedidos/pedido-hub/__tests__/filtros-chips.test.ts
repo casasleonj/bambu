@@ -14,7 +14,7 @@ import {
   type RepartidorOpcion,
 } from "../filtros-chips";
 
-const base = leerFiltrosConsulta(new URLSearchParams(), "2026-11-09");
+const base = leerFiltrosConsulta(new URLSearchParams("agrupar="), "2026-11-09");
 const reps: RepartidorOpcion[] = [
   { id: "1", nombre: "Carlos", activo: true, usaMoto: true },
   { id: "2", nombre: "Luis", activo: true, usaMoto: false },
