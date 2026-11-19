@@ -6,6 +6,7 @@ import { deriveOperacion, origenLabel, embarqueLinea } from './derive-operacion'
 import type { AccionKey, DeriveContext, Pedido } from './types'
 import { OperacionConsulta,type AccionesConsulta } from './operacion-consulta'
 import { useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { GrupoBarrioEncabezado } from './grupo-barrio-encabezado'
 import { useAhora } from '@/hooks/use-ahora'
 import { ordenarPorFranja, type Franja } from '@/lib/pedidos-franja'
@@ -203,7 +204,22 @@ export function OperacionList({
 }: OperacionListProps) {
   // #859: recorrido manual temporal de la vista, sin alterar FIFO del servidor.
   const [modoRecorrido, setModoRecorrido] = useState(false)
-  const [ordenRecorrido, setOrdenRecorrido] = useState<string[]>([])
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const clavesGlobales = consulta?.grupos?.map(g => g.clave) ?? []
+  const clavesManuales = searchParams.getAll('recorrido')
+  const ordenRecorrido = [
+    ...clavesManuales.filter(clave => clavesGlobales.includes(clave)),
+    ...clavesGlobales.filter(clave => !clavesManuales.includes(clave)),
+  ]
+  const actualizarRecorrido = (orden: string[]) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('recorrido')
+    for (const clave of orden) params.append('recorrido', clave)
+    params.set('agrupar', 'barrio')
+    params.set('page', '1')
+    router.replace('?' + params.toString(), { scroll: false })
+  }
   if (pedidos.length === 0) {
     return (
       <EmptyState
@@ -226,30 +242,24 @@ export function OperacionList({
       if (ultimo && g && ultimo.clave === g.clave) ultimo.filas.push(p)
       else bloques.push({ clave: g?.clave ?? 'sin-barrio', etiqueta: g?.etiqueta ?? 'Sin barrio', filas: [p] })
     }
-    const clavesDisponibles = [...new Set(bloques.map(b => b.clave))]
-    const ordenEfectivo = [
-      ...ordenRecorrido.filter(clave => clavesDisponibles.includes(clave)),
-      ...clavesDisponibles.filter(clave => !ordenRecorrido.includes(clave)),
-    ]
-    const bloquesVisibles = modoRecorrido
-      ? [...bloques].sort((a, b) => ordenEfectivo.indexOf(a.clave) - ordenEfectivo.indexOf(b.clave))
-      : bloques
+    const ordenEfectivo = ordenRecorrido
+    const bloquesVisibles = bloques
     const mover = (clave: string, desplazamiento: number) => {
       const actual = [...ordenEfectivo]
       const indice = actual.indexOf(clave)
       const destino = indice + desplazamiento
       if (indice < 0 || destino < 0 || destino >= actual.length) return
       ;[actual[indice], actual[destino]] = [actual[destino], actual[indice]]
-      setOrdenRecorrido(actual)
+      actualizarRecorrido(actual)
     }
     return (
       <div data-testid="pedidos-agrupados-barrio">
         <div className="my-2 flex flex-wrap items-center gap-2 text-xs">
-          <button type="button" aria-pressed={!modoRecorrido} onClick={() => setModoRecorrido(false)}
+          <button type="button" aria-pressed={!modoRecorrido} onClick={() => { setModoRecorrido(false); actualizarRecorrido([]) }}
             className={`rounded-md border px-3 py-1.5 ${!modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>FIFO</button>
           <button type="button" aria-pressed={modoRecorrido} onClick={() => setModoRecorrido(true)}
             className={`rounded-md border px-3 py-1.5 ${modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>Recorrido</button>
-          {modoRecorrido && <span className="text-stone-500">Orden temporal de esta pantalla, no se guarda.</span>}
+          {modoRecorrido && <span className="text-stone-500">Orden global temporal, sin guardar preferencias.</span>}
         </div>
         {bloquesVisibles.map((b, i) => {
           const total = consulta.grupos?.find((g) => g.clave === b.clave)?.total ?? b.filas.length
@@ -264,9 +274,9 @@ export function OperacionList({
               />
               {modoRecorrido && (
                 <div className="mb-1 flex gap-2">
-                  <button type="button" aria-label={`Subir ${b.etiqueta}`} disabled={i === 0}
+                  <button type="button" aria-label={`Subir ${b.etiqueta}`} disabled={ordenEfectivo.indexOf(b.clave) === 0}
                     onClick={() => mover(b.clave, -1)} className="rounded border px-2 py-1 text-xs disabled:opacity-40">↑ Subir</button>
-                  <button type="button" aria-label={`Bajar ${b.etiqueta}`} disabled={i === bloquesVisibles.length - 1}
+                  <button type="button" aria-label={`Bajar ${b.etiqueta}`} disabled={ordenEfectivo.indexOf(b.clave) === ordenEfectivo.length - 1}
                     onClick={() => mover(b.clave, 1)} className="rounded border px-2 py-1 text-xs disabled:opacity-40">↓ Bajar</button>
                 </div>
               )}
