@@ -483,7 +483,7 @@ export class CrearPedidoUseCase {
         await logAudit({ entidad: 'Pedido', registroId: saved.id.get(), accion: 'UPDATE', usuarioId: input.createdById,
           datos: { accion: 'ENTREGA', consultaEntrega: {
             version: 1, regalosPedido: true, eventoEntregaId: null,
-            precisionFecha: input.fecha && !vendidoPorId ? 'DIA' : 'INSTANTE',
+            precisionFecha: 'INSTANTE',
             fecha: (saved.entregadoAt ?? fechaPedido).toISOString(), repartidorId: vendidoPorId ?? null,
             cantidades: saved.items.map(i => ({ producto: i.producto,
               cantidad: i.cantEntrega + i.cantRegaloEntrega,
