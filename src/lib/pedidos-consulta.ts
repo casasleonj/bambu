@@ -26,6 +26,9 @@ export interface GrupoBarrioConsulta {
   clave: string;
   etiqueta: string;
   total: number;
+  /** Demanda física exigible del barrio, independiente de cobros. */
+  remanentes?: Record<string, number>;
+  unidadesPendientes?: number;
 }
 export interface ResultadoConsultaPedidos {
   consultaKey: string;
@@ -95,6 +98,8 @@ export interface FiltrosConsultaPedidos {
   agrupar: "" | "barrio";
   /** #836 F3: solo los pedidos de un grupo de barrio (clave de `grupos`). */
   grupoBarrio: string;
+  /** Orden manual temporal, aplicado antes de paginar. */
+  recorrido?: string[];
   resumen: boolean;
   page: number;
   pageSize: number;
@@ -121,6 +126,7 @@ export const clavesConsultaPedidos = [
   "conRecurrencia",
   "agrupar",
   "grupoBarrio",
+  "recorrido",
   "resumen",
   "page",
   "pageSize",
@@ -285,8 +291,17 @@ export function leerFiltrosConsulta(
       "",
     ),
     conRecurrencia: p.get("conRecurrencia") === "true",
-    agrupar: opcion(p, "agrupar", ["", "barrio"], ""),
+    // #859: solo la entrada operativa sin filtros usa agrupación territorial inicial.
+    // Una selección explícita de lista general (agrupar=) y las consultas
+    // históricas/filtradas conservan su comportamiento anterior.
+    agrupar: p.has("agrupar") && p.get("agrupar") === "" ? "" : opcion(
+      p, "agrupar", ["", "barrio"],
+      !all && !p.has("desde") && !p.has("hasta") &&
+      !["fechaBase", "foco", "search", "estadoEntrega", "estadoPago", "registro", "canal", "origen", "clienteId", "pago", "repartidorId", "grupoBarrio"].some(k => p.has(k))
+        ? "barrio" : "",
+    ),
     grupoBarrio: leerGrupoBarrio(p),
+    recorrido: lista(p, "recorrido").filter(v => /^(sin-barrio|[bt]:[^\u0000-\u001f]+)$/.test(v)),
     resumen: p.has("resumen")
       ? p.get("resumen") === "1"
       : [
@@ -367,7 +382,8 @@ export function parametrosConsulta(f: FiltrosConsultaPedidos): URLSearchParams {
   p.set("registro", f.registro);
   p.set("pago", f.pago);
   if (f.conRecurrencia) p.set("conRecurrencia", "true");
-  if (f.agrupar) p.set("agrupar", f.agrupar);
+  // Preserve explicit ungrouped selection; absence means operational barrio default.
+  p.set("agrupar", f.agrupar);
   if (f.grupoBarrio) p.set("grupoBarrio", f.grupoBarrio);
   p.set("resumen", f.resumen ? "1" : "0");
   p.set("page", String(f.page));
@@ -451,8 +467,10 @@ export function filtrosArrastrados(
     all: false,
     registro: "activos",
     estadoEntrega,
-    agrupar: "",
-    grupoBarrio: "",
+    // #859: conservar el barrio elegido también en los pendientes arrastrados.
+    // Eliminarlo mezclaba pedidos antiguos de otros barrios en la vista filtrada.
+    agrupar: f.agrupar,
+    grupoBarrio: f.grupoBarrio,
     resumen: false,
     page: 1,
     pageSize: MAX_ARRASTRADOS,

@@ -14,6 +14,8 @@ import {
   resolverGrupoBarrio,
   type GrupoBarrio,
 } from "./barrios/grupo-barrio";
+import { remanentesPorProducto } from "./barrios/remanentes-barrio";
+import { ordenarBarriosFIFO } from "./barrios/fifo-barrio";
 import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
 import { ordenarPorFranja } from "./pedidos-franja";
@@ -224,11 +226,30 @@ export async function consultarPedidos(
   const fa = filtrosArrastrados(f);
   if (!fa) return resultado;
   try {
-    const a = await leerConsultaPedidos(fa, role, client, true);
+    // #859: leer TODAS las páginas de arrastres, no solamente las primeras cinco.
+    // Se conserva el paginado interno para no crear una consulta de tamaño ilimitado.
+    const lote = 100;
+    const primera = await leerConsultaPedidos({ ...fa, page: 1, pageSize: lote }, role, client, true);
+    const acumulados = [...primera.pedidos];
+    const idsLeidos = new Set(acumulados.map(p => p.id));
+    const paginas = Math.ceil(primera.total / lote);
+    for (let pagina = 2; pagina <= paginas; pagina++) {
+      const siguiente = await leerConsultaPedidos({ ...fa, page: pagina, pageSize: lote }, role, client, true);
+      for (const pedido of siguiente.pedidos) {
+        if (!idsLeidos.has(pedido.id)) {
+          idsLeidos.add(pedido.id);
+          acumulados.push(pedido);
+        }
+      }
+    }
+    // La vista histórica conserva el límite de cinco; el total sigue siendo global.
+    const a = { ...primera, pedidos: acumulados.slice(0, 5) };
     // #841: un pedido que ya se ve en «Pendientes» no se repite en las entregas de
     // pedidos anteriores; su fila de pendientes ya dice cuánto se entregó y cuánto falta.
     // Solo se quita lo que realmente se muestra (los más antiguos, con tope): un parcial
     // pendiente fuera de ese tope se queda en las entregas para no desaparecer de la pantalla.
+    const idsPrincipal = new Set(resultado.pedidos.map(p => p.id));
+    a.pedidos = a.pedidos.filter(p => !idsPrincipal.has(p.id));
     const visibles = new Set(a.pedidos.map((p) => p.id));
     const destacadas = resultado.destacadas?.filter((d) => !visibles.has(d.pedidoId));
     const quitadas = (resultado.destacadas?.length ?? 0) - (destacadas?.length ?? 0);
@@ -241,7 +262,7 @@ export async function consultarPedidos(
           }
         : {}),
       arrastrados: a.pedidos,
-      arrastradosTotal: a.total,
+      arrastradosTotal: primera.total,
     };
   } catch (error) {
     logger.warn({ err: error }, "No se pudieron leer los pendientes de días anteriores");
@@ -358,7 +379,8 @@ async function leerConsultaPedidos(
           tx.pedido.findMany({
             where,
             select: {
-              id: true, fecha: true, numero: true, direccionEntrega: true, barrioEntrega: true,
+              id: true, fecha: true, createdAt: true, numero: true, estadoEntrega: true, fechaEntrega: true, direccionEntrega: true, barrioEntrega: true,
+              items: { select: { producto: true, cantPedido: true, cantEntrega: true } },
               cliente: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
               negocio: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
             },
@@ -380,7 +402,46 @@ async function leerConsultaPedidos(
           e.items.push(c);
           porGrupo.set(g.clave, e);
         }
-        grupos = ordenarGrupos([...porGrupo.values()].map(({ g, items }) => ({ ...g, total: items.length })));
+        // #859: el FIFO usa únicamente demanda física abierta y exigible.
+        const ahora = new Date();
+        const abiertos = candidatos.filter(c =>
+          !["ENTREGADO", "CANCELADO", "ANULADO"].includes(c.estadoEntrega) &&
+          (!c.fechaEntrega || c.fechaEntrega <= ahora) &&
+          c.items.some(item => item.cantPedido > item.cantEntrega)
+        );
+        const fifo = ordenarBarriosFIFO(abiertos.map(c => ({
+          id: c.id, barrioClave: grupoPorId!.get(c.id)!.clave, createdAt: c.createdAt,
+        })));
+        const posicionesFIFO = new Map(fifo.map((g, i) => [g.clave, i]));
+        const demandaPorBarrio = new Map<string, Record<string, number>>();
+        for (const pedido of abiertos) {
+          const clave = grupoPorId!.get(pedido.id)!.clave;
+          const acumulado = demandaPorBarrio.get(clave) ?? {};
+          for (const [producto, cantidad] of Object.entries(remanentesPorProducto(pedido.items))) {
+            acumulado[producto] = (acumulado[producto] ?? 0) + cantidad;
+          }
+          demandaPorBarrio.set(clave, acumulado);
+        }
+        grupos = ordenarGrupos([...porGrupo.values()].map(({ g, items }) => {
+          const remanentes = demandaPorBarrio.get(g.clave) ?? {};
+          return { ...g, total: items.length, remanentes,
+            unidadesPendientes: Object.values(remanentes).reduce((total, n) => total + n, 0) };
+        }))
+          .sort((a, b) =>
+            (posicionesFIFO.get(a.clave) ?? Number.MAX_SAFE_INTEGER) -
+            (posicionesFIFO.get(b.clave) ?? Number.MAX_SAFE_INTEGER) ||
+            (a.clave === 'sin-barrio' ? 1 : b.clave === 'sin-barrio' ? -1 : 0) ||
+            a.etiqueta.localeCompare(b.etiqueta)
+          );
+        // El recorrido manual se aplica al conjunto completo antes de paginar.
+        // Los barrios no incluidos conservan su orden FIFO relativo.
+        if (f.recorrido?.length) {
+          const posicionesManual = new Map(f.recorrido.map((clave, i) => [clave, i]));
+          grupos.sort((a, b) =>
+            (posicionesManual.get(a.clave) ?? Number.MAX_SAFE_INTEGER) -
+            (posicionesManual.get(b.clave) ?? Number.MAX_SAFE_INTEGER)
+          );
+        }
         const elegibles = f.grupoBarrio ? (porGrupo.get(f.grupoBarrio)?.items ?? []) : candidatos;
         if (f.grupoBarrio) and.push({ id: { in: elegibles.map((c) => c.id) } });
         if (f.agrupar === "barrio") {
@@ -388,8 +449,8 @@ async function leerConsultaPedidos(
           ordenPagina = [...elegibles]
             .sort((a, b) =>
               (posGrupo.get(grupoPorId!.get(a.id)!.clave)! - posGrupo.get(grupoPorId!.get(b.id)!.clave)!) ||
-              (b.fecha.getTime() - a.fecha.getTime()) ||
-              (b.numero - a.numero) ||
+              (a.createdAt.getTime() - b.createdAt.getTime()) ||
+              (a.numero - b.numero) ||
               (a.id < b.id ? -1 : 1))
             .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
             .map((c) => c.id);
