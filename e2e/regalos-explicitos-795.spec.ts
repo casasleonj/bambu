@@ -59,7 +59,10 @@ test.describe('#795 · regalos separados del importe', () => {
         expect(pedido.pagos).toHaveLength(1)
       } else {
         await page.goto(`${BASE}/pedidos/${pedido.id}`)
+        await expect(page.getByTestId('detalle-acciones')).toBeVisible()
         await page.reload()
+        // #377 consume openPedido al abrir: tras recargar se vuelve a abrir por su enlace.
+        await page.goto(`${BASE}/pedidos/${pedido.id}`)
         await page.getByTestId('detalle-acciones').getByRole('button', { name: /Editar/ }).click()
         const editGift = page.locator('[data-testid$="-regalo-PACA_AGUA"]')
         const editDetails = page.locator('details').filter({ has: editGift })
@@ -68,7 +71,9 @@ test.describe('#795 · regalos separados del importe', () => {
         await expect(page.locator('[data-testid$="-cant-PACA_AGUA"]')).toHaveValue('60')
       }
       await page.goto(`${BASE}/facturas?openFactura=${pedido.factura?.id}`)
+      await expect(page.getByText(/3 de regalo · 63 unidades físicas/).first()).toBeVisible()
       await page.reload()
+      await page.goto(`${BASE}/facturas?openFactura=${pedido.factura?.id}`)
       await expect(page.getByText(/3 de regalo · 63 unidades físicas/).first()).toBeVisible()
       await expect(page.getByText('$138.000,00', { exact: true }).first()).toBeVisible()
     })
