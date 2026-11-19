@@ -52,6 +52,9 @@ export interface DraftPedido {
   pagoCompleto?: DraftPago['metodo'] | null
   entregado?: boolean
   obs?: string
+  /** Captura de compromiso de entrega, independiente de los cálculos del preview. */
+  programacionFecha?: string
+  programacionHora?: string
   direccionEntrega?: string
   barrioEntrega?: string
   /** Ubicación propia del pedido (destino de la entrega). NUNCA es el GPS de comprobación. */
@@ -137,6 +140,7 @@ export type WorkspaceAction =
   | { type: 'PAGAR_COMPLETO'; metodo: DraftPago['metodo']; total?: number }
   | { type: 'SET_ENTREGADO'; entregado: boolean }
   | { type: 'SET_OBS'; obs: string }
+  | { type: 'SET_PROGRAMACION'; fecha: string; hora: string }
   | { type: 'SET_DIRECCION'; direccion: string; barrio: string }
   | { type: 'SET_UBICACION'; lat: number | null; lng: number | null }
   /** flujo "Repetir" — aplica varios campos de una con su procedencia. */

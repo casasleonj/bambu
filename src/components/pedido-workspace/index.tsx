@@ -23,7 +23,10 @@ import { WorkspaceEntregaMomento } from './workspace-entrega-momento'
 import { WorkspaceObservaciones } from './workspace-observaciones'
 import type { AyudaCaja } from './cobro-aviso'
 import { WorkspaceVentaEnRuta, type RepartidorVentaRuta } from './workspace-venta-en-ruta'
-import { getTodayString } from '@/lib/dates'
+import { getTodayString, todayStringBogota } from '@/lib/dates'
+import { ProgramarEntrega } from '@/components/pedido-form-unified/programar-entrega'
+import { resolverProgramacion } from '@/lib/programar-entrega'
+import { estadoEntregaAlCrear } from '@/modules/pedidos/domain/services/entrega-politica.service'
 import { ventaRutaEntregaPosteriorEnabled } from '@/lib/flags'
 import { PedidoItemEditor, type PedidoItemEditorItem } from '@/components/pedido-form-unified/pedido-item-editor'
 import { PedidoContextPanel, type NuevoClienteForm } from '@/components/pedido-form-unified/pedido-context-panel'
@@ -122,6 +125,8 @@ export interface PedidosWorkspaceProps {
    */
   ventaEnRuta?: { repartidores: RepartidorVentaRuta[] }
   initialDraft?: Partial<DraftPedido>
+  /** Comprador precargado desde Clientes, incluso fuera de la lista inicial. */
+  clientePrecargado?: Cliente
   /** modo edición: pedido existente a editar (cliente/negocio/canal inmutables). */
   pedidoInicial?: WorkspacePedidoInicial
   /**
@@ -160,7 +165,7 @@ export interface PedidosWorkspaceProps {
  * "aplicada" del patrón) vive como `useState` local — igual que en el
  * monolito, no es parte del "draft" que se envía.
  */
-export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, pedidoInicial, modo = 'crear', pedidoOrigenNumero, offlineIdInicial, onSubmit, onCancel }: PedidosWorkspaceProps) {
+export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, clientePrecargado, pedidoInicial, modo = 'crear', pedidoOrigenNumero, offlineIdInicial, onSubmit, onCancel }: PedidosWorkspaceProps) {
   const modoEdicion = Boolean(pedidoInicial)
   const esNuevaDemanda = modo === 'nueva-demanda'
   // Clave de idempotencia del borrador (plan de integridad v1.2 §5.B): nace al
@@ -197,7 +202,8 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
   const [searchTerm, setSearchTerm] = useState('')
   // Clientes elegidos de la búsqueda al servidor (#376) que pueden no estar en la
   // lista precargada `clientes`; `clienteSeleccionado` los necesita para resolverse.
-  const [clientesEncontrados, setClientesEncontrados] = useState<Cliente[]>([])
+  const [clientesEncontrados, setClientesEncontrados] = useState<Cliente[]>(() => clientePrecargado ? [clientePrecargado] : [])
+  const [programacionError, setProgramacionError] = useState<string | null>(null)
   const [mostrarNuevo, setMostrarNuevo] = useState(false)
   const [nuevoCliente, setNuevoCliente] = useState<NuevoClienteForm>(EMPTY_NUEVO_CLIENTE)
   const [sugerenciaAplicada, setSugerenciaAplicada] = useState(false)
@@ -237,7 +243,8 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
   const clienteSeleccionado: Cliente | null = useMemo(() => {
     const id = state.draft.clienteId
     if (!id || id === 'CONSUMIDOR_FINAL') return null
-    const enLista = clientes.find((c) => c.id === id) ?? clientesEncontrados.find((c) => c.id === id)
+    const enLista = (clientePrecargado?.id === id ? clientesEncontrados.find(c => c.id === id) : undefined)
+      ?? clientes.find((c) => c.id === id) ?? clientesEncontrados.find((c) => c.id === id)
     if (enLista) return enLista
     // modo edición: si el cliente no está en la lista, sintetizarlo del pedido.
     if (pedidoInicial && pedidoInicial.clienteId === id) {
@@ -250,7 +257,7 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
       }
     }
     return null
-  }, [state.draft.clienteId, clientes, clientesEncontrados, pedidoInicial])
+  }, [state.draft.clienteId, clientes, clientesEncontrados, clientePrecargado, pedidoInicial])
 
   const {
     resultados: filteredClientes,
@@ -396,6 +403,13 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
   const entregaPosterior = ventaRutaEntregaPosteriorEnabled() && !modoEdicion && intent === 'venta-rapida' && state.draft.canal === 'PUNTO'
   const entregarDespues = entregaPosterior && state.draft.entregado === false
   const tieneComprador = Boolean(clienteSeleccionado) || Boolean(state.draft.clienteNuevo)
+  const compradorSinResolver = Boolean(state.draft.clienteId && state.draft.clienteId !== 'CONSUMIDOR_FINAL' && !clienteSeleccionado)
+  const origenCreacion = ventaEnRuta ? 'VENTA_RAPIDA' : (esNuevaDemanda || tieneComprador ? 'PEDIDO' : 'VENTA_RAPIDA')
+  const sinCompradorEnPedidoNuevo = intent !== 'venta-rapida' && !state.draft.clienteId && !state.draft.clienteNuevo
+  // Misma elegibilidad de #871, preservando la autoridad de la política de entrega.
+  const programable = !modoEdicion && !ventaEnRuta
+    && (state.draft.canal === 'DOMICILIO' || entregarDespues)
+    && estadoEntregaAlCrear({ origen: sinCompradorEnPedidoNuevo ? 'PEDIDO' : origenCreacion, canal: state.draft.canal, entregado: state.draft.entregado }) === 'PENDIENTE'
   // Venta en ruta: la promesa solo se pide si un cliente REAL queda debiendo.
   const pideFechaRuta = Boolean(ventaEnRuta) && tieneComprador && (calc?.saldoProyectado ?? 0) > 0
   const faltanDatosRuta = Boolean(ventaEnRuta) && (!vendidoPorId || (pideFechaRuta && !promesaPagoFecha))
@@ -418,13 +432,16 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
   const commitEnabled = canCommit(state, accionCommit)
     && (state.phase === 'PREVIEW_READY' || (sinConexion && state.phase === 'DRAFTING'))
     && !faltaCompradorParaDespues
+    && !compradorSinResolver
     && (!ventaRepetida || otraVentaConfirmada)
     && !faltaElegirUbicacion
   // B-20: sin preview del servidor, el cobro "completo" usa un total estimado con la tabla ya cargada.
   const totalEstimado = sinConexion && !calc
     ? estimarTotalOffline(state.draft.items, state.draft.canal, tabla, configs)
     : null
-  const blockedReason = faltaCompradorParaDespues
+  const blockedReason = compradorSinResolver
+    ? 'No se ha podido cargar el comprador. Reintenta o vuelve a seleccionarlo.'
+    : faltaCompradorParaDespues
     ? 'Para entregar después hay que identificar al comprador.'
     : ventaRepetida && !otraVentaConfirmada
       ? 'Marca «Es otra venta distinta» para continuar.'
@@ -467,14 +484,24 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
   }
 
   const handleCommit = async () => {
+    // Nunca degradar un comprador identificado a consumidor final por falta de carga.
+    if (compradorSinResolver || !commitEnabled) return
+    const hoy = todayStringBogota()
+    const programacion = programable ? resolverProgramacion(state.draft.programacionFecha ?? '', state.draft.programacionHora ?? '', hoy) : {}
+    if (programacion.error) { setProgramacionError(programacion.error); return }
     if (faltanDatosRuta) {
       // No se envía nada: se marcan los campos que faltan para que el usuario los complete.
       setIntentoRegistrar(true)
       return
     }
+    setProgramacionError(null)
+    // Fijar la fecha de una hora sola en el primer intento; no desplazarla
+    // silenciosamente a mañana si se reintenta tras medianoche.
+    if (programable && programacion.entregaNoAntesDe && !state.draft.programacionFecha) {
+      dispatch({ type: 'SET_PROGRAMACION', fecha: hoy, hora: state.draft.programacionHora ?? '' })
+    }
     dispatch({ type: 'COMMIT_START' })
     const clienteNuevo = clienteSeleccionado ? undefined : state.draft.clienteNuevo
-    const tieneClienteReal = Boolean(clienteSeleccionado) || Boolean(clienteNuevo)
 
     const actualizarCliente = resolveActualizarCliente({
       clienteSeleccionado,
@@ -498,7 +525,7 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
       canal: state.draft.canal,
       // edición: origen persistido (inmutable). nueva-demanda: siempre PEDIDO.
       // creación normal: derivado de si hay cliente real.
-      origen: modoEdicion ? state.draft.origen : (ventaEnRuta ? 'VENTA_RAPIDA' : ((esNuevaDemanda || tieneClienteReal) ? 'PEDIDO' : 'VENTA_RAPIDA')),
+      origen: modoEdicion ? state.draft.origen : origenCreacion,
       pedidoOrigenId: state.draft.pedidoOrigenId,
       items: state.draft.items
         .filter((i) => i.cantidad > 0)
@@ -514,6 +541,7 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
         ? `[Revisión: ${state.reviewMotivo}]${state.draft.obs ? ` ${state.draft.obs}` : ''}`
         : state.draft.obs,
       entregado: state.draft.entregado,
+      ...(programacion.fechaEntrega ? { fechaEntrega: programacion.fechaEntrega, entregaNoAntesDe: programacion.entregaNoAntesDe } : {}),
       excepcionId: state.draft.excepcionId,
       ...(ventaRepetida && otraVentaConfirmada ? { ventaRepetidaConfirmada: true } : {}),
       ...(guardarUbic ? { guardarUbicacion: ubicEleccion.reemplazar === true ? { reemplazar: true } : {} } : {}),
@@ -652,7 +680,7 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
                 key={ch}
                 type="button"
                 data-testid={`workspace-canal-${ch}`}
-                onClick={() => dispatch({ type: 'SET_CANAL', canal: ch })}
+                onClick={() => { dispatch({ type: 'SET_CANAL', canal: ch }); setProgramacionError(null) }}
                 className={`rounded-lg border px-3 py-1.5 text-xs ${state.draft.canal === ch ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200'}`}
               >
                 {ch === 'DOMICILIO' ? '🚚 Domicilio' : '🏪 Punto'}
@@ -772,9 +800,21 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
       {entregaPosterior && (
         <WorkspaceEntregaMomento
           entregarDespues={entregarDespues}
-          onChange={(despues) => dispatch({ type: 'SET_ENTREGADO', entregado: !despues })}
+          onChange={(despues) => { dispatch({ type: 'SET_ENTREGADO', entregado: !despues }); setProgramacionError(null) }}
           tieneComprador={tieneComprador}
           pagadoCompleto={pagadoCompleto}
+          disabled={state.phase === 'COMMITTING' || state.phase === 'COMMITTED'}
+        />
+      )}
+
+      {programable && (
+        <ProgramarEntrega
+          fecha={state.draft.programacionFecha ?? ''}
+          hora={state.draft.programacionHora ?? ''}
+          onFecha={(fecha) => { dispatch({ type: 'SET_PROGRAMACION', fecha, hora: state.draft.programacionHora ?? '' }); setProgramacionError(null) }}
+          onHora={(hora) => { dispatch({ type: 'SET_PROGRAMACION', fecha: state.draft.programacionFecha ?? '', hora }); setProgramacionError(null) }}
+          error={programacionError}
+          hoyBogota={todayStringBogota()}
           disabled={state.phase === 'COMMITTING' || state.phase === 'COMMITTED'}
         />
       )}
