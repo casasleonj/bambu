@@ -213,12 +213,9 @@ export class CerrarEmbarqueUseCase {
         : null
       const entregadasLegadas = !modoVivo
         ? await this.salidasMision.entregadasLegadas(client, input.id, pedidosRaw, input.ventasLibres ?? []) : undefined
-
       // 5. Reconcile products
       const { totalDiscrepancia, discrepanciasPorProducto } = await this.conciliarProductos(
-        client,
-        input.id,
-        embarque,
+        client, input.id, embarque,
         vivo?.entregadas ?? entregadasLegadas!,
         productosRetorno,
       )

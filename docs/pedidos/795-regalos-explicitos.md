@@ -1,7 +1,9 @@
 # #795 · Regalos explícitos — implementación en curso
 
-Base de desarrollo: `main` `1e1bf8e0` (18-11-2026). Rama `fix/795-regalos`.
-Sincronización contra `main` posterior: pendiente de rebase y revalidación.
+Base original: `main` `1e1bf8e0` (18-11-2026). Rama `fix/795-regalos`.
+Rebase del 19-11 completado sobre `main` `7636480e`; conservados programación
+de entrega y presentación responsive de facturas. Commits posteriores al rebase:
+`77b003b4` (dominio) y `910e82bd` (persistencia y flujos).
 Estado: **dominio, persistencia, API y conexión inicial de UI implementados en la rama; QA integral pendiente**.
 La migración de regalos se aplicó y repitió únicamente en PostgreSQL local aislado.
 No hay migración de regalos aplicada ni escrituras de prueba en producción.
@@ -86,8 +88,8 @@ Una cantidad nueva no hereda automáticamente la razón de una concesión anteri
   entregar solo regalos tampoco puede reescribir el cumplimiento histórico.
 - El cuadre legado del embarque no captura el desglose: rechaza nuevas cantidades
   ambiguas en líneas con regalos y dirige a registrar la entrega desde Pedidos.
-  Puede conciliar el hecho ya registrado con delta cero. Esta compatibilidad aún
-  necesita QA de usuario y prueba completa del cierre con regalos.
+  Puede conciliar el hecho ya registrado con delta cero. Los dos viajes fueron
+  verificados con PostgreSQL; la revisión visual sigue pendiente.
 - UI: enlace progresivo reutilizado en el editor de Hub/legacy; cantidad gratuita
   en borrador, preview, commit y edición. La oficina separa cantidades en parcial,
   valor comercial y base física; las vistas compactas/factura identifican regalos
@@ -156,6 +158,35 @@ no sumar como una sola suite final):
 
 Estos resultados aún no prueban el recorrido visual, offline real ni todos los
 consumidores de la implementación final. Producción y merge siguen pendientes.
+
+## Comprobaciones posteriores al rebase (19-11)
+
+- PostgreSQL: 34 pruebas / 5 archivos y 61 pruebas / 6 archivos, exit 0.
+  Son lotes independientes, con limpieza y seed en base local exclusiva.
+- Nueva refutación de N2: tras 10 con precio + 1 gratuita, gestionar 50 con
+  precio y entregarlas cierra esa obligación por 50, pero mantiene el pedido
+  pendiente por 2 gratuitas. Entregarlas después no incrementa el exigible de
+  138000. Archivo de regalos ampliado: 9 pruebas, exit 0.
+- Suite amplia: 1640 aprobadas y 1 fallo estático por tamaño de archivo de
+  cierre (482 frente al límite menor de 480). Compactado el orquestador sin
+  cambiar lógica ni aserciones: 49 pruebas de cierre, exit 0. Repetición de
+  la suite amplia en curso; no se presenta el primer lote como verde.
+- TypeScript sin caché, `tsc --noEmit --incremental false`: exit 0.
+  La primera preparación local del nuevo paquete PDF de main dejó una
+  resolución de tipos incorrecta en caché; no requirió cambiar código PDF,
+  package.json ni package-lock.json. ESLint de cambios posteriores: exit 0.
+- Compilación y recorridos de navegador de regalos: en curso, todavía no
+  acreditados. E2E añadido para tres entradas, permisos y sincronización.
+
+Límite verificado del inventario: `getStockDisponible` sigue calculando una
+estimación desde cierre anterior/estimado, producción y cargas/devoluciones
+vehiculares. No es un ledger de ventas directas; no se le resta otra vez una
+venta sobre un estimado cuyo momento de conteo no se conoce. En vehículo se
+verificaron movimientos ENTREGA/PROMOCION y dos cierres sin discrepancia; sin
+vehículo la evidencia está en Pedido, capturas de entrega y unidades del día.
+No declarar probado un ledger global PROMOCION de ventas directas: no existe
+esa custodia en el modelo actual. Esta limitación ya está en main y no se
+resuelve inventando embarques para ventas de mostrador.
 
 ## Falta para resolver #795
 

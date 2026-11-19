@@ -13,6 +13,7 @@ import { PrismaEmbarqueRepository } from '@/modules/embarques/infrastructure/rep
 import { PrismaGastoEmbarqueRepository } from '@/modules/embarques/infrastructure/repositories/PrismaGastoEmbarqueRepository'
 import { PrismaEmbarqueProductoRepository } from '@/modules/embarques/infrastructure/repositories/PrismaEmbarqueProductoRepository'
 import { PrismaTransactionManager } from '@/shared/infrastructure/transactions/PrismaTransactionManager'
+import { GestionarPendienteUseCase } from '@/modules/embarques/application/use-cases/GestionarPendienteUseCase'
 
 vi.mock('next/cache', () => ({ unstable_cache: <Args extends unknown[], Result>(fn: (...args: Args) => Result) => fn }))
 
@@ -73,6 +74,29 @@ describe('#795 · entrega, exigible, cantidades físicas y comisión', () => {
     expect([fila.items[0].cantEntrega, fila.items[0].cantRegaloEntrega]).toEqual([0, 0])
     expect(fila.pagos).toHaveLength(0)
     expect(fila.entregasExigibles).toHaveLength(0)
+  })
+
+  it('gestionar pendientes cumple solo las 50 con precio; las 2 gratuitas siguen pendientes en el pedido', async () => {
+    const p = await crear()
+    const entrega = (cantidad: number, cantidadRegalo: number) => entregarPedidoUseCase.execute({
+      pedidoId: p.id, actorId: adminId, offlineId: randomUUID(), oficina: oficina(),
+      itemsEntregados: [{ producto: 'PACA_AGUA', cantidad, cantidadRegalo }],
+    })
+    await entrega(10, 1)
+    const gestion = await new GestionarPendienteUseCase().execute({
+      pedidoId: p.id, producto: 'PACA_AGUA', cantidad: 50, modoInicial: 'DOMICILIO', usuarioId: adminId, offlineId: randomUUID(),
+    })
+    await entrega(50, 0)
+    const obligacion = await db.obligacionPendiente.findUniqueOrThrow({ where: { id: gestion.obligacionId } })
+    expect([obligacion.cantidadOriginal, obligacion.cantidadCumplida, obligacion.estado]).toEqual([50, 50, 'CUMPLIDA'])
+    const pendiente = await db.pedido.findUniqueOrThrow({ where: { id: p.id }, include: { items: true } })
+    expect(pendiente.estadoEntrega).toBe('PENDIENTE')
+    expect([pendiente.items[0].cantEntrega, pendiente.items[0].cantRegaloEntrega]).toEqual([60, 1])
+    expect((await leerExigibles(db, { id: p.id })).get(p.id)).toBe(138000)
+    await entrega(0, 2)
+    expect((await db.pedido.findUniqueOrThrow({ where: { id: p.id } })).estadoEntrega).toBe('ENTREGADO')
+    expect((await db.obligacionPendiente.findUniqueOrThrow({ where: { id: gestion.obligacionId } })).cantidadCumplida).toBe(50)
+    expect((await leerExigibles(db, { id: p.id })).get(p.id)).toBe(138000)
   })
 
   it('en vehículo registra 60 ENTREGA + 3 PROMOCION, jamás 63 ENTREGA más 3 PROMOCION', async () => {
