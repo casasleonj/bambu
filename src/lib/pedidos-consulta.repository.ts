@@ -226,11 +226,29 @@ export async function consultarPedidos(
   const fa = filtrosArrastrados(f);
   if (!fa) return resultado;
   try {
-    const a = await leerConsultaPedidos(fa, role, client, true);
+    // #859: leer TODAS las páginas de arrastres, no solamente las primeras cinco.
+    // Se conserva el paginado interno para no crear una consulta de tamaño ilimitado.
+    const lote = 100;
+    const primera = await leerConsultaPedidos({ ...fa, page: 1, pageSize: lote }, role, client, true);
+    const acumulados = [...primera.pedidos];
+    const idsLeidos = new Set(acumulados.map(p => p.id));
+    const paginas = Math.ceil(primera.total / lote);
+    for (let pagina = 2; pagina <= paginas; pagina++) {
+      const siguiente = await leerConsultaPedidos({ ...fa, page: pagina, pageSize: lote }, role, client, true);
+      for (const pedido of siguiente.pedidos) {
+        if (!idsLeidos.has(pedido.id)) {
+          idsLeidos.add(pedido.id);
+          acumulados.push(pedido);
+        }
+      }
+    }
+    const a = { ...primera, pedidos: acumulados };
     // #841: un pedido que ya se ve en «Pendientes» no se repite en las entregas de
     // pedidos anteriores; su fila de pendientes ya dice cuánto se entregó y cuánto falta.
     // Solo se quita lo que realmente se muestra (los más antiguos, con tope): un parcial
     // pendiente fuera de ese tope se queda en las entregas para no desaparecer de la pantalla.
+    const idsPrincipal = new Set(resultado.pedidos.map(p => p.id));
+    a.pedidos = a.pedidos.filter(p => !idsPrincipal.has(p.id));
     const visibles = new Set(a.pedidos.map((p) => p.id));
     const destacadas = resultado.destacadas?.filter((d) => !visibles.has(d.pedidoId));
     const quitadas = (resultado.destacadas?.length ?? 0) - (destacadas?.length ?? 0);
@@ -243,7 +261,7 @@ export async function consultarPedidos(
           }
         : {}),
       arrastrados: a.pedidos,
-      arrastradosTotal: a.total,
+      arrastradosTotal: a.pedidos.length,
     };
   } catch (error) {
     logger.warn({ err: error }, "No se pudieron leer los pendientes de días anteriores");
