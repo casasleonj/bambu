@@ -39,7 +39,7 @@ describe('workspaceReducer — máquina de UI adaptativa', () => {
 
   it('DRAFTING + PREVIEW_RECEIVED (sin auth) → PREVIEW_READY', () => {
     let s: WorkspaceState = { ...s0(), phase: 'DRAFTING', draft: { ...EMPTY_DRAFT, clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 10 }] } }
-    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', preview: previewOk() })
+    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', revision: s.previewRevision, preview: previewOk() })
     expect(s.phase).toBe('PREVIEW_READY')
     expect(s.preview?.calculation.total).toBe(27000)
     expect(canCommit(s)).toBe(true)
@@ -48,14 +48,14 @@ describe('workspaceReducer — máquina de UI adaptativa', () => {
 
   it('canCommit(state, "actualizar") — cruza con allowedActions del preview de edición', () => {
     let s: WorkspaceState = { ...s0(), phase: 'DRAFTING', draft: { ...EMPTY_DRAFT, clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 10 }] } }
-    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', preview: previewOk({ allowedActions: ['actualizar'] }) })
+    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', revision: s.previewRevision, preview: previewOk({ allowedActions: ['actualizar'] }) })
     expect(canCommit(s, 'actualizar')).toBe(true)
     expect(canCommit(s, 'crear')).toBe(false)
   })
 
   it('PREVIEW_RECEIVED con requiresAuthorization → REVIEW_REQUIRED (no commiteable)', () => {
     let s: WorkspaceState = { ...s0(), phase: 'DRAFTING', draft: { ...EMPTY_DRAFT, clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 10 }] } }
-    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', preview: previewOk({ requiresAuthorization: true }) })
+    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', revision: s.previewRevision, preview: previewOk({ requiresAuthorization: true }) })
     expect(s.phase).toBe('REVIEW_REQUIRED')
     expect(canCommit(s)).toBe(false)
   })
@@ -148,7 +148,7 @@ describe('workspaceReducer — cobro (P0)', () => {
   }
 
   it('PAGAR_COMPLETO con preview → un pago por el total del backend', () => {
-    let s = workspaceReducer(conItems(), { type: 'PREVIEW_RECEIVED', preview: previewOk() })
+    let s = workspaceReducer(conItems(), { type: 'PREVIEW_RECEIVED', revision: conItems().previewRevision, preview: previewOk() })
     s = workspaceReducer(s, { type: 'PAGAR_COMPLETO', metodo: 'EFECTIVO' })
     expect(s.draft.pagos).toEqual([{ metodo: 'EFECTIVO', monto: 27000 }])
     expect(s.draft.pagoCompleto).toBe('EFECTIVO')
@@ -159,31 +159,31 @@ describe('workspaceReducer — cobro (P0)', () => {
   it('PAGAR_COMPLETO antes del preview → se completa al llegar el total', () => {
     let s = workspaceReducer(conItems(), { type: 'PAGAR_COMPLETO', metodo: 'NEQUI' })
     expect(s.draft.pagos).toEqual([])
-    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', preview: previewOk() })
+    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', revision: s.previewRevision, preview: previewOk() })
     expect(s.draft.pagos).toEqual([{ metodo: 'NEQUI', monto: 27000 }])
     expect(s.phase).toBe('DRAFTING') // espera el preview con el pago correcto
     expect(s.preview).toBeNull()
   })
 
   it('si cambia el total, el pago completo lo sigue; con el pago ya alineado el preview se acepta', () => {
-    let s = workspaceReducer(conItems(), { type: 'PREVIEW_RECEIVED', preview: previewOk() })
+    let s = workspaceReducer(conItems(), { type: 'PREVIEW_RECEIVED', revision: conItems().previewRevision, preview: previewOk() })
     s = workspaceReducer(s, { type: 'PAGAR_COMPLETO', metodo: 'EFECTIVO' })
     s = workspaceReducer(s, { type: 'SET_ITEM_CANTIDAD', producto: 'PACA_AGUA', cantidad: 4 })
     const total36 = previewOk({ calculation: { ...previewOk().calculation, total: 36000 } })
-    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', preview: total36 })
+    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', revision: s.previewRevision, preview: total36 })
     expect(s.draft.pagos).toEqual([{ metodo: 'EFECTIVO', monto: 36000 }])
     expect(s.preview).toBeNull()
-    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', preview: total36 })
+    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', revision: s.previewRevision, preview: total36 })
     expect(s.phase).toBe('PREVIEW_READY')
     expect(s.preview?.calculation.total).toBe(36000)
   })
 
   it('SET_PAGOS manual deja de seguir al total', () => {
-    let s = workspaceReducer(conItems(), { type: 'PREVIEW_RECEIVED', preview: previewOk() })
+    let s = workspaceReducer(conItems(), { type: 'PREVIEW_RECEIVED', revision: conItems().previewRevision, preview: previewOk() })
     s = workspaceReducer(s, { type: 'PAGAR_COMPLETO', metodo: 'EFECTIVO' })
     s = workspaceReducer(s, { type: 'SET_PAGOS', pagos: [{ metodo: 'EFECTIVO', monto: 10000 }] })
     expect(s.draft.pagoCompleto).toBeNull()
-    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', preview: previewOk() })
+    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', revision: s.previewRevision, preview: previewOk() })
     expect(s.draft.pagos).toEqual([{ metodo: 'EFECTIVO', monto: 10000 }])
     expect(s.phase).toBe('PREVIEW_READY')
   })
@@ -198,27 +198,27 @@ describe('B-20 — guardar sin conexión (#347)', () => {
   }
 
   it('un fallo de RED habilita crear (pero no actualizar)', () => {
-    const st = workspaceReducer(conItems(), { type: 'PREVIEW_ERROR', kind: 'NETWORK_ERROR', message: 'Sin conexión' })
+    const st = workspaceReducer(conItems(), { type: 'PREVIEW_ERROR', revision: conItems().previewRevision, kind: 'NETWORK_ERROR', message: 'Sin conexión' })
     expect(st.sinConexion).toBe(true)
     expect(canCommit(st, 'crear')).toBe(true)
     expect(canCommit(st, 'actualizar')).toBe(false)
   })
 
   it('una respuesta de error del servidor NO habilita el guardado', () => {
-    const st = workspaceReducer(conItems(), { type: 'PREVIEW_ERROR', kind: 'VALIDATION_ERROR', message: 'Cliente no encontrado' })
+    const st = workspaceReducer(conItems(), { type: 'PREVIEW_ERROR', revision: conItems().previewRevision, kind: 'VALIDATION_ERROR', message: 'Cliente no encontrado' })
     expect(st.sinConexion).toBe(false)
     expect(canCommit(st, 'crear')).toBe(false)
   })
 
   it('al volver un preview válido se sale del modo sin conexión', () => {
-    let st = workspaceReducer(conItems(), { type: 'PREVIEW_ERROR', kind: 'NETWORK_ERROR', message: 'x' })
-    st = workspaceReducer(st, { type: 'PREVIEW_RECEIVED', preview: { requiresAuthorization: false, allowedActions: ['crear'], calculation: { total: 5000 } } as never })
+    let st = workspaceReducer(conItems(), { type: 'PREVIEW_ERROR', revision: conItems().previewRevision, kind: 'NETWORK_ERROR', message: 'x' })
+    st = workspaceReducer(st, { type: 'PREVIEW_RECEIVED', revision: st.previewRevision, preview: { requiresAuthorization: false, allowedActions: ['crear'], calculation: { total: 5000 } } as never })
     expect(st.sinConexion).toBe(false)
     expect(st.phase).toBe('PREVIEW_READY')
   })
 
   it('COMMIT_START funciona desde DRAFTING sin conexión y un error de guardado vuelve a DRAFTING', () => {
-    let st = workspaceReducer(conItems(), { type: 'PREVIEW_ERROR', kind: 'NETWORK_ERROR', message: 'x' })
+    let st = workspaceReducer(conItems(), { type: 'PREVIEW_ERROR', revision: conItems().previewRevision, kind: 'NETWORK_ERROR', message: 'x' })
     st = workspaceReducer(st, { type: 'COMMIT_START' })
     expect(st.phase).toBe('COMMITTING')
     st = workspaceReducer(st, { type: 'COMMIT_ERROR', message: 'no se guardó' })
@@ -238,7 +238,7 @@ describe('P0-3 — excepción de crédito en el borrador', () => {
 
   it('SET_EXCEPCION guarda el id y invalida el preview (se recalcula con la excepción)', () => {
     let st = workspaceReducer(conCliente(), { type: 'SET_ITEM_CANTIDAD', producto: 'PACA_AGUA', cantidad: 1 })
-    st = workspaceReducer(st, { type: 'PREVIEW_RECEIVED', preview: { requiresAuthorization: false, allowedActions: [], calculation: { total: 1 } } as never })
+    st = workspaceReducer(st, { type: 'PREVIEW_RECEIVED', revision: st.previewRevision, preview: { requiresAuthorization: false, allowedActions: [], calculation: { total: 1 } } as never })
     st = workspaceReducer(st, { type: 'SET_EXCEPCION', excepcionId: 'e1' })
     expect(st.draft.excepcionId).toBe('e1')
     expect(st.preview).toBeNull()
@@ -312,5 +312,91 @@ describe('P1-4 (#419) — destino propio del pedido', () => {
     it('cambiar de un comprador a otro conserva la elección', () => {
       expect(workspaceReducer(conDespues(), { type: 'SET_CLIENTE', clienteId: 'c2' }).draft.entregado).toBe(false)
     })
+  })
+})
+
+describe('#891 — identidad de preview', () => {
+  const start = (canal: 'PUNTO' | 'DOMICILIO' = 'DOMICILIO') => initWorkspace({
+    clienteId: 'c1', canal, items: [{ producto: 'PACA_AGUA', cantidad: 5 }],
+  })
+  const quantity = (s: WorkspaceState, cantidad: number) => workspaceReducer(s, { type: 'SET_ITEM_CANTIDAD', producto: 'PACA_AGUA', cantidad })
+  const ready = (s: WorkspaceState) => workspaceReducer(s, { type: 'PREVIEW_RECEIVED', revision: s.previewRevision, preview: previewOk() })
+  it('ignora respuesta, error y pending antiguos incluso A→B→A', () => {
+    const a = start()
+    const again = quantity(quantity(a, 10), 5)
+    for (const action of [
+      { type: 'PREVIEW_RECEIVED', revision: a.previewRevision, preview: previewOk() },
+      { type: 'PREVIEW_ERROR', revision: a.previewRevision, kind: 'NETWORK_ERROR', message: 'offline anterior' },
+      { type: 'PREVIEW_PENDING', revision: a.previewRevision },
+    ] as const) expect(workspaceReducer(again, action)).toBe(again)
+    expect(canCommit(again)).toBe(false)
+    expect(canCommit(ready(again))).toBe(true)
+  })
+  it('vaciar productos o resetear invalida incluso el mismo cuerpo', () => {
+    const a = start()
+    for (const next of [quantity(a, 0), workspaceReducer(a, { type: 'RESET', draft: a.draft })]) {
+      expect(workspaceReducer(next, { type: 'PREVIEW_RECEIVED', revision: a.previewRevision, preview: previewOk() })).toBe(next)
+      expect(canCommit(next)).toBe(false)
+    }
+  })
+  it('misma cantidad y dirección irrelevante en PUNTO no invalidan', () => {
+    const s = ready(start('PUNTO'))
+    const next = workspaceReducer(quantity(s, 5), { type: 'SET_DIRECCION', direccion: 'Otra', barrio: 'Otro' })
+    expect(next.previewRevision).toBe(s.previewRevision)
+    expect(next.preview).toBe(s.preview)
+    expect(canCommit(next)).toBe(true)
+  })
+  it('edición excluye pagos del request', () => {
+    const s = ready(initWorkspace(start().draft, 'p1'))
+    const next = workspaceReducer(s, { type: 'SET_PAGOS', pagos: [{ metodo: 'EFECTIVO', monto: 10 }] })
+    expect(next.previewRevision).toBe(s.previewRevision)
+    expect(next.preview).toBe(s.preview)
+  })
+  it('conflicto con mismo cuerpo incrementa revisión', () => {
+    const s = ready(start())
+    const conflict = workspaceReducer(workspaceReducer(s, { type: 'COMMIT_START' }), { type: 'COMMIT_CONFLICT', message: 'cambió' })
+    expect(conflict.previewRevision).toBe(s.previewRevision + 1)
+    expect(canCommit(conflict)).toBe(false)
+  })
+  it('error de red previo no autoriza borrador nuevo', () => {
+    const s = start()
+    const offline = workspaceReducer(s, { type: 'PREVIEW_ERROR', revision: s.previewRevision, kind: 'NETWORK_ERROR', message: 'sin conexión' })
+    expect(canCommit(offline)).toBe(true)
+    expect(canCommit(quantity(offline, 10))).toBe(false)
+  })
+  it('respuesta al confirmar o después del commit se descarta', () => {
+    const s = ready(start())
+    const committing = workspaceReducer(s, { type: 'COMMIT_START' })
+    const committed = workspaceReducer(committing, { type: 'COMMIT_SUCCESS' })
+    for (const next of [committing, committed]) expect(workspaceReducer(next, { type: 'PREVIEW_RECEIVED', revision: s.previewRevision, preview: previewOk() })).toBe(next)
+  })
+})
+
+describe('#891 / #347 — continuidad del pago offline', () => {
+  const initial = () => initWorkspace({ clienteId: 'CONSUMIDOR_FINAL', canal: 'PUNTO', origen: 'VENTA_RAPIDA', items: [{ producto: 'PACA_AGUA', cantidad: 2 }] })
+  it('permite guardar inmediatamente el mismo pedido offline después de pagar completo, incluso si se reintenta el preview', () => {
+    const s = initial()
+    const lost = workspaceReducer(s, { type: 'PREVIEW_ERROR', revision: s.previewRevision, kind: 'NETWORK_ERROR', message: 'offline' })
+    const paid = workspaceReducer(lost, { type: 'PAGAR_COMPLETO', metodo: 'EFECTIVO', total: 5000 })
+    expect(paid.draft.pagos).toEqual([{ metodo: 'EFECTIVO', monto: 5000 }])
+    expect(paid.previewRevision).toBe(s.previewRevision + 1)
+    expect(canCommit(paid)).toBe(true)
+    const pending = workspaceReducer(paid, { type: 'PREVIEW_PENDING', revision: paid.previewRevision })
+    expect(canCommit(pending)).toBe(true)
+    expect(canCommit(pending, 'actualizar')).toBe(false)
+    const committing = workspaceReducer(pending, { type: 'COMMIT_START' })
+    expect(committing.previewPending).toBe(false)
+    expect(canCommit(committing)).toBe(false)
+  })
+  it('una respuesta vigente del servidor cancela offline aun si corrige el pago y requiere otro preview', () => {
+    const s = initial()
+    const lost = workspaceReducer(s, { type: 'PREVIEW_ERROR', revision: s.previewRevision, kind: 'NETWORK_ERROR', message: 'offline' })
+    const paid = workspaceReducer(lost, { type: 'PAGAR_COMPLETO', metodo: 'EFECTIVO', total: 5000 })
+    const synced = workspaceReducer(paid, { type: 'PREVIEW_RECEIVED', revision: paid.previewRevision, preview: previewOk() })
+    expect(synced.draft.pagos).toEqual([{ metodo: 'EFECTIVO', monto: 27000 }])
+    expect(synced.sinConexion).toBe(false)
+    expect(canCommit(synced)).toBe(false)
+    const denied = workspaceReducer(paid, { type: 'PREVIEW_ERROR', revision: paid.previewRevision, kind: 'VALIDATION_ERROR', message: 'rechazado' })
+    expect(canCommit(denied)).toBe(false)
   })
 })
