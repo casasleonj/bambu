@@ -116,6 +116,7 @@ jobs:
       skill_declarativa: ${{ steps.classify.outputs.skill_declarativa }}
       e2e_run: ${{ steps.plan.outputs.e2e_run }}
       draft_deferred: ${{ steps.plan.outputs.draft_deferred }}
+      diff_ok: ${{ steps.classify.outputs.diff_ok }}
 
     steps:
       - name: Checkout repository
@@ -138,6 +139,7 @@ jobs:
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "e2e_required=true" >> "$GITHUB_OUTPUT"
             echo "skill_declarativa=false" >> "$GITHUB_OUTPUT"
+            echo 'diff_ok=false' >> "$GITHUB_OUTPUT"
             echo "No es un pull_request (evento: ${{ github.event_name }}) — el E2E completo siempre corre."
             exit 0
           fi
@@ -156,11 +158,18 @@ jobs:
           if ! git diff --raw -z "$BASE_SHA"..."$HEAD_SHA" > /tmp/cambios.raw 2>/dev/null; then
             echo "e2e_required=true" >> "$GITHUB_OUTPUT"
             echo "skill_declarativa=false" >> "$GITHUB_OUTPUT"
+            echo 'diff_ok=false' >> "$GITHUB_OUTPUT"
             echo "No se pudo calcular el diff — el E2E completo corre por seguridad (§4)."
             exit 0
           fi
 
           node scripts/ci/clasificar-cambios.mjs < /tmp/cambios.raw
+          # No diferir infraestructura, cambios estructurales ni un diff ilegible.
+          if node scripts/ci/politica-ci.mjs diff /tmp/cambios.raw; then
+            echo 'diff_ok=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'diff_ok=false' >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Plan de ejecución (#896; piloto OFF por defecto)
         id: plan
@@ -168,8 +177,9 @@ jobs:
           CI_EVENT: ${{ github.event_name }}
           CI_ACTION: ${{ github.event.action }}
           CI_DRAFT: ${{ github.event.pull_request.draft }}
-          CI_FAST_DRAFT: ${{ vars.CI_FAST_DRAFT }}
+          CI_FAST_DRAFT: ${{ vars.BAMBU_CI_896_DRAFT_PILOT }}
           E2E_REQUIRED: ${{ steps.classify.outputs.e2e_required }}
+          CI_DIFF_OK: ${{ steps.classify.outputs.diff_ok }}
         run: node scripts/ci/politica-ci.mjs plan
 
   quality:
@@ -783,7 +793,7 @@ jobs:
           CI_EVENT: ${{ github.event_name }}
           CI_ACTION: ${{ github.event.action }}
           CI_DRAFT: ${{ github.event.pull_request.draft }}
-          CI_FAST_DRAFT: ${{ vars.CI_FAST_DRAFT }}
+          CI_FAST_DRAFT: ${{ vars.BAMBU_CI_896_DRAFT_PILOT }}
           R_DETECT: ${{ needs.detect-changes.result }}
           R_QUALITY: ${{ needs.quality.result }}
           R_E2E: ${{ needs.e2e.result }}
@@ -792,6 +802,7 @@ jobs:
           R_INTEGRATION: ${{ needs.integration.result }}
           INTEGRATION_OK: ${{ needs.integration.outputs.suite_ok }}
           E2E_REQUIRED: ${{ needs.detect-changes.outputs.e2e_required }}
+          CI_DIFF_OK: ${{ needs.detect-changes.outputs.diff_ok }}
           E2E_RUN: ${{ needs.detect-changes.outputs.e2e_run }}
           DRAFT_DEFERRED: ${{ needs.detect-changes.outputs.draft_deferred }}
         run: node scripts/ci/politica-ci.mjs gate
