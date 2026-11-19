@@ -201,6 +201,9 @@ function ListaPorFranja({
 export function OperacionList({
   pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen, consulta, arrastre,
 }: OperacionListProps) {
+  // #859: recorrido manual temporal de la vista, sin alterar FIFO del servidor.
+  const [modoRecorrido, setModoRecorrido] = useState(false)
+  const [ordenRecorrido, setOrdenRecorrido] = useState<string[]>([])
   if (pedidos.length === 0) {
     return (
       <EmptyState
@@ -223,9 +226,32 @@ export function OperacionList({
       if (ultimo && g && ultimo.clave === g.clave) ultimo.filas.push(p)
       else bloques.push({ clave: g?.clave ?? 'sin-barrio', etiqueta: g?.etiqueta ?? 'Sin barrio', filas: [p] })
     }
+    const clavesDisponibles = [...new Set(bloques.map(b => b.clave))]
+    const ordenEfectivo = [
+      ...ordenRecorrido.filter(clave => clavesDisponibles.includes(clave)),
+      ...clavesDisponibles.filter(clave => !ordenRecorrido.includes(clave)),
+    ]
+    const bloquesVisibles = modoRecorrido
+      ? [...bloques].sort((a, b) => ordenEfectivo.indexOf(a.clave) - ordenEfectivo.indexOf(b.clave))
+      : bloques
+    const mover = (clave: string, desplazamiento: number) => {
+      const actual = [...ordenEfectivo]
+      const indice = actual.indexOf(clave)
+      const destino = indice + desplazamiento
+      if (indice < 0 || destino < 0 || destino >= actual.length) return
+      ;[actual[indice], actual[destino]] = [actual[destino], actual[indice]]
+      setOrdenRecorrido(actual)
+    }
     return (
       <div data-testid="pedidos-agrupados-barrio">
-        {bloques.map((b, i) => {
+        <div className="my-2 flex flex-wrap items-center gap-2 text-xs">
+          <button type="button" aria-pressed={!modoRecorrido} onClick={() => setModoRecorrido(false)}
+            className={`rounded-md border px-3 py-1.5 ${!modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>FIFO</button>
+          <button type="button" aria-pressed={modoRecorrido} onClick={() => setModoRecorrido(true)}
+            className={`rounded-md border px-3 py-1.5 ${modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>Recorrido</button>
+          {modoRecorrido && <span className="text-stone-500">Orden temporal de esta pantalla, no se guarda.</span>}
+        </div>
+        {bloquesVisibles.map((b, i) => {
           const total = consulta.grupos?.find((g) => g.clave === b.clave)?.total ?? b.filas.length
           return (
             <section key={`${b.clave}-${i}`} aria-label={`Barrio ${b.etiqueta}`}>
@@ -236,6 +262,14 @@ export function OperacionList({
                 onSoloEste={consulta.onGrupoBarrio ? () => consulta.onGrupoBarrio!(b.clave) : undefined}
                 onTodos={consulta.onGrupoBarrio ? () => consulta.onGrupoBarrio!(null) : undefined}
               />
+              {modoRecorrido && (
+                <div className="mb-1 flex gap-2">
+                  <button type="button" aria-label={`Subir ${b.etiqueta}`} disabled={i === 0}
+                    onClick={() => mover(b.clave, -1)} className="rounded border px-2 py-1 text-xs disabled:opacity-40">↑ Subir</button>
+                  <button type="button" aria-label={`Bajar ${b.etiqueta}`} disabled={i === bloquesVisibles.length - 1}
+                    onClick={() => mover(b.clave, 1)} className="rounded border px-2 py-1 text-xs disabled:opacity-40">↓ Bajar</button>
+                </div>
+              )}
               <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre}/>
             </section>
           )
