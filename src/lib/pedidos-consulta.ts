@@ -98,6 +98,8 @@ export interface FiltrosConsultaPedidos {
   agrupar: "" | "barrio";
   /** #836 F3: solo los pedidos de un grupo de barrio (clave de `grupos`). */
   grupoBarrio: string;
+  /** Orden manual temporal, aplicado antes de paginar. */
+  recorrido?: string[];
   resumen: boolean;
   page: number;
   pageSize: number;
@@ -124,6 +126,7 @@ export const clavesConsultaPedidos = [
   "conRecurrencia",
   "agrupar",
   "grupoBarrio",
+  "recorrido",
   "resumen",
   "page",
   "pageSize",
@@ -298,6 +301,7 @@ export function leerFiltrosConsulta(
         ? "barrio" : "",
     ),
     grupoBarrio: leerGrupoBarrio(p),
+    recorrido: lista(p, "recorrido").filter(v => /^(sin-barrio|[bt]:[^\\u0000-\\u001f]+)$/.test(v)),
     resumen: p.has("resumen")
       ? p.get("resumen") === "1"
       : [
