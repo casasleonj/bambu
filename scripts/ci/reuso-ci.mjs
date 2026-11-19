@@ -22,14 +22,19 @@ const timestamp = s => typeof s === 'string' ? Date.parse(s) : NaN
 
 export function relevant(run, ctx) {
   if (!safeId(run?.id) || run.id === ctx.currentRun || run.head_sha !== ctx.sha || run.head_branch !== 'main' || run.repository?.full_name !== ctx.repo || run.head_repository?.full_name !== ctx.repo) return false
-  return (run.path === CI && run.event === 'push') || (run.path === NIGHT && ['schedule','workflow_dispatch'].includes(run.event))
+  return (run.path === CI && ['push','workflow_dispatch'].includes(run.event)) || (run.path === NIGHT && ['schedule','workflow_dispatch'].includes(run.event))
 }
 
 export function verifyFull(run, jobs, ctx, shadowPR = false) {
   if (!passed(run) || run.run_attempt !== 1 || !safeId(run.id) || run.repository?.full_name !== ctx.repo || run.head_repository?.full_name !== ctx.repo) return false
   if (shadowPR ? run.path !== CI || run.event !== 'pull_request' : !relevant(run, ctx)) return false
+  // A direct dispatch can use another flag profile. It may invalidate an
+  // older green, but is not evidence for reuse.
+  if (!shadowPR && run.path === CI && run.event !== 'push') return false
   if (!Array.isArray(jobs)) return false
   const prefix = run.path === NIGHT ? PREFIX : ''
+  const fullJobs = prefix ? jobs.filter(j => j?.name?.startsWith(prefix)) : jobs
+  if (fullJobs.length !== Object.keys(CONTRACT).length) return false
   for (const [name, steps] of Object.entries(CONTRACT)) {
     const matches = jobs.filter(j => j?.name === prefix + name)
     if (matches.length !== 1 || !passed(matches[0])) return false
