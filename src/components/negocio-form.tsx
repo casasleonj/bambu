@@ -1,5 +1,6 @@
 'use client'
 
+import { leerErrorApi } from '@/lib/api-error-client'
 import { useState } from 'react'
 import { NegocioHorarioEditor } from '@/components/negocio-horario-editor'
 import { normalizarHorario, validarHorario, type TramoHorario } from '@/lib/negocio-horario'
@@ -140,8 +141,9 @@ export function NegocioForm({
       const data = await res.json()
 
       if (!res.ok || !data.success) {
-        if (Array.isArray(data.formErrors) && data.formErrors.length > 1) setErroresHorario(data.formErrors)
-        setFormError(data.error || data.formErrors?.[0] || 'Error al guardar')
+        const { mensaje, formErrors } = leerErrorApi(data)
+        if (formErrors.length > 1) setErroresHorario(formErrors)
+        setFormError(formErrors[0] || mensaje || 'Error al guardar')
         return
       }
 
