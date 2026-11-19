@@ -41,7 +41,7 @@ test.describe("#851 — rótulos de las vistas por fecha prometida", () => {
       await loginAs(page, "admin");
 
       await goto(page, "/pedidos?foco=paraHoy&pageSize=100");
-      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Entregas previstas hoy o atrasadas");
+      await expect(page.getByRole("heading", { level: 1, name: "Entregas previstas hoy o atrasadas" })).toBeVisible();
       await expect(page.getByTestId("encabezado-compromiso")).toContainText("Por fecha prometida de entrega");
       await expect(page.getByTestId("consulta-filtros").getByRole("button", { name: "Hoy", exact: true })).toHaveCount(0);
       await expect(page.getByText("Fecha del pedido", { exact: true })).toHaveCount(0);
@@ -55,17 +55,19 @@ test.describe("#851 — rótulos de las vistas por fecha prometida", () => {
       await page.getByRole("button", { name: "Ver por fecha del pedido" }).click();
       await expect(page).not.toHaveURL(/foco=paraHoy/);
       await expect(page.getByTestId("consulta-filtros").getByRole("button", { name: "Hoy", exact: true })).toBeVisible();
-      await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Pedidos de/i);
+      await expect(page.getByRole("heading", { level: 1, name: /^Pedidos de/i })).toBeVisible();
     });
   }
 
   test("sin entregas: mensaje propio en ambas vistas; «Programados» con su título", async ({ page }) => {
+    // el sembrado trae pedidos con fecha prometida: se quitan para que ambas vistas queden vacías
+    await db.pedido.updateMany({ data: { fechaEntrega: null } });
     await loginAs(page, "admin");
     await goto(page, "/pedidos?foco=paraHoy&pageSize=100");
     await expect(page.getByText("No hay entregas previstas para hoy ni atrasadas")).toBeVisible();
 
     await goto(page, "/pedidos?foco=programados&pageSize=100");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Entregas programadas");
+    await expect(page.getByRole("heading", { level: 1, name: "Entregas programadas" })).toBeVisible();
     await expect(page.getByText("No hay entregas programadas para días futuros")).toBeVisible();
   });
 });
