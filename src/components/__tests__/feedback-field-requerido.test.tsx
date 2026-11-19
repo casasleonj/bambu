@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { useState } from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { FeedbackField } from '@/components/feedback-field'
 
@@ -26,19 +27,30 @@ describe('FeedbackField — #811 obligatoriedad real', () => {
   })
 
   it('el campo obligatorio participa en la validación del formulario', () => {
-    const { container } = render(
-      <form>
-        <FeedbackField label="Nombre" required value="" onChange={() => {}} />
-        <button type="submit">Guardar</button>
-      </form>,
-    )
+    // El componente es controlado: sin estado real el `fireEvent` se revierte
+    // solo y la prueba no demostraría nada. Este arnés mantiene el valor.
+    function Arnes() {
+      const [nombre, setNombre] = useState('')
+      return (
+        <form>
+          <FeedbackField label="Nombre" required value={nombre} onChange={setNombre} />
+          <button type="submit">Guardar</button>
+        </form>
+      )
+    }
+    const { container } = render(<Arnes />)
     const form = container.querySelector('form') as HTMLFormElement
     const input = screen.getByRole('textbox') as HTMLInputElement
+
     // El navegador sólo bloquea si el control es candidato a validación.
     expect(input).toBeRequired()
     expect(input.willValidate).toBe(true)
     expect(form.checkValidity()).toBe(false)
+
+    // Y deja de bloquear en cuanto tiene valor: el bloqueo es por vacío,
+    // no un required que impida enviar siempre.
     fireEvent.change(input, { target: { value: 'Juan' } })
+    expect(form.checkValidity()).toBe(true)
   })
 
   it('espacios no cuentan como valor para el bloqueo nativo propio', () => {
