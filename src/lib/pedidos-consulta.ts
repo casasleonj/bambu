@@ -382,7 +382,8 @@ export function parametrosConsulta(f: FiltrosConsultaPedidos): URLSearchParams {
   p.set("registro", f.registro);
   p.set("pago", f.pago);
   if (f.conRecurrencia) p.set("conRecurrencia", "true");
-  if (f.agrupar) p.set("agrupar", f.agrupar);
+  // Preserve explicit ungrouped selection; absence means operational barrio default.
+  p.set("agrupar", f.agrupar);
   if (f.grupoBarrio) p.set("grupoBarrio", f.grupoBarrio);
   p.set("resumen", f.resumen ? "1" : "0");
   p.set("page", String(f.page));
