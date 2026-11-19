@@ -4,7 +4,7 @@ Base original: `main` `1e1bf8e0` (18-11-2026). Rama `fix/795-regalos`.
 Rebase del 19-11 completado sobre `main` `7636480e`; conservados programación
 de entrega y presentación responsive de facturas. Commits posteriores al rebase:
 `77b003b4` (dominio) y `910e82bd` (persistencia y flujos).
-Estado: **dominio, persistencia, API y conexión inicial de UI implementados en la rama; QA integral pendiente**.
+Estado: **implementado y validado localmente; QA del Hub y de la interfaz anterior ejecutados; CI, revisión y liberación pendientes**.
 La migración de regalos se aplicó y repitió únicamente en PostgreSQL local aislado.
 No hay migración de regalos aplicada ni escrituras de prueba en producción.
 
@@ -188,21 +188,121 @@ No declarar probado un ledger global PROMOCION de ventas directas: no existe
 esa custodia en el modelo actual. Esta limitación ya está en main y no se
 resuelve inventando embarques para ventas de mostrador.
 
+## Capturas directas y QA del Hub (19-11)
+
+Las ventas con regalos que nacen entregadas guardan una captura `consultaEntrega`
+en la auditoría transaccional ya existente: fecha del servidor, responsable cuando
+está acreditado y cantidades comercial/gratuita/física. Su reintento conserva un
+solo hecho y un solo pago. No depende de reconstruir ese desglose desde un precio
+promedio ni de asignar una misión ficticia.
+
+Después de este ajuste, 462 pruebas / 36 archivos unitarios y 34 PostgreSQL / 4
+archivos pasaron. El archivo de creación ampliado pasó 5/5, incluyendo Venta en ruta
+por 63 unidades de comisión, un solo pago y un hecho atribuido. El archivo de
+entregas ampliado pasó 10/10, incluyendo N2 y retorno de 52 tras entregar 10+1.
+La compilación Hub terminó con TypeScript, exit 0; la primera comprobación detectó
+una referencia a un campo de fecha inexistente en el comando. Se corrigió para
+usar el instante que ya genera el servidor; no se añadió otra fecha de negocio.
+
+Playwright Hub: 20/20 (regalos, permisos, offline, precio preciso y regresiones de
+sincronización), escritorio y móvil. Tras precisar la reapertura de enlaces de
+un solo uso, el archivo nuevo pasó otra vez 10/10. Son lotes solapados.
+
+QA exploratorio autónomo: Chromium real, formulario de login ADMIN, datos
+sintéticos locales, escritorio 1280×800 y móvil 390×844. **6/6 recorridos**, sin
+excepciones JavaScript: crear, error/reintento, plegar sin perder regalo, guardar,
+reabrir después de recargar, parcial con exceso rechazado, factura y vuelta al
+pedido. Prueba adicional de enlaces: **4/4** entre pedido y factura, validando el
+número del documento que realmente se abrió. Capturas del editor, parcial y
+factura inspeccionadas visualmente; no es QA humano ni producción.
+
+Puente ejecutado en los seis recorridos, con el mismo día y contexto:
+
+| Caso | Entregadas físicas, Dashboard y Cierre | Venta, Dashboard y Cierre | Efectivo recibido |
+| --- | ---: | ---: | ---: |
+| Parcial 10 con precio + 1 gratuita, sin cobro | 11 | 23000 | 0 |
+| Venta rápida 60 con precio + 3 gratuitas, cobrada | 63 | 138000 | 138000 |
+| Venta en ruta 60 con precio + 3 gratuitas, cobrada | 63 | 138000 | 138000 |
+
+Preservación verificada en `main` `7636480e`: Venta en ruta solo se ofrece en el
+Hub (`hubMode && ADMIN && gestión directa activa`). La primera matriz E2E de la
+interfaz anterior asumía erróneamente ese acceso y falló al buscarlo. Se corrige
+la matriz para probar sus dos entradas reales y una aserción negativa del acceso
+de ruta; no se omite un test existente ni se habilita otra UI sin aprobación.
+
+Los enlaces `openPedido` se consumen al abrir por diseño (#377). La comprobación
+de persistencia recarga y vuelve a abrir el recurso, en vez de exigir que sobreviva
+el estado del modal. La factura se identifica por «No. FAC-…», no por un nodo de
+texto que contenga únicamente el número. Se ajustaron los guiones a esos contratos,
+sin modificar navegación de producto.
+
+## Contraste adicional: envío individual al embarque
+
+Se encontró un consumidor que seguía usando una multiplicación local de las
+cantidades comerciales: `POST /api/pedidos/[id]/enviar`. Se reutilizan
+`pedidoParaCargaPendiente` y `calcularPesoEmbarque`, con items canónicos, tanto
+para el pedido nuevo como para los compromisos de esa misión. No modifica
+cantidades, precios, importes ni hechos de entrega anteriores.
+
+La asignación individual toma `EMBARQUE_CARGA`, el mismo lock de la asignación
+en bloque. Conserva el dedup por `envioOfflineId` y la guarda de fila para que
+un pedido no se asigne a dos misiones.
+
+Verificación posterior de este consumidor: **115/115 pruebas**, 5 archivos,
+y **4/4 PostgreSQL** con handler real:
+
+- 60 con precio + 3 gratuitas pesan 630 kg y no caben en capacidad de 620.
+- Las gratuitas de pedidos ya asignados también ocupan capacidad.
+- Después de 10+1, una nueva asignación considera 50+2: 520 kg.
+- Dos operadores que intentan asignar 30 kg cada uno a 50 kg de capacidad
+  consiguen una sola asignación; la otra se rechaza.
+
+Se añadió también el recorrido E2E del REPARTIDOR: foto sintética, GPS simulado
+y entrega/cobro desde su pantalla. Pendiente de ejecución sobre el build final;
+ningún archivo se sube al Storage productivo durante la prueba local.
+
+## Preparación de liberación
+
+Consulta de metadatos de la base conectada, solo lectura (19-11): los cinco campos
+de regalos todavía no existen. RLS de PedidoItem sigue activa y sin políticas de
+acceso para los roles de Data API. No se ejecutó DDL/DML ni se modificaron permisos.
+Estos metadatos no demuestran ausencia de locks en el momento futuro de aplicar.
+
+SQL concreto: `prisma/migrations/20261118_pedido_regalos/migration.sql` (aditivo,
+idempotente, timeout de espera de lock de 5 s). Debe aprobarse expresamente su
+aplicación a producción antes del merge. Conserva los importes y el significado de
+las cantidades antiguas. Verificar columnas, FK, índice, CHECK y acceso Prisma tras
+aplicar; no retirar columnas para revertir código. La versión anterior de código
+solo es compatible antes de empezar a guardar regalos; después se requiere una
+versión que conserve el desglose, sin reescribir históricos.
+
+## Validación de la interfaz anterior y cierre local
+
+- Build con `NEXT_PUBLIC_PEDIDOS_V2=false`: exit 0, incluido TypeScript.
+- Matriz corregida: 16/16 Playwright en escritorio/móvil (regalos, permisos,
+  offline, precio preciso, error/reintento y preservación de accesos). Sin skips.
+- QA autónomo: 4/4 recorridos de Crear pedido/Venta rápida; 0 excepciones JS;
+  puente de unidades/venta/efectivo con Dashboard y Cierre correcto en los cuatro.
+- Enlaces reales pedido → factura → pedido: 4/4 en esta interfaz también.
+- Capturas del editor escritorio/móvil, factura y confirmación parcial inspeccionadas.
+- Typecheck final `npm run typecheck`: exit 0. ESLint del diff: exit 0.
+  YAML de CI cargado con el parser instalado `js-yaml` y comprobada la inclusión
+  del nuevo spec en el job Hub: exit 0. Se corrigió el tipado contextual de un
+  comando de prueba de Venta en ruta; no altera el comportamiento de producto.
+
+El job Hub de CI incorpora el spec nuevo; la matriz general conserva su cobertura
+legacy. Se mantienen los tests existentes y las verificaciones negativas de roles
+sin permiso. Ningún fallo del fixture se convierte en un skip para conseguir verde.
+
 ## Falta para resolver #795
 
-1. Completar la revisión de productores/consumidores indirectos y el recorrido
-   posterior: cierre de embarque, inventario por custodia, N2, correcciones y
-   devoluciones. No declarar consistencia global solo por las pruebas locales.
-2. Validar que los tres accesos reales (crear, venta rápida, venta en ruta),
-   borradores/offline y parciales preservan el desglose, permisos y la clave del
-   reintento; no hay campos/cantidades perdidos entre adaptadores.
-3. QA móvil/escritorio, enlaces pedido/factura, casos de carga/error/reintento,
-   CI y revisión independiente requeridas por el repositorio.
-4. SQL concreto revisado y autorización específica antes de producción;
-   compatibilidad previa al merge y verificación postmerge. No retirar las
-   columnas al revertir código. Tras crear regalos no volver a una versión que
-   ignore su desglose: restaurar una versión compatible y conciliar hechos,
-   sin fabricar devoluciones ni reescribir cierres históricos.
+1. PR contra main actualizado, CI completo y revisión. La base sigue `7636480e`
+   al último fetch; comparar las firmas de cualquier fallo nuevo con su CI verde
+   [44455893970](https://github.com/casasleonj/bambu/actions/runs/44455893970).
+2. Autorización específica del SQL productivo y comprobación de compatibilidad
+   antes de mergear. No escribir pedidos, pagos ni cierres sintéticos en producción.
+3. Merge autorizado y verificación posterior del SHA real. Las pruebas locales
+   y el QA no equivalen a una liberación ni prueban una migración aún no ejecutada.
 
 Pendiente de producto fuera del ejemplo aprobado: pedidos compuestos únicamente
 de regalos y ampliación de autorizadores. No introducir esas reglas sin fuente.

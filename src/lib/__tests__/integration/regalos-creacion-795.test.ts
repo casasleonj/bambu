@@ -61,7 +61,7 @@ describe('#795 · creación y edición con regalos en PostgreSQL', () => {
     await db.config.upsert({ where: { clave: 'GESTION_ADMIN_SIN_EMBARQUE' },
       create: { clave: 'GESTION_ADMIN_SIN_EMBARQUE', valor: 'true' }, update: { valor: 'true' } })
     const repartidor = await db.trabajador.create({ data: { nombre: 'Repartidor sintético de regalos', rol: 'REPARTIDOR', usaMoto: true } })
-    const comando = { clienteId: await cliente(), canal: 'DOMICILIO' as const, origen: 'VENTA_RAPIDA' as const,
+    const comando: Parameters<typeof crearPedidoUseCase.execute>[0] = { clienteId: await cliente(), canal: 'DOMICILIO', origen: 'VENTA_RAPIDA',
       items, offlineId: randomUUID(), createdById: adminId, createdByRole: 'ADMIN', vendidoPorId: repartidor.id,
       pagos: [{ metodo: 'EFECTIVO', monto: 138000 }] }
     const { pedido } = await crearPedidoUseCase.execute(comando)

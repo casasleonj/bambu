@@ -34,6 +34,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     $transaction: (fn: (tx: unknown) => unknown) =>
       fn({
+        $queryRaw: vi.fn().mockResolvedValue([]),
         pedido: { findUnique: mockPedidoFindUnique, updateMany: mockPedidoUpdateMany },
         embarque: { findUnique: mockEmbarqueFindUnique, update: mockEmbarqueUpdate },
         trabajador: { findUnique: mockTrabajadorFindUnique },

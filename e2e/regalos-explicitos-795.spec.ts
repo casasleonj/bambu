@@ -1,14 +1,17 @@
 import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
-import { test, expect, sharedLoginAs, resetTestDatabase, createCliente, BASE, appMain } from './fixtures'
+import { test, expect, sharedLoginAs, resetTestDatabase, createCliente, apiPost, BASE, appMain } from './fixtures'
+import { resolve } from 'node:path'
 
 const db = new PrismaClient()
+const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
+const FLUJOS = HUB_ON ? ['pedido', 'rapida', 'ruta'] as const : ['pedido', 'rapida'] as const
 
 test.describe('#795 · regalos separados del importe', () => {
   test.beforeAll(() => resetTestDatabase())
   test.afterAll(async () => { await db.$disconnect() })
 
-  for (const flujo of ['pedido', 'rapida', 'ruta'] as const) {
+  for (const flujo of FLUJOS) {
     test(`${flujo}: 60 cobradas + 3 de regalo persisten como 63 físicas y $138.000`, async ({ browser }) => {
       const page = await sharedLoginAs(browser, 'admin')
       const nombre = `Regalos ${flujo} ${randomUUID()}`
@@ -79,6 +82,17 @@ test.describe('#795 · regalos separados del importe', () => {
     })
   }
 
+  if (!HUB_ON) {
+    test('la interfaz anterior conserva sus dos accesos; Venta en ruta pertenece al Hub', async ({ browser }) => {
+      const page = await sharedLoginAs(browser, 'admin')
+      await page.goto(`${BASE}/pedidos`)
+      await appMain(page).getByTestId('fab-main').click()
+      await expect(page.getByTestId('fab-pedido-envio')).toBeVisible()
+      await expect(page.getByTestId('fab-venta-rapida')).toBeVisible()
+      await expect(page.getByTestId('fab-venta-en-ruta')).toHaveCount(0)
+    })
+  }
+
   test('ASISTENTE no puede autorizar regalos en el editor', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'asistente')
     await page.goto(`${BASE}/pedidos`)
@@ -133,5 +147,46 @@ test.describe('#795 · regalos separados del importe', () => {
       const p = await db.pedido.findFirstOrThrow({ where: { clienteId: cliente.id }, include: { items: true, factura: true } })
       expect([p.items[0].cantPedido, p.items[0].cantRegaloPedido, Number(p.total), Number(p.factura?.total)]).toEqual([60, 3, 138000, 138000])
     } finally { await page.context().setOffline(false) }
+  })
+
+  test('REPARTIDOR entrega 63 físicas y cobra 138000 desde su pantalla, sin autorizar otro regalo', async ({ browser }) => {
+    const admin = await sharedLoginAs(browser, 'admin')
+    const { cliente } = await createCliente(admin, { nombre: `Regalos reparto ${randomUUID()}`, direccion: 'Dirección sintética', barrio: 'Centro' })
+    const usuario = await db.user.findUniqueOrThrow({ where: { username: 'repartidor' } })
+    const trabajador = await db.trabajador.findUniqueOrThrow({ where: { userId: usuario.id } })
+    await db.trabajador.update({ where: { id: trabajador.id }, data: { capacidadKg: 1000 } })
+    // Fixture físico local de la misión: la entrega y el cobro se hacen en la UI.
+    const embarque = await db.embarque.create({ data: { trabajadorId: trabajador.id, fecha: new Date(), estado: 'EN_RUTA',
+      productos: { create: { producto: 'PACA_AGUA', cargadas: 63 } },
+      movimientos: { create: { tipo: 'CARGA', producto: 'PACA_AGUA', cantidad: 63, origen: 'ALMACEN', destino: 'VEHICULO' } },
+    } })
+    const offlineId = randomUUID()
+    const creado = await apiPost(admin, '/api/pedidos', { clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO', offlineId,
+      items: [{ producto: 'PACA_AGUA', cantidad: 60, cantidadRegalo: 3, precioManual: 2300 }] })
+    expect(creado.status()).toBe(201)
+    const pedido = await db.pedido.findUniqueOrThrow({ where: { offlineId } })
+    expect((await apiPost(admin, `/api/pedidos/${pedido.id}/enviar`, { embarqueId: embarque.id, offlineId: randomUUID() })).status()).toBe(201)
+    const page = await sharedLoginAs(browser, 'repartidor')
+    await page.context().grantPermissions(['geolocation'])
+    await page.context().setGeolocation({ latitude: 4.711, longitude: -74.072, accuracy: 10 })
+    await page.goto(`${BASE}/repartidor`)
+    await page.getByTestId(`btn-entregar-${pedido.id}`).click()
+    await page.getByTestId('entrega-foto-input').setInputFiles(resolve(process.cwd(), 'public/logo-agua-bambu.jpg'))
+    const confirmar = page.getByTestId('entrega-confirmar')
+    await expect(confirmar).toBeEnabled()
+    const respuesta = page.waitForResponse(r => r.url().endsWith(`/api/pedidos/${pedido.id}/entrega`) && r.request().method() === 'POST')
+    await confirmar.click()
+    const resultado = await respuesta
+    expect(resultado.status()).toBe(200)
+    const enviado: unknown = resultado.request().postDataJSON()
+    expect(enviado).toMatchObject({ itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 60, cantidadRegalo: 3 }], pagos: [{ metodo: 'EFECTIVO', monto: 138000 }] })
+    const actual = await db.pedido.findUniqueOrThrow({ where: { id: pedido.id }, include: { items: true, factura: true, pagos: true } })
+    expect([actual.items[0].cantEntrega, actual.items[0].cantRegaloEntrega, actual.estadoEntrega]).toEqual([60, 3, 'ENTREGADO'])
+    expect(Number(actual.total)).toBe(138000)
+    expect(Number(actual.totalPagado)).toBe(138000)
+    expect(Number(actual.factura?.montoPagado)).toBe(138000)
+    expect(actual.pagos).toHaveLength(1)
+    await page.reload()
+    await expect(page.getByTestId(`btn-entregar-${pedido.id}`)).toHaveCount(0)
   })
 })
