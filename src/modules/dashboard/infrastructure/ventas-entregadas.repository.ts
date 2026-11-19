@@ -80,10 +80,10 @@ export function valorarEntregasDia(
       continue
     }
 
-    // Si TODO el cumplimiento vigente de este producto está dentro del rango,
+    // Si la entrega completa de este producto está dentro del rango,
     // las cantidades entregadas de cada item permiten separar tarifas y centavos.
     // Si cruza días, ni siquiera tarifas iguales garantizan el mismo redondeo.
-    const completoEnRango = Math.min(...delProducto.map(l => l.cantidadPrevia)) === 0 &&
+    const completoEnRango = delProducto.some(l => l.cantidadPrevia === 0) &&
       items.every(i => Number.isSafeInteger(i.cantEntrega) && (i.cantEntrega ?? -1) >= 0 &&
         precioValido(numeroPrecio(i.precio))) &&
       items.reduce((s, i) => s + (i.cantEntrega ?? 0), 0) === cantidad
