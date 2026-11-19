@@ -10,19 +10,22 @@ const caso = z.object({ id: z.string().length(64), pedidoId: z.string().min(1), 
 const snapshot = z.object({ version: z.literal(1), huella: z.string().length(64), subtotalCentavos: z.number().int(), casos: z.array(caso).min(1) })
 export type VentasProvisional = z.infer<typeof snapshot>
 export const ENTIDAD_REGULARIZACION = 'RegularizacionVentaCierre'
+const fundamentoCero = z.enum(['SIN_VENTA_RECONOCIDA', 'YA_AJUSTADA', 'NO_CORRESPONDE_A_VENTA'])
+const fundamentoValido = (v: { operacion: string; centavos: number; fundamentoCero?: string }) =>
+  (v.operacion === 'RESOLVER' && v.centavos === 0) === (v.fundamentoCero !== undefined)
 const pub = z.object({
   version: z.number().int().positive(), huella: z.string().length(64), casoId: z.string().length(64),
   operacion: z.enum(['RESOLVER', 'REVOCAR']), centavos: z.number().int().min(0).max(MAX_CENTAVOS_CONCILIACION),
-  referencia: z.string().trim().min(15).max(500),
-}).strict().refine(v => v.operacion !== 'REVOCAR' || v.centavos === 0)
+  referencia: z.string().trim().min(15).max(500), fundamentoCero: fundamentoCero.optional(),
+}).strict().refine(v => v.operacion !== 'REVOCAR' || v.centavos === 0).refine(fundamentoValido)
 export const SolicitudRegularizacion = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   casoId: z.string().length(64), huella: z.string().length(64),
   revisionEsperada: z.string().nullable(),
   operacion: z.enum(['RESOLVER', 'REVOCAR']),
   centavos: z.number().int().min(0).max(MAX_CENTAVOS_CONCILIACION),
-  referencia: z.string().trim().min(15).max(500), confirmoEvidencia: z.literal(true),
-}).strict().refine(v => v.operacion !== 'REVOCAR' || v.centavos === 0)
+  referencia: z.string().trim().min(15).max(500), confirmoEvidencia: z.literal(true), fundamentoCero: fundamentoCero.optional(),
+}).strict().refine(v => v.operacion !== 'REVOCAR' || v.centavos === 0).refine(fundamentoValido)
 type Revision = z.infer<typeof pub> & { id: string; actor: string; fecha: string }
 type Db = Pick<Prisma.TransactionClient, 'historial'>
 
@@ -119,6 +122,7 @@ export async function listarProvisionales(db: Pick<Prisma.TransactionClient, 'ci
  * No deducir de una nota ni sumar ajustes ya consolidados. */
 export async function pedidosConReversaRegistrada(
   db: Pick<Prisma.TransactionClient, 'cierreDia' | 'historial'>, fecha: Date, ids: readonly string[],
+  tipo: 'AJUSTE' | 'CERO_DEPENDIENTE' = 'AJUSTE',
 ) {
   const resultado = new Set<string>()
   if (!ids.length) return resultado
@@ -133,11 +137,12 @@ export async function pedidosConReversaRegistrada(
   const buscados = new Set(unicos)
   for (const c of cierres) {
     const r = c.reporte as { ajustesVentasDetalle?: { pedidoId: string; centavos: number }[] } | null
-    for (const a of r?.ajustesVentasDetalle ?? []) if (buscados.has(a.pedidoId) && a.centavos > 0) resultado.add(a.pedidoId)
+    for (const a of r?.ajustesVentasDetalle ?? []) if (tipo === 'AJUSTE' && buscados.has(a.pedidoId) && a.centavos > 0) resultado.add(a.pedidoId)
   }
   const suplementos = await leerRegularizaciones(db, cierres)
   for (const s of suplementos.values()) for (const c of s.casos)
-    if (buscados.has(c.pedidoId) && c.revision?.operacion === 'RESOLVER' && c.revision.centavos > 0) resultado.add(c.pedidoId)
+    if (buscados.has(c.pedidoId) && c.revision?.operacion === 'RESOLVER' &&
+      (tipo === 'AJUSTE' ? c.revision.centavos > 0 : c.revision.fundamentoCero === 'YA_AJUSTADA')) resultado.add(c.pedidoId)
   return resultado
 }
 

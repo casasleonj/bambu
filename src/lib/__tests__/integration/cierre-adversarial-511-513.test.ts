@@ -19,6 +19,7 @@ vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn(async () => {}) }))
 import { GET as preview, POST as cerrar } from '@/app/api/cierre/route'
 import { POST as conciliarVentas } from '@/app/api/cierre/conciliacion-ventas/route'
 import { POST as regularizarVentas } from '@/app/api/cierre/regularizacion-ventas/route'
+import { prepararVentasProvisional } from '@/lib/cierre-ventas-provisional'
 import { POST as pagarFiado } from '@/app/api/pedidos/pagar-fiado/route'
 import { POST as abonar } from '@/app/api/abonos/route'
 import { verificarIntegridad } from '@/lib/integridad/verificar'
@@ -235,6 +236,33 @@ describe('auditoría adversarial del cierre #511 / #513', () => {
     await registrarBaseDia(siguiente,10000)
     expect((await cerrar(request('/api/cierre',payload(siguiente)))).status).toBe(201)
     expect(await testPrisma.cierreDia.findUnique({where:{id:original.id}})).toEqual(original)
+  })
+
+  it('#885: un ajuste positivo no puede duplicarse ni retirarse mientras otro cierre depende de él', async () => {
+    const dias = ['2026-04-02','2026-04-03']
+    const {p} = await pedido('2026-04-01', 0, { anulado:true })
+    const crear = async (fecha:string) => {
+      const ventasProvisional=prepararVentasProvisional({fecha,totalVentas:10000,
+        ventasPorConciliar:[{pedidoId:p.id,numero:p.numero,motivo:'REVERSA_AMBIGUA'}]})!
+      return testPrisma.cierreDia.create({data:{fecha:startOfDayInBogota(fecha),totalVentas:10000,
+        reporte:{ventasEstado:'PROVISIONAL',ventasProvisional}}})
+    }
+    const a=await crear(dias[0]), b=await crear(dias[1])
+    const payloadDe=async(fecha:string)=>{
+      const r=(await leer(fecha)).regularizacionVentas
+      return {fecha,huella:r.huella,casoId:r.casos[0].id,revisionEsperada:r.casos[0].revision?.id??null,
+        referencia:'Reporte anterior y ajuste confirmado por administración',confirmoEvidencia:true}
+    }
+    const post=(d:unknown)=>regularizarVentas(request('/api/cierre/regularizacion-ventas',d))
+    expect((await post({...await payloadDe(dias[1]),operacion:'RESOLVER',centavos:0,fundamentoCero:'YA_AJUSTADA'})).status).toBe(409)
+    expect((await post({...await payloadDe(dias[0]),operacion:'RESOLVER',centavos:500000})).status).toBe(201)
+    expect((await post({...await payloadDe(dias[1]),operacion:'RESOLVER',centavos:500000})).status).toBe(409)
+    expect((await post({...await payloadDe(dias[1]),operacion:'RESOLVER',centavos:0})).status).toBe(400)
+    expect((await post({...await payloadDe(dias[1]),operacion:'RESOLVER',centavos:0,fundamentoCero:'YA_AJUSTADA'})).status).toBe(201)
+    expect((await post({...await payloadDe(dias[0]),operacion:'REVOCAR',centavos:0})).status).toBe(409)
+    expect((await post({...await payloadDe(dias[1]),operacion:'REVOCAR',centavos:0})).status).toBe(201)
+    expect((await post({...await payloadDe(dias[0]),operacion:'REVOCAR',centavos:0})).status).toBe(201)
+    for(const c of [a,b])expect(await testPrisma.cierreDia.findUnique({where:{id:c.id}})).toEqual(c)
   })
 
   it('#513: un abono independiente de igual importe a un Pago reciente también cuenta', async () => {

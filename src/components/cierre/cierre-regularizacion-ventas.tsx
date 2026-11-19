@@ -36,13 +36,14 @@ function CasoRegularizacion({ caso, r, fecha, onCambio }: { caso:RegularizacionV
   const resuelto=caso.revision?.operacion==='RESOLVER'
   const [monto,setMonto]=useState('')
   const [referencia,setReferencia]=useState('')
+  const [fundamentoCero,setFundamentoCero]=useState('')
   const [confirmado,setConfirmado]=useState(false)
   const [ocupado,setOcupado]=useState(false)
   const [error,setError]=useState('')
   const vivo=useRef(true), enCurso=useRef(false)
   useEffect(()=>{vivo.current=true;return()=>{vivo.current=false}},[])
   const centavos=/^\d{1,8}([.,]\d{1,2})?$/.test(monto.trim())?Math.round(Number(monto.trim().replace(',','.'))*100):-1
-  const valido=confirmado&&referencia.trim().length>=15&&(resuelto||centavos>=0)
+  const valido=confirmado&&referencia.trim().length>=15&&(resuelto||(centavos>=0&&(centavos!==0||!!fundamentoCero)))
   async function enviar() {
     if(!valido||enCurso.current)return
     enCurso.current=true;setOcupado(true);setError('')
@@ -50,6 +51,7 @@ function CasoRegularizacion({ caso, r, fecha, onCambio }: { caso:RegularizacionV
       const res=await fetch('/api/cierre/regularizacion-ventas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
         fecha,casoId:caso.id,huella:r.huella,revisionEsperada:caso.revision?.id??null,
         operacion:resuelto?'REVOCAR':'RESOLVER',centavos:resuelto?0:centavos,referencia:referencia.trim(),confirmoEvidencia:true,
+        ...(!resuelto&&centavos===0?{fundamentoCero}:{}),
       })})
       const j=await res.json()
       if(!res.ok)throw Error(j.error?.message??'No se pudo regularizar.')
@@ -61,7 +63,8 @@ function CasoRegularizacion({ caso, r, fecha, onCambio }: { caso:RegularizacionV
     <summary className="cursor-pointer font-semibold">{resuelto?'Retirar regularización':'Regularizar venta'}</summary>
     <div className="mt-3 space-y-3">
       {!resuelto&&<><p>Verifica qué importe de ventas anteriores falta descontar en este cierre. Si no se reconoció una venta previamente o ya se descontó, registra cero solo con evidencia. No uses el valor de la nota crédito ni un valor estimado.</p>
-        <label className="block">Ajuste pendiente de restar<input inputMode="decimal" className="mt-1 block min-h-11 w-full rounded border px-2" value={monto} onChange={e=>setMonto(e.target.value)} placeholder="COP"/></label></>}
+        <label className="block">Ajuste pendiente de restar<input inputMode="decimal" className="mt-1 block min-h-11 w-full rounded border px-2" value={monto} onChange={e=>setMonto(e.target.value)} placeholder="COP"/></label>
+        {centavos===0&&<label className="block">Motivo de ajuste cero<select className="mt-1 block min-h-11 w-full rounded border px-2" value={fundamentoCero} onChange={e=>setFundamentoCero(e.target.value)}><option value="">Selecciona el fundamento</option><option value="SIN_VENTA_RECONOCIDA">No se reconoció una venta anteriormente</option><option value="YA_AJUSTADA">Ajuste registrado en otro caso del pedido</option><option value="NO_CORRESPONDE_A_VENTA">La nota o novedad no corresponde a una reversa de venta</option></select></label>}</>}
       <label className="block">{resuelto?'Motivo documentado para retirar':'Referencia documental y explicación'}<textarea rows={3} maxLength={500} className="mt-1 block w-full rounded border p-2" value={referencia} onChange={e=>setReferencia(e.target.value)} placeholder="Reporte, fecha, fila y motivo (sin datos personales)"/></label>
       <label className="flex items-start gap-2"><input type="checkbox" checked={confirmado} onChange={e=>setConfirmado(e.target.checked)}/>{resuelto?'Confirmo que debe volver a quedar pendiente.':'Verifiqué la evidencia y el importe que faltaba ajustar.'}</label>
       {error&&<p role="alert" className="text-red-700">{error}</p>}
@@ -78,7 +81,7 @@ export function CierreRegularizacionVentas({r,fecha,onCambio}: {r:Regularizacion
       <div className="flex justify-between gap-3 font-bold"><dt>{r.pendientes?'Subtotal identificado (no definitivo)':'Ventas netas regularizadas'}</dt><dd>{formatCurrency(r.subtotalIdentificado)}</dd></div></dl>
     {r.casos.map(c=><div key={c.id} className="mt-3 border-t pt-3">
       <p>{c.numero==null?'Pedido sin número':`Pedido #${c.numero}`} · {motivos[c.motivo]??c.motivo}</p>
-      {c.revision?.operacion==='RESOLVER'?<p className="text-slate-700">Ajuste registrado: {formatCurrency(c.revision.centavos/100)} · {c.revision.referencia} · {c.revision.fecha.slice(0,10)}</p>:<p className="font-semibold text-amber-800">Pendiente de evidencia</p>}
+      {c.revision?.operacion==='RESOLVER'?<p className="text-slate-700">Ajuste registrado: {formatCurrency(c.revision.centavos/100)} · {c.revision.referencia} · {c.revision.fecha.slice(0,10)}{c.revision.fundamentoCero==='YA_AJUSTADA'?' · Ajuste ya registrado':''}</p>:<p className="font-semibold text-amber-800">Pendiente de evidencia</p>}
       {onCambio&&<CasoRegularizacion key={c.revision?.id??c.id} caso={c} r={r} fecha={fecha} onCambio={onCambio}/>}
     </div>)}
   </section>

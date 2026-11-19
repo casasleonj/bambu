@@ -156,6 +156,7 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     await goto(page,`/cierre?fecha=${fecha}`)
     await panel.getByText('Regularizar venta',{exact:true}).click()
     await panel.getByLabel('Ajuste pendiente de restar').fill('0')
+    await panel.getByLabel('Motivo de ajuste cero').selectOption('SIN_VENTA_RECONOCIDA')
     await panel.getByLabel('Referencia documental y explicación').fill('Reporte original confirma que no fue venta reconocida')
     await panel.getByLabel('Verifiqué la evidencia y el importe que faltaba ajustar.').check()
     await panel.getByRole('button',{name:'Registrar regularización'}).click()
