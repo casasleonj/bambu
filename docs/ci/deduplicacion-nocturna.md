@@ -44,21 +44,50 @@ no modifica Vercel, migrations, rulesets ni required checks.
 
 ## Validación, límites y operación
 
-- Node sin dependencias: node --test scripts/ci/__tests__/reuso-ci.node.test.mjs
+- Node sin dependencias: node --test scripts/ci/__tests__/reuso-ci.node.test.mjs scripts/ci/__tests__/reporte-nocturno.node.test.mjs
 - El PR valida la política; el cron solo opera en la rama por defecto
   tras integrar. Ejecutar manualmente en main y comprobar luego una
   decisión de reutilización y una de ejecución completa reales.
-- Consultar el resumen de Actions, SHA y run de evidencia. Un rojo nocturno
-  debe investigarse; se emiten errores visibles en Actions. No se crea un
-  issue automáticamente ni se ha comprobado la entrega de notificaciones;
-  la vigilancia externa de cron ausente sigue pendiente.
+- Cada decisión nocturna conserva un JSON por run/intento. El workflow
+  CI nightly reporting consume solo eventos legítimos schedule/dispatch de
+  main, consulta la API del intento original y registra fallos/cancelaciones
+  mediante issue por firma de trabajos/pasos, más comentario por nuevo intento.
+  Repetir el mismo intento no duplica incidencias, aun si cambia el detalle.
+  No escribe ante un PR ni comparte logs o secretos. No cierra issues.
+  Si falla el registrador, ejecutar su dispatch indicando failed_run_id y
+  failed_attempt. Los permisos de escritura solo se conceden al job de
+  incidencias. El registro real mediante el token de Actions y la entrega
+  de notificaciones requieren comprobación post-merge. El cron omitido
+  (sin ejecución) no genera evento workflow_run; vigilancia externa pendiente.
 - No se declara equivalencia absoluta de entornos volátiles; la ventana de
   24 h y corrida semanal son decisiones conservadoras de regresión, no de release.
-- No se mide ahorro todavía. El criterio por jobs/pasos no prueba IDs de
-  todos los tests, retries o flakiness; esa evidencia sigue pendiente para
-  cualquier reducción efectiva del CI de release.
+- El observador posterior calcula tiempo de runners a partir de started_at
+  y completed_at de los jobs del intento real. En reutilización vuelve a
+  validar el run de origen y resta al tiempo histórico completo el tiempo
+  realmente consumido por la noche; no incluye el job observador independiente
+  ni equivale a facturación ni a un contrafactual exacto. No acredita ahorro
+  hasta tener una noche completada con reutilización verificable. En full
+  informa consumo sin minutos evitados. El criterio por jobs/pasos no prueba
+  IDs de todos los tests, retries o flakiness ni certifica release.
 - #897 también modifica ci.yml: reconciliar explícitamente los cambios antes
   de integrar para conservar el gate reforzado y ambos perfiles. No apilar ramas
   ni resolver conflictos descartando la intención de la otra fase.
-- Reversión: deshabilitar únicamente CI nightly and dedup observation, o
-  revertir el PR. No hay cambios de datos ni de producción.
+- Validación previa al merge: en un PR del propio repositorio que toca esta
+  infraestructura, agregar explícitamente la etiqueta ci-nightly-validation
+  para invocar la suite reusable completa con nightly_full=true, además del
+  CI normal. El evento labeled solo añade pruebas; no escribe issues, no
+  certifica release y no prueba el cron. No usar etiquetas para omitir tests.
+- Reversión: deshabilitar CI nightly and dedup observation y CI nightly
+  reporting, o revertir el PR. No hay cambios de datos ni de producción.
+
+## Aceptación pendiente de ejecución real
+
+1. CI y pruebas Node verdes, revisar combinación con #897 y aprobar merge.
+2. En main ejecutar manualmente CI nightly and dedup observation; confirmar
+   14 trabajos de la suite reusable, summary, artefacto y reporte posterior.
+3. Observar cron de día elegible, mismo SHA y full reciente: comprobar
+   Regression full skipped, evidencia original y diferencia de tiempos medida.
+4. Probar registro real con una ejecución fallida legítima y replay del mismo
+   intento; verificar que no duplica issue/comentario. No inducir fallos en
+   producción ni falsear incidencias reales.
+5. Revisar retraso/ausencia del cron, coste del observador y ahorro acumulado.
