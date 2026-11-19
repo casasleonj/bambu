@@ -243,7 +243,7 @@ export async function consultarPedidos(
       }
     }
     // La vista histórica conserva el límite de cinco; el total sigue siendo global.
-    const a = { ...primera, pedidos: f.agrupar === 'barrio' ? acumulados : acumulados.slice(0, 5) };
+    const a = { ...primera, pedidos: acumulados.slice(0, 5) };
     // #841: un pedido que ya se ve en «Pendientes» no se repite en las entregas de
     // pedidos anteriores; su fila de pendientes ya dice cuánto se entregó y cuánto falta.
     // Solo se quita lo que realmente se muestra (los más antiguos, con tope): un parcial
