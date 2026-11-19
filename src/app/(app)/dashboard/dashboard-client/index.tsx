@@ -360,12 +360,18 @@ export function DashboardClient({
             <MoneyDisplay value={ventas} userRole={userRole} />
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Pedidos con fecha de hoy y entregados · incluye fiados
+            Entregas realizadas hoy · incluye fiados
           </p>
+          {data.ventasAdvertencia && (data.ventasAdvertencia.sinPrecio > 0 || data.ventasAdvertencia.aproximados > 0) && (
+            <p className="text-xs text-amber-800 mt-1">Lectura por revisar: datos de entrega o precio incompletos.</p>
+          )}
           <p className={`text-xs mt-1 font-medium ${trendClass(ventasTrend)}`}>
-            {data.ventasAyer > 0
-              ? `${trendArrow(ventasTrend)} ${Math.abs(ventasTrend).toFixed(0)}% vs ayer`
-              : 'Sin ventas ayer'}
+            {data.ventasAdvertencia && (data.ventasAdvertencia.sinPrecio > 0 || data.ventasAdvertencia.aproximados > 0 ||
+              data.ventasAdvertencia.ayerSinPrecio > 0 || data.ventasAdvertencia.ayerAproximados > 0)
+              ? 'Comparación con ayer por revisar'
+              : data.ventasAyer > 0
+                ? `${trendArrow(ventasTrend)} ${Math.abs(ventasTrend).toFixed(0)}% vs ayer`
+                : 'Sin ventas ayer'}
           </p>
         </div>
 
@@ -635,7 +641,7 @@ export function DashboardClient({
         ) && (
           <p role="status" className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
             {data.ventasAdvertencia.sinPrecio > 0 && (
-              <>Hay {data.ventasAdvertencia.sinPrecio} unidades entregadas sin precio inequívoco. El importe mostrado es parcial. </>
+              <>Hay {data.ventasAdvertencia.sinPrecio} unidades entregadas sin precio inequívoco. El desglose está incompleto; el importe puede ser parcial. </>
             )}
             {data.ventasAdvertencia.aproximados > 0 && (
               <>Hay {data.ventasAdvertencia.aproximados} pedidos con fecha de entrega aproximada. </>

@@ -469,3 +469,49 @@ test('#524: cobrar con sobrante cuenta el ingreso en el efectivo y ya no queda n
   expect(ingresos[0]).toMatchObject({ metodo: 'EFECTIVO', origen: 'PAGAR_FIADO' })
   expect(Number(ingresos[0].monto)).toBe(4000)
 })
+
+
+// #883: real DB + authenticated browser, no mocked dashboard or API.
+test('entregas de pedidos de ayer se suman hoy por delta y no por pago ni acumulado', async ({ page }) => {
+  test.setTimeout(90000)
+  const inicio = new Date(`${hoy()}T00:00:00-05:00`)
+  const ayer = new Date(+inicio - 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+  const anterior = await pedido({ dia: ayer, cantidad: 15, precio: 2300 })
+  const punto = await pedido({ canal: 'PUNTO', cantidad: 4, precio: 2500, pagado: 10000 })
+  const anulado = await pedido({ dia: ayer, cantidad: 13, precio: 2300 })
+  const viejoCobrado = await pedido({ dia: ayer, cantidad: 2, precio: 10000, pagado: 20000 })
+  await pago(viejoCobrado.p.id, 20000)
+  await db.pedido.update({ where: { id: punto.p.id }, data: { entregadoAt: punto.p.fecha } })
+  await db.pedido.update({ where: { id: anterior.p.id }, data: { entregadoAt: inicio } })
+  await db.pedido.update({ where: { id: anulado.p.id }, data: {
+    estado: 'ANULADO', estadoEntrega: 'ANULADO', estadoPago: 'ANULADO', total: 0, saldo: 0, entregadoAt: inicio,
+  } })
+  for (const [p, f, cantidad] of [
+    [anterior.p, new Date(+inicio - 1), 5],
+    [anterior.p, inicio, 10],
+    [anulado.p, inicio, 13],
+  ] as const) {
+    await db.historial.create({ data: {
+      entidad: 'Pedido', registroId: p.id, accion: 'UPDATE', usuarioId: 'sistema', fecha: f,
+      datos: JSON.stringify({ accion: 'ENTREGA', consultaEntrega: {
+        version: 1, fecha: f.toISOString(), eventoEntregaId: randomUUID(), repartidorId: null,
+        precisionFecha: 'INSTANTE', cantidades: [{ producto: 'PACA_AGUA', cantidad }],
+      } }),
+    } })
+  }
+  await loginAs(page, 'admin')
+  await goto(page, '/dashboard')
+  await expect(card(page, 'Ventas del Día')).toContainText('33.000')
+  await expect(card(page, 'Efectivo Cobrado')).toContainText('20.000')
+  await expect(appMain(page).getByTestId('venta-precio-fila')).toHaveCount(2)
+  await expect(appMain(page).getByTestId('producto-PACA_AGUA').getByText('14', { exact: true })).toBeVisible()
+  const lectura = await page.request.get('/api/dashboard')
+  expect(lectura.status()).toBe(200)
+  const { dashboard } = await lectura.json()
+  expect(dashboard.aguaVendida).toBe(14)
+  expect(dashboard.ventas).toBe(33000)
+  expect(dashboard.ventasPorPrecio).toEqual([
+    { producto: 'PACA_AGUA', canal: 'DOMICILIO', precio: 2300, cantidad: 10, subtotal: 23000 },
+    { producto: 'PACA_AGUA', canal: 'PUNTO', precio: 2500, cantidad: 4, subtotal: 10000 },
+  ])
+})
