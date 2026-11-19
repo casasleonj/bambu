@@ -230,7 +230,7 @@ export function OperacionList({
           return (
             <section key={`${b.clave}-${i}`} aria-label={`Barrio ${b.etiqueta}`}>
               <GrupoBarrioEncabezado
-                grupo={{ clave: b.clave, etiqueta: b.etiqueta, total }}
+                grupo={consulta.grupos?.find((g) => g.clave === b.clave) ?? { clave: b.clave, etiqueta: b.etiqueta, total }}
                 enPagina={b.filas.length}
                 soloEste={consulta.grupoActivo === b.clave}
                 onSoloEste={consulta.onGrupoBarrio ? () => consulta.onGrupoBarrio!(b.clave) : undefined}
