@@ -14,6 +14,7 @@ import {
   resolverGrupoBarrio,
   type GrupoBarrio,
 } from "./barrios/grupo-barrio";
+import { ordenarBarriosFIFO } from "./barrios/fifo-barrio";
 import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
 import { ordenarPorFranja } from "./pedidos-franja";
@@ -358,7 +359,8 @@ async function leerConsultaPedidos(
           tx.pedido.findMany({
             where,
             select: {
-              id: true, fecha: true, numero: true, direccionEntrega: true, barrioEntrega: true,
+              id: true, fecha: true, createdAt: true, numero: true, estadoEntrega: true, fechaEntrega: true, direccionEntrega: true, barrioEntrega: true,
+              items: { select: { cantPedido: true, cantEntrega: true } },
               cliente: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
               negocio: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
             },
@@ -380,7 +382,23 @@ async function leerConsultaPedidos(
           e.items.push(c);
           porGrupo.set(g.clave, e);
         }
-        grupos = ordenarGrupos([...porGrupo.values()].map(({ g, items }) => ({ ...g, total: items.length })));
+        // #859: el FIFO usa únicamente demanda física abierta y exigible.
+        const ahora = new Date();
+        const abiertos = candidatos.filter(c =>
+          !["ENTREGADO", "CANCELADO", "ANULADO"].includes(c.estadoEntrega) &&
+          (!c.fechaEntrega || c.fechaEntrega <= ahora) &&
+          c.items.some(item => item.cantPedido > item.cantEntrega)
+        );
+        const fifo = ordenarBarriosFIFO(abiertos.map(c => ({
+          id: c.id, barrioClave: grupoPorId!.get(c.id)!.clave, createdAt: c.createdAt,
+        })));
+        const posicionesFIFO = new Map(fifo.map((g, i) => [g.clave, i]));
+        grupos = ordenarGrupos([...porGrupo.values()].map(({ g, items }) => ({ ...g, total: items.length })))
+          .sort((a, b) =>
+            (posicionesFIFO.get(a.clave) ?? Number.MAX_SAFE_INTEGER) -
+            (posicionesFIFO.get(b.clave) ?? Number.MAX_SAFE_INTEGER) ||
+            a.etiqueta.localeCompare(b.etiqueta)
+          );
         const elegibles = f.grupoBarrio ? (porGrupo.get(f.grupoBarrio)?.items ?? []) : candidatos;
         if (f.grupoBarrio) and.push({ id: { in: elegibles.map((c) => c.id) } });
         if (f.agrupar === "barrio") {
@@ -388,8 +406,8 @@ async function leerConsultaPedidos(
           ordenPagina = [...elegibles]
             .sort((a, b) =>
               (posGrupo.get(grupoPorId!.get(a.id)!.clave)! - posGrupo.get(grupoPorId!.get(b.id)!.clave)!) ||
-              (b.fecha.getTime() - a.fecha.getTime()) ||
-              (b.numero - a.numero) ||
+              (a.createdAt.getTime() - b.createdAt.getTime()) ||
+              (a.numero - b.numero) ||
               (a.id < b.id ? -1 : 1))
             .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
             .map((c) => c.id);
