@@ -43,7 +43,7 @@ export function measureReuse(run,jobs,decision,source,sourceJobs,repo) {
   const plan=jobs.filter(j=>j.name==='Nightly decision (read-only)')
   if(summary.length!==1||!success(summary[0])||plan.length!==1||!success(plan[0])) throw Error('Missing successful plan/summary')
   if(decision.runFull===true) {
-    if(!jobs.some(j=>j.name.startsWith('Regression full / '))) throw Error('Full suite missing')
+    if(!verifyFull(run,jobs,{repo,sha:run.head_sha,currentRun:0,now:date(run.updated_at)})) throw Error('Full evidence incomplete or ambiguous')
     return {kind:'full',run:run.id,actualRunnerSeconds:actual,avoidedRunnerSeconds:0}
   }
   const skipped=jobs.filter(j=>j.name==='Regression full')
