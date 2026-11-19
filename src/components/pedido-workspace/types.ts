@@ -101,6 +101,10 @@ export type WorkspaceErrorKind =
 
 export interface WorkspaceState {
   phase: WorkspacePhase
+  /** Identidad monotónica de la cotización dentro de este workspace. */
+  previewRevision: number
+  /** La edición excluye pagos del request. */
+  previewPedidoId?: string
   draft: DraftPedido
   /** procedencia por campo/producto (ALS §8). */
   valueOrigins: Record<string, ValueOrigin>
@@ -145,9 +149,9 @@ export type WorkspaceAction =
   | { type: 'SET_UBICACION'; lat: number | null; lng: number | null }
   /** flujo "Repetir" — aplica varios campos de una con su procedencia. */
   | { type: 'APPLY_PROPOSAL'; draft: Partial<DraftPedido>; origins: Record<string, ValueOrigin> }
-  | { type: 'PREVIEW_PENDING' }
-  | { type: 'PREVIEW_RECEIVED'; preview: PreviewPedidoResult }
-  | { type: 'PREVIEW_ERROR'; kind: WorkspaceErrorKind; message: string }
+  | { type: 'PREVIEW_PENDING'; revision: number }
+  | { type: 'PREVIEW_RECEIVED'; preview: PreviewPedidoResult; revision: number }
+  | { type: 'PREVIEW_ERROR'; kind: WorkspaceErrorKind; message: string; revision: number }
   | { type: 'COMMIT_START' }
   | { type: 'COMMIT_SUCCESS' }
   | { type: 'COMMIT_CONFLICT'; message: string }

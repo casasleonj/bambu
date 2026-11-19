@@ -3,103 +3,67 @@
 import { useEffect, useRef } from 'react'
 import type { PreviewPedidoResult } from '@/modules/pedidos/application/dto'
 import type { DraftPedido, WorkspaceErrorKind } from './types'
+import { isPreviewable, previewRequestKey } from './preview-request'
 
 const DEBOUNCE_MS = 400
 
 export interface UsePreviewCallbacks {
-  onPending: () => void
-  onReceived: (preview: PreviewPedidoResult) => void
-  onError: (kind: WorkspaceErrorKind, message: string) => void
+  onPending: (revision: number) => void
+  onReceived: (preview: PreviewPedidoResult, revision: number) => void
+  onError: (kind: WorkspaceErrorKind, message: string, revision: number) => void
 }
 
-/** ¿el draft tiene lo mínimo para pedir un preview? */
-function isPreviewable(draft: DraftPedido): boolean {
-  return (!!draft.clienteId || !!draft.clienteNuevo) && draft.items.some((i) => i.cantidad > 0)
-}
-
-function toRequestBody(draft: DraftPedido, pedidoId?: string, borradorId?: string) {
-  return {
-    clienteId: draft.clienteId ?? undefined,
-    clienteNuevo: draft.clienteId ? undefined : draft.clienteNuevo,
-    negocioId: draft.negocioId ?? undefined,
-    canal: draft.canal,
-    origen: draft.origen,
-    items: draft.items
-      .filter((i) => i.cantidad > 0)
-      .map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual })),
-    // modo edición: el PUT es declarativo de items, los pagos no se re-envían.
-    pagos: pedidoId ? undefined : (draft.pagos.length > 0 ? draft.pagos : undefined),
-    entregado: draft.entregado,
-    // snapshot de dirección del pedido → suficiencia de entrega (autoridad única).
-    direccionEntrega: draft.canal === 'DOMICILIO' ? (draft.direccionEntrega || undefined) : undefined,
-    barrioEntrega: draft.canal === 'DOMICILIO' ? (draft.barrioEntrega || undefined) : undefined,
-    entregaLat: draft.canal === 'DOMICILIO' ? (draft.entregaLat ?? undefined) : undefined,
-    entregaLng: draft.canal === 'DOMICILIO' ? (draft.entregaLng ?? undefined) : undefined,
-    pedidoOrigenId: draft.pedidoOrigenId,
-    ventaEnRuta: draft.ventaEnRuta ? true : undefined,
-    excepcionId: draft.excepcionId,
-    pedidoId,
-    // #408: el reintento del MISMO borrador no es una venta repetida (solo al crear).
-    borradorId: pedidoId ? undefined : borradorId,
-  }
-}
-
-/**
- * Debounce del draft → `POST /api/pedidos/preview`. El backend es la autoridad
- * de cálculo/riesgo/acciones (blueprint §4.1). Aborta el request anterior si
- * el draft cambia; descarta respuestas stale por `requestId`.
- *
- * Fetch plano (lectura, no encolar en Dexie). Offline → `NETWORK_ERROR`; el
- * draft local persiste igual (ALS §13).
+/** El cleanup cancela incluso durante debounce o parseo. La revisión viaja
+ * al reducer para descartar respuestas previas al próximo effect.
+ * El commit conserva su propia validación.
  */
-export function usePreview(draft: DraftPedido, cb: UsePreviewCallbacks, opts?: { pedidoId?: string; borradorId?: string }): void {
+export function usePreview(draft: DraftPedido, cb: UsePreviewCallbacks, opts?: { pedidoId?: string; borradorId?: string; revision?: number }): void {
   const cbRef = useRef(cb)
   useEffect(() => { cbRef.current = cb }, [cb])
-
-  const abortRef = useRef<AbortController | null>(null)
-  const reqRef = useRef(0)
-  // serialización estable del subconjunto que afecta el preview (incluye pedidoId)
-  const key = JSON.stringify(toRequestBody(draft, opts?.pedidoId, opts?.borradorId))
+  const key = previewRequestKey(draft, opts?.pedidoId, opts?.borradorId)
+  const revision = opts?.revision ?? 0
+  const previewable = isPreviewable(draft)
 
   useEffect(() => {
-    if (!isPreviewable(draft)) return
-
+    if (!previewable) return
+    const controller = new AbortController()
+    let active = true
     const timer = setTimeout(async () => {
-      abortRef.current?.abort()
-      const controller = new AbortController()
-      abortRef.current = controller
-      const req = ++reqRef.current
-
-      cbRef.current.onPending()
+      if (!active) return
+      cbRef.current.onPending(revision)
+      let res: Response
       try {
-        const res = await fetch('/api/pedidos/preview', {
+        res = await fetch('/api/pedidos/preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(JSON.parse(key)),
+          body: key,
           signal: controller.signal,
         })
-        if (req !== reqRef.current) return
+      } catch (err) {
+        if (!active || controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return
+        cbRef.current.onError('NETWORK_ERROR', 'Sin conexión — se recalcula al confirmar', revision)
+        return
+      }
+      if (!active) return
+      try {
         const data = await res.json()
-        if (req !== reqRef.current) return
-        if (!res.ok || data?.success === false) {
-          cbRef.current.onError('VALIDATION_ERROR', data?.error?.message ?? 'No se pudo preparar el pedido')
+        if (!active) return
+        if (!res.ok || data?.success !== true || !data?.calculation || !Array.isArray(data?.allowedActions)) {
+          cbRef.current.onError('VALIDATION_ERROR', data?.error?.message ?? 'No se pudo preparar el pedido', revision)
           return
         }
-        // apiSuccess devuelve { success, ...PreviewPedidoResult }
         const { success, ...preview } = data
         void success
-        cbRef.current.onReceived(preview as PreviewPedidoResult)
-      } catch (err) {
-        if (req !== reqRef.current) return
-        if (err instanceof Error && err.name === 'AbortError') return
-        cbRef.current.onError('NETWORK_ERROR', 'Sin conexión — se recalcula al confirmar')
+        cbRef.current.onReceived(preview as PreviewPedidoResult, revision)
+      } catch {
+        if (active) cbRef.current.onError('VALIDATION_ERROR', 'No se pudo preparar el pedido', revision)
       }
     }, DEBOUNCE_MS)
 
-    return () => clearTimeout(timer)
-    // key resume el draft; draft se re-lee dentro del timeout vía closure de key
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key])
-
-  useEffect(() => () => abortRef.current?.abort(), [])
+    return () => {
+      active = false
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [key, revision, previewable])
 }
