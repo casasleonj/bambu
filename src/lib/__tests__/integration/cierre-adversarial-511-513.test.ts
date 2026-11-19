@@ -9,7 +9,7 @@ import { startOfDayInBogota } from '@/lib/date-helpers'
 const actor = { id: 'placeholder', role: 'ADMIN' }
 vi.mock('@/lib/auth-check', () => ({
   requireAuth: vi.fn(async () => ({ user: actor })),
-  requireRole: vi.fn(async () => ({ user: actor })),
+  requireRole: vi.fn(async (roles: string | string[]) => (Array.isArray(roles) ? roles : [roles]).includes(actor.role) ? ({ user: actor }) : new Response(null, { status: 403 })),
 }))
 vi.mock('next/cache', () => ({ unstable_cache: (fn: unknown) => fn, revalidateTag: vi.fn() }))
 vi.mock('@/lib/realtime', () => ({ publishRealtimeEvent: vi.fn(async () => {}) }))
@@ -17,6 +17,9 @@ vi.mock('@/lib/notifications/notify-event', () => ({ notifyEvent: vi.fn(async ()
 vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn(async () => {}) }))
 
 import { GET as preview, POST as cerrar } from '@/app/api/cierre/route'
+import { POST as conciliarVentas } from '@/app/api/cierre/conciliacion-ventas/route'
+import { POST as regularizarVentas } from '@/app/api/cierre/regularizacion-ventas/route'
+import { prepararVentasProvisional } from '@/lib/cierre-ventas-provisional'
 import { POST as pagarFiado } from '@/app/api/pedidos/pagar-fiado/route'
 import { POST as abonar } from '@/app/api/abonos/route'
 import { verificarIntegridad } from '@/lib/integridad/verificar'
@@ -45,6 +48,34 @@ async function pedido(dia: string, total: number, opts: { anulado?: boolean; pag
   } })
   return { p, cliente, factura }
 }
+async function evidenciaEntrega(pedidoId: string, entregas: { dia: string; cantidad: number }[], precio: number) {
+  const cantidad = entregas.reduce((s, e) => s + e.cantidad, 0)
+  await testPrisma.pedido.update({ where: { id: pedidoId }, data: {
+    entregadoAt: mediodia(entregas[entregas.length - 1].dia),
+    cPacaAguaPed: cantidad, cPacaAguaEnt: cantidad,
+    items: { create: { producto: 'PACA_AGUA', cantPedido: cantidad, cantEntrega: cantidad, precio, subtotal: cantidad * precio } },
+  } })
+  for (const e of entregas) {
+    const fecha = mediodia(e.dia)
+    await testPrisma.historial.create({ data: { entidad: 'Pedido', registroId: pedidoId, accion: 'UPDATE', fecha, usuarioId: 'sistema',
+      datos: JSON.stringify({ accion: 'ENTREGA', consultaEntrega: {
+        version: 1, fecha: fecha.toISOString(), eventoEntregaId: randomUUID(), precisionFecha: 'INSTANTE',
+        cantidades: [{ producto: 'PACA_AGUA', cantidad: e.cantidad }], repartidorId: null,
+      } }),
+    } })
+  }
+}
+async function evidenciaAnulacion(pedidoId: string, dia: string, conNota: boolean) {
+  await testPrisma.historial.create({ data: { entidad: 'Pedido', registroId: pedidoId, accion: 'UPDATE',
+    fecha: new Date(`${dia}T14:00:00-05:00`), usuarioId: 'sistema',
+    datos: JSON.stringify({ modo: 'ANULAR', notaCredito: conNota, reversion: 0 }),
+  } })
+}
+async function snapshotVenta(dia: string, pedidoId: string, centavos: number) {
+  await testPrisma.cierreDia.create({ data: { fecha: startOfDayInBogota(dia), horaCierre: new Date(`${dia}T22:00:00-05:00`), totalVentas: centavos / 100,
+    reporte: { ventasCriterio: 'ENTREGA_V1', ventasEntregaPorPedido: [{ pedidoId, centavos, origen: 'PEDIDO', valorDeterminado: true, fechaAproximada: false }] },
+  } })
+}
 async function leer(dia: string) {
   const res = await preview(new NextRequest(`http://localhost/api/cierre?fecha=${dia}`))
   expect(res.status).toBe(200)
@@ -62,22 +93,176 @@ describe('auditoría adversarial del cierre #511 / #513', () => {
 
   it('#511: anular un pedido del mismo día no resta de nuevo su nota de crédito', async () => {
     const dia = '2026-03-10'
-    await pedido(dia, 10000)
-    const anulado = await pedido(dia, 5000, { anulado: true })
+    const vigente = await pedido(dia, 10000)
+    await evidenciaEntrega(vigente.p.id, [{ dia, cantidad: 4 }], 2500)
+    const anulado = await pedido('2026-03-09', 0, { anulado: true })
+    await evidenciaEntrega(anulado.p.id, [{ dia, cantidad: 2 }], 2500)
+    await evidenciaAnulacion(anulado.p.id, dia, true)
     await testPrisma.notaCredito.create({ data: {
-      numero: `NC-${randomUUID()}`, pedidoId: anulado.p.id, monto: 5000, motivo: 'Prueba', fecha: mediodia(dia),
+      numero: `NC-${randomUUID()}`, pedidoId: anulado.p.id, monto: 3000, motivo: 'Prueba', fecha: mediodia(dia),
     } })
-    expect((await leer(dia)).totalVentas).toBe(10000)
+    expect(await leer(dia)).toMatchObject({ totalVentas: 10000, ventasEntregadasDelDia: 10000,
+      totalNotasCredito: 3000, ajustesVentasAnteriores: 0, ventasPorConciliar: [], aguaVendida: 4 })
   })
 
   it('#511: una nota de crédito de un pedido anterior conserva su ajuste', async () => {
     const dia = '2026-03-11'
-    await pedido(dia, 10000)
-    const anulado = await pedido('2026-03-09', 5000, { anulado: true })
+    const vigente = await pedido(dia, 10000)
+    await evidenciaEntrega(vigente.p.id, [{ dia, cantidad: 4 }], 2500)
+    const anulado = await pedido('2026-03-09', 0, { anulado: true })
+    await evidenciaEntrega(anulado.p.id, [{ dia: '2026-03-09', cantidad: 2 }], 2500)
+    await snapshotVenta('2026-03-09', anulado.p.id, 500000)
+    await evidenciaAnulacion(anulado.p.id, dia, true)
     await testPrisma.notaCredito.create({ data: {
-      numero: `NC-${randomUUID()}`, pedidoId: anulado.p.id, monto: 5000, motivo: 'Prueba', fecha: mediodia(dia),
+      numero: `NC-${randomUUID()}`, pedidoId: anulado.p.id, monto: 3000, motivo: 'Prueba', fecha: mediodia(dia),
     } })
-    expect((await leer(dia)).totalVentas).toBe(5000)
+    expect(await leer(dia)).toMatchObject({ totalVentas: 5000, ventasEntregadasDelDia: 10000,
+      totalNotasCredito: 3000, ajustesVentasAnteriores: 5000, ventasPorConciliar: [] })
+    expect((await leer('2026-03-09')).totalVentas).toBe(5000)
+  })
+
+  it('#885: una venta fiada repartida entre dos días se revierte por lo reconocido antes, incluso sin nota', async () => {
+    const dia = '2026-03-21', anterior = '2026-03-20'
+    const vigente = await pedido(dia, 12000)
+    await evidenciaEntrega(vigente.p.id, [{ dia, cantidad: 4 }], 3000)
+    const anulado = await pedido(anterior, 0, { anulado: true })
+    await evidenciaEntrega(anulado.p.id, [{ dia: anterior, cantidad: 3 }, { dia, cantidad: 2 }], 3000)
+    await snapshotVenta(anterior, anulado.p.id, 900000)
+    await evidenciaAnulacion(anulado.p.id, dia, false)
+    expect(await leer(dia)).toMatchObject({ totalVentas: 3000, ventasEntregadasDelDia: 12000,
+      totalNotasCredito: 0, ajustesVentasAnteriores: 9000, ventasPorConciliar: [], aguaVendida: 4 })
+    expect((await leer(anterior)).totalVentas).toBe(9000)
+  })
+
+  it('#885: legado sin atribución previa queda por conciliar, no se descuenta la nota por similitud', async () => {
+    const dia = '2026-03-23', anterior = '2026-03-22'
+    const anulado = await pedido(anterior, 0, { anulado: true })
+    await evidenciaEntrega(anulado.p.id, [{ dia: anterior, cantidad: 5 }], 2500)
+    await evidenciaAnulacion(anulado.p.id, dia, true)
+    await testPrisma.notaCredito.create({ data: { numero: `NC-${randomUUID()}`, pedidoId: anulado.p.id,
+      monto: 3000, motivo: 'Prueba', fecha: mediodia(dia) } })
+    expect(await leer(dia)).toMatchObject({ ajustesVentasAnteriores: 0, totalNotasCredito: 3000,
+      ventasPorConciliar: [{ pedidoId: anulado.p.id, motivo: 'VENTA_PREVIA_SIN_DETALLE_DE_CIERRE' }] })
+  })
+
+  it('#885: concilia solo el importe histórico acreditado, revoca, impide duplicados y congela al cerrar', async () => {
+    const dia = '2026-03-25', anterior = '2026-03-24'
+    const vigente = await pedido(dia, 10000)
+    await evidenciaEntrega(vigente.p.id, [{ dia, cantidad: 4 }], 2500)
+    const anulado = await pedido(anterior, 0, { anulado: true })
+    await evidenciaEntrega(anulado.p.id, [{ dia: anterior, cantidad: 2 }], 2500)
+    await evidenciaAnulacion(anulado.p.id, dia, false)
+    const anteriorGuardado = await testPrisma.cierreDia.create({ data: {
+      fecha: startOfDayInBogota(anterior), horaCierre: new Date(`${anterior}T22:00:00-05:00`),
+      totalVentas: 7000, reporte: { totalVentas: 7000 },
+    } })
+    await registrarBaseDia(dia, 10000)
+    const c = (await leer(dia)).ventasPorConciliar[0].conciliacion
+    expect(c.dias).toEqual([anterior])
+    const body = { fecha: dia, pedidoId: anulado.p.id, huella: c.huella, revisionEsperada: c.revision,
+      operacion: 'RESOLVER', confirmoEvidencia: true, lineas: [{ dia: anterior, centavos: 500000, referencia: 'Reporte original #24, fila de venta 2' }] }
+    const post = (data: unknown) => conciliarVentas(request('/api/cierre/conciliacion-ventas', data))
+    actor.role = 'ASISTENTE'
+    try { expect((await post(body)).status).toBe(403) } finally { actor.role = 'ADMIN' }
+    expect((await post({ ...body, huella: 'a'.repeat(64) })).status).toBe(409)
+    expect((await post({ ...body, lineas: [] })).status).toBe(409)
+    expect((await post({ ...body, lineas: [{ ...body.lineas[0], centavos: 10_000_000_000 }] })).status).toBe(400)
+    expect((await post(body)).status).toBe(201)
+    expect((await post(body)).status).toBe(409)
+    let aplicado = await leer(dia)
+    expect(aplicado).toMatchObject({ totalVentas: 5000, ajustesVentasAnteriores: 5000, ventasPorConciliar: [] })
+    const v = aplicado.conciliacionesVentasAplicadas[0]
+    expect((await post({ ...body, operacion: 'REVOCAR', lineas: [], revisionEsperada: v.revision })).status).toBe(201)
+    const nuevo = (await leer(dia)).ventasPorConciliar[0].conciliacion
+    expect((await post({ ...body, huella: nuevo.huella, revisionEsperada: nuevo.revision })).status).toBe(201)
+    expect((await cerrar(request('/api/cierre', payload(dia)))).status).toBe(201)
+    aplicado = await leer(dia)
+    expect(aplicado.totalVentas).toBe(5000)
+    expect(aplicado.conciliacionesVentasAplicadas).toHaveLength(1)
+    expect((await post({ ...body, operacion: 'REVOCAR', lineas: [], revisionEsperada: aplicado.conciliacionesVentasAplicadas[0].revision })).status).toBe(409)
+    expect(await testPrisma.cierreDia.findUnique({ where: { id: anteriorGuardado.id } })).toEqual(anteriorGuardado)
+    expect(await testPrisma.historial.count({ where: { entidad: 'ConciliacionVentaCierre' } })).toBe(3)
+  })
+
+  it('#885: cierre tardío anterior sin la venta no provoca una segunda resta', async () => {
+    const dia = '2026-03-27', anterior = '2026-03-26'
+    const anulado = await pedido(anterior, 0, { anulado: true })
+    await evidenciaEntrega(anulado.p.id, [{ dia: anterior, cantidad: 2 }], 2500)
+    await evidenciaAnulacion(anulado.p.id, dia, false)
+    await testPrisma.cierreDia.create({ data: { fecha: startOfDayInBogota(anterior), horaCierre: new Date(`${dia}T18:00:00-05:00`),
+      totalVentas: 0, reporte: { ventasCriterio: 'ENTREGA_V1', ventasEntregadasDelDia: 0, ventasPorConciliar: [], ventasEntregaPorPedido: [] },
+    } })
+    expect(await leer(dia)).toMatchObject({ totalVentas: 0, ajustesVentasAnteriores: 0, ventasPorConciliar: [] })
+  })
+
+  it('#885: caja provisional explícita, ajuste posterior auditable y snapshot intacto', async () => {
+    const dia = '2026-03-29', anterior = '2026-03-28'
+    const vigente = await pedido(dia, 10000)
+    await evidenciaEntrega(vigente.p.id, [{ dia, cantidad: 4 }], 2500)
+    const anulado = await pedido(anterior, 0, { anulado: true })
+    await evidenciaEntrega(anulado.p.id, [{ dia: anterior, cantidad: 2 }], 2500)
+    await evidenciaAnulacion(anulado.p.id, dia, false)
+    await testPrisma.cierreDia.create({ data: { fecha: startOfDayInBogota(anterior),
+      horaCierre: new Date(`${anterior}T22:00:00-05:00`), totalVentas: 7000, reporte: { totalVentas: 7000 } } })
+    await registrarBaseDia(dia, 10000)
+    const vista = await leer(dia)
+    expect(vista.provisionalDisponible).toMatch(/^[a-f0-9]{64}$/)
+    const body = payload(dia, { arqueo: { '10000': 1 } })
+    expect((await cerrar(request('/api/cierre',body))).status).toBe(409)
+    expect((await cerrar(request('/api/cierre',{ ...body, confirmarVentasProvisionales: 'b'.repeat(64) }))).status).toBe(409)
+    expect((await cerrar(request('/api/cierre',{ ...payload(dia), confirmarVentasProvisionales: vista.provisionalDisponible }))).status).toBe(409)
+    expect((await cerrar(request('/api/cierre',{ ...body, confirmarVentasProvisionales: vista.provisionalDisponible }))).status).toBe(201)
+    const original = await testPrisma.cierreDia.findUniqueOrThrow({ where: { fecha: startOfDayInBogota(dia) } })
+    const c = await leer(dia)
+    expect(c.regularizacionVentas).toMatchObject({ estado:'PROVISIONAL', pendientes:1, totalCertificado:null, subtotalOriginal:10000 })
+    const caso = c.regularizacionVentas.casos[0]
+    const ajuste = { fecha:dia, casoId:caso.id, huella:c.regularizacionVentas.huella, revisionEsperada:null,
+      operacion:'RESOLVER', centavos:500000, referencia:'Reporte original de ventas, fila 2 verificada', confirmoEvidencia:true }
+    const post = (b:unknown) => regularizarVentas(request('/api/cierre/regularizacion-ventas',b))
+    actor.role='ASISTENTE'
+    try { expect((await post(ajuste)).status).toBe(403) } finally { actor.role='ADMIN' }
+    expect((await post(ajuste)).status).toBe(201)
+    expect((await post(ajuste)).status).toBe(409)
+    const actualizado = await leer(dia)
+    expect(actualizado.regularizacionVentas).toMatchObject({ estado:'REGULARIZADO', pendientes:0, totalCertificado:5000, subtotalOriginal:10000, ajustePosterior:5000 })
+    expect(actualizado.totalVentas).toBe(10000)
+    expect(actualizado.ventasTotalCertificado).toBe(5000)
+    expect(await testPrisma.cierreDia.findUnique({ where:{id:original.id} })).toEqual(original)
+    expect((await post({ ...ajuste, operacion:'REVOCAR', centavos:0, revisionEsperada:actualizado.regularizacionVentas.casos[0].revision.id,
+      referencia:'Se requiere revisar de nuevo el documento original' })).status).toBe(201)
+    expect((await leer(dia)).regularizacionVentas.totalCertificado).toBeNull()
+    // El cierre operativo se conserva y el día siguiente no se bloquea.
+    const siguiente='2026-03-30'
+    await registrarBaseDia(siguiente,10000)
+    expect((await cerrar(request('/api/cierre',payload(siguiente)))).status).toBe(201)
+    expect(await testPrisma.cierreDia.findUnique({where:{id:original.id}})).toEqual(original)
+  })
+
+  it('#885: un ajuste positivo no puede duplicarse ni retirarse mientras otro cierre depende de él', async () => {
+    const dias = ['2026-04-02','2026-04-03']
+    const {p} = await pedido('2026-04-01', 0, { anulado:true })
+    const crear = async (fecha:string) => {
+      const ventasProvisional=prepararVentasProvisional({fecha,totalVentas:10000,
+        ventasPorConciliar:[{pedidoId:p.id,numero:p.numero,motivo:'REVERSA_AMBIGUA'}]})!
+      return testPrisma.cierreDia.create({data:{fecha:startOfDayInBogota(fecha),totalVentas:10000,
+        reporte:{ventasEstado:'PROVISIONAL',ventasProvisional}}})
+    }
+    const a=await crear(dias[0]), b=await crear(dias[1])
+    const payloadDe=async(fecha:string)=>{
+      const r=(await leer(fecha)).regularizacionVentas
+      return {fecha,huella:r.huella,casoId:r.casos[0].id,revisionEsperada:r.casos[0].revision?.id??null,
+        referencia:'Reporte anterior y ajuste confirmado por administración',confirmoEvidencia:true}
+    }
+    const post=(d:unknown)=>regularizarVentas(request('/api/cierre/regularizacion-ventas',d))
+    expect((await post({...await payloadDe(dias[1]),operacion:'RESOLVER',centavos:0,fundamentoCero:'YA_AJUSTADA'})).status).toBe(409)
+    expect((await post({...await payloadDe(dias[0]),operacion:'RESOLVER',centavos:500000})).status).toBe(201)
+    expect((await post({...await payloadDe(dias[1]),operacion:'RESOLVER',centavos:500000})).status).toBe(409)
+    expect((await post({...await payloadDe(dias[1]),operacion:'RESOLVER',centavos:0})).status).toBe(400)
+    expect((await post({...await payloadDe(dias[1]),operacion:'RESOLVER',centavos:0,fundamentoCero:'YA_AJUSTADA'})).status).toBe(201)
+    expect((await post({...await payloadDe(dias[0]),operacion:'REVOCAR',centavos:0})).status).toBe(409)
+    expect((await post({...await payloadDe(dias[1]),operacion:'REVOCAR',centavos:0})).status).toBe(201)
+    expect((await post({...await payloadDe(dias[0]),operacion:'REVOCAR',centavos:0})).status).toBe(201)
+    for(const c of [a,b])expect(await testPrisma.cierreDia.findUnique({where:{id:c.id}})).toEqual(c)
   })
 
   it('#513: un abono independiente de igual importe a un Pago reciente también cuenta', async () => {

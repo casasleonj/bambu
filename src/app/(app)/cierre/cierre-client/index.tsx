@@ -12,6 +12,7 @@ import { calcularNetoCierre } from '@/lib/cierre-totales'
 import { CheckCircle2, AlertTriangle, Receipt, Droplets, Snowflake, ArrowRight, Check } from 'lucide-react'
 import ArqueoCaja, { type ArqueoData, DENOMINACIONES } from '@/components/arqueo-caja'
 import CierreHeader from '@/components/cierre/cierre-header'
+import { CierreRegularizacionVentas, ListaVentasProvisionales } from '@/components/cierre/cierre-regularizacion-ventas'
 import { CierreEstadoConsulta, type ErrorConsultaCierre } from '@/components/cierre/cierre-estado-consulta'
 import { CierreKpiGrid, CierreDetalleVentas } from '@/components/cierre/cierre-kpi-grid'
 import CierreDesgloseCobros from '@/components/cierre/cierre-desglose-cobros'
@@ -82,6 +83,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const { data: session } = useSession()
   const userRole = (session?.user as { role?: string } | undefined)?.role
   const canClose = userRole === 'ADMIN' || userRole === 'ASISTENTE'
+  const ventasPendientes = (data?.ventasPorConciliar?.length ?? 0) > 0
+  const provisionalDisponible = ventasPendientes ? data?.provisionalDisponible : null
+  const ventasBloquean = ventasPendientes && !provisionalDisponible
   // #499: las comisiones las calcula el servidor; el cierre resta solo lo realmente pagado.
   const comisiones = data?.comisionesAuto?.total ?? 0
   // #645: pérdidas del día (filtradas + merma + consumo interno) y producciones registradas ese día
@@ -242,6 +246,10 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       toast.error('Carga y revisa los datos de esta fecha antes de confirmar el cierre.')
       return
     }
+    if (ventasBloquean) {
+      toast.error('Hay ventas por conciliar. Revisa las referencias con administración.')
+      return
+    }
     if (diaBloqueante) {
       toast.error(`Antes hay que cerrar ${etiquetaDiaLarga(diaBloqueante.fecha)}: tuvo movimientos.`)
       return
@@ -280,6 +288,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     setCerrando(true)
     const ok = await confirm({
       fecha, debeHaber, contado: currentArqueo.totalContado,
+      ...(provisionalDisponible ? { ventasProvisionales: data.ventasPorConciliar?.length ?? 0 } : {}),
       diferencia: Math.round((currentArqueo.totalContado - debeHaber) * 100) / 100,
       ...(data?.desgloseCobros ? { cobrado: { efectivo: data.desgloseCobros.efectivo, digital: data.desgloseCobros.digital } } : {}),
       ...(data?.fiadosDelDia ? { fiado: { total: data.fiadosDelDia.reduce((t, f) => t + f.saldo, 0), pedidos: data.fiadosDelDia.length } } : {}),
@@ -289,6 +298,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     try {
       const cierreData = {
         fecha,
+        ...(provisionalDisponible ? { confirmarVentasProvisionales: provisionalDisponible } : {}),
         baseDia,
         salarios,
         stockIniAgua, prodAgua, stockFinAgua,
@@ -322,7 +332,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       })
       const json = await res.json()
       if (res.status === 201 && json.cierre) {
-        toast.success(Number(json.cierre.netoCaja) !== neto
+        toast.success(provisionalDisponible ? 'Caja registrada. Ventas pendientes de regularizar.' : Number(json.cierre.netoCaja) !== neto
           ? 'Cierre registrado con importes actualizados. Revisa el resultado guardado.'
           : 'Día cerrado correctamente')
         const ctrl = new AbortController()
@@ -399,11 +409,12 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           <p className="text-sm text-muted-foreground mt-1">Resumen y cierre de operaciones del día</p>
         </div>
 
-        <div className="bg-green-50 border border-green-300 rounded-xl p-6">
+        {['ADMIN','ASISTENTE','CONTADOR'].includes(userRole ?? '') && <ListaVentasProvisionales fecha={fecha} refreshKey={pendientesKey} onElegir={elegirDia}/>}
+        <div className={data.regularizacionVentas?.pendientes ? 'bg-amber-50 border border-amber-300 rounded-xl p-6' : 'bg-green-50 border border-green-300 rounded-xl p-6'}>
           <div className="flex items-center gap-3 mb-2">
             <CheckCircle2 className="w-8 h-8 text-green-600" />
             <div>
-              <h2 className="text-xl font-bold text-green-800">Día cerrado</h2>
+              <h2 className="text-xl font-bold text-slate-800">{data.regularizacionVentas?.pendientes ? 'Caja cerrada · ventas provisionales' : 'Día cerrado'}</h2>
               {horaCierreLabel && (
                 <p className="text-sm text-green-700">Cierre registrado a las {horaCierreLabel}</p>
               )}
@@ -424,6 +435,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           }} />}
         <CierreDesgloseCobros data={data} />
         <CierreDetalleVentas data={data} />
+        {data.regularizacionVentas && <CierreRegularizacionVentas r={data.regularizacionVentas} fecha={fecha} onCambio={userRole==='ADMIN' ? ()=>{ const signal=abortControllerRef.current?.signal; if(signal&&!signal.aborted)void fetchCierre(fecha,signal);setPendientesKey(k=>k+1) } : undefined}/>}
 
         {/* Arqueo */}
         {data.totalContado != null && (
@@ -571,10 +583,11 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
 
   // Next step hint
   const getNextStep = () => {
+    if (ventasBloquean) return { label: 'Verifica las ventas por conciliar', section: 1 }
     if (!baseLista) return { label: 'Ingresa la base de caja del día', section: 1 }
     if (arqueoData.totalContado === 0) return { label: 'Cuenta el efectivo físico', section: 4 }
     if (statusCierre === 'INCOMPLETO') return { label: 'Cierra los embarques pendientes', section: 1 }
-    return { label: 'Listo para cerrar el día', section: 5 }
+    return { label: provisionalDisponible ? 'Listo para cierre provisional de caja' : 'Listo para cerrar el día', section: 5 }
   }
 
   const nextStep = getNextStep()
@@ -595,7 +608,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   ) : base.estado === 'faltante' ? (
     <BaseCajaFaltante fecha={fecha} hoy={esHoy} puedeIngresar={puedeEditarBase} />
   ) : null
-  const allReady = baseLista && arqueoData.totalContado > 0 && statusCierre === 'COMPLETO'
+  const allReady = !ventasBloquean && baseLista && arqueoData.totalContado > 0 && statusCierre === 'COMPLETO'
 
   return (
     <div className="p-4 max-w-5xl mx-auto space-y-6 pb-32">
@@ -610,6 +623,8 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         onElegir={elegirDia}
         onReintentar={() => setPendientesKey((k) => k + 1)}
       />
+
+      {['ADMIN','ASISTENTE','CONTADOR'].includes(userRole ?? '') && <ListaVentasProvisionales fecha={fecha} refreshKey={pendientesKey} onElegir={elegirDia}/>}
 
       {/* Backdate warning */}
       {isBackDate && lastCierreDate && !diaBloqueante && (
@@ -666,7 +681,10 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
         </div>
         <CierreKpiGrid data={data} />
         <CierreDesgloseCobros data={data} />
-        <CierreDetalleVentas data={data} />
+        <CierreDetalleVentas data={data} onConciliar={userRole === 'ADMIN' ? () => {
+          const signal = abortControllerRef.current?.signal
+          if (signal && !signal.aborted) void fetchCierre(fecha, signal)
+        } : undefined} />
       </CierreSection>
 
       {/* Section 2: Inventario */}
@@ -905,10 +923,10 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             <form onSubmit={handleCerrar} className="space-y-2">
               <Button
                 type="submit"
-                disabled={cerrando || !!diaBloqueante || estadoPendientes !== 'ok' || statusCierre === 'INCOMPLETO' || !baseLista || arqueoData.totalContado === 0}
+                disabled={cerrando || ventasBloquean || !!diaBloqueante || estadoPendientes !== 'ok' || statusCierre === 'INCOMPLETO' || !baseLista || arqueoData.totalContado === 0}
                 className="w-full py-6 text-lg"
               >
-                {cerrando ? 'Cerrando...' : 'Cerrar Día'}
+                {cerrando ? 'Cerrando...' : provisionalDisponible ? 'Cerrar caja provisional' : 'Cerrar Día'}
               </Button>
               <Button type="button" variant="outline" onClick={() => window.open(`/cierre/reporte?fecha=${fecha}`, '_blank', 'noopener,noreferrer')} className="w-full">
                 Ver Reporte para Imprimir

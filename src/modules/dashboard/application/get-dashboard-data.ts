@@ -5,7 +5,7 @@
  * This is the single entry point for the dashboard presentation layer.
  */
 
-import type { FinanzasRepository } from '../infrastructure/finanzas.repository'
+import type { FinanzasRepository, FinanzasDashboard } from '../infrastructure/finanzas.repository'
 import type { DashboardData, DashboardKPIs } from '../domain'
 import {
   pedidosValidos,
@@ -46,7 +46,7 @@ export async function getDashboardData(
 ): Promise<DashboardData> {
   // La composición productiva siempre provee finanzas. El fallback conserva
   // el contrato de los repositorios inyectados anteriores, sin inventar cobros.
-  const financiero =
+  const financiero: Promise<FinanzasDashboard> =
     deps.finanzas?.leer(todayRange, yesterdayRange) ??
     (async () => {
       const [
@@ -114,16 +114,16 @@ export async function getDashboardData(
   const validosHoy = pedidosValidos(pedidosHoy)
   const validosAyer = pedidosValidos(pedidosAyer)
 
-  const ventasHoy = calcularVentas(validosHoy)
-  const ventasAyer = calcularVentas(validosAyer)
+  const ventasHoy = finanzas.ventasEntregadasHoy?.total ?? calcularVentas(validosHoy)
+  const ventasAyer = finanzas.ventasEntregadasAyer?.total ?? calcularVentas(validosAyer)
   const fiadosHoy = calcularFiados(pedidosHoy)
 
-  const vendidos = deps.unidadesDelDia
+  const vendidos = finanzas.ventasEntregadasHoy?.unidades ?? (deps.unidadesDelDia
     ? await deps.unidadesDelDia(todayRange)
-    : calcularVendidos(pedidosHoy)
+    : calcularVendidos(pedidosHoy))
 
   const { franjas, maxFranja } = calcularFranjasHorarias(validosHoy)
-  const ventasPorPrecio = buildVentasPorPrecio(validosHoy)
+  const ventasPorPrecio = finanzas.ventasEntregadasHoy?.desglose ?? buildVentasPorPrecio(validosHoy)
 
   const tieneCierrePrevio = lastCierre !== null
   const stockInicial = determinarStockInicial(
@@ -189,6 +189,12 @@ export async function getDashboardData(
     produccion: produccionHoy,
     vendidos,
     ventasPorPrecio,
+    ventasAdvertencia: {
+      sinPrecio: finanzas.ventasEntregadasHoy?.sinPrecio ?? 0,
+      aproximados: finanzas.ventasEntregadasHoy?.unidades.aproximados.length ?? 0,
+      ayerSinPrecio: finanzas.ventasEntregadasAyer?.sinPrecio ?? 0,
+      ayerAproximados: finanzas.ventasEntregadasAyer?.unidades.aproximados.length ?? 0,
+    },
     franjasHorarias: franjas,
     maxFranja,
     stockAlertas,

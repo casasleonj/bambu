@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { leerRegularizaciones, estadoVentasCierre } from '@/lib/cierre-ventas-provisional'
 import { requireRole } from '@/lib/auth-check'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
@@ -27,7 +28,8 @@ export async function GET(request: Request) {
     const cierre = await prisma.cierreDia.findFirst({
       orderBy: { fecha: 'desc' },
     })
-    return apiSuccess({ cierre })
+    const estados = cierre ? await leerRegularizaciones(prisma, [cierre]) : new Map()
+    return apiSuccess({ cierre: cierre ? estadoVentasCierre(cierre, estados.get(cierre.id)) : null })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error en /api/cierre/last')
     return apiError('Error', 500)

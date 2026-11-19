@@ -133,6 +133,7 @@ export interface DashboardData {
   produccion: ProduccionDiaria
   vendidos: VendidosHoy
   ventasPorPrecio: VentaPorPrecio[]
+  ventasAdvertencia?: { sinPrecio: number; aproximados: number; ayerSinPrecio: number; ayerAproximados: number }
   franjasHorarias: FranjaHoraria[]
   maxFranja: number
   stockAlertas: InsumoAlerta[]

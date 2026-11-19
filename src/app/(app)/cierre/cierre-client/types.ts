@@ -59,6 +59,16 @@ export interface CierreData {
   fiado: number
   totalNotasCredito: number
   ventasDePedidosDelDia?: number
+  ventasCriterio?: 'ENTREGA_V1'
+  provisionalDisponible?: string | null
+  ventasEstado?: 'PROVISIONAL'
+  ventasTotalCertificado?: number | null
+  regularizacionVentas?: import('@/lib/cierre-ventas-provisional').RegularizacionVentas | null
+  ventasEntregadasDelDia?: number
+  ajustesVentasAnteriores?: number
+  valorEntregadoPedidosCreadosDelDia?: number
+  ventasPorConciliar?: { pedidoId: string; motivo: string; numero?: number | null; conciliacion?: { huella: string; dias: string[]; revision: string | null } }[]
+  conciliacionesVentasAplicadas?: { pedidoId: string; numero?: number | null; huella: string; revision: string; lineas: { dia: string; centavos: number; referencia: string }[] }[]
   /** #656: original comercial antes de distinguir entrega; los cierres anteriores no lo traen. */
   valorComercialPedidosDelDia?: number
   parcialesPorConciliar?: { pedidoId: string; numero: number }[]

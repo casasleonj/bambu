@@ -19,10 +19,12 @@ const pedidoClasificable = {
   pagos: pagos.map((g) => ({ id: g.id, createdAt: pedido.fecha, monto: g.monto })),
 }
 const pagoFind = vi.fn()
-const ventas = [{ id: 'venta-sintetica', origen: 'PEDIDO', estadoEntrega: 'ENTREGADO', total: 500, totalPagado: 120, saldo: 380, cPacaAguaEnt: 0, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }]
+const ventas = [{ id: 'venta-sintetica', fecha: pedido.fecha, numero: 2, canal: 'DOMICILIO', entregadoAt: null, items: [], origen: 'PEDIDO', estadoEntrega: 'ENTREGADO', total: 500, totalPagado: 120, saldo: 380, cPacaAguaEnt: 0, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }]
 const tx = {
   embarque: { findMany: vi.fn(async () => []) },
-  pedido: { findMany: vi.fn(async ({ where, select }: { where: { estadoEntrega?: unknown }; select?: { pagos?: unknown } }) => select?.pagos ? [pedidoClasificable] : typeof where.estadoEntrega === 'string' ? [] : ventas), groupBy: vi.fn(async () => []) },
+  historial: { findMany: vi.fn(async () => []) },
+  embarqueMovimiento: { findMany: vi.fn(async () => []) },
+  pedido: { findMany: vi.fn(async ({ where, select }: { where: { estadoEntrega?: unknown; items?: unknown }; select?: { pagos?: unknown } }) => select?.pagos ? [pedidoClasificable] : typeof where.estadoEntrega === 'string' && !where.items ? [] : ventas), groupBy: vi.fn(async () => []) },
   produccion: { findMany: vi.fn(async () => []) },
   cierreDia: { findFirst: vi.fn(async () => null) },
   config: { findMany: vi.fn(async () => []) },

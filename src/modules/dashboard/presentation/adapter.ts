@@ -57,6 +57,7 @@ export function toLegacyDashboardData(
 
     // Sales by price
     ventasPorPrecio: ddd.ventasPorPrecio,
+    ventasAdvertencia: ddd.ventasAdvertencia,
 
     // Product quantities sold (de pedidos ENTREGADOS, no de producción)
     aguaVendida: ddd.vendidos.agua,

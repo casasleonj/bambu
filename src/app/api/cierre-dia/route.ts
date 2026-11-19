@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
+import { leerRegularizaciones, estadoVentasCierre } from '@/lib/cierre-ventas-provisional'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
 
@@ -28,7 +29,12 @@ export async function GET(request: NextRequest) {
       take: 30,
     })
 
-    return apiSuccess({ cierres })
+    const estados = await leerRegularizaciones(prisma, cierres)
+    if (estados.size) {
+      const permiso = await requireRole(['ADMIN','ASISTENTE','CONTADOR'], authResult)
+      if (permiso instanceof Response) return permiso
+    }
+    return apiSuccess({ cierres: cierres.map(c => estadoVentasCierre(c, estados.get(c.id))) })
   } catch (_error) {
     return apiError('Error', 500)
   }

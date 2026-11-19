@@ -4,15 +4,14 @@ import { startOfDayInBogota } from '@/lib/date-helpers'
 import { whereEmbarquesPendientesCierreDia } from '@/lib/cierre-dia-embarques'
 import { comisionesDelCierre } from '@/lib/comision-pagada'
 import { resumirAbonosDelDia } from '@/lib/cobro-cartera'
-import { resumirVentasCierre } from '@/lib/cierre-totales'
-import { logger } from '@/lib/logger'
-import { unidadesEntregadasDelDia } from '@/lib/unidades-entregadas-dia'
+import { leerVentasEntregadasDia } from '@/lib/ventas-entregadas'
+import { leerAjustesVentasCierre } from '@/lib/cierre-ajustes-ventas'
 import { resolverStockInicial } from '@/lib/stock-inicial'
 import { PAGO_DE_PEDIDO_VIGENTE } from '@/lib/pago-confirmacion'
 import { desglosarCobros, detallarPorConfirmar, listarFiadosDelDia, listarGastosDelDia } from '@/lib/cierre-desglose-cobros'
 import { leerExigibles } from '@/lib/entregas-exigibles-db'
 import { clasificarCobrosDePedidos } from '@/lib/cobro-clasificacion-db'
-import { valorEntregadoPedidoCentavos, importesEntregaPedido } from '@/lib/valor-entregado-pedido'
+import { importesEntregaPedido } from '@/lib/valor-entregado-pedido'
 
 type PagoMetodoMonto = { metodo: MetodoPago; monto: unknown }
 
@@ -96,7 +95,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         where: { fecha: dateRange },
         _sum: { monto: true },
       }),
-      prisma.notaCredito.findMany({ where: { fecha: dateRange }, include: { pedido: { select: { fecha: true } } } }),
+      prisma.notaCredito.findMany({ where: { fecha: dateRange }, select: { id: true, pedidoId: true, monto: true } }),
       prisma.factura.findMany({
         where: { fecha: dateRange },
         include: { cliente: { select: { nombre: true } } },
@@ -179,8 +178,26 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
     // #499: comisiones del día calculadas por el servidor (repartidores con lo pagado/pendiente + sellador).
     const comisionesAuto = await comisionesDelCierre(prisma, fechaStr, startOfDay, endOfDay)
 
-    const ventas = resumirVentasCierre(pedidos, notasCredito, startOfDay)
-    const { totalVentas, totalNotasCredito: totalNC } = ventas
+    // #885: misma proyección por entrega que Dashboard, dentro del mismo
+    // snapshot transaccional. Las reversas de ventas previas son otra magnitud.
+    const rangoVentas = { start: startOfDay, end: endOfDay }
+    const entregadas = await leerVentasEntregadasDia(prisma, rangoVentas)
+    const revisiones = await leerAjustesVentasCierre(prisma, rangoVentas, notasCredito)
+    const ventasPorConciliarRaw = [
+      ...revisiones.porConciliar,
+      ...entregadas.porPedido.filter(p => !p.valorDeterminado)
+        .map(p => ({ pedidoId: p.pedidoId, motivo: 'PRECIO_ENTREGA_NO_VERIFICADO' })),
+    ]
+    const idsRevision = [...new Set(ventasPorConciliarRaw.map(p => p.pedidoId))]
+    const referenciasRevision = idsRevision.length ? await prisma.pedido.findMany({ where: { id: { in: idsRevision } }, select: { id: true, numero: true } }) : []
+    const numeroRevision = new Map(referenciasRevision.map(p => [p.id, p.numero]))
+    const ventasPorConciliar = ventasPorConciliarRaw.map(p => ({ ...p, numero: numeroRevision.get(p.pedidoId) ?? null }))
+    const totalVentas = (Math.round(entregadas.total * 100) - revisiones.ajusteCentavos) / 100
+    const totalNC = revisiones.notasTotal / 100
+    const creados = new Set(pedidos.map(p => p.id))
+    const valorComercialPedidosDelDia = pedidos.reduce((s, p) => s + Math.round(Number(p.total) * 100), 0) / 100
+    const valorEntregadoPedidosCreadosDelDia = entregadas.porPedido.filter(p => creados.has(p.pedidoId))
+      .reduce((s, p) => s + p.centavos, 0) / 100
     const cobrado = pedidos.reduce((acc, p) => acc + Number(p.totalPagado), 0)
     const exigibles = await leerExigibles(prisma, { id: { in: pedidos.map(p => p.id) } })
     const fiado = pedidos.reduce((acc, p) => acc + Math.round((exigibles.get(p.id) ?? 0) * 100), 0) / 100
@@ -203,21 +220,9 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
     const daviplata = cajaPorMetodo[MetodoPago.DAVIPLATA]
     const bono = cajaPorMetodo[MetodoPago.BONO]
 
-    // #650 (2b): unidades vendidas = entregadas ese día (no creadas ese día). Misma función que Producción y dashboard.
-    // Si el reparto por día falla, el cierre no se cae: usa lo acumulado por fecha de creación y lo avisa.
-    let unidadesError = false
-    const unidades = await unidadesEntregadasDelDia(prisma, { desde: startOfDay, hasta: endOfDay }).catch((err) => {
-      unidadesError = true
-      logger.error({ err, fechaStr }, 'cierre: no se pudo repartir las unidades por día de entrega')
-      return {
-        agua: pedidos.reduce((t, p) => t + p.cPacaAguaEnt, 0),
-        hielo: pedidos.reduce((t, p) => t + p.cPacaHieloEnt, 0),
-        botellon: pedidos.reduce((t, p) => t + p.cBotellonFabEnt + p.cBotellonDomEnt, 0),
-        bolsaAgua: pedidos.reduce((t, p) => t + p.cBolsaAguaEnt, 0),
-        bolsaHielo: pedidos.reduce((t, p) => t + p.cBolsaHieloEnt, 0),
-        aproximados: [],
-      }
-    })
+    // Una lectura de entregas para cantidades e importes.
+    const unidades = entregadas.unidades
+    const unidadesError = false
     const aguaVendida = unidades.agua
     const hieloVendido = unidades.hielo
     const botellonVendido = unidades.botellon
@@ -265,9 +270,9 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
     const facturasAnuladas = facturas.filter(f => f.estado === EstadoFactura.ANULADA)
 
     const porOrigen = new Map<string, { origen: string; centavos: number; count: number }>()
-    for (const p of pedidos) {
+    for (const p of entregadas.porPedido) {
       const fila = porOrigen.get(p.origen) ?? { origen: p.origen, centavos: 0, count: 0 }
-      fila.centavos += valorEntregadoPedidoCentavos(p)
+      fila.centavos += p.centavos
       fila.count++
       porOrigen.set(p.origen, fila)
     }
@@ -351,10 +356,18 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         parcialesPorConciliar: pedidos.filter(p => importesEntregaPedido({ ...p, exigible: exigibles.get(p.id) ?? 0 }).porConciliar)
           .map(p => ({ pedidoId: p.id, numero: p.numero })),
         totalNotasCredito: totalNC,
-        ventasDePedidosDelDia: ventas.ventasDePedidosDelDia,
-        valorComercialPedidosDelDia: ventas.valorComercialPedidosDelDia,
-        notasCreditoVentasAnteriores: ventas.notasCreditoVentasAnteriores,
-        notasCreditoSinAjusteVentas: ventas.notasCreditoSinAjusteVentas,
+        ventasCriterio: 'ENTREGA_V1' as const,
+        ventasDePedidosDelDia: entregadas.total,
+        ventasEntregadasDelDia: entregadas.total,
+        valorComercialPedidosDelDia,
+        valorEntregadoPedidosCreadosDelDia,
+        notasCreditoVentasAnteriores: revisiones.notasAnterioresCentavos / 100,
+        notasCreditoSinAjusteVentas: (revisiones.notasTotal - revisiones.notasAnterioresCentavos) / 100,
+        ajustesVentasAnteriores: revisiones.ajusteCentavos / 100,
+        ajustesVentasDetalle: revisiones.ajustes,
+        conciliacionesVentasAplicadas: revisiones.conciliacionesAplicadas,
+        ventasPorConciliar,
+        ventasEntregaPorPedido: entregadas.porPedido,
 
         // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 — informativo, no altera netoCaja.
         porConfirmar,

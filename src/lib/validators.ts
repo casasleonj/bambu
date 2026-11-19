@@ -795,6 +795,7 @@ export const CierreCreateSchema = z.object({
   // anteriores). Lo pagado por otro medio no resta de la caja del cierre.
   salariosEfectivo: z.coerce.number().min(0).optional(),
   reporte: z.string().optional(),
+  confirmarVentasProvisionales: z.string().regex(/^[a-f0-9]{64}$/).optional(),
 }).strict().refine( // Reject extra fields like netoCaja, totalVentas, etc.
   (d) => d.salariosEfectivo === undefined || d.salariosEfectivo <= d.salarios,
   { message: 'Los salarios pagados en efectivo no pueden superar el total de salarios', path: ['salariosEfectivo'] },
