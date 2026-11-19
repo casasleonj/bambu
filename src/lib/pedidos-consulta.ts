@@ -451,8 +451,10 @@ export function filtrosArrastrados(
     all: false,
     registro: "activos",
     estadoEntrega,
-    agrupar: "",
-    grupoBarrio: "",
+    // #859: conservar el barrio elegido también en los pendientes arrastrados.
+    // Eliminarlo mezclaba pedidos antiguos de otros barrios en la vista filtrada.
+    agrupar: f.agrupar,
+    grupoBarrio: f.grupoBarrio,
     resumen: false,
     page: 1,
     pageSize: MAX_ARRASTRADOS,
