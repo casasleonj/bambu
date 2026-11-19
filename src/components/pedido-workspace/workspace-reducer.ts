@@ -119,6 +119,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return afterDraftChange(state, {
         ...state.draft,
         canal: action.canal,
+        ...(action.canal !== state.draft.canal ? { programacionFecha: undefined, programacionHora: undefined } : {}),
         ...(action.canal !== 'PUNTO' && state.draft.entregado === false ? { entregado: true } : {}),
       })
     case 'SET_GUARDAR_DIRECCION_EN_CLIENTE':
@@ -161,7 +162,10 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       })
     }
     case 'SET_ENTREGADO':
-      return afterDraftChange(state, { ...state.draft, entregado: action.entregado })
+      return afterDraftChange(state, { ...state.draft, entregado: action.entregado, ...(action.entregado ? { programacionFecha: undefined, programacionHora: undefined } : {}) })
+    case 'SET_PROGRAMACION':
+      // El compromiso no cambia la cotización ni invalida el preview financiero.
+      return { ...state, draft: { ...state.draft, programacionFecha: action.fecha || undefined, programacionHora: action.hora || undefined } }
     case 'SET_OBS':
       return { ...state, draft: { ...state.draft, obs: action.obs } } // obs no invalida el preview
     case 'SET_DIRECCION':
@@ -178,6 +182,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       })
     case 'APPLY_PROPOSAL': {
       const draft = { ...state.draft, ...action.draft }
+      if (draft.canal !== state.draft.canal) { draft.programacionFecha = undefined; draft.programacionHora = undefined }
       const s = afterDraftChange(state, draft)
       return { ...s, valueOrigins: { ...s.valueOrigins, ...action.origins } }
     }

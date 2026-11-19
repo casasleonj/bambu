@@ -68,6 +68,29 @@ describe('PedidosWorkspace (Composición)', () => {
     expect(screen.getByTestId('pedidos-workspace').querySelector('form')).toBeNull()
   })
 
+  it('#889: comprador y negocio precargados fuera de la lista; el pedido usa programación canónica', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(true)
+    const comprador = { ...clientes[0], negocios: [{ id: 'n1', nombre: 'Tienda Norte', direccion: 'Calle 2', barrio: 'Norte' }] }
+    render(<PedidosWorkspace clientes={[]} clientePrecargado={comprador} initialDraft={{ clienteId: 'c1', negocioId: 'n1', direccionEntrega: 'Calle 2', barrioEntrega: 'Norte' }} onSubmit={onSubmit} />)
+    expect(screen.getByTestId('comprador-nombre')).toHaveTextContent('Tienda Norte')
+    expect(screen.getByTestId('comprador-detalle')).toHaveTextContent('Tienda X')
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    const toggle = screen.getByTestId('programar-entrega-toggle')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(toggle)
+    fireEvent.change(screen.getByTestId('programar-fecha'), { target: { value: '2099-11-20' } })
+    fireEvent.change(screen.getByTestId('programar-hora'), { target: { value: '15:30' } })
+    expect(screen.getByTestId('workspace-commit')).toBeEnabled()
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ clienteId: 'c1', negocioId: 'n1', direccionEntrega: 'Calle 2', fechaEntrega: '2099-11-20T17:00:00.000Z', entregaNoAntesDe: '15:30' }))
+  })
+
+  it('#889: venta inmediata no ofrece programación', () => {
+    render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={vi.fn()} />)
+    expect(screen.queryByTestId('programar-entrega-toggle')).not.toBeInTheDocument()
+  })
+
   it('el total viene del preview del backend, no de un cálculo client-side', async () => {
     render(<PedidosWorkspace clientes={clientes} onSubmit={vi.fn()} />)
     await elegirCliente()

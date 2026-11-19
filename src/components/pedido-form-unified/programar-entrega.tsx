@@ -8,7 +8,7 @@ import { useState } from 'react'
  * Maqueta aprobada: docs/agentes/maquetas/836-programacion-entregas/ (05 y 06, pantalla 6).
  */
 export function ProgramarEntrega({
-  fecha, hora, onFecha, onHora, error, hoyBogota,
+  fecha, hora, onFecha, onHora, error, hoyBogota, disabled = false,
 }: {
   fecha: string
   hora: string
@@ -16,26 +16,29 @@ export function ProgramarEntrega({
   onHora: (v: string) => void
   error?: string | null
   hoyBogota: string
+  disabled?: boolean
 }) {
   const [abierto, setAbierto] = useState(Boolean(fecha || hora))
+  const visible = abierto || Boolean(error)
   return (
     <div className="bg-white border rounded-xl p-4" data-testid="programar-entrega">
       <button
         type="button"
         onClick={() => setAbierto((v) => !v)}
-        aria-expanded={abierto}
+        aria-expanded={visible}
+        disabled={disabled}
         data-testid="programar-entrega-toggle"
         className="text-sm font-medium text-blue-600 hover:underline"
       >
-        {abierto ? '− Programar entrega' : '＋ Programar entrega (fecha u hora)'}
+        {visible ? '− Programar entrega' : '＋ Programar entrega (fecha u hora)'}
       </button>
-      {abierto && (
+      {visible && (
         <div className="mt-3 space-y-2">
           <div className="flex flex-wrap gap-3">
             <label className="block min-w-[8rem] flex-1 text-xs font-medium text-gray-700">
               Fecha
               <input
-                type="date" value={fecha} min={hoyBogota} onChange={(e) => onFecha(e.target.value)}
+                type="date" value={fecha} min={hoyBogota} disabled={disabled} onChange={(e) => onFecha(e.target.value)}
                 data-testid="programar-fecha"
                 className={`mt-1 block w-full rounded-lg border px-3 py-2 text-sm ${error ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
               />
@@ -44,7 +47,7 @@ export function ProgramarEntrega({
             <label className="block min-w-[8rem] flex-1 text-xs font-medium text-gray-700">
               Hora acordada <span className="font-normal text-gray-500">(opcional)</span>
               <input
-                type="time" value={hora} onChange={(e) => onHora(e.target.value)}
+                type="time" value={hora} disabled={disabled} onChange={(e) => onHora(e.target.value)}
                 data-testid="programar-hora"
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               />

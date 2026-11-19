@@ -23,5 +23,7 @@ describe('resolverProgramacion', () => {
   it('hora o fecha mal formadas → error', () => {
     expect(resolverProgramacion('', '25:00', HOY).error).toMatch(/HH:MM/)
     expect(resolverProgramacion('21/11/2026', '', HOY).error).toMatch(/fecha válida/)
+    expect(resolverProgramacion('2027-02-30', '', HOY).error).toMatch(/fecha válida/)
+    expect(resolverProgramacion('2027-13-01', '', HOY).error).toMatch(/fecha válida/)
   })
 })

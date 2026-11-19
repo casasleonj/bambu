@@ -66,6 +66,7 @@ import { coincideContactoPedido, coincidePedidoBusqueda } from '@/lib/pedido-bus
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
 import type { PedidoInicial, PedidoUnifiedData } from '@/components/pedido-form-unified'
+import type { Cliente as WorkspaceCliente } from '@/components/pedido-form-unified/types'
 
 interface PedidosClientProps {
   /** Initial pedidos data from server component (SSR). Used as display fallback
@@ -114,6 +115,8 @@ function buildPendingPedido(offlineId: string, payload: CrearPedidoPayload, clie
     total: 0,
     saldo: 0,
     fecha: new Date().toISOString(),
+    fechaEntrega: payload.fechaEntrega,
+    entregaNoAntesDe: payload.entregaNoAntesDe,
     _pendingSync: true,
     _pendingOfflineId: offlineId,
   }
@@ -218,6 +221,8 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
 
   // Corrección de un pedido offline rechazado (422): se reabre en el Hub con el
   // borrador original y la MISMA clave de idempotencia (offlineId).
+  // #889: la precarga de un comprador es contexto de creación, no edición.
+  const [precargaWorkspace, setPrecargaWorkspace] = useState<{ cliente: WorkspaceCliente; draft: Partial<DraftPedido> } | null>(null)
   const [correccion, setCorreccion] = useState<{ offlineId: string; draft: Partial<DraftPedido> } | null>(null)
 
   const corregirFailedPedido = useCallback(async (offlineId: string) => {
@@ -237,12 +242,17 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
         pagos: Array.isArray(body.pagos) ? (body.pagos as DraftPedido['pagos']) : [],
         entregado: body.entregado as boolean | undefined,
         obs: body.obs as string | undefined,
+        // El payload encolado contiene el día absoluto, no «hoy» relativo al reintento.
+        programacionFecha: typeof body.fechaEntrega === 'string' && Number.isFinite(Date.parse(body.fechaEntrega))
+          ? new Date(body.fechaEntrega).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }) : undefined,
+        programacionHora: typeof body.entregaNoAntesDe === 'string' ? body.entregaNoAntesDe : undefined,
         direccionEntrega: body.direccionEntrega as string | undefined,
         barrioEntrega: body.barrioEntrega as string | undefined,
         entregaLat: (body.entregaLat as number | null | undefined) ?? null,
         entregaLng: (body.entregaLng as number | null | undefined) ?? null,
         pedidoOrigenId: body.pedidoOrigenId as string | undefined,
       }
+      setPrecargaWorkspace(null)
       setCorreccion({ offlineId, draft })
       setShowVentaRapida(false)
       setModalKey((k) => k + 1)
@@ -875,10 +885,40 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
           barrio?: string | null
           frecuenciaSugerida?: { dias: number; label: string } | null
           productosSugeridos?: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }>
+          apellido?: string | null
+          linkUbicacion?: string | null
+          limitePedidosFiados?: number | null
+          bloqueado?: boolean
+          saldoPendiente?: number
+          negocios?: WorkspaceCliente['negocios']
+          contactos?: WorkspaceCliente['contactos']
         }>(clienteId)
         if (cancelled) return
         if (result.ok) {
           const cliente = result.cliente
+          if (hubMode) {
+            const negocio = negocioId ? cliente.negocios?.find(n => n.id === negocioId) : undefined
+            if (negocioId && !negocio) {
+              toast.error('El negocio seleccionado no está disponible para este cliente.')
+              syncUrl({ new: undefined, clienteId: undefined, negocioId: undefined })
+              return
+            }
+            const comprador: WorkspaceCliente = {
+              id: cliente.id, nombre: cliente.nombre, telefono: cliente.telefono,
+              apellido: cliente.apellido ?? undefined,
+              direccion: cliente.direccion ?? undefined, barrio: cliente.barrio ?? undefined,
+              linkUbicacion: cliente.linkUbicacion, negocios: cliente.negocios, contactos: cliente.contactos,
+              limitePedidosFiados: cliente.limitePedidosFiados, bloqueado: cliente.bloqueado,
+              saldoPendiente: cliente.saldoPendiente,
+            }
+            setPedidoInicial(undefined)
+            setCorreccion(null)
+            setPrecargaWorkspace({ cliente: comprador, draft: {
+              clienteId: cliente.id, negocioId: negocio?.id ?? null, canal: 'DOMICILIO',
+              direccionEntrega: negocio?.direccion ?? cliente.direccion ?? '',
+              barrioEntrega: negocio?.barrio ?? cliente.barrio ?? '',
+            } })
+          } else {
           setPedidoInicial({
             id: '',
             canal: 'DOMICILIO',
@@ -894,6 +934,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
             frecuenciaSugerida: cliente.frecuenciaSugerida ?? null,
             productosSugeridos: cliente.productosSugeridos ?? [],
           })
+          }
           setShowModal(true)
           setModalKey(k => k + 1)
         } else if (result.status === 401 || result.status === 403) {
@@ -969,7 +1010,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
     onSuccess: () => {
       setShowModal(false)
       setShowVentaRapida(false)
-      setPedidoInicial(undefined)
+      setPedidoInicial(undefined); setPrecargaWorkspace(null)
       setNuevaDemanda(null)
       setPedidoEditando(null)
       setShowDetailModal(false)
@@ -989,11 +1030,12 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
       const clienteNombre =
         payload.clienteNuevo?.nombre ??
         clientes.find(c => c.id === payload.clienteId)?.nombre ??
+        (precargaWorkspace?.cliente.id === payload.clienteId ? precargaWorkspace.cliente.nombre : undefined) ??
         'Cliente'
       setPendingPedidos((prev) => [...prev, buildPendingPedido(localId, payload, clienteNombre)])
       setShowModal(false)
       setShowVentaRapida(false)
-      setPedidoInicial(undefined)
+      setPedidoInicial(undefined); setPrecargaWorkspace(null)
       setNuevaDemanda(null)
       setPedidoEditando(null)
     },
@@ -1096,7 +1138,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
           // Nada que pedir: no se llama al servidor ni se aparenta haber guardado.
           setShowModal(false)
           setShowVentaRapida(false)
-          setPedidoInicial(undefined)
+          setPedidoInicial(undefined); setPrecargaWorkspace(null)
           setPedidoEditando(null)
           toast.info('Sin cambios: no modificaste nada')
           return true
@@ -1122,7 +1164,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
           }
           setShowModal(false)
           setShowVentaRapida(false)
-          setPedidoInicial(undefined)
+          setPedidoInicial(undefined); setPrecargaWorkspace(null)
           setPedidoEditando(null)
           setShowDetailModal(false)
           refreshPedidos()
@@ -1150,7 +1192,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
         }
         setShowModal(false)
         setShowVentaRapida(false)
-        setPedidoInicial(undefined)
+        setPedidoInicial(undefined); setPrecargaWorkspace(null)
         setNuevaDemanda(null)
         setPedidoEditando(null)
         refreshPedidos()
@@ -1695,7 +1737,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
         // G11.B — pedido nuevo e independiente, vinculado por `pedidoOrigenId`
         // (declaración explícita del usuario, no inferencia). Cliente y canal
         // vienen del origen y son inmutables; items en blanco.
-        setPedidoInicial(undefined)
+        setPedidoInicial(undefined); setPrecargaWorkspace(null)
         setShowVentaRapida(false)
         setNuevaDemanda({
           pedidoOrigenId: pedido.id,
@@ -2310,7 +2352,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
 
       </div>
       {/* Modal Formulario Unificado */}
-      <Modal open={showModal || showVentaRapida} onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setNuevaDemanda(null) }} className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+      <Modal open={showModal || showVentaRapida} onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setPrecargaWorkspace(null); setNuevaDemanda(null); setCorreccion(null) }} className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[95vh] overflow-hidden flex flex-col">
         <div className={`p-4 border-b flex justify-between items-center ${showVentaRapida ? 'bg-green-50' : 'bg-blue-50'}`}>
           <div>
             <h2 className={`text-xl font-bold ${showVentaRapida ? 'text-green-800' : 'text-blue-800'}`}>
@@ -2324,7 +2366,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
             )}
           </div>
           <button
-            onClick={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setNuevaDemanda(null) }}
+            onClick={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setPrecargaWorkspace(null); setNuevaDemanda(null); setCorreccion(null) }}
             className="text-gray-500 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100 transition"
             aria-label="Cerrar"
           >
@@ -2344,7 +2386,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
                 pedidoOrigenId: nuevaDemanda.pedidoOrigenId,
               }}
               onSubmit={handlePedidoSubmit}
-              onCancel={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setNuevaDemanda(null) }}
+              onCancel={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setPrecargaWorkspace(null); setNuevaDemanda(null); setCorreccion(null) }}
             />
           ) : hubMode && !pedidoInicial ? (
             <PedidosWorkspace
@@ -2352,10 +2394,11 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
               clientes={clientes}
               intent={showVentaRapida ? 'venta-rapida' : 'pedido'}
               ventaEnRuta={showVentaRapida && ventaEnRutaActiva ? { repartidores: gestionAdmin.repartidores } : undefined}
-              initialDraft={correccion?.draft}
+              initialDraft={correccion?.draft ?? precargaWorkspace?.draft}
+              clientePrecargado={precargaWorkspace?.cliente}
               offlineIdInicial={correccion?.offlineId}
               onSubmit={handlePedidoSubmit}
-              onCancel={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setNuevaDemanda(null); setCorreccion(null) }}
+              onCancel={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setPrecargaWorkspace(null); setNuevaDemanda(null); setCorreccion(null) }}
             />
           ) : (
             <PedidoFormUnified
@@ -2363,7 +2406,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
               contexto={showVentaRapida ? 'PUNTO' : 'DOMICILIO'}
               clientes={clientes}
               onSubmit={handlePedidoSubmit}
-              onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setNuevaDemanda(null) }}
+              onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setPrecargaWorkspace(null); setNuevaDemanda(null); setCorreccion(null) }}
               pedidoInicial={pedidoInicial}
             />
           )}

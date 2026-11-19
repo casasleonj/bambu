@@ -22,10 +22,13 @@ export function resolverProgramacion(fecha: string, hora: string, hoyBogota: str
   if (f && !/^\d{4}-\d{2}-\d{2}$/.test(f)) return { error: 'Elige una fecha válida.' }
   if (f && f < hoyBogota) return { error: 'La fecha ya pasó. Elige hoy o una fecha futura.' }
   const dia = f || hoyBogota
+  const fechaNormalizada = new Date(`${dia}T12:00:00-05:00`)
+  // JS normaliza algunos días imposibles (p. ej. 30 de febrero); no aceptarlos.
+  if (!Number.isFinite(fechaNormalizada.getTime()) || fechaNormalizada.toISOString().slice(0, 10) !== dia) return { error: 'Elige una fecha válida.' }
   if (dia === hoyBogota && !h) return {}
   return {
     // Mediodía de Bogotá: el día calendario no deriva por zona horaria (#753).
-    fechaEntrega: new Date(`${dia}T12:00:00-05:00`).toISOString(),
+    fechaEntrega: fechaNormalizada.toISOString(),
     ...(h ? { entregaNoAntesDe: h } : {}),
   }
 }
