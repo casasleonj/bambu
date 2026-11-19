@@ -14,6 +14,7 @@ import {
   resolverGrupoBarrio,
   type GrupoBarrio,
 } from "./barrios/grupo-barrio";
+import { remanentesPorProducto } from "./barrios/remanentes-barrio";
 import { ordenarBarriosFIFO } from "./barrios/fifo-barrio";
 import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
@@ -360,7 +361,7 @@ async function leerConsultaPedidos(
             where,
             select: {
               id: true, fecha: true, createdAt: true, numero: true, estadoEntrega: true, fechaEntrega: true, direccionEntrega: true, barrioEntrega: true,
-              items: { select: { cantPedido: true, cantEntrega: true } },
+              items: { select: { producto: true, cantPedido: true, cantEntrega: true } },
               cliente: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
               negocio: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
             },
@@ -393,7 +394,20 @@ async function leerConsultaPedidos(
           id: c.id, barrioClave: grupoPorId!.get(c.id)!.clave, createdAt: c.createdAt,
         })));
         const posicionesFIFO = new Map(fifo.map((g, i) => [g.clave, i]));
-        grupos = ordenarGrupos([...porGrupo.values()].map(({ g, items }) => ({ ...g, total: items.length })))
+        const demandaPorBarrio = new Map<string, Record<string, number>>();
+        for (const pedido of abiertos) {
+          const clave = grupoPorId!.get(pedido.id)!.clave;
+          const acumulado = demandaPorBarrio.get(clave) ?? {};
+          for (const [producto, cantidad] of Object.entries(remanentesPorProducto(pedido.items))) {
+            acumulado[producto] = (acumulado[producto] ?? 0) + cantidad;
+          }
+          demandaPorBarrio.set(clave, acumulado);
+        }
+        grupos = ordenarGrupos([...porGrupo.values()].map(({ g, items }) => {
+          const remanentes = demandaPorBarrio.get(g.clave) ?? {};
+          return { ...g, total: items.length, remanentes,
+            unidadesPendientes: Object.values(remanentes).reduce((total, n) => total + n, 0) };
+        }))
           .sort((a, b) =>
             (posicionesFIFO.get(a.clave) ?? Number.MAX_SAFE_INTEGER) -
             (posicionesFIFO.get(b.clave) ?? Number.MAX_SAFE_INTEGER) ||
