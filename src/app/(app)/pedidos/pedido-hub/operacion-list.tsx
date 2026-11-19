@@ -6,6 +6,7 @@ import { deriveOperacion, origenLabel, embarqueLinea } from './derive-operacion'
 import type { AccionKey, DeriveContext, Pedido } from './types'
 import { OperacionConsulta,type AccionesConsulta } from './operacion-consulta'
 import { useState } from 'react'
+import Link from 'next/link'
 import { GrupoBarrioEncabezado } from './grupo-barrio-encabezado'
 import { useAhora } from '@/hooks/use-ahora'
 import { ordenarPorFranja, type Franja } from '@/lib/pedidos-franja'
@@ -211,13 +212,13 @@ export function OperacionList({
     ...clavesManuales.filter(clave => clavesGlobales.includes(clave)),
     ...clavesGlobales.filter(clave => !clavesManuales.includes(clave)),
   ]
-  const actualizarRecorrido = (orden: string[]) => {
+  const urlRecorrido = (orden: string[]) => {
     const params = new URLSearchParams(searchParams.toString())
     params.delete('recorrido')
     for (const clave of orden) params.append('recorrido', clave)
     params.set('agrupar', 'barrio')
     params.set('page', '1')
-    window.location.assign('?' + params.toString())
+    return '?' + params.toString()
   }
   if (pedidos.length === 0) {
     return (
@@ -243,24 +244,20 @@ export function OperacionList({
     }
     const ordenEfectivo = ordenRecorrido
     const bloquesVisibles = bloques
-    const priorizar = (clave: string) => {
-      if (!ordenEfectivo.includes(clave)) return
-      actualizarRecorrido([clave, ...ordenEfectivo.filter(k => k !== clave)])
-      setBarrioSeleccionado("")
-    }
-    const mover = (clave: string, desplazamiento: number) => {
+    const priorizarUrl = (clave: string) => urlRecorrido([clave, ...ordenEfectivo.filter(k => k !== clave)])
+    const moverUrl = (clave: string, desplazamiento: number) => {
       const actual = [...ordenEfectivo]
       const indice = actual.indexOf(clave)
       const destino = indice + desplazamiento
-      if (indice < 0 || destino < 0 || destino >= actual.length) return
+      if (indice < 0 || destino < 0 || destino >= actual.length) return urlRecorrido(actual)
       ;[actual[indice], actual[destino]] = [actual[destino], actual[indice]]
-      actualizarRecorrido(actual)
+      return urlRecorrido(actual)
     }
     return (
       <div data-testid="pedidos-agrupados-barrio">
         <div className="my-2 flex flex-wrap items-center gap-2 text-xs">
-          <button type="button" aria-pressed={!modoRecorrido} onClick={() => { setModoRecorrido(false); actualizarRecorrido([]) }}
-            className={`rounded-md border px-3 py-1.5 ${!modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>FIFO</button>
+          <Link href={urlRecorrido([])} aria-label="Volver al orden FIFO"
+            className={`rounded-md border px-3 py-1.5 ${!modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>FIFO</Link>
           <button type="button" aria-pressed={modoRecorrido} onClick={() => setModoRecorrido(true)}
             className={`rounded-md border px-3 py-1.5 ${modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>Recorrido</button>
           {modoRecorrido && (
@@ -274,12 +271,12 @@ export function OperacionList({
                   <option key={g.clave} value={g.clave}>{g.etiqueta} ({g.total} pedidos)</option>
                 ))}
               </select>
-              <button type="button" data-testid="recorrido-priorizar"
-                disabled={!barrioSeleccionado || !ordenEfectivo.includes(barrioSeleccionado)}
-                onClick={() => priorizar(barrioSeleccionado)}
-                className="rounded-md bg-stone-800 px-3 py-1.5 text-white disabled:opacity-40">
-                Llevar al primero
-              </button>
+              {barrioSeleccionado && ordenEfectivo.includes(barrioSeleccionado) ? (
+                <Link href={priorizarUrl(barrioSeleccionado)} data-testid="recorrido-priorizar"
+                  className="rounded-md bg-stone-800 px-3 py-1.5 text-white">Llevar al primero</Link>
+              ) : (
+                <span aria-disabled="true" className="rounded-md bg-stone-400 px-3 py-1.5 text-white">Llevar al primero</span>
+              )}
               <span className="text-stone-500">Orden global temporal, sin guardar preferencias.</span>
             </>
           )}
@@ -297,10 +294,10 @@ export function OperacionList({
               />
               {modoRecorrido && (
                 <div className="mb-1 flex gap-2">
-                  <button type="button" aria-label={`Subir ${b.etiqueta}`} disabled={ordenEfectivo.indexOf(b.clave) === 0}
-                    onClick={() => mover(b.clave, -1)} className="rounded border px-2 py-1 text-xs disabled:opacity-40">↑ Subir</button>
-                  <button type="button" aria-label={`Bajar ${b.etiqueta}`} disabled={ordenEfectivo.indexOf(b.clave) === ordenEfectivo.length - 1}
-                    onClick={() => mover(b.clave, 1)} className="rounded border px-2 py-1 text-xs disabled:opacity-40">↓ Bajar</button>
+                  <Link href={moverUrl(b.clave, -1)} aria-label={`Subir ${b.etiqueta}`} aria-disabled={ordenEfectivo.indexOf(b.clave) === 0}
+                    className={`rounded border px-2 py-1 text-xs ${ordenEfectivo.indexOf(b.clave) === 0 ? 'pointer-events-none opacity-40' : ''}`}>↑ Subir</Link>
+                  <Link href={moverUrl(b.clave, 1)} aria-label={`Bajar ${b.etiqueta}`} aria-disabled={ordenEfectivo.indexOf(b.clave) === ordenEfectivo.length - 1}
+                    className={`rounded border px-2 py-1 text-xs ${ordenEfectivo.indexOf(b.clave) === ordenEfectivo.length - 1 ? 'pointer-events-none opacity-40' : ''}`}>↓ Bajar</Link>
                 </div>
               )}
               <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre}/>
