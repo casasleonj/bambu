@@ -5,12 +5,23 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { planCI, revisarGate } from '../politica-ci.mjs'
+import { diffAptoBorrador, planCI, revisarGate } from '../politica-ci.mjs'
 
-const pr = { event: 'pull_request', action: 'opened', draft: 'true', fastDraft: 'true', required: 'true' }
+const pr = { event: 'pull_request', action: 'opened', draft: 'true', fastDraft: 'true', required: 'true', diffOk: 'true' }
 const verde = { detect: 'success', quality: 'success', integration: 'success', integrationOk: 'true', e2e: 'success', hub: 'success', run: 'true', deferred: 'false' }
 const saltado = { ...verde, e2e: 'skipped', hub: 'skipped', run: 'false' }
 
+test('diff del piloto: solo rutas permitidas y archivos normales A/M/D', () => {
+  const f = { estado: 'M', modoAnterior: '100644', modoNuevo: '100644', ruta: 'src/components/a.tsx' }
+  assert.equal(diffAptoBorrador([f]), true)
+  assert.equal(diffAptoBorrador([{ ...f, estado: 'A', modoAnterior: '000000' }]), true)
+  assert.equal(diffAptoBorrador([{ ...f, estado: 'D', modoNuevo: '000000' }]), true)
+  for (const e of [null, { ...f, invalida: true }, { ...f, estado: 'R100' }, { ...f, modoNuevo: '100755' }, { ...f, modoNuevo: '120000' }, { ...f, ruta: '.github/workflows/ci.yml' }, { ...f, ruta: 'prisma/schema.prisma' }, { ...f, ruta: 'package-lock.json' }, { ...f, ruta: 'e2e/example.spec.ts' }, { ...f, ruta: 'src/archivo\nextra.ts' }]) {
+    assert.equal(diffAptoBorrador([f, e]), false)
+  }
+  assert.equal(diffAptoBorrador([]), false)
+  for (const diffOk of ['', undefined, 'false']) assert.equal(planCI({ ...pr, diffOk }).e2e_run, 'true')
+})
 test('solo borrador explícito y opt-in puede diferir E2E', () => {
   for (const action of ['opened', 'synchronize', 'reopened']) {
     assert.deepEqual(planCI({ ...pr, action }), { e2e_run: 'false', draft_deferred: 'true', draft_candidate: 'true' })
@@ -62,7 +73,7 @@ test('combinaciones de eventos y estado no autorizan un candidato parcial', () =
     for (const draft of ['true', 'false', ''])
       for (const action of ['opened', 'synchronize', 'ready_for_review', ''])
         for (const fastDraft of ['true', 'false', '']) {
-          const c = { event, draft, action, fastDraft, required: 'true' }
+          const c = { event, draft, action, fastDraft, required: 'true', diffOk: 'true' }
           assert.equal(revisarGate(c, { ...saltado, ...{ deferred: planCI(c).draft_deferred } }).ok, false)
           assert.equal(revisarGate(c, verde).ok, planCI(c).e2e_run === 'true')
         }
@@ -72,7 +83,7 @@ test('CLI real publica outputs y no concede verde a borrador diferido', () => {
   try {
     const output = join(dir, 'out')
     const script = fileURLToPath(new URL('../politica-ci.mjs', import.meta.url))
-    const env = { ...process.env, GITHUB_OUTPUT: output, CI_EVENT: 'pull_request', CI_ACTION: 'opened', CI_DRAFT: 'true', CI_FAST_DRAFT: 'true', E2E_REQUIRED: 'true', E2E_RUN: 'false', DRAFT_DEFERRED: 'true', R_DETECT: 'success', R_QUALITY: 'success', R_INTEGRATION: 'success', INTEGRATION_OK: 'true', R_E2E: 'skipped', R_HUB: 'skipped' }
+    const env = { ...process.env, GITHUB_OUTPUT: output, CI_EVENT: 'pull_request', CI_ACTION: 'opened', CI_DRAFT: 'true', CI_FAST_DRAFT: 'true', CI_DIFF_OK: 'true', E2E_REQUIRED: 'true', E2E_RUN: 'false', DRAFT_DEFERRED: 'true', R_DETECT: 'success', R_QUALITY: 'success', R_INTEGRATION: 'success', INTEGRATION_OK: 'true', R_E2E: 'skipped', R_HUB: 'skipped' }
     execFileSync(process.execPath, [script, 'plan'], { env })
     assert.equal(readFileSync(output, 'utf8'), 'e2e_run=false\ndraft_deferred=true\ndraft_candidate=true\n')
     assert.equal(spawnSync(process.execPath, [script, 'gate'], { env }).status, 1)
