@@ -19,12 +19,12 @@ test.describe('#836 F2b — hora acordada', () => {
   test('crear: sin tocar «Programar entrega» el pedido nace como siempre; con hora queda hoy + hora', async ({ page }) => {
     await loginAs(page, 'admin')
     const { cliente } = await createCliente(page, { nombre: 'Cliente Programa', telefono: '3001230001' })
-    const crear = async () => {
+    const crear = async (cantidad = 1) => {
       await goto(page, '/pedidos') // parte de una página limpia: el enlace ?new=1 solo abre el formulario al cargar
       await goto(page, `/pedidos?new=1&clienteId=${cliente.id}`)
       await expect(page.getByText('📦 Nuevo Pedido')).toBeVisible({ timeout: 15000 })
       if (hub) await expect(page.getByTestId('comprador-nombre')).toContainText('Cliente Programa')
-      await page.getByTestId(incId).click()
+      for (let i = 0; i < cantidad; i++) await page.getByTestId(incId).click()
       await expect(page.getByTestId(commitId)).toBeEnabled({ timeout: 20000 }) // precios y preview resueltos
     }
 
@@ -39,7 +39,8 @@ test.describe('#836 F2b — hora acordada', () => {
     expect(sinProgramar.fechaEntrega).toBeNull()
 
     // 2) Con hora (y sin fecha = hoy): se guarda hoy y la hora.
-    await crear()
+    // Cantidad diferente: no activar el aviso de venta repetida del Hub.
+    await crear(2)
     await page.getByTestId('programar-entrega-toggle').click()
     await page.getByTestId('programar-hora').fill('16:00')
     await page.getByTestId(commitId).click()

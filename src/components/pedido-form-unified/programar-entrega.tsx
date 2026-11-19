@@ -19,20 +19,19 @@ export function ProgramarEntrega({
   disabled?: boolean
 }) {
   const [abierto, setAbierto] = useState(Boolean(fecha || hora))
-  const visible = abierto || Boolean(error)
   return (
     <div className="bg-white border rounded-xl p-4" data-testid="programar-entrega">
       <button
         type="button"
         onClick={() => setAbierto((v) => !v)}
-        aria-expanded={visible}
+        aria-expanded={abierto}
         disabled={disabled}
         data-testid="programar-entrega-toggle"
         className="text-sm font-medium text-blue-600 hover:underline"
       >
-        {visible ? '− Programar entrega' : '＋ Programar entrega (fecha u hora)'}
+        {abierto ? '− Programar entrega' : '＋ Programar entrega (fecha u hora)'}
       </button>
-      {visible && (
+      {abierto && (
         <div className="mt-3 space-y-2">
           <div className="flex flex-wrap gap-3">
             <label className="block min-w-[8rem] flex-1 text-xs font-medium text-gray-700">
@@ -56,9 +55,9 @@ export function ProgramarEntrega({
           <p className="text-xs text-gray-500">
             Con hora, el pedido se ordena en la lista según qué tan cerca esté (hora de Bogotá). No impide registrar la entrega.
           </p>
-          {error && <p role="alert" className="text-xs text-red-700" data-testid="programar-error">{error}</p>}
         </div>
       )}
+      {error && <p role="alert" className="mt-2 text-xs text-red-700" data-testid="programar-error">{error}</p>}
     </div>
   )
 }

@@ -86,6 +86,26 @@ describe('PedidosWorkspace (Composición)', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ clienteId: 'c1', negocioId: 'n1', direccionEntrega: 'Calle 2', fechaEntrega: '2099-11-20T17:00:00.000Z', entregaNoAntesDe: '15:30' }))
   })
 
+  it('#889: una fecha pasada no envía nada, incluso con los campos plegados', async () => {
+    const onSubmit = vi.fn()
+    render(<PedidosWorkspace clientes={clientes} onSubmit={onSubmit} />)
+    await elegirCliente()
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByTestId('programar-entrega-toggle'))
+    fireEvent.change(screen.getByTestId('programar-fecha'), { target: { value: '2000-01-01' } })
+    fireEvent.click(screen.getByTestId('programar-entrega-toggle'))
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(screen.getByTestId('programar-error')).toHaveTextContent('La fecha ya pasó')
+    expect(onSubmit).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('programar-entrega-toggle'))
+    fireEvent.change(screen.getByTestId('programar-fecha'), { target: { value: '' } })
+    expect(screen.queryByTestId('programar-error')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onSubmit.mock.calls[0][0].fechaEntrega).toBeUndefined()
+  })
+
   it('#889: venta inmediata no ofrece programación', () => {
     render(<PedidosWorkspace clientes={clientes} intent="venta-rapida" onSubmit={vi.fn()} />)
     expect(screen.queryByTestId('programar-entrega-toggle')).not.toBeInTheDocument()

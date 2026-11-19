@@ -404,11 +404,12 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
   const entregarDespues = entregaPosterior && state.draft.entregado === false
   const tieneComprador = Boolean(clienteSeleccionado) || Boolean(state.draft.clienteNuevo)
   const compradorSinResolver = Boolean(state.draft.clienteId && state.draft.clienteId !== 'CONSUMIDOR_FINAL' && !clienteSeleccionado)
-  const origenCreacion = ventaEnRuta ? 'VENTA_RAPIDA' : (esNuevaDemanda || tieneComprador || intent !== 'venta-rapida' ? 'PEDIDO' : 'VENTA_RAPIDA')
+  const origenCreacion = ventaEnRuta ? 'VENTA_RAPIDA' : (esNuevaDemanda || tieneComprador ? 'PEDIDO' : 'VENTA_RAPIDA')
+  const sinCompradorEnPedidoNuevo = intent !== 'venta-rapida' && !state.draft.clienteId && !state.draft.clienteNuevo
   // Misma elegibilidad de #871, preservando la autoridad de la política de entrega.
   const programable = !modoEdicion && !ventaEnRuta
     && (state.draft.canal === 'DOMICILIO' || entregarDespues)
-    && estadoEntregaAlCrear({ origen: origenCreacion, canal: state.draft.canal, entregado: state.draft.entregado }) === 'PENDIENTE'
+    && estadoEntregaAlCrear({ origen: sinCompradorEnPedidoNuevo ? 'PEDIDO' : origenCreacion, canal: state.draft.canal, entregado: state.draft.entregado }) === 'PENDIENTE'
   // Venta en ruta: la promesa solo se pide si un cliente REAL queda debiendo.
   const pideFechaRuta = Boolean(ventaEnRuta) && tieneComprador && (calc?.saldoProyectado ?? 0) > 0
   const faltanDatosRuta = Boolean(ventaEnRuta) && (!vendidoPorId || (pideFechaRuta && !promesaPagoFecha))
@@ -484,7 +485,7 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
 
   const handleCommit = async () => {
     // Nunca degradar un comprador identificado a consumidor final por falta de carga.
-    if (compradorSinResolver) return
+    if (compradorSinResolver || !commitEnabled) return
     const hoy = todayStringBogota()
     const programacion = programable ? resolverProgramacion(state.draft.programacionFecha ?? '', state.draft.programacionHora ?? '', hoy) : {}
     if (programacion.error) { setProgramacionError(programacion.error); return }
@@ -501,7 +502,6 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
     }
     dispatch({ type: 'COMMIT_START' })
     const clienteNuevo = clienteSeleccionado ? undefined : state.draft.clienteNuevo
-    const tieneClienteReal = Boolean(clienteSeleccionado) || Boolean(clienteNuevo)
 
     const actualizarCliente = resolveActualizarCliente({
       clienteSeleccionado,
@@ -525,7 +525,7 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
       canal: state.draft.canal,
       // edición: origen persistido (inmutable). nueva-demanda: siempre PEDIDO.
       // creación normal: derivado de si hay cliente real.
-      origen: modoEdicion ? state.draft.origen : (ventaEnRuta ? 'VENTA_RAPIDA' : ((esNuevaDemanda || tieneClienteReal) ? 'PEDIDO' : 'VENTA_RAPIDA')),
+      origen: modoEdicion ? state.draft.origen : origenCreacion,
       pedidoOrigenId: state.draft.pedidoOrigenId,
       items: state.draft.items
         .filter((i) => i.cantidad > 0)

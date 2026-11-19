@@ -86,13 +86,13 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         // CONSUMIDOR_FINAL ⇒ origen VENTA_RAPIDA (ventaRapida→origen, PO 2026-09-06)
         origen: action.clienteId === 'CONSUMIDOR_FINAL' || state.draft.ventaEnRuta ? 'VENTA_RAPIDA' as const : 'PEDIDO' as const,
         // sin comprador no hay «entregar después» (P2-2)
-        ...(action.clienteId === 'CONSUMIDOR_FINAL' && state.draft.entregado === false ? { entregado: true } : {}),
+        ...(action.clienteId === 'CONSUMIDOR_FINAL' && state.draft.entregado === false ? { entregado: true, programacionFecha: undefined, programacionHora: undefined } : {}),
       }
       return afterDraftChange(state, draft)
     }
     case 'CLEAR_CLIENTE':
       // «Entregar después» exige comprador (P2-2): sin él vuelve a «ahora».
-      return afterDraftChange(state, { ...state.draft, ...(state.draft.entregado === false ? { entregado: true } : {}), clienteId: null, clienteNuevo: undefined, excepcionId: undefined, negocioId: null, entregaLat: null, entregaLng: null, guardarDireccionEnCliente: false })
+      return afterDraftChange(state, { ...state.draft, ...(state.draft.entregado === false ? { entregado: true, programacionFecha: undefined, programacionHora: undefined } : {}), clienteId: null, clienteNuevo: undefined, excepcionId: undefined, negocioId: null, entregaLat: null, entregaLng: null, guardarDireccionEnCliente: false })
     case 'SET_EXCEPCION':
       return afterDraftChange(state, { ...state.draft, excepcionId: action.excepcionId })
     case 'SET_CLIENTE_NUEVO': {
