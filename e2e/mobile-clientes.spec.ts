@@ -3,7 +3,14 @@
 // lista de clientes y abrir el detalle al hacer click.
 
 import { test, expect } from '@playwright/test'
-import { loginAs, createCliente } from './fixtures'
+import { loginAs, createCliente, appMain } from './fixtures'
+
+// #872: el buscador se acota a <main>. /clientes tiene loading.tsx (Suspense): en el runner de CI,
+// React 19 envía el HTML resuelto dentro de un <div hidden id="S:n"> fuera de <main> y luego lo
+// intercambia, así que durante ese instante el árbol existe dos veces y un selector global
+// encuentra 2 elementos (strict mode violation). Ver appMain() en fixtures.ts. No es un bug de producto.
+const buscador = (page: Parameters<typeof appMain>[0]) =>
+  appMain(page).locator('input[placeholder*="Buscar" i]')
 
 // Viewport mobile iPhone 13 (390x844) sin forzar webkit (que no esta
 // instalado en este entorno). Usamos chromium con viewport mobile,
@@ -21,7 +28,7 @@ test.describe('Clientes en mobile', () => {
   test('lista de clientes se muestra sin error "no se pudieron cargar"', async ({ page }) => {
     await loginAs(page, 'admin')
     await page.goto('/clientes')
-    await expect(page.locator('input[placeholder*="Buscar" i]')).toBeVisible()
+    await expect(buscador(page)).toBeVisible()
     await page.waitForTimeout(500)
 
     // No debe aparecer el error "No se pudieron cargar"
@@ -31,7 +38,7 @@ test.describe('Clientes en mobile', () => {
     // Debe haber al menos un cliente visible (de los seeded en prisma/seed.ts).
     // Buscamos el texto "Buscar por nombre..." (placeholder del search input)
     // que confirma que la pagina de clientes esta renderizada.
-    const searchInput = page.locator('input[placeholder*="Buscar" i]')
+    const searchInput = buscador(page)
     await expect(searchInput).toBeVisible()
 
     // Tambien verificamos que el header "X de Y clientes" este visible
@@ -54,12 +61,12 @@ test.describe('Clientes en mobile', () => {
     // La prueba no debe depender de datos previos: asegura al menos un cliente.
     await createCliente(page)
     await page.goto('/clientes')
-    await expect(page.locator('input[placeholder*="Buscar" i]')).toBeVisible()
+    await expect(buscador(page)).toBeVisible()
     await page.waitForTimeout(800)
 
     // Esperar a que la lista de clientes este renderizada.
     // El placeholder del search es una senal fiable de que la pagina cargo.
-    await expect(page.locator('input[placeholder*="Buscar" i]')).toBeVisible({ timeout: 5000 })
+    await expect(buscador(page)).toBeVisible({ timeout: 5000 })
 
     // Buscar la primera fila de cliente (div con cursor-pointer + grid).
     // El componente cliente-table.tsx usa:
@@ -83,10 +90,10 @@ test.describe('Clientes en mobile', () => {
     // La prueba no debe depender de datos previos: asegura al menos un cliente.
     await createCliente(page)
     await page.goto('/clientes')
-    await expect(page.locator('input[placeholder*="Buscar" i]')).toBeVisible()
+    await expect(buscador(page)).toBeVisible()
     await page.waitForTimeout(800)
 
-    await expect(page.locator('input[placeholder*="Buscar" i]')).toBeVisible({ timeout: 5000 })
+    await expect(buscador(page)).toBeVisible({ timeout: 5000 })
 
     const firstRow = page.locator('div.grid.cursor-pointer').first()
     await expect(firstRow).toBeVisible({ timeout: 5000 })
