@@ -365,6 +365,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
         notasCreditoSinAjusteVentas: (revisiones.notasTotal - revisiones.notasAnterioresCentavos) / 100,
         ajustesVentasAnteriores: revisiones.ajusteCentavos / 100,
         ajustesVentasDetalle: revisiones.ajustes,
+        conciliacionesVentasAplicadas: revisiones.conciliacionesAplicadas,
         ventasPorConciliar,
         ventasEntregaPorPedido: entregadas.porPedido,
 

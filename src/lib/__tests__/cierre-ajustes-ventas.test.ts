@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { diasCumplimientoVerificado, esReversaTerminal, importeReconocido } from '@/lib/cierre-ajustes-ventas'
+import { diasCumplimientoVerificado, esReversaTerminal, importeReconocido, ventaAusenteEnCierreTardio } from '@/lib/cierre-ajustes-ventas'
 import type { EntregaConsulta } from '@/lib/entregas-consulta'
 const evento = (fecha: string, cantidad: number): EntregaConsulta => ({
   id: fecha, pedidoId: 'p', fecha: new Date(fecha), repartidorId: null,
@@ -16,6 +16,16 @@ describe('#885: procedencia de ajustes de venta', () => {
     expect([...diasCumplimientoVerificado(hechos, { PACA_AGUA: 5 })!]).toEqual(['2031-04-10', '2031-04-11'])
     expect(diasCumplimientoVerificado(hechos, { PACA_AGUA: 6 })).toBeNull()
     expect(diasCumplimientoVerificado([], { PACA_AGUA: 0 })).toEqual(new Set())
+  })
+  it('no vuelve a restar una venta ausente de un cierre tardío íntegro', () => {
+    const snapshot = { ventasCriterio: 'ENTREGA_V1', ventasEntregadasDelDia: 2500, ventasPorConciliar: [], ventasEntregaPorPedido: [
+      { pedidoId: 'otro', centavos: 250000, valorDeterminado: true, fechaAproximada: false },
+    ] }
+    expect(ventaAusenteEnCierreTardio(snapshot, 'p')).toBe(true)
+    expect(ventaAusenteEnCierreTardio(snapshot, 'otro')).toBe(false)
+    expect(ventaAusenteEnCierreTardio({ ...snapshot, ventasEntregadasDelDia: 3000 }, 'p')).toBe(false)
+    expect(ventaAusenteEnCierreTardio({ ...snapshot, ventasPorConciliar: [{}] }, 'p')).toBe(false)
+    expect(ventaAusenteEnCierreTardio({ totalVentas: 2500 }, 'p')).toBe(false)
   })
   it('solo atribuye la reversa a un valor previamente reconocido y verificable', () => {
     expect(importeReconocido({ totalVentas: 7500 }, 'p')).toBeNull()
