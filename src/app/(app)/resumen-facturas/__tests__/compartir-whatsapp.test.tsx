@@ -23,13 +23,15 @@ const pdfOk = () =>
   })
 
 let fetchMock: ReturnType<typeof vi.fn>
+let clickSpy: ReturnType<typeof vi.spyOn>
 
 describe('CompartirWhatsapp', () => {
   beforeEach(() => {
+    vi.clearAllMocks() // los avisos (toast) no deben depender del orden de las pruebas
     fetchMock = vi.fn(async (url: string) => (String(url).includes('/pdf') ? pdfOk() : new Response('{"success":true}')))
     vi.stubGlobal('fetch', fetchMock)
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:prueba'), revokeObjectURL: vi.fn() }))
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
   })
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -113,13 +115,86 @@ describe('CompartirWhatsapp', () => {
     expect(fetchMock.mock.calls.every(([u]) => !String(u).includes('/compartir'))).toBe(true)
   })
 
-  it('ofrece el menú de compartir del sistema solo si el navegador puede compartir archivos', async () => {
-    vi.stubGlobal('navigator', { ...navigator, canShare: () => true, share: vi.fn(async () => undefined) })
+  describe('menú de compartir del sistema con el PDF (#877)', () => {
+    let share: ReturnType<typeof vi.fn>
+    const conMenuDelSistema = (canShare: () => boolean = () => true) => {
+      share = vi.fn(async () => undefined)
+      vi.stubGlobal('navigator', { ...navigator, canShare, share })
+    }
+    const prepararPdf = async (extra: Partial<typeof props> = {}) => {
+      render(<CompartirWhatsapp {...props} {...extra} />)
+      fireEvent.click(screen.getByTestId('btn-compartir-whatsapp'))
+      fireEvent.click(screen.getByTestId('compartir-generar'))
+      await screen.findByTestId('compartir-listo')
+    }
+
+    it('es el camino principal: «Compartir PDF» abre el menú con el archivo y no se descarga solo ni se ofrece el enlace de chat', async () => {
+      conMenuDelSistema()
+      await prepararPdf()
+      expect(screen.getByTestId('compartir-listo-sistema').textContent).toContain('elige WhatsApp u otra app')
+      expect(screen.queryByTestId('compartir-abrir-whatsapp')).toBeNull()
+      expect(clickSpy).not.toHaveBeenCalled() // sin descarga automática
+      fireEvent.click(screen.getByTestId('compartir-archivo'))
+      await waitFor(() => expect(share).toHaveBeenCalledTimes(1))
+      const datos = share.mock.calls[0][0] as { files: File[]; title: string; text: string }
+      expect(datos.files).toHaveLength(1)
+      expect(datos.files[0].name).toBe('Resumen-Cliente-Ejemplo-20261117.pdf')
+      expect(datos.files[0].type).toBe('application/pdf')
+      expect(datos.title).toBe('Resumen de cuenta')
+      expect(datos.text).toContain('Saldo a pagar')
+    })
+
+    it('la confirmación explica el menú y no exige teléfono: la persona elige el chat', async () => {
+      conMenuDelSistema()
+      render(<CompartirWhatsapp {...props} telefono="123" />)
+      fireEvent.click(screen.getByTestId('btn-compartir-whatsapp'))
+      const c = screen.getByTestId('compartir-confirmar')
+      expect(screen.queryByTestId('compartir-sin-telefono')).toBeNull()
+      expect(c.textContent).toContain('elegirás con qué app compartirlo')
+      expect(c.textContent).not.toContain('WhatsApp: ')
+    })
+
+    it('cerrar el menú sin elegir no es un error: no descarga ni avisa', async () => {
+      conMenuDelSistema()
+      await prepararPdf()
+      share.mockRejectedValueOnce(new DOMException('cancelado', 'AbortError'))
+      fireEvent.click(screen.getByTestId('compartir-archivo'))
+      await waitFor(() => expect(share).toHaveBeenCalledTimes(1))
+      const { toast } = await import('sonner')
+      expect(toast.error).not.toHaveBeenCalled()
+      expect(clickSpy).not.toHaveBeenCalled()
+    })
+
+    it('si el sistema rechaza compartir, descarga el PDF, avisa y pasa al respaldo', async () => {
+      conMenuDelSistema()
+      await prepararPdf()
+      share.mockRejectedValueOnce(new DOMException('sin gesto', 'NotAllowedError'))
+      fireEvent.click(screen.getByTestId('compartir-archivo'))
+      await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1))
+      const { toast } = await import('sonner')
+      expect(toast.error).toHaveBeenCalled()
+      expect(await screen.findByTestId('compartir-listo-respaldo')).toBeTruthy()
+    })
+
+    it('si el archivo real no se puede compartir, usa el respaldo (descarga y chat)', async () => {
+      let llamadas = 0
+      conMenuDelSistema(() => ++llamadas === 1) // sí con el archivo de prueba, no con el real
+      await prepararPdf()
+      expect(screen.getByTestId('compartir-listo-respaldo')).toBeTruthy()
+      expect(clickSpy).toHaveBeenCalledTimes(1)
+      expect(screen.getByTestId('compartir-abrir-whatsapp')).toBeTruthy()
+    })
+  })
+
+  it('sin menú del sistema (respaldo): descarga el PDF y ofrece abrir el chat, avisando que solo viaja el mensaje', async () => {
     render(<CompartirWhatsapp {...props} />)
     fireEvent.click(screen.getByTestId('btn-compartir-whatsapp'))
+    expect(screen.getByTestId('compartir-confirmar').textContent).toContain('solo viaja el mensaje')
     fireEvent.click(screen.getByTestId('compartir-generar'))
-    await screen.findByTestId('compartir-archivo')
-    fireEvent.click(screen.getByTestId('compartir-archivo'))
-    await waitFor(() => expect((navigator.share as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1))
+    await screen.findByTestId('compartir-listo')
+    expect(clickSpy).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('compartir-listo-respaldo').textContent).toContain('solo viaja el mensaje')
+    expect(screen.queryByTestId('compartir-archivo')).toBeNull()
+    expect(screen.getByTestId('compartir-abrir-whatsapp')).toBeTruthy()
   })
 })

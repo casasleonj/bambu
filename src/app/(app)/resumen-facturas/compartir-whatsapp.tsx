@@ -31,16 +31,33 @@ function nombreDeArchivo(cabecera: string | null): string {
 }
 
 /**
- * Compartir el resumen por WhatsApp como PDF (#845). WhatsApp no recibe archivos
- * por enlace: se genera el PDF, se descarga y el usuario lo adjunta en el chat; en
- * celulares que lo permiten se ofrece el menú de compartir del sistema.
+ * ¿Puede este dispositivo abrir el menú de compartir del sistema con un PDF?
+ * (Web Share API con archivos). Se pregunta con un archivo de prueba porque
+ * `canShare` exige un `File`; en escritorio sin soporte devuelve falso.
+ */
+function sistemaPuedeCompartirPdf(): boolean {
+  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') return false
+  try {
+    return navigator.canShare({ files: [new File([''], 'resumen.pdf', { type: 'application/pdf' })] })
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Compartir el resumen como PDF (#845, #877). Camino principal: el menú de compartir
+ * del sistema con el PDF adjunto (WhatsApp y otras apps), como al compartir una imagen.
+ * Un enlace `wa.me` solo lleva texto, no adjunta archivos: queda solo como respaldo en
+ * dispositivos que no pueden compartir archivos (se descarga el PDF y se adjunta a mano).
+ * El menú exige un toque justo antes, por eso se prepara el PDF y luego se pulsa «Compartir PDF».
  * La comunicación es opcional y best-effort (ADR-COMUNICACIONES-001).
  */
 export function CompartirWhatsapp({ clienteId, clienteNombre, telefono, estado, desde, hasta, facturas, saldo }: Props) {
   const [fase, setFase] = useState<Fase>('cerrado')
   const [mensajeError, setMensajeError] = useState('')
   const [archivo, setArchivo] = useState<{ file: File; url: string } | null>(null)
-  const [puedeCompartirArchivo, setPuedeCompartirArchivo] = useState(false)
+  /** El dispositivo abre el menú de compartir del sistema con archivos. */
+  const [compartirSistema, setCompartirSistema] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   /** Guarda de doble clic: el estado de React puede ir un render atrasado. */
   const enCursoRef = useRef(false)
@@ -72,7 +89,10 @@ export function CompartirWhatsapp({ clienteId, clienteNombre, telefono, estado, 
 
   const abrir = () => {
     setMensajeError('')
-    setFase(whatsappOk ? 'confirmar' : 'sin-telefono')
+    const sistema = sistemaPuedeCompartirPdf()
+    setCompartirSistema(sistema)
+    // Con el menú del sistema no hace falta el teléfono: la persona elige el chat.
+    setFase(sistema || whatsappOk ? 'confirmar' : 'sin-telefono')
   }
 
   const descargar = (a: { file: File; url: string }) => {
@@ -111,10 +131,11 @@ export function CompartirWhatsapp({ clienteId, clienteNombre, telefono, estado, 
       const file = new File([blob], nombreDeArchivo(res.headers.get('content-disposition')), { type: 'application/pdf' })
       const a = { file, url: URL.createObjectURL(file) }
       setArchivo(a)
-      setPuedeCompartirArchivo(
-        typeof navigator !== 'undefined' && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] }),
-      )
-      descargar(a)
+      // Confirmación definitiva con el archivo real; si ya no se puede, se usa el respaldo.
+      const sistema = !soloDescarga && compartirSistema && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })
+      setCompartirSistema(sistema)
+      // Con el menú del sistema el PDF no se descarga solo: se comparte con un toque.
+      if (!sistema) descargar(a)
       if (soloDescarga) {
         toast.success('PDF descargado')
         setFase('cerrado')
@@ -142,10 +163,13 @@ export function CompartirWhatsapp({ clienteId, clienteNombre, telefono, estado, 
   const compartirArchivo = async () => {
     if (!archivo) return
     try {
-      await navigator.share({ files: [archivo.file], text: textoMensaje })
+      await navigator.share({ files: [archivo.file], title: 'Resumen de cuenta', text: textoMensaje })
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return // el usuario cerró el menú
-      toast.error('No se pudo abrir el menú de compartir. Usa «Abrir WhatsApp» y adjunta el PDF.')
+      // El sistema rechazó compartir: se descarga el PDF y se sigue con el respaldo.
+      descargar(archivo)
+      setCompartirSistema(false)
+      toast.error('No se pudo abrir el menú de compartir. Se descargó el PDF; adjúntalo en el chat.')
     }
   }
 
@@ -155,39 +179,41 @@ export function CompartirWhatsapp({ clienteId, clienteNombre, telefono, estado, 
         onClick={abrir}
         disabled={deshabilitado}
         title={motivo}
-        aria-label="Compartir resumen por WhatsApp"
+        aria-label="Compartir resumen en PDF"
         data-testid="btn-compartir-whatsapp"
         className="bg-[#0b7a4b] hover:bg-[#09663e] text-white min-h-11"
       >
         <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 11.5a8.4 8.4 0 0 1-12.3 7.4L3 21l2.1-5.6A8.4 8.4 0 1 1 21 11.5z" />
         </svg>
-        Compartir por WhatsApp
+        Compartir PDF
       </Button>
 
       <Modal
         open={fase !== 'cerrado'}
         onClose={cerrar}
-        title="Compartir resumen por WhatsApp"
+        title="Compartir resumen en PDF"
         data-testid="compartir-dialogo"
         className="bg-white rounded-2xl p-6 w-full max-w-lg mx-auto mt-10 md:mt-0 space-y-4"
       >
         {fase === 'confirmar' && (
           <div className="space-y-4" data-testid="compartir-confirmar">
-            <p className="text-lg font-bold">Compartir resumen por WhatsApp</p>
+            <p className="text-lg font-bold">Compartir resumen en PDF</p>
             <p className="text-sm text-gray-700 leading-relaxed">
-              Se generará un PDF para el cliente y se abrirá WhatsApp con su chat. Tú adjuntas el archivo y envías.
+              {compartirSistema
+                ? 'Se generará un PDF para el cliente. Después elegirás con qué app compartirlo: WhatsApp u otras.'
+                : 'Se generará un PDF para el cliente y se descargará. Después abres el chat de WhatsApp del cliente y adjuntas el archivo tú; por el enlace de WhatsApp solo viaja el mensaje.'}
             </p>
             <dl className="border border-gray-200 rounded-xl p-3 text-sm space-y-1">
               <div><dt className="inline text-gray-500">Cliente: </dt><dd className="inline font-semibold">{clienteNombre}</dd></div>
-              <div><dt className="inline text-gray-500">WhatsApp: </dt><dd className="inline font-semibold">{telefono}</dd></div>
+              {whatsappOk && <div><dt className="inline text-gray-500">WhatsApp: </dt><dd className="inline font-semibold">{telefono}</dd></div>}
               <div><dt className="inline text-gray-500">Incluye: </dt><dd className="inline">{facturas} factura{facturas === 1 ? '' : 's'} con productos, abonos y saldo total {money(saldo)}</dd></div>
               <div><dt className="inline text-gray-500">No incluye: </dt><dd className="inline">facturas anuladas</dd></div>
             </dl>
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={cerrar}>Cancelar</Button>
               <Button onClick={() => generar(false)} data-testid="compartir-generar" className="bg-[#0b7a4b] hover:bg-[#09663e] text-white">
-                Generar PDF y abrir WhatsApp
+                {compartirSistema ? 'Preparar PDF' : 'Generar PDF'}
               </Button>
             </div>
           </div>
@@ -205,18 +231,26 @@ export function CompartirWhatsapp({ clienteId, clienteNombre, telefono, estado, 
         {fase === 'listo' && (
           <div className="space-y-4" data-testid="compartir-listo">
             <p className="text-lg font-bold text-green-700">PDF listo</p>
-            <ol className="list-decimal pl-5 text-sm text-gray-700 leading-7">
-              <li>Se descargó <strong>{archivo?.file.name}</strong>.</li>
-              <li>Abre el chat de WhatsApp del cliente.</li>
-              <li>Adjunta el PDF con el clip y envía.</li>
-            </ol>
+            {compartirSistema ? (
+              <p className="text-sm text-gray-700 leading-relaxed" data-testid="compartir-listo-sistema">
+                Toca <strong>Compartir PDF</strong> y elige WhatsApp u otra app. El archivo es <strong>{archivo?.file.name}</strong>.
+              </p>
+            ) : (
+              <ol className="list-decimal pl-5 text-sm text-gray-700 leading-7" data-testid="compartir-listo-respaldo">
+                <li>Se descargó <strong>{archivo?.file.name}</strong>.</li>
+                <li>Abre el chat de WhatsApp del cliente. Por el enlace solo viaja el mensaje.</li>
+                <li>Adjunta el PDF con el clip y envía.</li>
+              </ol>
+            )}
             <p className="text-xs text-gray-500">Queda anotado que se preparó el envío. No sabemos si se envió ni si lo leyó.</p>
             <div className="flex flex-wrap justify-end gap-2">
-              {archivo && <Button variant="outline" onClick={() => descargar(archivo)}>Descargar de nuevo</Button>}
-              {puedeCompartirArchivo && (
-                <Button variant="outline" onClick={compartirArchivo} data-testid="compartir-archivo">Compartir archivo</Button>
+              {archivo && <Button variant="outline" onClick={() => descargar(archivo)}>{compartirSistema ? 'Descargar PDF' : 'Descargar de nuevo'}</Button>}
+              {compartirSistema && (
+                <Button onClick={compartirArchivo} data-testid="compartir-archivo" className="bg-[#0b7a4b] hover:bg-[#09663e] text-white">
+                  Compartir PDF
+                </Button>
               )}
-              {enlaceChat && (
+              {!compartirSistema && enlaceChat && (
                 <a
                   href={enlaceChat}
                   target="_blank"
@@ -224,10 +258,10 @@ export function CompartirWhatsapp({ clienteId, clienteNombre, telefono, estado, 
                   data-testid="compartir-abrir-whatsapp"
                   className="inline-flex items-center justify-center min-h-11 px-4 rounded-md bg-[#0b7a4b] hover:bg-[#09663e] text-white text-sm font-semibold"
                 >
-                  Abrir WhatsApp
+                  Abrir chat de WhatsApp
                 </a>
               )}
-              <Button onClick={cerrar}>Cerrar</Button>
+              <Button variant={compartirSistema ? 'outline' : 'default'} onClick={cerrar}>Cerrar</Button>
             </div>
           </div>
         )}
