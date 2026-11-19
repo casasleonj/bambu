@@ -203,7 +203,7 @@ export function OperacionList({
   pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen, consulta, arrastre,
 }: OperacionListProps) {
   // #859: recorrido manual temporal de la vista, sin alterar FIFO del servidor.
-  const [modoRecorrido, setModoRecorrido] = useState(false)
+  const [modoRecorrido, setModoRecorrido] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('recorrido'))
   const [barrioSeleccionado, setBarrioSeleccionado] = useState("")
   const searchParams = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search)
   const clavesGlobales = consulta?.grupos?.map(g => g.clave) ?? []
@@ -215,7 +215,8 @@ export function OperacionList({
   const urlRecorrido = (orden: string[]) => {
     const params = new URLSearchParams(searchParams.toString())
     params.delete('recorrido')
-    for (const clave of orden) params.append('recorrido', clave)
+    // Persist only explicit priorities: the server appends all other barrios in FIFO order.
+    for (const clave of orden.slice(0, 20)) params.append('recorrido', clave)
     params.set('agrupar', 'barrio')
     params.set('page', '1')
     return '?' + params.toString()
@@ -244,14 +245,14 @@ export function OperacionList({
     }
     const ordenEfectivo = ordenRecorrido
     const bloquesVisibles = bloques
-    const priorizarUrl = (clave: string) => urlRecorrido([clave, ...ordenEfectivo.filter(k => k !== clave)])
+    const priorizarUrl = (clave: string) => urlRecorrido([clave, ...clavesManuales.filter(k => k !== clave)])
     const moverUrl = (clave: string, desplazamiento: number) => {
       const actual = [...ordenEfectivo]
       const indice = actual.indexOf(clave)
       const destino = indice + desplazamiento
       if (indice < 0 || destino < 0 || destino >= actual.length) return urlRecorrido(actual)
       ;[actual[indice], actual[destino]] = [actual[destino], actual[indice]]
-      return urlRecorrido(actual)
+      return urlRecorrido(actual.slice(0, destino + 1))
     }
     return (
       <div data-testid="pedidos-agrupados-barrio">
