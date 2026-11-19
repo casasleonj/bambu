@@ -60,6 +60,7 @@ describe('usePreview', () => {
     const { rerender } = renderHook(({ d }) => usePreview(d, cb), { initialProps: { d: draft() } })
     await vi.advanceTimersByTimeAsync(401)
     rerender({ d: draft({ items: [{ producto: 'PACA_AGUA', cantidad: 9 }] }) })
+    expect(aborts.length).toBe(1)
     await vi.advanceTimersByTimeAsync(401)
     expect(aborts.length).toBeGreaterThanOrEqual(1)
   })
@@ -70,6 +71,41 @@ describe('usePreview', () => {
     renderHook(() => usePreview(draft(), cb))
     await vi.advanceTimersByTimeAsync(405)
     await vi.advanceTimersByTimeAsync(0)
-    expect(cb.onError).toHaveBeenCalledWith('NETWORK_ERROR', expect.any(String))
+    expect(cb.onError).toHaveBeenCalledWith('NETWORK_ERROR', expect.any(String), 0)
+  })
+})
+
+describe('#891 — carreras y transporte', () => {
+  it.each(['cambio', 'vaciar', 'desmontar'] as const)('descarta fetch que ignora abort: %s', async (scenario) => {
+    let resolve!: (value: ReturnType<typeof okResponse>) => void
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<ReturnType<typeof okResponse>>(r => { resolve = r })))
+    const cb = { onPending: vi.fn(), onReceived: vi.fn(), onError: vi.fn() }
+    const { rerender, unmount } = renderHook(({ d }) => usePreview(d, cb), { initialProps: { d: draft() } })
+    await vi.advanceTimersByTimeAsync(401)
+    if (scenario === 'desmontar') unmount()
+    else rerender({ d: draft({ items: scenario === 'vaciar' ? [] : [{ producto: 'PACA_AGUA', cantidad: 9 }] }) })
+    resolve(okResponse())
+    await vi.advanceTimersByTimeAsync(0)
+    expect(cb.onReceived).not.toHaveBeenCalled()
+    expect(cb.onError).not.toHaveBeenCalled()
+  })
+  it('revisión nueva con el mismo cuerpo consulta de nuevo', async () => {
+    const fetchMock = vi.fn(async () => okResponse())
+    vi.stubGlobal('fetch', fetchMock)
+    const cb = { onPending: vi.fn(), onReceived: vi.fn(), onError: vi.fn() }
+    const { rerender } = renderHook(({ revision }) => usePreview(draft(), cb, { revision }), { initialProps: { revision: 1 } })
+    await vi.advanceTimersByTimeAsync(401)
+    rerender({ revision: 2 })
+    await vi.advanceTimersByTimeAsync(401)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(cb.onReceived).toHaveBeenLastCalledWith(expect.any(Object), 2)
+  })
+  it('respuesta HTTP no JSON no habilita offline', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => { throw new SyntaxError('html') } })))
+    const cb = { onPending: vi.fn(), onReceived: vi.fn(), onError: vi.fn() }
+    renderHook(() => usePreview(draft(), cb, { revision: 3 }))
+    await vi.advanceTimersByTimeAsync(401)
+    expect(cb.onError).toHaveBeenCalledWith('VALIDATION_ERROR', expect.any(String), 3)
+    expect(cb.onReceived).not.toHaveBeenCalled()
   })
 })
