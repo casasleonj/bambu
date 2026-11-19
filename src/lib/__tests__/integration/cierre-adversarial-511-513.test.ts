@@ -18,6 +18,7 @@ vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn(async () => {}) }))
 
 import { GET as preview, POST as cerrar } from '@/app/api/cierre/route'
 import { POST as conciliarVentas } from '@/app/api/cierre/conciliacion-ventas/route'
+import { POST as regularizarVentas } from '@/app/api/cierre/regularizacion-ventas/route'
 import { POST as pagarFiado } from '@/app/api/pedidos/pagar-fiado/route'
 import { POST as abonar } from '@/app/api/abonos/route'
 import { verificarIntegridad } from '@/lib/integridad/verificar'
@@ -191,6 +192,49 @@ describe('auditoría adversarial del cierre #511 / #513', () => {
       totalVentas: 0, reporte: { ventasCriterio: 'ENTREGA_V1', ventasEntregadasDelDia: 0, ventasPorConciliar: [], ventasEntregaPorPedido: [] },
     } })
     expect(await leer(dia)).toMatchObject({ totalVentas: 0, ajustesVentasAnteriores: 0, ventasPorConciliar: [] })
+  })
+
+  it('#885: caja provisional explícita, ajuste posterior auditable y snapshot intacto', async () => {
+    const dia = '2026-03-29', anterior = '2026-03-28'
+    const vigente = await pedido(dia, 10000)
+    await evidenciaEntrega(vigente.p.id, [{ dia, cantidad: 4 }], 2500)
+    const anulado = await pedido(anterior, 0, { anulado: true })
+    await evidenciaEntrega(anulado.p.id, [{ dia: anterior, cantidad: 2 }], 2500)
+    await evidenciaAnulacion(anulado.p.id, dia, false)
+    await testPrisma.cierreDia.create({ data: { fecha: startOfDayInBogota(anterior),
+      horaCierre: new Date(`${anterior}T22:00:00-05:00`), totalVentas: 7000, reporte: { totalVentas: 7000 } } })
+    await registrarBaseDia(dia, 10000)
+    const vista = await leer(dia)
+    expect(vista.provisionalDisponible).toMatch(/^[a-f0-9]{64}$/)
+    const body = payload(dia, { arqueo: { '10000': 1 } })
+    expect((await cerrar(request('/api/cierre',body))).status).toBe(409)
+    expect((await cerrar(request('/api/cierre',{ ...body, confirmarVentasProvisionales: 'b'.repeat(64) }))).status).toBe(409)
+    expect((await cerrar(request('/api/cierre',{ ...payload(dia), confirmarVentasProvisionales: vista.provisionalDisponible }))).status).toBe(409)
+    expect((await cerrar(request('/api/cierre',{ ...body, confirmarVentasProvisionales: vista.provisionalDisponible }))).status).toBe(201)
+    const original = await testPrisma.cierreDia.findUniqueOrThrow({ where: { fecha: startOfDayInBogota(dia) } })
+    const c = await leer(dia)
+    expect(c.regularizacionVentas).toMatchObject({ estado:'PROVISIONAL', pendientes:1, totalCertificado:null, subtotalOriginal:10000 })
+    const caso = c.regularizacionVentas.casos[0]
+    const ajuste = { fecha:dia, casoId:caso.id, huella:c.regularizacionVentas.huella, revisionEsperada:null,
+      operacion:'RESOLVER', centavos:500000, referencia:'Reporte original de ventas, fila 2 verificada', confirmoEvidencia:true }
+    const post = (b:unknown) => regularizarVentas(request('/api/cierre/regularizacion-ventas',b))
+    actor.role='ASISTENTE'
+    try { expect((await post(ajuste)).status).toBe(403) } finally { actor.role='ADMIN' }
+    expect((await post(ajuste)).status).toBe(201)
+    expect((await post(ajuste)).status).toBe(409)
+    const actualizado = await leer(dia)
+    expect(actualizado.regularizacionVentas).toMatchObject({ estado:'REGULARIZADO', pendientes:0, totalCertificado:5000, subtotalOriginal:10000, ajustePosterior:5000 })
+    expect(actualizado.totalVentas).toBe(10000)
+    expect(actualizado.ventasTotalCertificado).toBe(5000)
+    expect(await testPrisma.cierreDia.findUnique({ where:{id:original.id} })).toEqual(original)
+    expect((await post({ ...ajuste, operacion:'REVOCAR', centavos:0, revisionEsperada:actualizado.regularizacionVentas.casos[0].revision.id,
+      referencia:'Se requiere revisar de nuevo el documento original' })).status).toBe(201)
+    expect((await leer(dia)).regularizacionVentas.totalCertificado).toBeNull()
+    // El cierre operativo se conserva y el día siguiente no se bloquea.
+    const siguiente='2026-03-30'
+    await registrarBaseDia(siguiente,10000)
+    expect((await cerrar(request('/api/cierre',payload(siguiente)))).status).toBe(201)
+    expect(await testPrisma.cierreDia.findUnique({where:{id:original.id}})).toEqual(original)
   })
 
   it('#513: un abono independiente de igual importe a un Pago reciente también cuenta', async () => {

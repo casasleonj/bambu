@@ -17,6 +17,7 @@ import { CobrosSinConciliarError } from '@/lib/cobro-cartera'
 import { construirResumenCierre } from '@/lib/cierre-resumen'
 import { VentasCierreSinConciliarError } from '@/lib/cierre-ajustes-ventas'
 import { MAX_CENTAVOS_CONCILIACION } from '@/lib/cierre-conciliacion-ventas'
+import { prepararVentasProvisional, leerRegularizaciones, leerSnapshotProvisional } from '@/lib/cierre-ventas-provisional'
 import { calcularNetoCierre, calcularEfectivoEsperado } from '@/lib/cierre-totales'
 import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
 import { diasObligatoriosAntesDe, type DiaHueco } from '@/lib/cierre-huecos'
@@ -151,11 +152,14 @@ export async function GET(request: NextRequest) {
         // #834: correcciones de día real hechas después de este cierre; explican la diferencia y no se suman a nada.
         correccionesPosteriores: await leerCorreccionesPosterioresAlCierre(prisma, { fecha: startOfDay, createdAt: cierreExistente.createdAt }),
       }
+      const regularizacionVentas = (await leerRegularizaciones(prisma, [cierreExistente])).get(cierreExistente.id) ?? null
       return apiSuccess({
         status: 'CERRADO',
         embarquesPendientes: [],
         cierre: {
           ...reporte,
+          regularizacionVentas,
+          ventasTotalCertificado: regularizacionVentas ? regularizacionVentas.totalCertificado : Number(cierreExistente.totalVentas),
           numPedidos: cierreExistente.numPedidos,
           totalVentas: Number(cierreExistente.totalVentas),
           cobrado: Number(cierreExistente.cobrado), fiado: Number(cierreExistente.fiado),
@@ -181,7 +185,7 @@ export async function GET(request: NextRequest) {
     const puede = await puedeConfirmarPagos(prisma, userId).catch(() => false)
     const quienes = puede ? [] : await listarConfirmadoresDePagos(prisma).catch(() => [] as string[])
     const confirmaPagos = { puede, nombre: quienes.length ? quienes.join(' o ') : null }
-    return apiSuccess({ ...resumen, cierre: { ...resumen.cierre, confirmaPagos } })
+    return apiSuccess({ ...resumen, cierre: { ...resumen.cierre, confirmaPagos, provisionalDisponible: prepararVentasProvisional(resumen.cierre)?.huella ?? null } })
   } catch (error) {
     if (error instanceof CobrosSinConciliarError) return apiError(error.message, 409, {
       code: error.code, cobrosPendientes: error.cobros.map(({ referencia, importe }) => ({ referencia, importe })),
@@ -254,7 +258,11 @@ export async function POST(request: NextRequest) {
         // #511/#513: el snapshot completo sale del mismo resumen que el preview,
         // dentro de esta transacción. No se guardan cifras aportadas por el navegador.
         const { cierre: resumen } = await construirResumenCierre(tx, fechaStr)
-        if (resumen.ventasPorConciliar.length) throw new VentasCierreSinConciliarError()
+        const ventasProvisional = prepararVentasProvisional(resumen)
+        if (resumen.ventasPorConciliar.length && (!ventasProvisional || parsed.data.confirmarVentasProvisionales !== ventasProvisional.huella))
+          throw new VentasCierreSinConciliarError('Hay ventas por conciliar. Revisa los casos y confirma el cierre provisional si está disponible.')
+        if (!resumen.ventasPorConciliar.length && parsed.data.confirmarVentasProvisionales)
+          throw new VentasCierreSinConciliarError('La conciliación cambió. Actualiza y confirma el cierre normal.')
         if (!Number.isSafeInteger(Math.round(resumen.totalVentas * 100)) || Math.abs(Math.round(resumen.totalVentas * 100)) > MAX_CENTAVOS_CONCILIACION)
           throw new VentasCierreSinConciliarError('El total de ventas excede el límite contable. Revisa las cifras.')
         const { totalVentas, cobrado, fiado, efectivo, transferencia, nequi, daviplata, bono, cobroVentasHoy, cobroCartera } = resumen
@@ -275,8 +283,11 @@ export async function POST(request: NextRequest) {
           totalGastos: gastosTotal, comisiones: comisiones.total, salariosEfectivo,
         })
         const arqueo = leerArqueoDeclarado(parsed.data.reporte, efectivoEsperado)
+        if (ventasProvisional && (arqueo.totalContado === null || !arqueo.arqueo || !Object.keys(arqueo.arqueo).length || !userId))
+          throw new VentasCierreSinConciliarError('El cierre provisional exige conteo físico declarado y usuario identificado.')
         const reporteData = {
-          ...resumen, ...arqueo, _version: '2.3', netoCaja, efectivoEsperado,
+          ...resumen, ...arqueo,
+          ...(ventasProvisional ? { ventasEstado: 'PROVISIONAL', ventasProvisional } : {}), _version: '2.3', netoCaja, efectivoEsperado,
           baseDia: parsed.data.baseDia, salarios: 0, comisiones: comisiones.total,
           salariosEfectivo, salariosOtrosMedios: 0,
         }
@@ -328,7 +339,7 @@ export async function POST(request: NextRequest) {
           entidad: 'CierreDia',
           registroId: nuevoCierre.id,
           accion: 'CREATE',
-          datos: { fecha: nuevoCierre.fecha, totalVentas: nuevoCierre.totalVentas, cerradoPor: userId },
+          datos: { fecha: nuevoCierre.fecha, totalVentas: nuevoCierre.totalVentas, cerradoPor: userId, ventasEstado: ventasProvisional ? 'PROVISIONAL' : 'DEFINITIVO', huella: ventasProvisional?.huella },
           usuarioId: userId,
         }, tx)
 
@@ -339,9 +350,10 @@ export async function POST(request: NextRequest) {
         timeout: 15000,
       })
 
+      const provisional = leerSnapshotProvisional(cierre.reporte)
       void notifyEvent(NotificationEventType.CIERRE_DIA_COMPLETADO, {
-        title: 'Cierre del día completado',
-        body: `Se cerró el día ${cierre.fecha.toISOString().slice(0, 10)}. Total ventas: $${Number(cierre.totalVentas).toLocaleString()}.`,
+        title: provisional ? 'Caja cerrada · ventas por conciliar' : 'Cierre del día completado',
+        body: provisional ? `Caja del día ${fechaStr} registrada. Ventas pendientes de regularizar.` : `Se cerró el día ${cierre.fecha.toISOString().slice(0, 10)}. Total ventas: $${Number(cierre.totalVentas).toLocaleString()}.`,
         url: `/cierre?fecha=${cierre.fecha.toISOString().slice(0, 10)}`,
         tag: `cierre-${cierre.id}`,
       })
