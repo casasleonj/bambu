@@ -164,6 +164,7 @@ describe('auditoría adversarial del cierre #511 / #513', () => {
     try { expect((await post(body)).status).toBe(403) } finally { actor.role = 'ADMIN' }
     expect((await post({ ...body, huella: 'a'.repeat(64) })).status).toBe(409)
     expect((await post({ ...body, lineas: [] })).status).toBe(409)
+    expect((await post({ ...body, lineas: [{ ...body.lineas[0], centavos: 10_000_000_000 }] })).status).toBe(400)
     expect((await post(body)).status).toBe(201)
     expect((await post(body)).status).toBe(409)
     let aplicado = await leer(dia)

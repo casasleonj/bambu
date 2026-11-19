@@ -6,9 +6,10 @@ import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { executeSerializableWithRetry } from '@/lib/serializable'
 import { logAudit } from '@/lib/audit'
 import { leerAjustesVentasCierre } from '@/lib/cierre-ajustes-ventas'
+import { leerVentasEntregadasDia } from '@/lib/ventas-entregadas'
 import {
   claveConciliacion, ConciliacionVentasSolicitud, ENTIDAD_CONCILIACION_VENTAS,
-  huellaConciliacion, leerUltimasConciliaciones, lineasCoinciden,
+  huellaConciliacion, leerUltimasConciliaciones, lineasCoinciden, MAX_CENTAVOS_CONCILIACION,
 } from '@/lib/cierre-conciliacion-ventas'
 
 class ConflictoConciliacion extends Error {}
@@ -53,6 +54,15 @@ export async function POST(request: NextRequest) {
       const id = huellaConciliacion([registroId, version])
       await logAudit({ id, entidad: ENTIDAD_CONCILIACION_VENTAS, registroId, accion: 'CREATE',
         datos: { huella: d.huella, version, operacion: d.operacion, lineas: d.lineas }, usuarioId: actor }, tx)
+      if (d.operacion === 'RESOLVER') {
+        const ajustes = await leerAjustesVentasCierre(tx, { start, end }, notas)
+        if (!ajustes.conciliacionesAplicadas.some(a => a.revision === id))
+          throw new ConflictoConciliacion('La revisión ya no coincide con la evidencia.')
+        const ventas = await leerVentasEntregadasDia(tx, { start, end })
+        const neto = Math.round(ventas.total * 100) - ajustes.ajusteCentavos
+        if (!Number.isSafeInteger(neto) || Math.abs(neto) > MAX_CENTAVOS_CONCILIACION)
+          throw new ConflictoConciliacion('El importe excede el límite contable. Revisa los valores.')
+      }
       return id
     }, 'cierre/conciliacion-ventas')
     return apiSuccess({ revision }, 201)

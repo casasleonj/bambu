@@ -26,11 +26,12 @@ export function ResolverVentaHistorica({ fecha, pendiente, aplicada, onCambio }:
   const dias = caso?.dias ?? []
   const lineas: Linea[] = dias.map(dia => {
     const monto = (montos[dia] ?? '').trim()
-    return { dia, centavos: /^\d{1,9}([.,]\d{1,2})?$/.test(monto) ? Math.round(Number(monto.replace(',', '.')) * 100) : -1,
+    return { dia, centavos: /^\d{1,8}([.,]\d{1,2})?$/.test(monto) ? Math.round(Number(monto.replace(',', '.')) * 100) : -1,
       referencia: (refs[dia] ?? '').trim() }
   })
   const valido = !!caso && confirmado && lineas.length > 0 &&
-    lineas.every(l => l.centavos >= 0 && l.referencia.length >= 15 && l.referencia.length <= 500)
+    lineas.every(l => l.centavos >= 0 && l.referencia.length >= 15 && l.referencia.length <= 500) &&
+    lineas.reduce((s, l) => s + l.centavos, 0) <= 9_999_999_999
   async function enviar(operacion: 'RESOLVER' | 'REVOCAR') {
     if (enCurso.current || !confirmado || (operacion === 'RESOLVER' && !valido)) return
     enCurso.current = true
@@ -57,7 +58,7 @@ export function ResolverVentaHistorica({ fecha, pendiente, aplicada, onCambio }:
         {dias.map(dia => <fieldset key={dia} className="space-y-2 rounded border p-2">
           <legend className="font-semibold">{dia}</legend>
           <label className="block">Valor reconocido ({dia})<input className="mt-1 block min-h-11 w-full rounded border px-2" inputMode="decimal" placeholder="COP" value={montos[dia] ?? ''} onChange={e => setMontos(m => ({ ...m, [dia]: e.target.value }))} /></label>
-          <label className="block">Referencia documental ({dia})<textarea className="mt-1 block w-full rounded border p-2" rows={2} maxLength={500} placeholder="Identificador del reporte, fila y motivo de la atribución" value={refs[dia] ?? ''} onChange={e => setRefs(m => ({ ...m, [dia]: e.target.value }))} /></label>
+          <label className="block">Referencia documental ({dia})<textarea className="mt-1 block w-full rounded border p-2" rows={2} maxLength={500} placeholder="Reporte, fila y motivo (sin datos personales)" value={refs[dia] ?? ''} onChange={e => setRefs(m => ({ ...m, [dia]: e.target.value }))} /></label>
         </fieldset>)}
       </>}
       {aplicada && <p>Retirar esta conciliación no cambia el pedido ni el reporte anterior; vuelve a dejar pendiente el cierre de esta fecha.</p>}
@@ -73,7 +74,7 @@ export function ConciliacionesVentasAplicadas({ data, onCambio }: { data: Cierre
   return <div className="rounded-lg border p-3 text-sm" data-testid="cierre-conciliaciones-aplicadas">
     <p className="font-semibold">Conciliaciones de ventas anteriores</p>
     {data.conciliacionesVentasAplicadas.map(a => <div key={a.revision} className="mt-2 border-t pt-2">
-      <p className="text-slate-600">Revisión {a.revision.slice(0, 12)}</p>
+      <p className="text-slate-600">{a.numero == null ? 'Pedido sin número' : `Pedido #${a.numero}`} · Revisión {a.revision.slice(0, 12)}</p>
       {a.lineas.map(l => <p key={l.dia}>{l.dia}: <b>{formatCurrency(l.centavos / 100)}</b> · {l.referencia}</p>)}
       {onCambio && <ResolverVentaHistorica fecha={data.fecha} aplicada={a} onCambio={onCambio} />}
     </div>)}

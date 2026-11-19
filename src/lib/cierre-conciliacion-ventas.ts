@@ -4,7 +4,7 @@ import { z } from 'zod'
 
 // Evidencia administrativa append-only; no muta pedidos, NC ni cierres.
 export const ENTIDAD_CONCILIACION_VENTAS = 'ConciliacionVentaCierre'
-export const MAX_CENTAVOS_CONCILIACION = 99_999_999_999
+export const MAX_CENTAVOS_CONCILIACION = 9_999_999_999 // CierreDia.totalVentas: Decimal(10,2)
 const dia = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const linea = z.object({
   dia, centavos: z.number().int().min(0).max(MAX_CENTAVOS_CONCILIACION),
@@ -38,6 +38,7 @@ export interface CasoConciliacionVenta {
 }
 export interface ConciliacionVentaAplicada {
   pedidoId: string
+  numero: number | null
   huella: string
   revision: string
   lineas: LineaConciliacionVenta[]
@@ -77,5 +78,6 @@ export function lineasCoinciden(dias: readonly string[], lineas: readonly LineaC
   return dias.length > 0 && lineas.length === dias.length &&
     new Set(lineas.map(l => l.dia)).size === dias.length &&
     dias.every(d => lineas.some(l => l.dia === d)) &&
-    lineas.every(l => linea.safeParse(l).success)
+    lineas.every(l => linea.safeParse(l).success) &&
+    lineas.reduce((s, l) => s + l.centavos, 0) <= MAX_CENTAVOS_CONCILIACION
 }

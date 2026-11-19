@@ -172,7 +172,7 @@ export async function leerAjustesVentasCierre(db: Db, rango: Rango, notas: reado
         continue
       }
       manual = decision.lineas.reduce((s, l) => s + l.centavos, 0)
-      conciliacionesAplicadas.push({ pedidoId, huella, revision: decision.id, lineas: decision.lineas })
+      conciliacionesAplicadas.push({ pedidoId, numero: p.numero, huella, revision: decision.id, lineas: decision.lineas })
     }
     const centavos = valores.reduce<number>((s, v) => s + (v ?? 0), manual)
     ajusteCentavos += centavos
@@ -186,5 +186,5 @@ export async function leerAjustesVentasCierre(db: Db, rango: Rango, notas: reado
 }
 
 export class VentasCierreSinConciliarError extends Error {
-  constructor() { super('Hay ventas o anulaciones sin evidencia suficiente. Revisa la conciliación de ventas antes de cerrar.') }
+  constructor(message = 'Hay ventas o anulaciones sin evidencia suficiente. Revisa la conciliación de ventas antes de cerrar.') { super(message) }
 }

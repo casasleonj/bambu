@@ -16,6 +16,7 @@ import { whereEmbarquesPendientesCierreDia } from '@/lib/cierre-dia-embarques'
 import { CobrosSinConciliarError } from '@/lib/cobro-cartera'
 import { construirResumenCierre } from '@/lib/cierre-resumen'
 import { VentasCierreSinConciliarError } from '@/lib/cierre-ajustes-ventas'
+import { MAX_CENTAVOS_CONCILIACION } from '@/lib/cierre-conciliacion-ventas'
 import { calcularNetoCierre, calcularEfectivoEsperado } from '@/lib/cierre-totales'
 import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
 import { diasObligatoriosAntesDe, type DiaHueco } from '@/lib/cierre-huecos'
@@ -254,6 +255,8 @@ export async function POST(request: NextRequest) {
         // dentro de esta transacción. No se guardan cifras aportadas por el navegador.
         const { cierre: resumen } = await construirResumenCierre(tx, fechaStr)
         if (resumen.ventasPorConciliar.length) throw new VentasCierreSinConciliarError()
+        if (!Number.isSafeInteger(Math.round(resumen.totalVentas * 100)) || Math.abs(Math.round(resumen.totalVentas * 100)) > MAX_CENTAVOS_CONCILIACION)
+          throw new VentasCierreSinConciliarError('El total de ventas excede el límite contable. Revisa las cifras.')
         const { totalVentas, cobrado, fiado, efectivo, transferencia, nequi, daviplata, bono, cobroVentasHoy, cobroCartera } = resumen
         const gastosTotal = resumen.totalGastos
         const comisiones = resumen.comisionesAuto
