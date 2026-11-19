@@ -13,6 +13,7 @@ export interface ResumenConfirmacionCierre {
   /** #631: lo cobrado (efectivo y digital) y lo fiado del día, para que quien cierra los vea antes de confirmar. */
   cobrado?: { efectivo: number; digital: number }
   fiado?: { total: number; pedidos: number }
+  ventasProvisionales?: number
 }
 
 export function CierreConfirmacion({ resumen, onResolver }: {
@@ -61,14 +62,15 @@ export function CierreConfirmacion({ resumen, onResolver }: {
               : <>Hoy no se fió ningún pedido.</>)}
           </p>
         )}
+        {!!resumen.ventasProvisionales && <p role="status" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Cierre provisional de caja: {resumen.ventasProvisionales} caso(s) de ventas pendientes. El arqueo queda guardado; administración regularizará las ventas sin cambiarlo.</p>}
         <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">Después de cerrar no podrás cambiar pedidos, gastos ni el conteo de este día. El cierre se registra una sola vez.</p>
         <label className="mt-5 flex items-start gap-3 text-sm leading-relaxed text-slate-600">
           <input type="checkbox" checked={revisado} onChange={e => setRevisado(e.target.checked)} className="mt-1 accent-blue-600" />
-          Revisé la fecha, los importes y el conteo del efectivo.
+          {resumen.ventasProvisionales ? 'Revisé el efectivo y acepto que las ventas quedan provisionales.' : 'Revisé la fecha, los importes y el conteo del efectivo.'}
         </label>
         <div className="mt-5 grid grid-cols-2 gap-3 border-t pt-4">
           <Button variant="outline" onClick={() => onResolver(false)}>Volver a revisar</Button>
-          <Button disabled={!revisado} onClick={() => { if (revisado) onResolver(true) }}>Confirmar cierre</Button>
+          <Button disabled={!revisado} onClick={() => { if (revisado) onResolver(true) }}>{resumen.ventasProvisionales ? 'Confirmar cierre provisional' : 'Confirmar cierre'}</Button>
         </div>
       </div>
     </Modal>, portalRoot,

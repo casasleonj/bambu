@@ -28,7 +28,7 @@ type Db = Pick<Prisma.TransactionClient, 'historial'>
 
 export function prepararVentasProvisional(r: {
   fecha: string; totalVentas: number; ventasPorConciliar: readonly { pedidoId: string; motivo: string; numero?: number | null }[];
-  unidadesError?: boolean; unidadesAproximadas?: readonly { unidades: Record<string, number> }[];
+  unidadesError?: boolean; unidadesAproximadas?: readonly { unidades: object }[];
 }): VentasProvisional | null {
   if (!r.ventasPorConciliar.length || r.unidadesError ||
     r.unidadesAproximadas?.some(p => Object.values(p.unidades).some(v => v !== 0))) return null

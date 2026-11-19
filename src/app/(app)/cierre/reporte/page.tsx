@@ -55,11 +55,13 @@ function ReporteContent() {
     : (data.efectivo || 0) + (data.transferencia || 0) + (data.nequi || 0) + (data.daviplata || 0) + (data.bono || 0) + (data.cobroCartera || 0) - (data.totalGastos || 0)
 
   const prod = data.produccion
+  const regularizacion = data.regularizacionVentas
+  const ventasPendientes = regularizacion ? regularizacion.pendientes > 0 : (data.ventasPorConciliar?.length ?? 0) > 0
 
   return (
     <div className="max-w-4xl mx-auto p-8 print:p-4">
       <div className="no-print flex justify-end mb-4">
-        <Button disabled={(data.ventasPorConciliar?.length ?? 0) > 0} onClick={() => window.print()}>
+        <Button disabled={ventasPendientes && !regularizacion} onClick={() => window.print()}>
           Imprimir / Guardar como PDF
         </Button>
       </div>
@@ -67,19 +69,22 @@ function ReporteContent() {
       <div className="text-center border-b pb-4 mb-6">
         <h1 className="text-2xl font-bold">Agua Bambú SAS</h1>
         <h2 className="text-lg font-semibold mt-1">Cierre del Día — {fecha}</h2>
+        {regularizacion && <p className="font-bold mt-2">{regularizacion.pendientes?'CIERRE DE CAJA PROVISIONAL · VENTAS NO DEFINITIVAS':'CIERRE DE CAJA · VENTAS REGULARIZADAS'}</p>}
         {data.horaCierre && (
           <p className="text-sm text-muted-foreground">Cierre registrado a las {new Date(data.horaCierre).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</p>
         )}
         <p className="text-sm text-muted-foreground">Generado el {new Date().toLocaleString('es-CO')}</p>
       </div>
 
+      {regularizacion && <section className="mb-6 text-sm"><h3 className="font-bold">Regularización posterior de ventas</h3><p>El arqueo, los cobros y el inventario del cierre original no se modifican.</p>{regularizacion.casos.map(c=><p key={c.id}>{c.numero==null?'Pedido sin número':`Pedido #${c.numero}`}: {c.revision?.operacion==='RESOLVER'?`${formatMoney(c.revision.centavos/100)} de ajuste · ${c.revision.referencia}`:'Pendiente de evidencia'}</p>)}</section>}
       <section className="mb-6">
         <h3 className="text-lg font-bold border-b pb-1 mb-3">Dinero del día</h3>
         <table className="w-full text-sm">
           <tbody>
             <tr><td className="py-1 font-medium">Pedidos</td><td className="text-right">{data.numPedidos}</td></tr>
-            {(data.ventasPorConciliar?.length ?? 0) > 0 && <tr><td className="py-1 font-medium text-amber-800">Ventas por conciliar</td><td className="text-right">Importe incompleto</td></tr>}
-            <tr><td className="py-1 font-medium">{(data.ventasPorConciliar?.length ?? 0) > 0 ? 'Subtotal de ventas identificado *' : 'Ventas del día *'}</td><td className="text-right">{formatMoney(data.totalVentas)}</td></tr>
+            {ventasPendientes && <tr><td className="py-1 font-medium text-amber-800">Ventas por conciliar</td><td className="text-right">Importe incompleto</td></tr>}
+            <tr><td className="py-1 font-medium">{regularizacion ? 'Subtotal de ventas guardado originalmente *' : ventasPendientes ? 'Subtotal de ventas identificado *' : 'Ventas del día *'}</td><td className="text-right">{formatMoney(data.totalVentas)}</td></tr>
+            {regularizacion && <><tr><td>Ajustes posteriores de ventas</td><td className="text-right">{formatMoney(-regularizacion.ajustePosterior)}</td></tr><tr><td>{regularizacion.pendientes?'Subtotal identificado (no definitivo)':'Ventas netas regularizadas'}</td><td className="text-right">{formatMoney(regularizacion.subtotalIdentificado)}</td></tr></>}
             {data.ventasCriterio === 'ENTREGA_V1' && <><tr><td>Ventas entregadas de hoy</td><td className="text-right">{formatMoney(data.ventasEntregadasDelDia ?? 0)}</td></tr><tr><td>− Ajustes verificados de ventas anteriores</td><td className="text-right">{formatMoney(-(data.ajustesVentasAnteriores ?? 0))}</td></tr></>}
             {data.valorComercialPedidosDelDia !== undefined && <tr><td className="py-1 text-muted-foreground">Valor comercial de los pedidos (incluye pendiente de entrega)</td><td className="text-right">{formatMoney(data.valorComercialPedidosDelDia)}</td></tr>}
             <tr><td className="py-1 font-medium">Cobros de pedidos (incluye pedidos de días anteriores)</td><td className="text-right">{formatMoney(data.cobroVentasHoy)}</td></tr>

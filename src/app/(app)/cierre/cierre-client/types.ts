@@ -60,6 +60,10 @@ export interface CierreData {
   totalNotasCredito: number
   ventasDePedidosDelDia?: number
   ventasCriterio?: 'ENTREGA_V1'
+  provisionalDisponible?: string | null
+  ventasEstado?: 'PROVISIONAL'
+  ventasTotalCertificado?: number | null
+  regularizacionVentas?: import('@/lib/cierre-ventas-provisional').RegularizacionVentas | null
   ventasEntregadasDelDia?: number
   ajustesVentasAnteriores?: number
   valorEntregadoPedidosCreadosDelDia?: number
