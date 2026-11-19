@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       pedidos_v2:
@@ -32,7 +33,8 @@ concurrency:
   # `github.event_name` en el grupo: una corrida programada (soak) y una
   # corrida de push a `main` (validación de cambio) NO deben cancelarse
   # entre sí — son señales distintas y ambas deben quedar registradas.
-  group: ci-${{ github.event_name }}-${{ github.ref }}
+  # Un borrador antiguo no puede cancelar la validación del PR listo.
+  group: ci-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && github.event.pull_request.draft && 'draft' || 'normal' }}
   cancel-in-progress: true
 
 jobs:
@@ -112,6 +114,9 @@ jobs:
     outputs:
       e2e_required: ${{ steps.classify.outputs.e2e_required }}
       skill_declarativa: ${{ steps.classify.outputs.skill_declarativa }}
+      e2e_run: ${{ steps.plan.outputs.e2e_run }}
+      draft_deferred: ${{ steps.plan.outputs.draft_deferred }}
+      diff_ok: ${{ steps.classify.outputs.diff_ok }}
 
     steps:
       - name: Checkout repository
@@ -126,7 +131,7 @@ jobs:
       - name: Unit tests of the classifier
         # El clasificador decide si se corren los 8 shards: sus propias pruebas
         # no pueden ser opcionales. Si fallan, el job falla y con él el gate.
-        run: node --test scripts/ci/__tests__/clasificar-cambios.node.test.mjs
+        run: node --test scripts/ci/__tests__/clasificar-cambios.node.test.mjs scripts/ci/__tests__/politica-ci.node.test.mjs
 
       - name: Classify diff (declarative vs. requires E2E)
         id: classify
@@ -134,6 +139,7 @@ jobs:
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "e2e_required=true" >> "$GITHUB_OUTPUT"
             echo "skill_declarativa=false" >> "$GITHUB_OUTPUT"
+            echo 'diff_ok=false' >> "$GITHUB_OUTPUT"
             echo "No es un pull_request (evento: ${{ github.event_name }}) — el E2E completo siempre corre."
             exit 0
           fi
@@ -152,11 +158,29 @@ jobs:
           if ! git diff --raw -z "$BASE_SHA"..."$HEAD_SHA" > /tmp/cambios.raw 2>/dev/null; then
             echo "e2e_required=true" >> "$GITHUB_OUTPUT"
             echo "skill_declarativa=false" >> "$GITHUB_OUTPUT"
+            echo 'diff_ok=false' >> "$GITHUB_OUTPUT"
             echo "No se pudo calcular el diff — el E2E completo corre por seguridad (§4)."
             exit 0
           fi
 
           node scripts/ci/clasificar-cambios.mjs < /tmp/cambios.raw
+          # No diferir infraestructura, cambios estructurales ni un diff ilegible.
+          if node scripts/ci/politica-ci.mjs diff /tmp/cambios.raw; then
+            echo 'diff_ok=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'diff_ok=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Plan de ejecución (#896; piloto OFF por defecto)
+        id: plan
+        env:
+          CI_EVENT: ${{ github.event_name }}
+          CI_ACTION: ${{ github.event.action }}
+          CI_DRAFT: ${{ github.event.pull_request.draft }}
+          CI_FAST_DRAFT: ${{ vars.BAMBU_CI_896_DRAFT_PILOT }}
+          E2E_REQUIRED: ${{ steps.classify.outputs.e2e_required }}
+          CI_DIFF_OK: ${{ steps.classify.outputs.diff_ok }}
+        run: node scripts/ci/politica-ci.mjs plan
 
   quality:
     name: Type check + Tests
@@ -233,12 +257,11 @@ jobs:
     #766: Vitest terminó exit 0 en 813s, pero el job de 15m fue cancelado durante cleanup.
     # Margen para instalación, preparación de DB y diagnóstico final, sin omitir cobertura.
     timeout-minutes: 20
-    # No bloquea merges todavía -- es la primera vez que este suite corre
-    # en CI (antes solo se ejecutaba localmente contra Postgres real, si
-    # el desarrollador lo hacía). Igual que Lint cuando se introdujo:
-    # queda non-blocking hasta confirmar que el suite completo es estable
-    # en un entorno de CI fresco, antes de promoverlo a gate obligatorio.
-    continue-on-error: true
+    # #896: el nombre histórico del check se conserva por compatibilidad;
+    # la integración ya es obligatoria en docs/agentes/flujo-entrega.md.
+    # El resumen exige el exit real de Vitest, además del resultado del job.
+    outputs:
+      suite_ok: ${{ steps.integration-tests.outputs.suite_ok }}
     if: github.event_name != 'schedule'
 
     env:
@@ -305,6 +328,7 @@ jobs:
       # #766: registrar duración real y recursos sin alterar fixtures, tests ni gates.
       # El resumen se emite incluso cuando Vitest falla; el exit code original se conserva.
       - name: Run integration tests
+        id: integration-tests
         shell: bash
         run: |
           started_at=$(date +%s)
@@ -316,6 +340,11 @@ jobs:
           finished_at=$(date +%s)
           echo "Integration suite duration: $((finished_at - started_at)) seconds"
           echo "Integration suite exit code: $result"
+          if [ "$result" -eq 0 ]; then
+            echo 'suite_ok=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'suite_ok=false' >> "$GITHUB_OUTPUT"
+          fi
           exit "$result"
 
       - name: Integration runner diagnostics (#766)
@@ -358,7 +387,7 @@ jobs:
     # cambia nada en la práctica porque el `!= 'schedule'` de la izquierda ya
     # excluía `schedule` de todas formas, pero antes del fix dependía de dos
     # condiciones redundantes en vez de una sola fuente de verdad fiable).
-    if: github.event_name != 'schedule' && needs.detect-changes.outputs.e2e_required == 'true'
+    if: github.event_name != 'schedule' && needs.detect-changes.outputs.e2e_run == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -576,7 +605,7 @@ jobs:
     # `if:` se reporta como Success y no bloquea el merge. Lo que NO debe
     # marcarse como required son los legs del matrix `E2E (n/8)`.
     needs: detect-changes
-    if: github.event_name != 'schedule' && needs.detect-changes.outputs.e2e_required == 'true'
+    if: github.event_name != 'schedule' && needs.detect-changes.outputs.e2e_run == 'true'
 
     env:
       DATABASE_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
@@ -742,16 +771,10 @@ jobs:
           retention-days: 7
 
   # ───────────────────────────────────────────────────────────────────────────
-  # ci-gate — check-resumen estable (#703). Corre SIEMPRE (`if: always()`) y
-  # solo pasa si las validaciones exigidas realmente pasaron: un job omitido,
-  # cancelado o ausente NO cuenta como éxito (GitHub reporta `skipped` como
-  # verde para checks requeridos; aquí se trata como falla, salvo el E2E de un
-  # PR solo de documentación, que `detect-changes` omite a propósito).
-  # Exige: detect-changes, quality (tsc + unit) y e2e-hub en `success`, y el
-  # E2E de 8 turnos en `success` cuando `e2e_required == 'true'`.
-  # `lint` e `integration` son informativos (continue-on-error) y solo se listan.
-  # NO está marcado como required en `main`: eso es decisión del PO (ver
-  # docs/ci/GATES.md).
+  # ci-gate — check-resumen estable (#703, #896). El piloto de borrador
+  # nunca emite certificación verde con E2E diferido. No usar resultados de
+  # otro SHA ni cambiar la protección de main desde este workflow.
+  # Mantener el nombre del check; lint sigue siendo informativo.
   # ───────────────────────────────────────────────────────────────────────────
   ci-gate:
     name: CI gate (resumen)
@@ -760,47 +783,26 @@ jobs:
     if: always()
     needs: [detect-changes, quality, e2e, e2e-hub, lint, integration]
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Evaluar resultados exigidos
         env:
+          CI_EVENT: ${{ github.event_name }}
+          CI_ACTION: ${{ github.event.action }}
+          CI_DRAFT: ${{ github.event.pull_request.draft }}
+          CI_FAST_DRAFT: ${{ vars.BAMBU_CI_896_DRAFT_PILOT }}
           R_DETECT: ${{ needs.detect-changes.result }}
           R_QUALITY: ${{ needs.quality.result }}
           R_E2E: ${{ needs.e2e.result }}
           R_HUB: ${{ needs.e2e-hub.result }}
           R_LINT: ${{ needs.lint.result }}
           R_INTEGRATION: ${{ needs.integration.result }}
+          INTEGRATION_OK: ${{ needs.integration.outputs.suite_ok }}
           E2E_REQUIRED: ${{ needs.detect-changes.outputs.e2e_required }}
-        run: |
-          fail=0
-          check() { # nombre resultado esperado-descripcion
-            if [ "$2" != "success" ]; then
-              echo "::error::$1: $2 (se esperaba success)"
-              fail=1
-            else
-              echo "OK   $1: success"
-            fi
-          }
-          # Un job omitido por `if:` cuenta como éxito SOLO cuando su propio
-          # criterio lo justifica. Verificar la pareja (resultado, condición) es
-          # lo que impide que un job saltado por un motivo inesperado —o que
-          # nunca se generó— pase como verde: `skipped` sin la condición
-          # correspondiente es un fallo explícito.
-          omitido_legitimo() { # nombre resultado condicion-esperada-descripcion
-            if [ "$2" = "skipped" ] && [ "$3" = "false" ]; then
-              echo "OK   $1: omitido ($4)"
-            else
-              echo "::error::$1: '$2' con e2e_required='$3' no es interpretable como éxito"
-              fail=1
-            fi
-          }
-          check "detect-changes" "$R_DETECT"
-          check "quality (tsc + unit)" "$R_QUALITY"
-          if [ "$E2E_REQUIRED" = "true" ]; then
-            check "e2e-hub (V2 ON)" "$R_HUB"
-            check "e2e (8 turnos)" "$R_E2E"
-          else
-            omitido_legitimo "e2e-hub (V2 ON)" "$R_HUB" "$E2E_REQUIRED" "el diff es declarativo (docs/** o skills Markdown)"
-            omitido_legitimo "e2e (8 turnos)" "$R_E2E" "$E2E_REQUIRED" "el diff es declarativo (docs/** o skills Markdown)"
-          fi
-          echo "INFO lint (informativo): $R_LINT"
-          echo "INFO integration (informativo): $R_INTEGRATION"
-          exit $fail
+          CI_DIFF_OK: ${{ needs.detect-changes.outputs.diff_ok }}
+          E2E_RUN: ${{ needs.detect-changes.outputs.e2e_run }}
+          DRAFT_DEFERRED: ${{ needs.detect-changes.outputs.draft_deferred }}
+        run: node scripts/ci/politica-ci.mjs gate
