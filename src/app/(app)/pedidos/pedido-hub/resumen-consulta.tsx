@@ -1,4 +1,5 @@
 "use client";
+import { rotulosCompromiso } from "@/lib/pedidos-compromiso-rotulos";
 import { useState, useSyncExternalStore } from "react";
 import { Modal } from "@/components/modal";
 import { getProductoIconConfig } from "@/lib/producto-iconos";
@@ -69,9 +70,9 @@ export function ResumenConsulta({
   const base = baseEfectiva(f),
     cobros = base === "cobro",
     entregas = base === "entrega";
-  const rango = f.all
+  const rango = rotulosCompromiso(f.foco)?.rango ?? (f.all
     ? "Todas las fechas"
-    : `${f.desde || "Sin inicio"}${f.desdeHora ? " " + f.desdeHora : ""} → ${f.hasta || "Sin final"}${f.hastaHora ? " " + f.hastaHora : ""}`;
+    : `${f.desde || "Sin inicio"}${f.desdeHora ? " " + f.desdeHora : ""} → ${f.hasta || "Sin final"}${f.hastaHora ? " " + f.hastaHora : ""}`);
   const productos = (
     <div
       className="mt-3 rounded-lg border border-stone-200 bg-[#f8f5ef] p-3"
