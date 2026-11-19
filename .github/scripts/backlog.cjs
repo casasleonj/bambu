@@ -108,13 +108,35 @@ async function aplicar({ github, context, core }, issue, opciones) {
   return quitar.length + agregar.length > 0
 }
 
+/**
+ * Issues abiertos que sigue citando algún PR abierto (excluyendo `exceptoPr`).
+ * #338: cerrar o editar un PR no debe liberar un issue que otro PR mantiene.
+ */
+async function issuesCitadosPorPrsAbiertos(ctx, exceptoPr) {
+  const { github, context } = ctx
+  const prs = await github.paginate(github.rest.pulls.list, {
+    ...context.repo,
+    state: 'open',
+    per_page: 100,
+  })
+  const citados = new Set()
+  for (const pr of prs) {
+    if (pr.number === exceptoPr) continue
+    for (const n of extraerIssues(`${pr.title || ''}\n${pr.body || ''}`).todos) citados.add(n)
+  }
+  return citados
+}
+
 /** Devuelve a su estado de reposo un issue que ya no tiene PR: `bloqueado` si espera al PO, si no `pendiente`. */
-async function liberar(ctx, n) {
+async function liberar(ctx, n, { exceptoPr } = {}) {
   const { github, context } = ctx
   const { data: issue } = await github.rest.issues.get({ ...context.repo, issue_number: n })
   if (issue.pull_request || issue.state !== 'open') return
   const etiquetas = issue.labels.map((l) => l.name)
   if (!etiquetas.includes(EN_CURSO)) return
+  // #338: si otro PR abierto lo sigue citando, sigue en curso.
+  const citados = await issuesCitadosPorPrsAbiertos(ctx, exceptoPr)
+  if (citados.has(n)) return
   await aplicar(ctx, issue, { objetivo: etiquetas.includes(DECISION_PO) ? BLOQUEADO : PENDIENTE })
 }
 
@@ -134,14 +156,14 @@ async function handlePullRequest(ctx) {
     // Un PR que terminó libera lo que tenía en curso. Los que cierra con
     // Closes/Fixes los cierra GitHub al hacer merge (y se limpian por el evento issues.closed).
     const aLiberar = pr.merged ? refs.todos.filter((n) => !refs.cierre.includes(n)) : refs.todos
-    for (const n of aLiberar) await liberar(ctx, n)
+    for (const n of aLiberar) await liberar(ctx, n, { exceptoPr: pr.number })
     return
   }
 
   if (action === 'edited' && context.payload.changes) {
     const antes = `${context.payload.changes.title?.from ?? pr.title}\n${context.payload.changes.body?.from ?? pr.body ?? ''}`
     for (const n of extraerIssues(antes).todos) {
-      if (!refs.todos.includes(n)) await liberar(ctx, n)
+      if (!refs.todos.includes(n)) await liberar(ctx, n, { exceptoPr: pr.number })
     }
   }
 
