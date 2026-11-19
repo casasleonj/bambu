@@ -1,0 +1,52 @@
+name: CI impact shadow
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-impact-shadow-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-impact:
+    name: Dependency impact (shadow only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # This is a diagnostic experiment, not a required check or gate.
+      # Do not start the app, provision a DB or run dependency lifecycle scripts.
+      - name: Install locked dependencies for TypeScript resolver
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Test the dependency analyzer
+        run: node --test scripts/ci/__tests__/impacto-dependencias.node.test.mjs
+
+      - name: Analyze actual merge candidate (never skip tests)
+        env:
+          BAMBU_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci/impacto-dependencias.mjs "$BAMBU_BASE_SHA" "$RUNNER_TEMP/bambu-impact.json"
+
+      - name: Archive shadow report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-impact-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/bambu-impact.json
+          if-no-files-found: warn
+          retention-days: 14
