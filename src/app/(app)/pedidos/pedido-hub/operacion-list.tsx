@@ -204,6 +204,7 @@ export function OperacionList({
 }: OperacionListProps) {
   // #859: recorrido manual temporal de la vista, sin alterar FIFO del servidor.
   const [modoRecorrido, setModoRecorrido] = useState(false)
+  const [barrioSeleccionado, setBarrioSeleccionado] = useState("")
   const router = useRouter()
   const searchParams = useSearchParams()
   const clavesGlobales = consulta?.grupos?.map(g => g.clave) ?? []
@@ -244,6 +245,11 @@ export function OperacionList({
     }
     const ordenEfectivo = ordenRecorrido
     const bloquesVisibles = bloques
+    const priorizar = (clave: string) => {
+      if (!ordenEfectivo.includes(clave)) return
+      actualizarRecorrido([clave, ...ordenEfectivo.filter(k => k !== clave)])
+      setBarrioSeleccionado("")
+    }
     const mover = (clave: string, desplazamiento: number) => {
       const actual = [...ordenEfectivo]
       const indice = actual.indexOf(clave)
@@ -259,7 +265,26 @@ export function OperacionList({
             className={`rounded-md border px-3 py-1.5 ${!modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>FIFO</button>
           <button type="button" aria-pressed={modoRecorrido} onClick={() => setModoRecorrido(true)}
             className={`rounded-md border px-3 py-1.5 ${modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>Recorrido</button>
-          {modoRecorrido && <span className="text-stone-500">Orden global temporal, sin guardar preferencias.</span>}
+          {modoRecorrido && (
+            <>
+              <label htmlFor="recorrido-barrio" className="font-medium text-stone-700">Priorizar barrio</label>
+              <select id="recorrido-barrio" data-testid="recorrido-barrio-select"
+                value={barrioSeleccionado} onChange={e => setBarrioSeleccionado(e.target.value)}
+                className="max-w-full rounded-md border border-stone-400 bg-white px-2 py-1.5">
+                <option value="">Selecciona cualquier barrio</option>
+                {(consulta.grupos ?? []).map(g => (
+                  <option key={g.clave} value={g.clave}>{g.etiqueta} ({g.total} pedidos)</option>
+                ))}
+              </select>
+              <button type="button" data-testid="recorrido-priorizar"
+                disabled={!barrioSeleccionado || !ordenEfectivo.includes(barrioSeleccionado)}
+                onClick={() => priorizar(barrioSeleccionado)}
+                className="rounded-md bg-stone-800 px-3 py-1.5 text-white disabled:opacity-40">
+                Llevar al primero
+              </button>
+              <span className="text-stone-500">Orden global temporal, sin guardar preferencias.</span>
+            </>
+          )}
         </div>
         {bloquesVisibles.map((b, i) => {
           const total = consulta.grupos?.find((g) => g.clave === b.clave)?.total ?? b.filas.length
