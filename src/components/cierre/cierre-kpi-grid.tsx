@@ -19,6 +19,8 @@ const formatMoney = formatCurrency
 
 export function CierreKpiGrid({ data }: { data: CierreData | null }) {
   if (!data) return null
+  const entrega = data.ventasCriterio === 'ENTREGA_V1'
+  const pendienteVentas = (data.ventasPorConciliar?.length ?? 0) > 0
   const d = data.desgloseCobros
   const cobrado = data.cobroVentasHoy + data.cobroCartera
   const pctEfectivo = d && d.total > 0 ? Math.round((d.efectivo / d.total) * 100) : null
@@ -29,10 +31,10 @@ export function CierreKpiGrid({ data }: { data: CierreData | null }) {
       <div data-testid="cierre-kpi-ventas" className="rounded-xl border border-violet-200 bg-violet-50 p-3 min-w-0">
         <div className="flex items-center text-xs font-semibold text-slate-600">
           Ventas del día
-          <AyudaTermino texto={data.valorComercialPedidosDelDia === undefined ? 'Importe conservado por el cierre histórico con la definición que tenía al guardarse. No se recalcula con las reglas nuevas.' : 'Valor de lo entregado en los pedidos de esta fecha, sin anulados y con el ajuste de notas de crédito de pedidos anteriores. Lo que falta entregar no se suma como entregado. Se agrupa por fecha del pedido; las unidades, por fecha de entrega. El cumplimiento se consulta en su estado actual.'} />
+          <AyudaTermino texto={entrega ? 'Ventas entregadas en esta fecha, incluso de pedidos anteriores, menos ajustes verificados de ventas de otros días. Los cobros y las notas de crédito se informan aparte.' : data.valorComercialPedidosDelDia === undefined ? 'Importe conservado por el cierre histórico con la definición que tenía al guardarse. No se recalcula con las reglas nuevas.' : 'Valor de lo entregado en los pedidos de esta fecha, sin anulados y con el ajuste de notas de crédito de pedidos anteriores. Lo que falta entregar no se suma como entregado. Se agrupa por fecha del pedido; las unidades, por fecha de entrega. El cumplimiento se consulta en su estado actual.'} />
         </div>
-        <div className="text-2xl font-extrabold tabular-nums text-violet-800">{formatMoney(data.totalVentas)}</div>
-        <p className="text-[11px] text-slate-500">{data.valorComercialPedidosDelDia === undefined ? 'Pedidos de esta fecha, sin anulados.' : 'Lo entregado de los pedidos de esta fecha.'}</p>
+        <div className="text-2xl font-extrabold tabular-nums text-violet-800">{pendienteVentas ? 'Por conciliar' : formatMoney(data.totalVentas)}</div>
+        <p className="text-[11px] text-slate-500">{pendienteVentas ? 'Subtotal identificado: ' + formatMoney(data.totalVentas) : entrega ? 'Entregas de hoy menos ajustes anteriores.' : data.valorComercialPedidosDelDia === undefined ? 'Pedidos de esta fecha, sin anulados.' : 'Lo entregado de los pedidos de esta fecha.'}</p>
       </div>
       <div data-testid="cierre-kpi-cobros" className="rounded-xl border border-blue-200 bg-blue-50 p-3 min-w-0">
         <div className="flex items-center text-xs font-semibold text-slate-600">
@@ -67,12 +69,30 @@ export function CierreKpiGrid({ data }: { data: CierreData | null }) {
 
 export function CierreDetalleVentas({ data }: { data: CierreData | null }) {
   if (!data) return null
+  const entrega = data.ventasCriterio === 'ENTREGA_V1'
+  const pendientes = data.ventasPorConciliar ?? []
+  const motivos: Record<string, string> = { REVERSA_AMBIGUA: 'Fecha o evidencia de anulación sin verificar', CUMPLIMIENTO_NO_VERIFICADO: 'Entregas sin evidencia completa', VENTA_PREVIA_SIN_DETALLE_DE_CIERRE: 'Cierre anterior sin detalle de la venta', NOTA_SIN_REVERSA_IDENTIFICADA: 'Nota sin origen comercial identificado', PRECIO_ENTREGA_NO_VERIFICADO: 'Precio de entrega sin verificar' }
   const hayExtras = (data.ventasPorOrigen?.length ?? 0) > 0 || data.facturasEmitidas > 0 || (data.embarques?.length ?? 0) > 0
     || !!(data.pedidosCanceladosCount || data.pedidosNoEntregadosCount || data.pedidosAnuladosCount)
     || data.clientesNuevos > 0 || data.descuentosRepartidorCount > 0
   return (
     <div className="mt-2 space-y-2" data-testid="cierre-detalle-ventas">
-      {data.notasCreditoVentasAnteriores !== undefined ? (
+      {pendientes.length > 0 && <div role="status" data-testid="cierre-ventas-por-conciliar" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <p className="font-semibold">Ventas por conciliar</p>
+        <p>El importe es parcial. No se puede cerrar hasta verificar las referencias con administración.</p>
+        <ul className="mt-2 space-y-1">{pendientes.map((p, i) => <li key={`${p.pedidoId}-${p.motivo}-${i}`}>{p.numero == null ? 'Pedido sin número' : `Pedido #${p.numero}`}: {motivos[p.motivo] ?? 'Evidencia pendiente'}</li>)}</ul>
+      </div>}
+      {entrega ? (
+        <Desplegable testid="cierre-ventas-calculo" tono="violeta" icono="📊" titulo="De dónde salen las ventas del día" resumen={pendientes.length ? 'Por conciliar' : formatMoney(data.totalVentas)} ayuda="Las ventas se atribuyen al día en que se entregan. Los ajustes de ventas anteriores se separan de las notas de crédito documentales.">
+          <dl className="divide-y divide-slate-100">
+            <Linea label="Ventas entregadas de hoy" value={data.ventasEntregadasDelDia ?? 0} />
+            <Linea label="− Ajustes verificados de ventas anteriores" value={-(data.ajustesVentasAnteriores ?? 0)} />
+            <Linea label={pendientes.length ? 'Subtotal identificado' : 'Ventas del día'} value={data.totalVentas} total />
+            <Linea label="Notas de crédito emitidas hoy (informativo)" value={data.totalNotasCredito} ayuda="El importe de una nota no necesariamente equivale al valor de una venta ni a una salida de caja." />
+            {data.valorComercialPedidosDelDia !== undefined && <Linea label="Valor comercial de pedidos creados hoy (informativo)" value={data.valorComercialPedidosDelDia} />}
+          </dl>
+        </Desplegable>
+      ) : data.notasCreditoVentasAnteriores !== undefined ? (
         <Desplegable testid="cierre-ventas-calculo" tono="violeta" icono="📊" titulo="De dónde salen las ventas del día"
           ayuda={data.valorComercialPedidosDelDia === undefined ? 'Importe guardado por el cierre histórico: pedidos de esta fecha menos devoluciones de ventas anteriores. Se conserva su definición original.' : 'Ventas = valor de lo entregado de los pedidos de esta fecha menos las notas de crédito de pedidos anteriores. El valor comercial original y lo que falta entregar se explican aparte.'}
           resumen={formatMoney(data.totalVentas)}>

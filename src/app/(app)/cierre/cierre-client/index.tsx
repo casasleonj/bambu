@@ -82,6 +82,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const { data: session } = useSession()
   const userRole = (session?.user as { role?: string } | undefined)?.role
   const canClose = userRole === 'ADMIN' || userRole === 'ASISTENTE'
+  const ventasPendientes = (data?.ventasPorConciliar?.length ?? 0) > 0
   // #499: las comisiones las calcula el servidor; el cierre resta solo lo realmente pagado.
   const comisiones = data?.comisionesAuto?.total ?? 0
   // #645: pérdidas del día (filtradas + merma + consumo interno) y producciones registradas ese día
@@ -240,6 +241,10 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     if (cierreSolicitadoRef.current || cerrando) return
     if (!canClose || !data || loading || fetchError || data.fecha !== fecha || diaCerrado) {
       toast.error('Carga y revisa los datos de esta fecha antes de confirmar el cierre.')
+      return
+    }
+    if (ventasPendientes) {
+      toast.error('Hay ventas por conciliar. Revisa las referencias con administración.')
       return
     }
     if (diaBloqueante) {
@@ -571,6 +576,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
 
   // Next step hint
   const getNextStep = () => {
+    if (ventasPendientes) return { label: 'Verifica las ventas por conciliar', section: 1 }
     if (!baseLista) return { label: 'Ingresa la base de caja del día', section: 1 }
     if (arqueoData.totalContado === 0) return { label: 'Cuenta el efectivo físico', section: 4 }
     if (statusCierre === 'INCOMPLETO') return { label: 'Cierra los embarques pendientes', section: 1 }
@@ -595,7 +601,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   ) : base.estado === 'faltante' ? (
     <BaseCajaFaltante fecha={fecha} hoy={esHoy} puedeIngresar={puedeEditarBase} />
   ) : null
-  const allReady = baseLista && arqueoData.totalContado > 0 && statusCierre === 'COMPLETO'
+  const allReady = !ventasPendientes && baseLista && arqueoData.totalContado > 0 && statusCierre === 'COMPLETO'
 
   return (
     <div className="p-4 max-w-5xl mx-auto space-y-6 pb-32">
@@ -905,7 +911,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             <form onSubmit={handleCerrar} className="space-y-2">
               <Button
                 type="submit"
-                disabled={cerrando || !!diaBloqueante || estadoPendientes !== 'ok' || statusCierre === 'INCOMPLETO' || !baseLista || arqueoData.totalContado === 0}
+                disabled={cerrando || ventasPendientes || !!diaBloqueante || estadoPendientes !== 'ok' || statusCierre === 'INCOMPLETO' || !baseLista || arqueoData.totalContado === 0}
                 className="w-full py-6 text-lg"
               >
                 {cerrando ? 'Cerrando...' : 'Cerrar Día'}

@@ -183,11 +183,15 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
     const rangoVentas = { start: startOfDay, end: endOfDay }
     const entregadas = await leerVentasEntregadasDia(prisma, rangoVentas)
     const revisiones = await leerAjustesVentasCierre(prisma, rangoVentas, notasCredito)
-    const ventasPorConciliar = [
+    const ventasPorConciliarRaw = [
       ...revisiones.porConciliar,
       ...entregadas.porPedido.filter(p => !p.valorDeterminado)
         .map(p => ({ pedidoId: p.pedidoId, motivo: 'PRECIO_ENTREGA_NO_VERIFICADO' })),
     ]
+    const idsRevision = [...new Set(ventasPorConciliarRaw.map(p => p.pedidoId))]
+    const referenciasRevision = idsRevision.length ? await prisma.pedido.findMany({ where: { id: { in: idsRevision } }, select: { id: true, numero: true } }) : []
+    const numeroRevision = new Map(referenciasRevision.map(p => [p.id, p.numero]))
+    const ventasPorConciliar = ventasPorConciliarRaw.map(p => ({ ...p, numero: numeroRevision.get(p.pedidoId) ?? null }))
     const totalVentas = (Math.round(entregadas.total * 100) - revisiones.ajusteCentavos) / 100
     const totalNC = revisiones.notasTotal / 100
     const creados = new Set(pedidos.map(p => p.id))

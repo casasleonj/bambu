@@ -59,6 +59,11 @@ export interface CierreData {
   fiado: number
   totalNotasCredito: number
   ventasDePedidosDelDia?: number
+  ventasCriterio?: 'ENTREGA_V1'
+  ventasEntregadasDelDia?: number
+  ajustesVentasAnteriores?: number
+  valorEntregadoPedidosCreadosDelDia?: number
+  ventasPorConciliar?: { pedidoId: string; motivo: string; numero?: number | null }[]
   /** #656: original comercial antes de distinguir entrega; los cierres anteriores no lo traen. */
   valorComercialPedidosDelDia?: number
   parcialesPorConciliar?: { pedidoId: string; numero: number }[]

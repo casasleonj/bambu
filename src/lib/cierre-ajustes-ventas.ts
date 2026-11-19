@@ -5,7 +5,7 @@ import { leerEntregasConsulta, type EntregaConsulta } from '@/lib/entregas-consu
 type Db = Pick<Prisma.TransactionClient, 'pedido' | 'historial' | 'embarqueMovimiento' | 'cierreDia' | 'pedidoReduccionComercial'>
 type Nota = { id: string; pedidoId: string; monto: unknown }
 type Rango = { start: Date; end: Date }
-type Revision = { pedidoId: string; motivo: string }
+type Revision = { pedidoId: string; motivo: string; numero?: number | null }
 const objeto = (v: unknown): Record<string, unknown> | null =>
   v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : null
 
@@ -76,7 +76,7 @@ export async function leerAjustesVentasCierre(db: Db, rango: Rango, notas: reado
 
   const [pedidos, hechos, reversasHistoricas] = await Promise.all([
     db.pedido.findMany({ where: { id: { in: ids } }, select: {
-      id: true, estadoEntrega: true, entregadoAt: true,
+      id: true, numero: true, estadoEntrega: true, entregadoAt: true,
       cPacaAguaEnt: true, cPacaHieloEnt: true, cBotellonFabEnt: true, cBotellonDomEnt: true,
       cBolsaAguaEnt: true, cBolsaHieloEnt: true,
     } }),
@@ -101,7 +101,7 @@ export async function leerAjustesVentasCierre(db: Db, rango: Rango, notas: reado
   const porDia = new Map(cierres.map(c => [dayInBogota(c.fecha), c.reporte]))
   for (const pedidoId of ids) {
     const p = porPedido.get(pedidoId)
-    const revisar = (motivo: string) => porConciliar.push({ pedidoId, motivo })
+    const revisar = (motivo: string) => porConciliar.push({ pedidoId, motivo, ...(p ? { numero: p.numero } : {}) })
     const eventos = hechos.filter(h => h.pedidoId === pedidoId)
     if (!p || !['ANULADO', 'CANCELADO'].includes(p.estadoEntrega)) {
       revisar('NOTA_SIN_REVERSA_IDENTIFICADA'); continue

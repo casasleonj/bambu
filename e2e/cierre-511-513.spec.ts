@@ -27,8 +27,17 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     const pedido = await prisma.pedido.create({ data: {
       clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO', fecha: instante,
       estado: 'ENTREGADO', estadoEntrega: 'ENTREGADO', estadoPago: 'PARCIAL',
+      entregadoAt: instante, cPacaAguaPed: 8, cPacaAguaEnt: 8,
+      items: { create: { producto: 'PACA_AGUA', cantPedido: 8, cantEntrega: 8, precio: 2500, subtotal: 20000 } },
       total: 20000, totalPagado: 10000, saldo: 10000,
     } })
+    const entrega = async (id: string, cantidad: number) => prisma.historial.create({ data: {
+      entidad: 'Pedido', registroId: id, accion: 'UPDATE', usuarioId: 'sistema', fecha: instante,
+      datos: JSON.stringify({ accion: 'ENTREGA', consultaEntrega: { version: 1, fecha: instante.toISOString(),
+        eventoEntregaId: randomUUID(), precisionFecha: 'INSTANTE', repartidorId: null,
+        cantidades: [{ producto: 'PACA_AGUA', cantidad }] } }),
+    } })
+    await entrega(pedido.id, 8)
     const factura = await prisma.factura.create({ data: {
       numero: `FAC-${randomUUID()}`, pedidoId: pedido.id, clienteId: cliente.id,
       subtotal: 20000, total: 20000, montoPagado: 10000, saldo: 10000, fecha: instante,
@@ -39,7 +48,13 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     await prisma.abono.create({ data: { ...abono, numero: 'AB-ESPEJO', origenCobro: 'ESPEJO_PAGO', pagoOrigenId: pago.id } })
     const anulado = await prisma.pedido.create({ data: {
       clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO', fecha: instante,
-      estado: 'ANULADO', estadoEntrega: 'ANULADO', estadoPago: 'ANULADO', total: 5000, saldo: 0,
+      estado: 'ANULADO', estadoEntrega: 'ANULADO', estadoPago: 'ANULADO', total: 0, saldo: 0,
+      entregadoAt: instante, cPacaAguaPed: 2, cPacaAguaEnt: 2,
+      items: { create: { producto: 'PACA_AGUA', cantPedido: 2, cantEntrega: 2, precio: 2500, subtotal: 5000 } },
+    } })
+    await entrega(anulado.id, 2)
+    await prisma.historial.create({ data: { entidad: 'Pedido', registroId: anulado.id, accion: 'UPDATE', usuarioId: 'sistema',
+      fecha: new Date(+instante + 3600000), datos: JSON.stringify({ modo: 'ANULAR', notaCredito: true, reversion: 0 }),
     } })
     await prisma.notaCredito.create({ data: { numero: `NC-${randomUUID()}`, pedidoId: anulado.id, monto: 5000, motivo: 'Prueba sintética', fecha: instante } })
   }
@@ -49,6 +64,7 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     await loginAs(page, 'admin')
     await goto(page, `/cierre?fecha=${fecha}`)
     await expect(page.getByTestId('cierre-kpi-ventas')).toContainText('20.000')
+    await expect(page.getByTestId('cierre-ventas-por-conciliar')).toHaveCount(0)
     await expect(page.getByTestId('cierre-kpi-cobros')).toContainText('10.000')
     await expect(page.getByTestId('cierre-efectivo-esperado')).toContainText('Empezó con $ 10.000')
     await expect(page.getByLabel('Efectivo con el que empezó el día', { exact: true })).toHaveCount(0) // #666: un solo lugar
@@ -105,6 +121,22 @@ test.describe('Cierre diario: identidad y recuperación #511/#513', () => {
     await goto(page, `/cierre/reporte?fecha=${fecha}`)
     await expect(page.getByRole('button', { name: 'Imprimir / Guardar como PDF' })).toBeVisible()
     await expect(page.getByRole('row').filter({ hasText: 'Dinero cobrado hoy' })).toContainText('10.000')
+  })
+
+  test('#885: reversa sin evidencia avisa, no imprime como definitivo ni permite consolidar', async ({ page }, testInfo) => {
+    await preparar()
+    const terminal = await prisma.pedido.findFirstOrThrow({ where: { estadoEntrega: 'ANULADO', fecha: instante } })
+    await prisma.historial.deleteMany({ where: { registroId: terminal.id } })
+    await loginAs(page, 'admin')
+    await goto(page, `/cierre?fecha=${fecha}`)
+    await expect(page.getByTestId('cierre-ventas-por-conciliar')).toBeVisible()
+    await expect(page.getByTestId('cierre-kpi-ventas')).toContainText('Por conciliar')
+    await expect(page.getByRole('button', { name: 'Cerrar Día', exact: true })).toBeDisabled()
+    await capturar(page, testInfo, 'ventas-por-conciliar')
+    await goto(page, `/cierre/reporte?fecha=${fecha}`)
+    await expect(page.getByText('Ventas por conciliar', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Imprimir / Guardar como PDF' })).toBeDisabled()
+    expect(await prisma.cierreDia.count()).toBe(0)
   })
 
   test('legado sin evidencia muestra referencias y bloquea solo la fecha afectada', async ({ page }, testInfo) => {
