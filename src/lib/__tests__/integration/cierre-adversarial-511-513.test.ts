@@ -45,6 +45,34 @@ async function pedido(dia: string, total: number, opts: { anulado?: boolean; pag
   } })
   return { p, cliente, factura }
 }
+async function evidenciaEntrega(pedidoId: string, entregas: { dia: string; cantidad: number }[], precio: number) {
+  const cantidad = entregas.reduce((s, e) => s + e.cantidad, 0)
+  await testPrisma.pedido.update({ where: { id: pedidoId }, data: {
+    entregadoAt: mediodia(entregas[entregas.length - 1].dia),
+    cPacaAguaPed: cantidad, cPacaAguaEnt: cantidad,
+    items: { create: { producto: 'PACA_AGUA', cantPedido: cantidad, cantEntrega: cantidad, precio, subtotal: cantidad * precio } },
+  } })
+  for (const e of entregas) {
+    const fecha = mediodia(e.dia)
+    await testPrisma.historial.create({ data: { entidad: 'Pedido', registroId: pedidoId, accion: 'UPDATE', fecha, usuarioId: 'sistema',
+      datos: JSON.stringify({ accion: 'ENTREGA', consultaEntrega: {
+        version: 1, fecha: fecha.toISOString(), eventoEntregaId: randomUUID(), precisionFecha: 'INSTANTE',
+        cantidades: [{ producto: 'PACA_AGUA', cantidad: e.cantidad }], repartidorId: null,
+      } }),
+    } })
+  }
+}
+async function evidenciaAnulacion(pedidoId: string, dia: string, conNota: boolean) {
+  await testPrisma.historial.create({ data: { entidad: 'Pedido', registroId: pedidoId, accion: 'UPDATE',
+    fecha: new Date(`${dia}T14:00:00-05:00`), usuarioId: 'sistema',
+    datos: JSON.stringify({ modo: 'ANULAR', notaCredito: conNota, reversion: 0 }),
+  } })
+}
+async function snapshotVenta(dia: string, pedidoId: string, centavos: number) {
+  await testPrisma.cierreDia.create({ data: { fecha: startOfDayInBogota(dia), horaCierre: new Date(`${dia}T22:00:00-05:00`), totalVentas: centavos / 100,
+    reporte: { ventasCriterio: 'ENTREGA_V1', ventasEntregaPorPedido: [{ pedidoId, centavos, origen: 'PEDIDO', valorDeterminado: true, fechaAproximada: false }] },
+  } })
+}
 async function leer(dia: string) {
   const res = await preview(new NextRequest(`http://localhost/api/cierre?fecha=${dia}`))
   expect(res.status).toBe(200)
@@ -62,22 +90,56 @@ describe('auditoría adversarial del cierre #511 / #513', () => {
 
   it('#511: anular un pedido del mismo día no resta de nuevo su nota de crédito', async () => {
     const dia = '2026-03-10'
-    await pedido(dia, 10000)
-    const anulado = await pedido(dia, 5000, { anulado: true })
+    const vigente = await pedido(dia, 10000)
+    await evidenciaEntrega(vigente.p.id, [{ dia, cantidad: 4 }], 2500)
+    const anulado = await pedido('2026-03-09', 0, { anulado: true })
+    await evidenciaEntrega(anulado.p.id, [{ dia, cantidad: 2 }], 2500)
+    await evidenciaAnulacion(anulado.p.id, dia, true)
     await testPrisma.notaCredito.create({ data: {
-      numero: `NC-${randomUUID()}`, pedidoId: anulado.p.id, monto: 5000, motivo: 'Prueba', fecha: mediodia(dia),
+      numero: `NC-${randomUUID()}`, pedidoId: anulado.p.id, monto: 3000, motivo: 'Prueba', fecha: mediodia(dia),
     } })
-    expect((await leer(dia)).totalVentas).toBe(10000)
+    expect(await leer(dia)).toMatchObject({ totalVentas: 10000, ventasEntregadasDelDia: 10000,
+      totalNotasCredito: 3000, ajustesVentasAnteriores: 0, ventasPorConciliar: [], aguaVendida: 4 })
   })
 
   it('#511: una nota de crédito de un pedido anterior conserva su ajuste', async () => {
     const dia = '2026-03-11'
-    await pedido(dia, 10000)
-    const anulado = await pedido('2026-03-09', 5000, { anulado: true })
+    const vigente = await pedido(dia, 10000)
+    await evidenciaEntrega(vigente.p.id, [{ dia, cantidad: 4 }], 2500)
+    const anulado = await pedido('2026-03-09', 0, { anulado: true })
+    await evidenciaEntrega(anulado.p.id, [{ dia: '2026-03-09', cantidad: 2 }], 2500)
+    await snapshotVenta('2026-03-09', anulado.p.id, 500000)
+    await evidenciaAnulacion(anulado.p.id, dia, true)
     await testPrisma.notaCredito.create({ data: {
-      numero: `NC-${randomUUID()}`, pedidoId: anulado.p.id, monto: 5000, motivo: 'Prueba', fecha: mediodia(dia),
+      numero: `NC-${randomUUID()}`, pedidoId: anulado.p.id, monto: 3000, motivo: 'Prueba', fecha: mediodia(dia),
     } })
-    expect((await leer(dia)).totalVentas).toBe(5000)
+    expect(await leer(dia)).toMatchObject({ totalVentas: 5000, ventasEntregadasDelDia: 10000,
+      totalNotasCredito: 3000, ajustesVentasAnteriores: 5000, ventasPorConciliar: [] })
+    expect((await leer('2026-03-09')).totalVentas).toBe(5000)
+  })
+
+  it('#885: una venta fiada repartida entre dos días se revierte por lo reconocido antes, incluso sin nota', async () => {
+    const dia = '2026-03-21', anterior = '2026-03-20'
+    const vigente = await pedido(dia, 12000)
+    await evidenciaEntrega(vigente.p.id, [{ dia, cantidad: 4 }], 3000)
+    const anulado = await pedido(anterior, 0, { anulado: true })
+    await evidenciaEntrega(anulado.p.id, [{ dia: anterior, cantidad: 3 }, { dia, cantidad: 2 }], 3000)
+    await snapshotVenta(anterior, anulado.p.id, 900000)
+    await evidenciaAnulacion(anulado.p.id, dia, false)
+    expect(await leer(dia)).toMatchObject({ totalVentas: 3000, ventasEntregadasDelDia: 12000,
+      totalNotasCredito: 0, ajustesVentasAnteriores: 9000, ventasPorConciliar: [], aguaVendida: 4 })
+    expect((await leer(anterior)).totalVentas).toBe(9000)
+  })
+
+  it('#885: legado sin atribución previa queda por conciliar, no se descuenta la nota por similitud', async () => {
+    const dia = '2026-03-23', anterior = '2026-03-22'
+    const anulado = await pedido(anterior, 0, { anulado: true })
+    await evidenciaEntrega(anulado.p.id, [{ dia: anterior, cantidad: 5 }], 2500)
+    await evidenciaAnulacion(anulado.p.id, dia, true)
+    await testPrisma.notaCredito.create({ data: { numero: `NC-${randomUUID()}`, pedidoId: anulado.p.id,
+      monto: 3000, motivo: 'Prueba', fecha: mediodia(dia) } })
+    expect(await leer(dia)).toMatchObject({ ajustesVentasAnteriores: 0, totalNotasCredito: 3000,
+      ventasPorConciliar: [{ pedidoId: anulado.p.id, motivo: 'VENTA_PREVIA_SIN_DETALLE_DE_CIERRE' }] })
   })
 
   it('#513: un abono independiente de igual importe a un Pago reciente también cuenta', async () => {

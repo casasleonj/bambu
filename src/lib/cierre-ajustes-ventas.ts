@@ -26,7 +26,7 @@ export function diasCumplimientoVerificado(
   for (const e of eventos) {
     if (e.incompleto || !e.cantidades || !Number.isFinite(+e.fecha)) return null
     for (const l of e.cantidades) {
-      if (!Object.hasOwn(acumulado, l.producto) || !Number.isSafeInteger(l.cantidad) || l.cantidad < 0) return null
+      if (!Object.prototype.hasOwnProperty.call(acumulado, l.producto) || !Number.isSafeInteger(l.cantidad) || l.cantidad < 0) return null
       if (!l.cantidad) continue
       suma.set(l.producto, (suma.get(l.producto) ?? 0) + l.cantidad)
       dias.add(dayInBogota(e.fecha))
@@ -74,19 +74,28 @@ export async function leerAjustesVentasCierre(db: Db, rango: Rango, notas: reado
   const notasTotal = notas.reduce((s, n) => s + Math.round(Number(n.monto) * 100), 0)
   if (!ids.length) return { ajusteCentavos, notasAnterioresCentavos, notasTotal, porConciliar, ajustes }
 
-  const [pedidos, hechos] = await Promise.all([
+  const [pedidos, hechos, reversasHistoricas] = await Promise.all([
     db.pedido.findMany({ where: { id: { in: ids } }, select: {
       id: true, estadoEntrega: true, entregadoAt: true,
       cPacaAguaEnt: true, cPacaHieloEnt: true, cBotellonFabEnt: true, cBotellonDomEnt: true,
       cBolsaAguaEnt: true, cBolsaHieloEnt: true,
     } }),
     leerEntregasConsulta(db, { ids }),
+    db.historial.findMany({ where: { entidad: 'Pedido', accion: 'UPDATE',
+      registroId: { in: ids }, datos: { contains: '"notaCredito"' } },
+      select: { registroId: true, datos: true, fecha: true } }),
   ])
+  const reversiones = new Map<string, Date[]>()
+  for (const h of reversasHistoricas) if (esReversaTerminal(h.datos)) {
+    const fechas = reversiones.get(h.registroId) ?? []
+    fechas.push(h.fecha)
+    reversiones.set(h.registroId, fechas)
+  }
   const porPedido = new Map(pedidos.map(p => [p.id, p]))
   const dia = dayInBogota(rango.start)
   const diasPrevios = [...new Set(hechos.filter(e => e.fecha < rango.start).map(e => dayInBogota(e.fecha)))]
   const cierres = diasPrevios.length ? await db.cierreDia.findMany({
-    where: { fecha: { in: diasPrevios.map(startOfDayInBogota) } },
+    where: { fecha: { in: diasPrevios.map(startOfDayInBogota) }, necesitaValidacion: false, horaCierre: { not: null } },
     select: { fecha: true, reporte: true },
   }) : []
   const porDia = new Map(cierres.map(c => [dayInBogota(c.fecha), c.reporte]))
@@ -100,7 +109,9 @@ export async function leerAjustesVentasCierre(db: Db, rango: Rango, notas: reado
     // Si hay varias operaciones terminales, o no hay traza de la operación,
     // no imputar un ajuste previo al día de la nota por mera coincidencia.
     const operaciones = terminales.get(pedidoId) ?? 0
-    if (operaciones > 1 || eventos.some(e => e.fecha >= rango.end)) {
+    const historial = reversiones.get(pedidoId) ?? []
+    if (operaciones !== 1 || historial.length !== 1 ||
+      eventos.some(e => e.fecha >= rango.end || (!e.precisionDia && e.fecha > historial[0]))) {
       revisar('REVERSA_AMBIGUA'); continue
     }
     const dias = diasCumplimientoVerificado(eventos, {
@@ -114,7 +125,6 @@ export async function leerAjustesVentasCierre(db: Db, rango: Rango, notas: reado
     const anteriores = [...dias].filter(d => d < dia).sort()
     // Sin cumplimiento previo: exclusión de las ventas vigentes suficiente.
     if (!anteriores.length) continue
-    if (operaciones !== 1) { revisar('FECHA_REVERSA_NO_VERIFICADA'); continue }
     const valores = anteriores.map(d => importeReconocido(porDia.get(d), pedidoId))
     if (valores.some(v => v === null)) { revisar('VENTA_PREVIA_SIN_DETALLE_DE_CIERRE'); continue }
     const centavos = valores.reduce<number>((s, v) => s + (v ?? 0), 0)
