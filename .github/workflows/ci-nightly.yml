@@ -15,6 +15,9 @@ on:
       - '.github/workflows/ci.yml'
       - 'scripts/ci/reuso-ci.mjs'
       - 'scripts/ci/__tests__/reuso-ci.node.test.mjs'
+      - 'scripts/ci/reporte-nocturno.mjs'
+      - 'scripts/ci/__tests__/reporte-nocturno.node.test.mjs'
+      - '.github/workflows/ci-nightly-report.yml'
 
 permissions:
   contents: read
@@ -36,7 +39,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test scripts/ci/__tests__/reuso-ci.node.test.mjs
+      - run: node --test scripts/ci/__tests__/reuso-ci.node.test.mjs scripts/ci/__tests__/reporte-nocturno.node.test.mjs
 
   plan:
     name: Nightly decision (read-only)
@@ -63,7 +66,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NIGHT_SCHEDULE: ${{ github.event.schedule }}
+          NIGHT_DECISION_FILE: ${{ runner.temp }}/nightly-decision.json
         run: node scripts/ci/reuso-ci.mjs
+      - name: Preserve evidence of decision
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-decision-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/nightly-decision.json
+          if-no-files-found: error
+          retention-days: 30
 
   regression:
     name: Regression full
