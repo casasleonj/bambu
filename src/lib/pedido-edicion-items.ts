@@ -13,6 +13,7 @@
 export interface LineaPrevia {
   producto: string
   cantidad: number
+  cantidadRegalo?: number
   precio: number
   precioOrigen: string
 }
@@ -20,6 +21,7 @@ export interface LineaPrevia {
 export interface LineaSolicitadaPlana {
   producto: string
   cantidad: number
+  cantidadRegalo?: number
   precioManual?: number
 }
 
@@ -34,8 +36,9 @@ export function lineaSinCambio(
 
 /** true si `solicitadas` (ignorando cantidad 0) difiere de `previas` en alguna línea. */
 export function itemsCambiaron(previas: LineaPrevia[], solicitadas: LineaSolicitadaPlana[]): boolean {
-  const activas = solicitadas.filter((l) => l.cantidad > 0)
+  const activas = solicitadas.filter((l) => l.cantidad > 0 || (l.cantidadRegalo ?? 0) > 0)
   if (activas.length !== previas.length) return true
   const porProducto = new Map(previas.map((p) => [p.producto, p]))
-  return activas.some((l) => !lineaSinCambio(porProducto.get(l.producto), l))
+  return activas.some((l) => !lineaSinCambio(porProducto.get(l.producto), l) ||
+    (l.cantidadRegalo !== undefined && l.cantidadRegalo !== (porProducto.get(l.producto)?.cantidadRegalo ?? 0)))
 }

@@ -9,7 +9,10 @@ export interface EntregaConsulta {
   pedidoId: string;
   fecha: Date;
   repartidorId: string | null;
-  cantidades: Array<{ producto: string; cantidad: number }> | null;
+  cantidades: Array<{ producto: string; cantidad: number; cantidadRegalo?: number }> | null;
+  /** Solo se conserva cuando la captura declaró expresamente la misión. */
+  embarqueId?: string;
+  regalosPedido?: boolean;
   fuente: "AUDITORIA" | "MOVIMIENTO" | "HISTORICO";
   precisionDia?: boolean;
   incompleto?: boolean;
@@ -94,7 +97,7 @@ export async function leerEntregasConsulta(
     }),
     tx.embarqueMovimiento.findMany({
       where: {
-        tipo: "ENTREGA",
+        tipo: { in: ["ENTREGA", "PROMOCION"] },
         metadata: { path: ["captura"], equals: CAPTURA_ENTREGA_PEDIDO },
         sustitucionEntrega: { none: {} },
         ...(ids
@@ -146,7 +149,7 @@ export async function leerEntregasConsulta(
         fecha: true,
         entregadoAt: true,
         entregadoPorId: true,
-        items: { select: { producto: true, cantEntrega: true } },
+        items: { select: { producto: true, cantEntrega: true, cantRegaloEntrega: true } },
         cPacaAguaEnt: true,
         cPacaHieloEnt: true,
         cBotellonFabEnt: true,
@@ -209,12 +212,19 @@ export async function leerEntregasConsulta(
             l &&
             texto(l.producto) &&
             Number.isSafeInteger(l.cantidad) &&
-            Number(l.cantidad) >= 0,
+            Number(l.cantidad) >= 0 &&
+            (l.cantidadRegalo === undefined || (
+              Number.isSafeInteger(l.cantidadRegalo) && Number(l.cantidadRegalo) >= 0 &&
+              Number.isSafeInteger(l.cantidadConPrecio) && Number(l.cantidadConPrecio) >= 0 &&
+              Number(l.cantidadConPrecio) + Number(l.cantidadRegalo) === Number(l.cantidad)
+            )),
         );
       const cantidades = validas
         ? lineas.map((l) => ({
             producto: String(l!.producto),
             cantidad: Number(l!.cantidad),
+            ...(Number.isSafeInteger(l!.cantidadRegalo) && Number(l!.cantidadRegalo) >= 0 && Number(l!.cantidadRegalo) <= Number(l!.cantidad)
+              ? { cantidadRegalo: Number(l!.cantidadRegalo) } : {}),
           }))
         : null;
       if (cantidades && !cantidades.some((l) => l.cantidad > 0)) continue;
@@ -225,6 +235,10 @@ export async function leerEntregasConsulta(
         repartidorId: texto(detalle.repartidorId),
         cantidades,
         fuente: "AUDITORIA",
+        ...(detalle.posCierre === true ? { incompleto: true } : {}),
+        ...(detalle.regalosPedido === true ? { regalosPedido: true,
+          ...(texto(detalle.embarqueId) ? { embarqueId: texto(detalle.embarqueId)! } : {}),
+        } : {}),
         precisionDia: detalle.precisionFecha === "DIA",
       });
     } else {
@@ -266,7 +280,7 @@ export async function leerEntregasConsulta(
       for (const l of e.cantidades ?? [])
         conocido.set(l.producto, (conocido.get(l.producto) ?? 0) + l.cantidad);
     const acumulado = p.items.length
-      ? p.items.map((i) => ({ producto: i.producto, cantidad: i.cantEntrega }))
+      ? p.items.map((i) => ({ producto: i.producto, cantidad: i.cantEntrega + (i.cantRegaloEntrega ?? 0) }))
       : [
           { producto: "PACA_AGUA", cantidad: p.cPacaAguaEnt },
           { producto: "PACA_HIELO", cantidad: p.cPacaHieloEnt },
@@ -336,4 +350,19 @@ export async function leerEntregasConsulta(
       });
   }
   return limitarRango(resultado, rango);
+}
+
+/** #795: identidad explícita de misión en capturas nuevas; no se deriva de la asignación actual. */
+export async function leerEntregasRegalosDeMisiones(tx: Tx, embarqueIds: string[]): Promise<EntregaConsulta[]> {
+  if (!embarqueIds.length) return []
+  const ids = new Set(embarqueIds)
+  const candidatos = await tx.historial.findMany({
+    where: { entidad: 'Pedido', accion: 'UPDATE',
+      AND: [{ datos: { contains: '"regalosPedido":true' } },
+        { OR: embarqueIds.map(id => ({ datos: { contains: `"embarqueId":${JSON.stringify(id)}` } })) }],
+    },
+    select: { registroId: true },
+  })
+  return (await leerEntregasConsulta(tx, { ids: [...new Set(candidatos.map(c => c.registroId))] }))
+    .filter(e => e.regalosPedido && e.embarqueId && ids.has(e.embarqueId))
 }

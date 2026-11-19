@@ -45,6 +45,7 @@ export class PrismaPedidoRepository implements PedidoRepository {
       items: p.items?.map((i) => ({
         producto: i.producto,
         cantEntrega: i.cantEntrega,
+        cantRegaloEntrega: i.cantRegaloEntrega,
         precio: i.precio,
       })),
     }))

@@ -99,7 +99,7 @@ export class AjustarPedidoCantidadUseCase {
       // encadenarse correctamente.
       const item = await tx.pedidoItem.findFirst({
         where: { pedidoId: input.pedidoId, producto: input.producto },
-        select: { id: true, cantPedido: true, cantEntrega: true, precio: true, subtotal: true },
+        select: { id: true, cantPedido: true, cantEntrega: true, cantRegaloEntrega: true, precio: true, subtotal: true },
       })
       if (!item) {
         throw new Error(`PEDIDO_ITEM_NOT_FOUND: ${input.producto}`)
@@ -108,7 +108,7 @@ export class AjustarPedidoCantidadUseCase {
       // Guard C: la cantidad ya entregada es cumplimiento histórico, no se
       // toca retroactivamente. Si ya se entregó algo de este producto, un
       // pedido de más unidades es demanda nueva, no corrección.
-      if (item.cantEntrega > 0) {
+      if (item.cantEntrega > 0 || item.cantRegaloEntrega > 0) {
         throw new Error('CORRECCION_SOBRE_CANTIDAD_YA_ENTREGADA')
       }
 

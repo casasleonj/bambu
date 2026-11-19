@@ -37,6 +37,24 @@ const CLAVE: Record<string, keyof UnidadesDelDia> = {
 const diaBogota = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 const total = (u: UnidadesDelDia) => u.agua + u.hielo + u.botellon + u.bolsaAgua + u.bolsaHielo
 
+/** Acumulado físico actual, también para el fallback explícitamente aproximado del cierre. */
+export function unidadesFisicasEntregadas(p: {
+  cPacaAguaEnt: number; cPacaHieloEnt: number; cBotellonFabEnt: number; cBotellonDomEnt: number
+  cBolsaAguaEnt: number; cBolsaHieloEnt: number
+  items?: Array<{ producto: string; cantEntrega: number; cantRegaloEntrega?: number }>
+}): UnidadesDelDia {
+  const acumulado = vacio()
+  if (p.items?.length) {
+    for (const i of p.items) {
+      const k = CLAVE[i.producto]
+      if (k) acumulado[k] += i.cantEntrega + (i.cantRegaloEntrega ?? 0)
+    }
+    return acumulado
+  }
+  return { agua: p.cPacaAguaEnt, hielo: p.cPacaHieloEnt, botellon: p.cBotellonFabEnt + p.cBotellonDomEnt,
+    bolsaAgua: p.cBolsaAguaEnt, bolsaHielo: p.cBolsaHieloEnt }
+}
+
 export async function unidadesEntregadasDelDia(db: Db, rango: RangoDia): Promise<UnidadesEntregadasDelDia> {
   // Eventos de entrega con fecha dentro del día (más sus hermanos de otros días, para validar la suma).
   const delDia = await leerEntregasConsulta(db, { rango })
@@ -57,6 +75,7 @@ export async function unidadesEntregadasDelDia(db: Db, rango: RangoDia): Promise
       cBotellonDomEnt: true,
       cBolsaAguaEnt: true,
       cBolsaHieloEnt: true,
+      items: { select: { producto: true, cantEntrega: true, cantRegaloEntrega: true } },
     },
   })
   const todos = await leerEntregasConsulta(db, { ids: candidatos.map((p) => p.id) })
@@ -65,13 +84,7 @@ export async function unidadesEntregadasDelDia(db: Db, rango: RangoDia): Promise
 
   const res: UnidadesEntregadasDelDia = { ...vacio(), aproximados: [] }
   for (const p of candidatos) {
-    const acumulado: UnidadesDelDia = {
-      agua: p.cPacaAguaEnt,
-      hielo: p.cPacaHieloEnt,
-      botellon: p.cBotellonFabEnt + p.cBotellonDomEnt,
-      bolsaAgua: p.cBolsaAguaEnt,
-      bolsaHielo: p.cBolsaHieloEnt,
-    }
+    const acumulado = unidadesFisicasEntregadas(p)
     if (total(acumulado) === 0) continue
     const eventos = porPedido.get(p.id) ?? []
     const seguro = eventos.length > 0 && eventos.every((e) => !e.incompleto && e.cantidades && !e.precisionDia)

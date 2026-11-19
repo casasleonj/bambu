@@ -300,7 +300,7 @@ function DesktopRow({
               return (
                 <span key={item.producto} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded-full font-medium">
                   <Icon size={14} />
-                  <span>{item.cantPedido}</span>
+                  <span>{item.cantPedido + (item.cantRegaloPedido ?? 0)}{item.cantRegaloPedido ? ` (${item.cantPedido} con precio + ${item.cantRegaloPedido} regalo)` : ''}</span>
                 </span>
               )
             })
@@ -466,7 +466,7 @@ function MobileCard({
             const Icon = meta.Icon
             return (
               <span key={item.producto} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">
-                <Icon size={14} /> {item.cantPedido}
+                <Icon size={14} /> {item.cantPedido + (item.cantRegaloPedido ?? 0)}{item.cantRegaloPedido ? ` (${item.cantPedido} con precio + ${item.cantRegaloPedido} regalo)` : ''}
               </span>
             )
           })

@@ -31,7 +31,7 @@ export function esEntregaParcial(p: PedidoRaw): boolean {
   if (p.estadoEntrega === 'ENTREGADO') return false
   if (ESTADOS_SIN_VENTA.includes(p.estadoEntrega)) return false
   return (
-    (p.items ?? []).some((i) => i.cantEntrega > 0) ||
+    (p.items ?? []).some((i) => i.cantEntrega + (i.cantRegaloEntrega ?? 0) > 0) ||
     (p.cPacaAguaEnt ?? 0) > 0 ||
     (p.cPacaHieloEnt ?? 0) > 0 ||
     (p.cBotellonFabEnt ?? 0) > 0 ||
@@ -81,6 +81,7 @@ export function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {
       const existing = map.get(key)
       if (existing) {
         existing.cantidad += item.cantEntrega
+        if ((item.cantRegaloEntrega ?? 0) > 0) existing.cantidadRegalo = (existing.cantidadRegalo ?? 0) + (item.cantRegaloEntrega ?? 0)
         existing.subtotal =
           (Math.round(existing.subtotal * 100) +
             importeLineaCentavos(item.precio, item.cantEntrega)) /
@@ -91,6 +92,7 @@ export function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {
           canal,
           precio: Number(item.precio),
           cantidad: item.cantEntrega,
+          ...((item.cantRegaloEntrega ?? 0) > 0 ? { cantidadRegalo: item.cantRegaloEntrega } : {}),
           subtotal:
             (importeLineaCentavos(item.precio, item.cantEntrega)) / 100,
         })
@@ -120,10 +122,16 @@ export function calcularVendidos(pedidos: PedidoRaw[]): {
   )
 
   return {
-    agua: entregados.reduce((acc, p) => acc + (p.cPacaAguaEnt || 0), 0),
-    hielo: entregados.reduce((acc, p) => acc + (p.cPacaHieloEnt || 0), 0),
+    agua: entregados.reduce((acc, p) => acc + (p.items?.length
+      ? p.items.filter(i => i.producto === 'PACA_AGUA').reduce((s, i) => s + i.cantEntrega + (i.cantRegaloEntrega ?? 0), 0)
+      : (p.cPacaAguaEnt || 0)), 0),
+    hielo: entregados.reduce((acc, p) => acc + (p.items?.length
+      ? p.items.filter(i => i.producto === 'PACA_HIELO').reduce((s, i) => s + i.cantEntrega + (i.cantRegaloEntrega ?? 0), 0)
+      : (p.cPacaHieloEnt || 0)), 0),
     botellon: entregados.reduce(
-      (acc, p) => acc + (p.cBotellonFabEnt || 0) + (p.cBotellonDomEnt || 0),
+      (acc, p) => acc + (p.items?.length
+        ? p.items.filter(i => i.producto === 'BOTELLON').reduce((s, i) => s + i.cantEntrega + (i.cantRegaloEntrega ?? 0), 0)
+        : (p.cBotellonFabEnt || 0) + (p.cBotellonDomEnt || 0)),
       0,
     ),
   }

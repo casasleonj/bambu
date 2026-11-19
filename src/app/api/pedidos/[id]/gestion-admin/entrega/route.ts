@@ -3,6 +3,7 @@
 // solo mientras la sección de Embarques no funciona; se apaga con
 // `Config.GESTION_ADMIN_SIN_EMBARQUE` y se retira completa (ver docs).
 import { NextRequest } from 'next/server'
+import { mapRegaloPedidoError } from '@/modules/pedidos/presentation/regalo-pedido-http'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ROLES } from '@/lib/constants'
 import { EntregaOficinaSchema } from '@/lib/validators'
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const d = parsed.data
 
     const fechaEntrega = d.fechaEntrega ? new Date(d.fechaEntrega) : new Date()
-    const unidades = d.itemsEntregados.reduce((s, i) => s + i.cantidad, 0)
+    const unidades = d.itemsEntregados.reduce((s, i) => s + i.cantidad + (i.cantidadRegalo ?? 0), 0)
     if (unidades <= 0) {
       return apiError('Indica cuántas unidades se entregaron.', 422, { code: 'SIN_UNIDADES' })
     }
@@ -57,6 +58,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       itemsEntregados: d.itemsEntregados.map((i) => ({
         producto: i.producto as import('@/shared/domain').ProductCode,
         cantidad: i.cantidad,
+        cantidadRegalo: i.cantidadRegalo,
       })),
       pagos: (d.pagos ?? []).map((p) => ({
         metodo: p.metodo as import('@/modules/pedidos/domain/types').MetodoPago,
@@ -116,6 +118,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return apiSuccess(result)
   } catch (error) {
+    const regaloError = mapRegaloPedidoError(error)
+    if (regaloError) return apiError(regaloError.message, regaloError.status, { code: regaloError.code })
     if (error instanceof Error && error.message === 'ENTREGA_IDEMPOTENCIA_CONFLICTO') {
       return apiError('Este reintento contiene datos distintos. Actualiza la pantalla y revisa la entrega.', 409, { code: 'ENTREGA_IDEMPOTENCIA_CONFLICTO' })
     }

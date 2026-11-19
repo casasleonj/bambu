@@ -2,6 +2,11 @@ import { describe, it, expect } from 'vitest'
 import { mapCierreError } from '../cierre-http'
 
 describe('mapCierreError — estado del embarque (#550)', () => {
+  it('#795: el conflicto de desglose tiene respuesta utilizable, no error interno', () => {
+    expect(mapCierreError('REGALO_DESGLOSE_REQUERIDO: Registre la entrega desde Pedidos.')).toEqual({
+      status: 409, code: 'REGALO_DESGLOSE_REQUERIDO', message: 'Registre la entrega desde Pedidos.',
+    })
+  })
   it('un embarque CERRADO responde «ya está cerrado»', () => {
     expect(mapCierreError('EMBARQUE_YA_CERRADO')).toEqual({ status: 400, message: 'El embarque ya esta cerrado' })
     expect(mapCierreError('Transicion invalida: CERRADO -> CERRADO. Permitidas: ninguna (estado terminal)')).toEqual({

@@ -81,7 +81,7 @@ interface RepartidorClientProps {
       total: number
       saldo: number
       totalPagado: number
-      items: Array<{ producto: string; cantPedido: number; cantEntrega: number; precio: number; subtotal: number }>
+      items: Array<{ producto: string; cantPedido: number; cantEntrega: number; cantRegaloPedido?: number; cantRegaloEntrega?: number; precio: number; subtotal: number }>
       cPacaAguaPed: number
       cPacaHieloPed: number
       cBotellonFabPed: number
@@ -359,7 +359,7 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
     if (pedido.items && pedido.items.length > 0) {
       return pedido.items.filter(i => i.cantPedido > 0)
     }
-    const legacy: { producto: string; cantPedido: number }[] = []
+    const legacy: { producto: string; cantPedido: number; cantRegaloPedido?: number }[] = []
     if (pedido.cPacaAguaPed > 0) legacy.push({ producto: 'PACA_AGUA', cantPedido: pedido.cPacaAguaPed })
     if (pedido.cPacaHieloPed > 0) legacy.push({ producto: 'PACA_HIELO', cantPedido: pedido.cPacaHieloPed })
     const botellonTotal = (pedido.cBotellonFabPed || 0) + (pedido.cBotellonDomPed || 0)
@@ -629,7 +629,7 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
                       const Icon = meta.Icon
                       return (
                         <span key={item.producto} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">
-                          <Icon size={14} /> {item.cantPedido}
+                          <Icon size={14} /> {item.cantPedido + (item.cantRegaloPedido ?? 0)}{item.cantRegaloPedido ? ` (${item.cantRegaloPedido} de regalo)` : ''}
                         </span>
                       )
                     })}
@@ -667,7 +667,8 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
                           nombre: pedido.nombreNegocioCli || [pedido.nombreCli, pedido.apellidoCli].filter(Boolean).join(' '),
                           saldo: Number(pedido.saldo),
                           promesaPagoFecha: pedido.promesaPagoFecha ?? null,
-                          items: pedido.items.map(i => ({ producto: i.producto, cantPedido: i.cantPedido, cantEntrega: i.cantEntrega })),
+                          items: pedido.items.map(i => ({ producto: i.producto, cantPedido: i.cantPedido, cantEntrega: i.cantEntrega,
+                            cantRegaloPedido: i.cantRegaloPedido, cantRegaloEntrega: i.cantRegaloEntrega })),
                         })}
                         className="mt-3 w-full py-3 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition"
                       >

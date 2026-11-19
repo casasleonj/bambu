@@ -1,5 +1,6 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
+import { mapRegaloPedidoError } from '@/modules/pedidos/presentation/regalo-pedido-http'
 import { Prisma } from '@prisma/client'
 import { leerExigibles } from '@/lib/entregas-exigibles-db'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
@@ -335,10 +336,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const result = await actualizarPedidoUseCase.execute({
       pedidoId: id,
-      items: parsed.data.items?.map((i: { producto: string; cantidad: number; precioManual?: number }) => ({
+      items: parsed.data.items?.map(i => ({
         producto: i.producto as import('@/shared/domain').ProductCode,
         cantidad: i.cantidad,
         precioManual: i.precioManual,
+        cantidadRegalo: i.cantidadRegalo,
+        motivoRegalo: i.motivoRegalo,
       })),
       estadoEntrega: parsed.data.estadoEntrega ?? parsed.data.estado,
       // `null` y '' LIMPIAN la observación (antes `|| undefined` lo hacía imposible).
@@ -352,6 +355,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       entregaLat: parsed.data.entregaLat,
       entregaLng: parsed.data.entregaLng,
       usuarioId: getUserFromSession(authResult).id,
+      usuarioRol: getUserFromSession(authResult).role,
       // La auditoría (incluido casoId) la hace el use case DENTRO de la
       // transacción del lock — una sola fila, todas las ramas, rollback
       // atómico. Ya no se audita post-commit acá (F3, review PR #147).
@@ -362,6 +366,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return apiSuccess({ pedido: result.pedido, aplicado: result.aplicado })
   } catch (error) {
+    const regaloError = mapRegaloPedidoError(error)
+    if (regaloError) return apiError(regaloError.message, regaloError.status, { code: regaloError.code })
     if (error instanceof Error && error.message === 'PEDIDO_NOT_FOUND') {
       return apiError('Pedido no encontrado', 404)
     }

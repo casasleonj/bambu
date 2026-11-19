@@ -73,6 +73,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                       producto: true,
                       cantPedido: true,
                       cantEntrega: true,
+                      cantRegaloPedido: true,
+                      cantRegaloEntrega: true,
                       precio: true,
                       subtotal: true,
                     },

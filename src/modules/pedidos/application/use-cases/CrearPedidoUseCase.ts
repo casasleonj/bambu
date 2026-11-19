@@ -47,6 +47,7 @@ import { nominaQueCubre } from '@/lib/nomina-cobertura'
 import { diaBogota } from '@/lib/gestion-admin-fecha'
 import { todayStringBogota } from '@/lib/dates'
 import { EntregaOficinaError } from '../../domain/services/entrega-oficina.errors'
+import { resolverRegaloPedido } from '../services/regalo-pedido.service'
 
 export class CrearPedidoUseCase {
   constructor(
@@ -64,6 +65,10 @@ export class CrearPedidoUseCase {
   ) {}
 
   async execute(input: CrearPedidoInput): Promise<CrearPedidoResult> {
+    // Validar antes de cualquier escritura. El route no acepta evidencia del cliente.
+    const regalos = new Map(input.items.map(i => [i.producto,
+      resolverRegaloPedido(i, { id: input.createdById, rol: input.createdByRole }),
+    ]))
     // Snapshot de empresa fuera del lock: lectura simple de Config,
     // no genera contención y no cambia durante la tx.
     const empresaSnapshot = await getFacturaEmpresaSnapshot()
@@ -351,16 +356,20 @@ export class CrearPedidoUseCase {
         await this.clienteRepo.incrementarSaldoFavor(clienteId, excedente, tx)
       }
 
-      const items = preciosResueltos.map(pr =>
-        new PedidoItem(
+      const items = preciosResueltos.map(pr => {
+        const regalo = regalos.get(pr.producto)
+        return new PedidoItem(
           pr.producto,
           pr.cantidad,
           UnitPrice.fromDecimal(pr.precio),
           pr.origen,
           // entrega posterior → nada entregado todavía (cantEntrega = 0).
           estadoEntregaCreacion === 'ENTREGADO' ? pr.cantidad : 0,
-        ),
-      )
+          regalo
+            ? { ...regalo, entregada: estadoEntregaCreacion === 'ENTREGADO' ? regalo.cantidad : 0 }
+            : undefined,
+        )
+      })
 
       const numero = await getNextNumero(tx, { model: 'pedido', field: 'numero' })
 
@@ -460,7 +469,11 @@ export class CrearPedidoUseCase {
         entidad: 'Pedido',
         registroId: saved.id.get(),
         accion: 'CREATE',
-        datos: { numero: saved.numero, origen: origen.get(), canal: canal.get(), total, clienteId },
+        datos: { numero: saved.numero, origen: origen.get(), canal: canal.get(), total, clienteId,
+          ...(saved.items.some(i => i.cantRegaloPedido > 0) ? {
+            regalos: saved.items.filter(i => i.regalo).map(i => ({ producto: i.producto, ...i.regalo })),
+          } : {}),
+        },
         usuarioId: input.createdById,
       }, tx)
 

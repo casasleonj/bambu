@@ -23,23 +23,50 @@ export type ProductCode = keyof typeof PESOS_KG
  */
 export interface PedidoCapacidadInput {
   // Shape legacy (mantener para retrocompat)
-  cPacaAguaPed?: number
-  cPacaHieloPed?: number
-  cBotellonFabPed?: number
-  cBotellonDomPed?: number
-  cBolsaAguaPed?: number
-  cBolsaHieloPed?: number
+  cPacaAguaPed?: number | null
+  cPacaHieloPed?: number | null
+  cBotellonFabPed?: number | null
+  cBotellonDomPed?: number | null
+  cBolsaAguaPed?: number | null
+  cBolsaHieloPed?: number | null
+  cPacaAguaEnt?: number | null
+  cPacaHieloEnt?: number | null
+  cBotellonFabEnt?: number | null
+  cBotellonDomEnt?: number | null
+  cBolsaAguaEnt?: number | null
+  cBolsaHieloEnt?: number | null
   // Shape canónico (Sprint 4+)
   items?: Array<{
     producto: string
     cantPedido: number
+    cantEntrega?: number
+    cantRegaloPedido?: number
+    cantRegaloEntrega?: number
   }>
 }
 
-function cantidadProducto(pedido: PedidoCapacidadInput, code: ProductCode): number {
+/** Proyección para un NUEVO viaje; no modifica el pedido ni el historial de una carga anterior. */
+export function pedidoParaCargaPendiente(p: PedidoCapacidadInput): PedidoCapacidadInput {
+  return {
+    ...p,
+    cPacaAguaPed: Math.max(0, (p.cPacaAguaPed ?? 0) - (p.cPacaAguaEnt ?? 0)), cPacaAguaEnt: 0,
+    cPacaHieloPed: Math.max(0, (p.cPacaHieloPed ?? 0) - (p.cPacaHieloEnt ?? 0)), cPacaHieloEnt: 0,
+    cBotellonFabPed: Math.max(0, (p.cBotellonFabPed ?? 0) - (p.cBotellonFabEnt ?? 0)), cBotellonFabEnt: 0,
+    cBotellonDomPed: Math.max(0, (p.cBotellonDomPed ?? 0) - (p.cBotellonDomEnt ?? 0)), cBotellonDomEnt: 0,
+    cBolsaAguaPed: Math.max(0, (p.cBolsaAguaPed ?? 0) - (p.cBolsaAguaEnt ?? 0)), cBolsaAguaEnt: 0,
+    cBolsaHieloPed: Math.max(0, (p.cBolsaHieloPed ?? 0) - (p.cBolsaHieloEnt ?? 0)), cBolsaHieloEnt: 0,
+    ...(p.items ? { items: p.items.map(i => ({ ...i,
+      cantPedido: Math.max(0, i.cantPedido - (i.cantEntrega ?? 0)), cantEntrega: 0,
+      cantRegaloPedido: Math.max(0, (i.cantRegaloPedido ?? 0) - (i.cantRegaloEntrega ?? 0)), cantRegaloEntrega: 0,
+    })) } : {}),
+  }
+}
+
+export function cantidadFisicaProductoPedido(pedido: PedidoCapacidadInput, code: ProductCode): number {
   // Preferir items[] si está presente (single source of truth).
   if (pedido.items && pedido.items.length > 0) {
-    return pedido.items.find(i => i.producto === code)?.cantPedido ?? 0
+    const item = pedido.items.find(i => i.producto === code)
+    return item ? item.cantPedido + (item.cantRegaloPedido ?? 0) : 0
   }
   // Fallback a legacy si items[] no está.
   switch (code) {
@@ -56,11 +83,11 @@ export function calcularPacasEmbarque(pedidos: PedidoCapacidadInput[]): number {
   return pedidos.reduce((total, p) => {
     return (
       total +
-      cantidadProducto(p, 'PACA_AGUA') +
-      cantidadProducto(p, 'PACA_HIELO') +
-      cantidadProducto(p, 'BOTELLON') +
-      cantidadProducto(p, 'BOLSA_AGUA') +
-      cantidadProducto(p, 'BOLSA_HIELO')
+      cantidadFisicaProductoPedido(p, 'PACA_AGUA') +
+      cantidadFisicaProductoPedido(p, 'PACA_HIELO') +
+      cantidadFisicaProductoPedido(p, 'BOTELLON') +
+      cantidadFisicaProductoPedido(p, 'BOLSA_AGUA') +
+      cantidadFisicaProductoPedido(p, 'BOLSA_HIELO')
     )
   }, 0)
 }
@@ -69,11 +96,11 @@ export function calcularPesoEmbarque(pedidos: PedidoCapacidadInput[]): number {
   return pedidos.reduce((total, p) => {
     return (
       total +
-      cantidadProducto(p, 'PACA_AGUA') * PESOS_KG.PACA_AGUA +
-      cantidadProducto(p, 'PACA_HIELO') * PESOS_KG.PACA_HIELO +
-      cantidadProducto(p, 'BOTELLON') * PESOS_KG.BOTELLON +
-      cantidadProducto(p, 'BOLSA_AGUA') * PESOS_KG.BOLSA_AGUA +
-      cantidadProducto(p, 'BOLSA_HIELO') * PESOS_KG.BOLSA_HIELO
+      cantidadFisicaProductoPedido(p, 'PACA_AGUA') * PESOS_KG.PACA_AGUA +
+      cantidadFisicaProductoPedido(p, 'PACA_HIELO') * PESOS_KG.PACA_HIELO +
+      cantidadFisicaProductoPedido(p, 'BOTELLON') * PESOS_KG.BOTELLON +
+      cantidadFisicaProductoPedido(p, 'BOLSA_AGUA') * PESOS_KG.BOLSA_AGUA +
+      cantidadFisicaProductoPedido(p, 'BOLSA_HIELO') * PESOS_KG.BOLSA_HIELO
     )
   }, 0)
 }

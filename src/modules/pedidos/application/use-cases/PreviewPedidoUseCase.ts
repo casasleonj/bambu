@@ -28,6 +28,8 @@ import { calcularAlertasCliente } from '@/lib/alertas-detector'
 import { draftToPedidoBase, pedidoEntityToPedidoBase } from './pedido-to-pedido-base'
 import { resolverEntrega } from '../../domain/services/entrega-suficiencia.service'
 import type { PreviewLinkResolver } from '@/lib/geo/preview-coords-resolver'
+import type { PedidoItem, RegaloPedidoItem } from '../../domain/entities/PedidoItem'
+import { RegaloPedidoError, resolverRegaloPedido } from '../services/regalo-pedido.service'
 
 export class ClienteNotFoundError extends Error {
   constructor(id: string) { super(`CLIENTE_NOT_FOUND: ${id}`); this.name = 'ClienteNotFoundError' }
@@ -121,6 +123,7 @@ export class PreviewPedidoUseCase {
     // estadoEntrega actual, no contra 'PENDIENTE'). ──
     let totalPagadoBase = 0
     let estadoEntregaExistente: string | null = null
+    let itemsExistentes: readonly PedidoItem[] = []
     // Destino propio del pedido existente (snapshot de texto + ubicación) — para
     // decidir, igual que ActualizarPedidoUseCase, si la edición CAMBIA el destino.
     let destinoExistente: { direccion: string | null; barrio: string | null; lat: number | null; lng: number | null } | null = null
@@ -129,12 +132,28 @@ export class PreviewPedidoUseCase {
       if (!existente) throw new PedidoNotFoundError(input.pedidoId as string)
       totalPagadoBase = existente.totalPagado.toDecimal()
       estadoEntregaExistente = existente.estadoEntrega.get()
+      itemsExistentes = existente.items ?? []
       destinoExistente = {
         direccion: existente.direccionEntrega ?? null,
         barrio: existente.barrioEntrega ?? null,
         lat: existente.entregaLat ?? null,
         lng: existente.entregaLng ?? null,
       }
+    }
+
+    const regalos = new Map<string, RegaloPedidoItem | undefined>()
+    let errorRegalo: RegaloPedidoError | undefined
+    try {
+      if (itemsExistentes.some(i => i.cantRegaloPedido > 0 && !input.items.some(s => s.producto === i.producto && s.cantidad > 0))) {
+        throw new RegaloPedidoError('REGALO_DESGLOSE_REQUERIDO')
+      }
+      for (const i of input.items) {
+        regalos.set(i.producto, resolverRegaloPedido(i, { id: input.actorId, rol: input.actorRol },
+          itemsExistentes.find(previo => previo.producto === i.producto)?.regalo))
+      }
+    } catch (error) {
+      if (!(error instanceof RegaloPedidoError)) throw error
+      errorRegalo = error
     }
 
     // ── Pricing (mismo port que CrearPedidoUseCase) ──
@@ -152,6 +171,7 @@ export class PreviewPedidoUseCase {
       precioUnitario: r.precio, // ya incluye recargo domicilio si aplica
       subtotal: r.subtotal, // = r.precio × r.cantidad
       precioOrigen: r.origen,
+      ...(regalos.get(r.producto)?.cantidad ? { cantidadRegalo: regalos.get(r.producto)!.cantidad } : {}),
     }))
 
     // ── Semántica de cálculo (contrato) ──
@@ -194,6 +214,12 @@ export class PreviewPedidoUseCase {
     // ── Permissions + warnings ──
     const warnings: PreviewPedidoResult['warnings'] = []
     let canCreate = true
+    if (errorRegalo) {
+      canCreate = false
+      warnings.push({ code: errorRegalo.code, field: 'items', message: errorRegalo.code === 'REGALO_REQUIERE_ADMIN'
+        ? 'Un administrador debe autorizar las unidades de regalo.'
+        : 'Revisa el desglose y el motivo del regalo. No se guardará un regalo sin evidencia válida.' })
+    }
     let excepcionAplicada: PreviewPedidoResult['excepcionAplicada']
     let excepcionNoAplica: PreviewPedidoResult['excepcionNoAplica']
     let credito: PreviewPedidoResult['credito']
@@ -465,7 +491,7 @@ export class PreviewPedidoUseCase {
       excepcionNoAplica,
       credito,
       entrega,
-      requiresAuthorization: false,
+      requiresAuthorization: errorRegalo?.code === 'REGALO_REQUIERE_ADMIN',
       auditPreview: {
         actor: input.actorId,
         accion: esEdicion ? 'ACTUALIZAR_PEDIDO' : 'CREAR_PEDIDO',

@@ -105,6 +105,8 @@ export class PedidoDTOMapper {
         producto: i.producto,
         cantPedido: i.cantPedido,
         cantEntrega: i.cantEntrega,
+        cantRegaloPedido: i.cantRegaloPedido,
+        cantRegaloEntrega: i.cantRegaloEntrega,
         precio: i.precio.toDecimal(),
         subtotal: i.subtotalPedido.toDecimal(),
         precioOrigen: i.precioOrigen,

@@ -13,8 +13,8 @@ function toRequestBody(draft: DraftPedido, pedidoId?: string, borradorId?: strin
     canal: draft.canal,
     origen: draft.origen,
     items: draft.items
-      .filter((i) => i.cantidad > 0)
-      .map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual })),
+      .filter((i) => i.cantidad > 0 || (i.cantidadRegalo ?? 0) > 0)
+      .map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual, cantidadRegalo: i.cantidadRegalo })),
     // modo edición: el PUT es declarativo de items, los pagos no se re-envían.
     pagos: pedidoId ? undefined : (draft.pagos.length > 0 ? draft.pagos : undefined),
     entregado: draft.entregado,

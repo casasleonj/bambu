@@ -31,9 +31,9 @@ import type { IClienteRepository } from '../../domain/repositories/IClienteRepos
 import type { IPricingPort } from '../../domain/repositories/IPricingPort'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
 import { PedidoItem } from '../../domain/entities/PedidoItem'
-import type { ProductCode } from '@/shared/domain'
 import { Pedido } from '../../domain/entities/Pedido'
-import type { ActualizarPedidoInput } from '../dto'
+import type { ActualizarPedidoInput, PedidoItemInput } from '../dto'
+import { RegaloPedidoError, resolverRegaloPedido } from '../services/regalo-pedido.service'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 import { lineaSinCambio as lineaSinCambioPlana } from '@/lib/pedido-edicion-items'
@@ -64,14 +64,16 @@ export interface ActualizarPedidoResult {
   aplicado: { campos: string[]; sinCambios: boolean }
 }
 
-interface LineaSnapshot { producto: string; cantidad: number; precio: number; precioOrigen: string }
+interface LineaSnapshot { producto: string; cantidad: number; precio: number; precioOrigen: string; regalo?: ReturnType<typeof resolverRegaloPedido> }
 
 const snapshotLineas = (items: readonly PedidoItem[]): LineaSnapshot[] =>
   items
-    .map((i) => ({ producto: i.producto as string, cantidad: i.cantPedido, precio: i.precio.toDecimal(), precioOrigen: i.precioOrigen }))
+    .map((i) => ({ producto: i.producto as string, cantidad: i.cantPedido, precio: i.precio.toDecimal(), precioOrigen: i.precioOrigen,
+      ...(i.regalo ? { regalo: i.regalo } : {}),
+    }))
     .sort((a, b) => a.producto.localeCompare(b.producto))
 
-type LineaSolicitada = { producto: ProductCode; cantidad: number; precioManual?: number }
+type LineaSolicitada = PedidoItemInput
 
 /** Adaptador al dominio de la regla compartida (`lib/pedido-edicion-items`, misma que usa el formulario). */
 function lineaSinCambio(previo: PedidoItem | undefined, i: LineaSolicitada): boolean {
@@ -164,16 +166,25 @@ export class ActualizarPedidoUseCase {
         if (repetidos.length > 0) throw new LineasDuplicadasError([...new Set(repetidos)])
 
         const previoPorProducto = new Map(pedido.items.map((i) => [i.producto as string, i]))
+        // Un cliente antiguo no puede borrar una concesión al omitir la línea.
+        // Cero explícito en una línea conservada pasa por la autorización de retiro.
+        if (pedido.items.some(i => i.cantRegaloPedido > 0 && !solicitados.some(s => s.producto === i.producto))) {
+          throw new RegaloPedidoError('REGALO_DESGLOSE_REQUERIDO')
+        }
+        const regalos = new Map(input.items.map(i => [i.producto, resolverRegaloPedido(
+          i, { id: input.usuarioId, rol: input.usuarioRol }, previoPorProducto.get(i.producto)?.regalo,
+        )]))
         const hayCambioDeclarado =
           solicitados.length !== pedido.items.length ||
-          solicitados.some((i) => !lineaSinCambio(previoPorProducto.get(i.producto), i))
+          solicitados.some((i) => !lineaSinCambio(previoPorProducto.get(i.producto), i) ||
+            JSON.stringify(regalos.get(i.producto)) !== JSON.stringify(previoPorProducto.get(i.producto)?.regalo))
 
         // Las guardas de cantidades/N2 aplican SOLO si de verdad se pide cambiar
         // líneas: reenviar lo mismo (lo que hace el formulario al editar una
         // nota) no puede quedar bloqueado por entregas, cierre o N2.
         if (hayCambioDeclarado) {
           if (cerrado) throw new Error('PEDIDO_CERRADO_USE_AJUSTAR_CANTIDAD')
-          if (pedido.items.some((i) => i.cantEntrega > 0)) throw new Error('CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD')
+          if (pedido.items.some((i) => i.cantidadFisicaEntregada > 0)) throw new Error('CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD')
 
           const productosActuales = pedido.items.map((i) => i.producto as string)
           const duplicadosActuales = productosActuales.filter((p, idx) => productosActuales.indexOf(p) !== idx)
@@ -201,9 +212,9 @@ export class ActualizarPedidoUseCase {
 
           const nuevosItems = solicitados.map((i) => {
             const r = resueltoPorProducto.get(i.producto)
-            if (r) return new PedidoItem(r.producto, r.cantidad, UnitPrice.fromDecimal(r.precio), r.origen, 0)
+            if (r) return new PedidoItem(r.producto, r.cantidad, UnitPrice.fromDecimal(r.precio), r.origen, 0, regalos.get(i.producto))
             const previo = previoPorProducto.get(i.producto)!
-            return new PedidoItem(previo.producto, previo.cantPedido, previo.precio, previo.precioOrigen, 0)
+            return new PedidoItem(previo.producto, previo.cantPedido, previo.precio, previo.precioOrigen, 0, regalos.get(i.producto))
           })
 
           const nuevoTotal = nuevosItems.reduce((sum, i) => sum + i.subtotalPedido.cents, 0) / 100

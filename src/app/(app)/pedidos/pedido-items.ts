@@ -5,9 +5,11 @@ import type { Pedido } from './pedidos-client/types'
  * Items de un pedido, con fallback a las columnas legacy per-producto.
  * Compartido por `pedido-table.tsx` (V1) y el Pedido Hub (V2).
  */
-export function getItemsFromPedido(pedido: Pedido): Array<{ producto: string; cantPedido: number }> {
+export function getItemsFromPedido(pedido: Pedido): Array<{ producto: string; cantPedido: number; cantRegaloPedido?: number }> {
   if (pedido.items && pedido.items.length > 0) {
-    return pedido.items.filter((i) => i.cantPedido > 0).map((i) => ({ producto: i.producto, cantPedido: i.cantPedido }))
+    return pedido.items.filter((i) => i.cantPedido + (i.cantRegaloPedido ?? 0) > 0).map((i) => ({ producto: i.producto, cantPedido: i.cantPedido,
+      ...((i.cantRegaloPedido ?? 0) > 0 ? { cantRegaloPedido: i.cantRegaloPedido } : {}),
+    }))
   }
   const legacy: Array<{ producto: string; cantPedido: number }> = []
   if (pedido.cPacaAguaPed > 0) legacy.push({ producto: 'PACA_AGUA', cantPedido: pedido.cPacaAguaPed })
@@ -23,5 +25,5 @@ export function getItemsFromPedido(pedido: Pedido): Array<{ producto: string; ca
 export function pedidoItemsResumen(pedido: Pedido): string {
   const items = getItemsFromPedido(pedido)
   if (items.length === 0) return 'Sin productos'
-  return items.map((i) => `${i.cantPedido} ${getProductoIconConfig(i.producto).label ?? i.producto}`).join(', ')
+  return items.map((i) => `${i.cantPedido + (i.cantRegaloPedido ?? 0)} ${getProductoIconConfig(i.producto).label ?? i.producto}${i.cantRegaloPedido ? ` (${i.cantPedido} con precio + ${i.cantRegaloPedido} de regalo)` : ''}`).join(', ')
 }

@@ -27,6 +27,7 @@ export interface PedidoRaw {
   items?: Array<{
     producto: string
     cantEntrega: number
+    cantRegaloEntrega?: number
     precio:
       | number
       | string
@@ -54,6 +55,7 @@ export interface VentaPorPrecio {
   canal: 'PUNTO' | 'DOMICILIO'
   precio: number
   cantidad: number
+  cantidadRegalo?: number
   subtotal: number
 }
 

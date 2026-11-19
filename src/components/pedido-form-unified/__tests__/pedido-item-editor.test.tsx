@@ -40,6 +40,23 @@ function baseProps(items: PedidoItemEditorItem[] = [makeItem()]) {
 }
 
 describe('PedidoItemEditor', () => {
+  it('#795: el control del administrador es progresivo y distingue unidades con precio y gratuitas', () => {
+    const onCantidadRegaloChange = vi.fn()
+    render(<PedidoItemEditor {...baseProps([makeItem({ cantidad: 60, precio: 2300, precioBase: 2300, cantidadRegalo: 3 })])}
+      puedeAutorizarRegalos onCantidadRegaloChange={onCantidadRegaloChange} />)
+    expect(screen.getByTestId('item-regalo-resumen-PACA_AGUA')).toHaveTextContent('60 con precio + 3 de regalo = 63 para entregar')
+    const input = screen.getByTestId('item-regalo-PACA_AGUA')
+    expect(input.closest('details')).not.toHaveAttribute('open')
+    fireEvent.change(input, { target: { value: '2' } })
+    expect(onCantidadRegaloChange).toHaveBeenCalledWith('pacaAgua', '2')
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar regalo', hidden: true }))
+    expect(onCantidadRegaloChange).toHaveBeenCalledWith('pacaAgua', '0')
+  })
+  it('#795: quien no autoriza puede ver un regalo existente, sin control de ampliación', () => {
+    render(<PedidoItemEditor {...baseProps([makeItem({ cantidad: 60, cantidadRegalo: 3 })])} onCantidadRegaloChange={vi.fn()} />)
+    expect(screen.getByTestId('item-regalo-resumen-PACA_AGUA')).toBeInTheDocument()
+    expect(screen.queryByTestId('item-regalo-PACA_AGUA')).not.toBeInTheDocument()
+  })
   it('renderiza un producto por cada item recibido', () => {
     render(<PedidoItemEditor {...baseProps([makeItem({ prodId: 'pacaAgua' }), makeItem({ prodId: 'pacaHielo' })])} />)
     expect(screen.getByText('Paca de Agua (40u 300ml)')).toBeInTheDocument()

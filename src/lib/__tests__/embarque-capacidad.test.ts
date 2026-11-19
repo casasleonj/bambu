@@ -12,6 +12,11 @@ import {
 // ─── calcularPacasEmbarque ───────────────────────────────────────────
 
 describe('calcularPacasEmbarque', () => {
+  it('#795: capacidad usa 63 físicas aunque el contrato comercial legado conserve 60', () => {
+    const pedido = { cPacaAguaPed: 60, items: [{ producto: 'PACA_AGUA', cantPedido: 60, cantRegaloPedido: 3 }] }
+    expect(calcularPacasEmbarque([pedido])).toBe(63)
+    expect(calcularPesoEmbarque([pedido])).toBe(63 * PESOS_KG.PACA_AGUA)
+  })
   it('returns 0 for empty array', () => {
     expect(calcularPacasEmbarque([])).toBe(0)
   })

@@ -635,7 +635,7 @@ async function leerConsultaPedidos(
             tx.pedidoItem.groupBy({
               by: ["producto"],
               where: { pedido: { is: fin } },
-              _sum: { cantPedido: true, cantEntrega: true },
+              _sum: { cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true },
             }),
             tx.pedido.aggregate({
               where: { AND: [fin, { items: { none: {} } }] },
@@ -660,8 +660,8 @@ async function leerConsultaPedidos(
               l.producto,
               {
                 producto: l.producto,
-                pedidas: l._sum.cantPedido ?? 0,
-                entregadas: l._sum.cantEntrega ?? 0,
+                pedidas: (l._sum.cantPedido ?? 0) + (l._sum.cantRegaloPedido ?? 0),
+                entregadas: (l._sum.cantEntrega ?? 0) + (l._sum.cantRegaloEntrega ?? 0),
               },
             ]),
           );

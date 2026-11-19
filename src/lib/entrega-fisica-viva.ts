@@ -22,6 +22,8 @@ export const FLAG_ENTREGA_VIVA = 'EMBARQUE_ENTREGA_VIVA_DESDE'
 
 /** Valor de `metadata.captura` del evento escrito por `/entrega`. */
 export const CAPTURA_ENTREGA_PEDIDO = 'ENTREGA_PEDIDO'
+/** Regalo atribuido sin convertir una misión histórica al modo vivo. */
+export const CAPTURA_REGALO_LEGADO = 'REGALO_PEDIDO_LEGADO'
 /** Valor de `metadata.captura` del movimiento que escribe el propio cierre. */
 export const CAPTURA_CIERRE = 'CIERRE'
 

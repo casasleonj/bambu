@@ -15,6 +15,15 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { Money, UnitPrice } from '@/shared/domain'
+import { Pedido } from '../domain/entities/Pedido'
+import { PedidoItem } from '../domain/entities/PedidoItem'
+import { PedidoId } from '../domain/value-objects/PedidoId'
+import { CanalVO } from '../domain/value-objects/Canal'
+import { OrigenPedidoVO } from '../domain/value-objects/OrigenPedido'
+import { EstadoEntregaVO } from '../domain/value-objects/EstadoEntrega'
+import { EstadoPagoVO } from '../domain/value-objects/EstadoPago'
+import { PedidoMapper } from '../infrastructure/mappers/PedidoMapper'
 
 const mapperPath = join(process.cwd(), 'src/modules/pedidos/infrastructure/mappers/PedidoMapper.ts')
 const repoPath = join(process.cwd(), 'src/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository.ts')
@@ -36,8 +45,17 @@ describe('Sprint 3 (C-2 Fase 1): dual-write + trigger sync', () => {
   })
 
   it('FIX: toPrismaCreate también escribe en items[] (dual-write)', () => {
-    const createFn = mapper.match(/static toPrismaCreate[\s\S]+?^  \}/m)?.[0] || ''
-    expect(createFn).toMatch(/items:\s*\{[\s\S]+?create:\s*pedido\.items\.map/)
+    const pedido = Pedido.create({
+      id: PedidoId.from('dual-write-test'), numero: 1, clienteId: 'cliente-test',
+      canal: CanalVO.create('PUNTO'), origen: OrigenPedidoVO.create('PEDIDO'),
+      estadoEntrega: EstadoEntregaVO.create('PENDIENTE'), estadoPago: EstadoPagoVO.create('PENDIENTE'),
+      items: [new PedidoItem('PACA_AGUA', 2, UnitPrice.fromDecimal(2300), 'base')],
+      total: Money.fromDecimal(4600), totalPagado: Money.fromDecimal(0), pagos: [], fecha: new Date(),
+    })
+    expect(PedidoMapper.toPrismaCreate(pedido)).toMatchObject({
+      cPacaAguaPed: 2, cPacaAguaEnt: 0, total: 4600,
+      items: { create: [{ producto: 'PACA_AGUA', cantPedido: 2, cantEntrega: 0, precio: 2300, subtotal: 4600 }] },
+    })
   })
 
   it('FIX: fromPrisma lee desde items[]', () => {

@@ -211,13 +211,15 @@ export class CerrarEmbarqueUseCase {
       const vivo = modoVivo
         ? await this.salidasMision.calcular(client, input.id, embarque, pedidosRaw, entregasDelCierre, input.ventasLibres ?? [])
         : null
+      const entregadasLegadas = !modoVivo
+        ? await this.salidasMision.entregadasLegadas(client, input.id, pedidosRaw, input.ventasLibres ?? []) : undefined
 
       // 5. Reconcile products
       const { totalDiscrepancia, discrepanciasPorProducto } = await this.conciliarProductos(
         client,
         input.id,
         embarque,
-        vivo?.entregadas ?? this.salidasMision.entregadasPorAcumulado(pedidosRaw, input.ventasLibres ?? []),
+        vivo?.entregadas ?? entregadasLegadas!,
         productosRetorno,
       )
 
@@ -258,6 +260,7 @@ export class CerrarEmbarqueUseCase {
         ventasLibres: input.ventasLibres ?? [],
         productosRetorno,
         entregasCierre: vivo?.entregasCierre,
+        entregasLegadas: entregadasLegadas,
       })
 
       // 9. Reconcile cash before closing to detect faltante de caja.

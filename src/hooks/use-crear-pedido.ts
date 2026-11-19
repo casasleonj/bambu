@@ -18,6 +18,7 @@ export interface CrearPedidoPayload {
   items: Array<{
     producto: string
     cantidad: number
+    cantidadRegalo?: number
     precioManual?: number
   }>
   pagos?: Array<{ metodo: string; monto: number }>

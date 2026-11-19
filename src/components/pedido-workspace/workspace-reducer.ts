@@ -149,6 +149,11 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         ...state.draft,
         items: upsertItem(state.draft.items, action.producto, { cantidad: Math.max(0, action.cantidad) }),
       })
+    case 'SET_ITEM_REGALO':
+      return afterDraftChange(state, {
+        ...state.draft,
+        items: upsertItem(state.draft.items, action.producto, { cantidadRegalo: action.cantidad }),
+      })
     case 'SET_ITEM_PRECIO_MANUAL': {
       const s = afterDraftChange(state, {
         ...state.draft,

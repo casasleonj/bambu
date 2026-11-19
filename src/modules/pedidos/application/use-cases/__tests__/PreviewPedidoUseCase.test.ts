@@ -41,6 +41,27 @@ function makeDeps(): PreviewPedidoDeps {
 }
 
 describe('PreviewPedidoUseCase — pricing + payment projection', () => {
+  it('#795: preview separa las gratuitas y conserva el importe con autorización del servidor', async () => {
+    const r = await new PreviewPedidoUseCase(makeDeps()).execute({
+      clienteId: 'c1', canal: 'PUNTO', actorId: 'admin-test', actorRol: 'ADMIN',
+      items: [{ producto: 'PACA_AGUA', cantidad: 10, cantidadRegalo: 3, motivoRegalo: 'Regalo acordado' }],
+    })
+    expect(r.permissions.canCreate).toBe(true)
+    expect(r.calculation.items[0].cantidadRegalo).toBe(3)
+    expect(r.calculation.total).toBe(27000)
+  })
+
+  it('#795: preview no presenta como autorizada una concesión de un repartidor', async () => {
+    const r = await new PreviewPedidoUseCase(makeDeps()).execute({
+      clienteId: 'c1', canal: 'PUNTO', actorId: 'repartidor-test', actorRol: 'REPARTIDOR',
+      items: [{ producto: 'PACA_AGUA', cantidad: 10, cantidadRegalo: 3, motivoRegalo: 'Regalo acordado' }],
+    })
+    expect(r.permissions.canCreate).toBe(false)
+    expect(r.allowedActions).toEqual([])
+    expect(r.requiresAuthorization).toBe(true)
+    expect(r.warnings).toContainEqual(expect.objectContaining({ code: 'REGALO_REQUIERE_ADMIN' }))
+  })
+
   it('total = Σ (precio × cantidad); subtotal = total − recargoDomicilio', async () => {
     const r = await new PreviewPedidoUseCase(makeDeps()).execute({
       clienteId: 'c1', canal: 'DOMICILIO', origen: 'PEDIDO',

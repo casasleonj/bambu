@@ -19,6 +19,7 @@ import {
   pendientes,
   pesos,
   resumen,
+  resumenRegalos,
   saldoActual,
   saldoEntregadoTrasEntrega,
   sumarDias,
@@ -73,6 +74,7 @@ export function RegistrarEntregaDialog({ pedido, repartidores, fiadoParcialActiv
   const errores = validar(pedido, datos, new Date(), modoParcial)
   const esDomicilio = pedido.canal === 'DOMICILIO'
   const pend = pendientes(pedido)
+  const regaloResumen = resumenRegalos(pedido, datos)
   const monto = montoNumero(datos)
   const saldo = saldoActual(pedido)
   const entregaCompleta = datos.alcance !== null && completa(pedido, datos)
@@ -151,7 +153,7 @@ export function RegistrarEntregaDialog({ pedido, repartidores, fiadoParcialActiv
               <span className={ETIQUETA}>¿Se entregó todo lo pedido? *</span>
               <div className="flex flex-col gap-2">
                 <Opcion name="alcance" checked={datos.alcance === 'COMPLETA'} onChange={() => set('alcance', 'COMPLETA')} testId="alcance-todo">
-                  Sí, se entregó todo ({pend.map((i) => `${i.pendiente} ${nombreProducto(i.producto)}`).join(', ')})
+                  Sí, se entregó todo ({pend.map((i) => `${i.pendiente + (i.pendienteRegalo ?? 0)} ${nombreProducto(i.producto)}${i.pendienteRegalo !== undefined ? `: ${i.pendiente} con precio + ${i.pendienteRegalo} de regalo` : ''}`).join(', ')})
                 </Opcion>
                 <Opcion name="alcance" checked={datos.alcance === 'MENOS'} onChange={() => set('alcance', 'MENOS')} testId="alcance-menos">
                   No, entregó menos y el resto queda pendiente
@@ -167,12 +169,14 @@ export function RegistrarEntregaDialog({ pedido, repartidores, fiadoParcialActiv
                     const pedidas = linea?.cantPedido ?? i.pendiente + entregadasAntes
                     const ahora = Number(datos.cantidades[i.producto] ?? 0)
                     const quedaran = Math.max(0, i.pendiente - (Number.isFinite(ahora) ? ahora : 0))
+                    const regaloAhora = datos.regalos?.[i.producto] ?? 0
+                    const regalosQuedaran = Math.max(0, (i.pendienteRegalo ?? 0) - (Number.isFinite(regaloAhora) ? regaloAhora : 0))
                     return (
-                      <label key={i.producto} className="flex flex-col gap-1 text-sm">
+                      <div key={i.producto} className="flex flex-col gap-1 text-sm">
                         <span className="font-semibold text-gray-900">{nombreProducto(i.producto)}</span>
                         <span className="text-xs text-gray-700">Pedidas {pedidas} · ya entregadas {entregadasAntes}</span>
                         <span className="flex items-center justify-between gap-3">
-                          <span>¿Cuántas entregas ahora?</span>
+                          <span>{i.pendienteRegalo !== undefined ? 'Con precio · entregadas ahora' : '¿Cuántas entregas ahora?'}</span>
                           <input
                             type="number"
                             min={0}
@@ -184,16 +188,35 @@ export function RegistrarEntregaDialog({ pedido, repartidores, fiadoParcialActiv
                             className="min-h-[44px] w-24 rounded-lg border border-gray-300 px-3 text-right"
                           />
                         </span>
+                        {i.pendienteRegalo !== undefined && (
+                          <label className="flex items-center justify-between gap-3">
+                            <span>De regalo · entregadas ahora</span>
+                            <input type="number" min={0} max={i.pendienteRegalo} step={1} inputMode="numeric"
+                              aria-label={`Regalos entregados de ${nombreProducto(i.producto)}`}
+                              value={datos.regalos?.[i.producto] ?? 0}
+                              onChange={e => set('regalos', { ...datos.regalos, [i.producto]: Number(e.target.value) })}
+                              className="min-h-[44px] w-24 rounded-lg border border-gray-300 px-3 text-right" />
+                          </label>
+                        )}
                         <span className="text-xs font-semibold text-gray-800" data-testid={`quedaran-${i.producto}`} aria-live="polite">
-                          {quedaran === 0 ? 'No quedará nada por entregar' : `Quedarán ${quedaran} por entregar`}
+                          {i.pendienteRegalo !== undefined ? `Quedarán ${quedaran} con precio y ${regalosQuedaran} de regalo` :
+                            quedaran === 0 ? 'No quedará nada por entregar' : `Quedarán ${quedaran} por entregar`}
                         </span>
-                      </label>
+                      </div>
                     )
                   })}
                   {intento && errores.cantidades && <p className={ERROR}>{errores.cantidades}</p>}
                   <p className={AYUDA}>
                     Si la cantidad pedida cambió, corrígela en el pedido con «Corregir la cantidad» antes de entregar.
                   </p>
+                </div>
+              )}
+              {regaloResumen && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                  <p>📦 Se entregan <strong>{regaloResumen.fisicas} unidades físicas</strong>.</p>
+                  <p>🧾 Valor de esta entrega: <strong>{regaloResumen.valor === null ? 'Por verificar' : pesos(regaloResumen.valor)}</strong>.</p>
+                  {esDomicilio && <p>🚚 Base física para reparto: <strong>{regaloResumen.fisicas} unidades</strong>. Aplica cuando corresponde comisión.</p>}
+                  <p className="mt-1 text-xs">«Con precio» identifica la mercancía a cobrar. El pago se registra en el apartado de cobro.</p>
                 </div>
               )}
             </section>

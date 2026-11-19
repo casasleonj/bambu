@@ -1,6 +1,7 @@
 import { leerExigibles } from '@/lib/entregas-exigibles-db'
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
+import { mapRegaloPedidoError } from '@/modules/pedidos/presentation/regalo-pedido-http'
 import { Prisma } from '@prisma/client'
 import * as Sentry from '@sentry/nextjs'
 import { requireAuth, requireRole } from '@/lib/auth-check'
@@ -330,10 +331,12 @@ export async function POST(request: NextRequest) {
 
     // Normalize items (support both new items[] and legacy productos{})
     const itemsInput = items && items.length > 0
-      ? items.filter((i: { cantidad: number }) => i.cantidad > 0).map((i: { producto: string; cantidad: number; precioManual?: number }) => ({
+      ? items.filter((i: { cantidad: number }) => i.cantidad > 0).map(i => ({
           producto: i.producto as import('@/shared/domain').ProductCode,
           cantidad: i.cantidad,
           precioManual: i.precioManual,
+          cantidadRegalo: i.cantidadRegalo,
+          motivoRegalo: i.motivoRegalo,
         }))
       : productos
         ? [
@@ -446,6 +449,8 @@ export async function POST(request: NextRequest) {
     // offline-first con los hooks que esperan 200 para dedup.
     return apiSuccess({ pedido: result.pedido, deduped: result.deduped, ...(ubicacionGuardada ? { ubicacionGuardada } : {}) }, result.deduped ? 200 : 201)
   } catch (error) {
+    const regaloError = mapRegaloPedidoError(error)
+    if (regaloError) return apiError(regaloError.message, regaloError.status, { code: regaloError.code })
     Sentry.captureException(error, {
       extra: { route: 'POST /api/pedidos' },
     })

@@ -10,6 +10,7 @@ import type { $Enums } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { startOfDayBogota, endOfDayBogota } from '@/lib/dates'
 import { pickRutaId } from '@/lib/pedido-ruta'
+import { pedidoParaCargaPendiente } from '@/lib/embarque-capacidad'
 import { wherePedidosElegiblesPlan } from '../domain/services/elegibilidad.service'
 import type { CandidatoPedido, Propuesta } from '../application/construir-propuesta'
 
@@ -40,6 +41,7 @@ export class PrismaPlanificadorRepository {
           cBotellonDomPed: true,
           cBolsaAguaPed: true,
           cBolsaHieloPed: true,
+          items: { select: { producto: true, cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true } },
           cliente: {
             select: {
               id: true, nombre: true, barrio: true, rutaId: true,
@@ -78,14 +80,15 @@ export class PrismaPlanificadorRepository {
       pedidoId: p.id,
       clienteId: p.clienteId,
       negocioId: p.negocioId,
-      cantidades: {
+      cantidades: pedidoParaCargaPendiente({
+        items: p.items,
         cPacaAguaPed: p.cPacaAguaPed,
         cPacaHieloPed: p.cPacaHieloPed,
         cBotellonFabPed: p.cBotellonFabPed,
         cBotellonDomPed: p.cBotellonDomPed,
         cBolsaAguaPed: p.cBolsaAguaPed,
         cBolsaHieloPed: p.cBolsaHieloPed,
-      },
+      }),
       rutaId: pickRutaId({ cliente: p.cliente, negocio: p.negocio }),
       clienteNombre: p.cliente.nombre,
       geo: {

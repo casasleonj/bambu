@@ -33,7 +33,7 @@ export interface PedidoParaEntregar {
   nombre: string
   saldo: number
   promesaPagoFecha?: string | null
-  items: Array<{ producto: string; cantPedido: number; cantEntrega: number }>
+  items: Array<{ producto: string; cantPedido: number; cantEntrega: number; cantRegaloPedido?: number; cantRegaloEntrega?: number }>
 }
 
 export const METODOS_COBRO = ['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO'] as const
@@ -119,8 +119,10 @@ function Contenido({ pedido, embarque, preciosOcultos, onClose, onDone }: Omit<P
     setEnviando(true)
     try {
       const itemsEntregados = pedido.items
-        .map((i) => ({ producto: i.producto, cantidad: Math.max(0, i.cantPedido - i.cantEntrega) }))
-        .filter((i) => i.cantidad > 0)
+        .map((i) => ({ producto: i.producto, cantidad: Math.max(0, i.cantPedido - i.cantEntrega),
+          ...((i.cantRegaloPedido ?? 0) > 0 ? { cantidadRegalo: Math.max(0, (i.cantRegaloPedido ?? 0) - (i.cantRegaloEntrega ?? 0)) } : {}),
+        }))
+        .filter((i) => i.cantidad + (i.cantidadRegalo ?? 0) > 0)
       const hayCobro = cobra && cobro.montoAplicado > 0
       const r = await fetchResilient<{ success: boolean; deduped?: boolean; pagosNoAplicados?: boolean }>(
         `/api/pedidos/${pedido.id}/entrega`,

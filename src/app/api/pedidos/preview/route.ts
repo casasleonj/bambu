@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
-    const result = await previewPedidoUseCase.execute({ ...parsed.data, actorId })
+    const result = await previewPedidoUseCase.execute({ ...parsed.data, actorId, actorRol: role.user?.role ?? undefined })
     return apiSuccess(result)
   } catch (error) {
     if (error instanceof Error) {
