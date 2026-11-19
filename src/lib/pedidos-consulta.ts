@@ -301,7 +301,7 @@ export function leerFiltrosConsulta(
         ? "barrio" : "",
     ),
     grupoBarrio: leerGrupoBarrio(p),
-    recorrido: lista(p, "recorrido").filter(v => /^(sin-barrio|[bt]:[^\\u0000-\\u001f]+)$/.test(v)),
+    recorrido: lista(p, "recorrido").filter(v => /^(sin-barrio|[bt]:[^\u0000-\u001f]+)$/.test(v)),
     resumen: p.has("resumen")
       ? p.get("resumen") === "1"
       : [
