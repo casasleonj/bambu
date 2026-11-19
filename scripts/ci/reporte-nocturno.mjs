@@ -79,13 +79,15 @@ export async function recordIncident(run,jobs,repo,api) {
   const open=await api.pages('/issues?state=open&per_page=100')
   const since=new Date(date(run.created_at)-86400000).toISOString()
   const recent=await api.pages('/issues?state=closed&since='+encodeURIComponent(since)+'&per_page=100')
-  const matching=[...open,...recent].filter(i=>!i.pull_request&&isBot(i)&&i.body?.includes(item.marker))
-  for(const i of matching) {
+  // Check occurrence across all bot-managed signatures, even when job evidence
+  // became available after a first infrastructure-only report.
+  const managed=[...new Map([...open,...recent].filter(i=>!i.pull_request&&isBot(i)&&typeof i.body==='string'&&/<!-- bambu-ci-nightly:v1:[a-f0-9]{64} -->/.test(i.body)).map(i=>[i.number,i])).values()]
+  for(const i of managed) {
     if(i.body.includes(item.occurrence)) return {action:'already-recorded',issue:i.number}
     const comments=await api.pages('/issues/'+i.number+'/comments?per_page=100')
     if(comments.some(c=>isBot(c)&&c.body?.includes(item.occurrence))) return {action:'already-recorded',issue:i.number}
   }
-  const active=matching.filter(i=>i.state==='open')
+  const active=managed.filter(i=>i.state==='open'&&i.body.includes(item.marker))
   if(active.length>1) throw Error('Multiple open incidents with same signature')
   if(active.length===1){
     await api.post('/issues/'+active[0].number+'/comments',{body:item.detail})
