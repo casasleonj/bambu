@@ -1,5 +1,5 @@
 import { prisma } from './prisma'
-import { getTodayRange, getDateRange } from './dates'
+import { dayInBogota, startOfDayInBogota } from './date-helpers'
 import { unidadesEntregadasDelDia } from './unidades-entregadas-dia'
 
 export interface VentasDelDia {
@@ -11,12 +11,9 @@ export interface VentasDelDia {
 }
 
 export async function getVentasDelDia(fecha?: Date): Promise<VentasDelDia> {
-  const range = fecha
-    ? getDateRange(fecha.toISOString().slice(0, 10), fecha.toISOString().slice(0, 10))
-    : getTodayRange()
-
-  const start = 'startDate' in range ? range.startDate : range.startOfDay
-  const end = 'endDate' in range ? range.endDate : range.endOfDay
+  const start = startOfDayInBogota(dayInBogota(fecha ?? new Date()))
+  // El lector de hechos usa [inicio, fin): incluye el último milisegundo de Bogotá.
+  const end = new Date(+start + 86_400_000)
 
   // #650 (2b): lo vendido es lo entregado ESE día (misma función que el cierre y el dashboard).
   const u = await unidadesEntregadasDelDia(prisma, { desde: start, hasta: end })
