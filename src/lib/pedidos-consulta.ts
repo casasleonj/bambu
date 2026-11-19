@@ -26,6 +26,9 @@ export interface GrupoBarrioConsulta {
   clave: string;
   etiqueta: string;
   total: number;
+  /** Demanda física exigible del barrio, independiente de cobros. */
+  remanentes?: Record<string, number>;
+  unidadesPendientes?: number;
 }
 export interface ResultadoConsultaPedidos {
   consultaKey: string;
