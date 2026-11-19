@@ -94,7 +94,7 @@ jobs:
           set -eu
           if [ "$PLAN" != success ]; then echo '::error::Decision failed'; exit 1; fi
           if [ "$EVENT" = push ]; then
-            [ "$FULL" = false ] && [ "$RESULT" = skipped ]
+            if [ "$FULL" != false ] || [ "$RESULT" != skipped ]; then echo '::error::Invalid shadow decision'; exit 1; fi
             echo 'Only shadow observation; regular CI unchanged.'
           elif [ "$FULL" = true ]; then
             if [ "$RESULT" != success ]; then echo '::error::Nightly full regression did not pass'; exit 1; fi
