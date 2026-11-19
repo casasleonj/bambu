@@ -39,6 +39,59 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await comprobarPrecioOffline(page)
   })
 
+  test('#889: Pedidos y Clientes abren el mismo workspace; fecha y hora se guardan', async ({ browser }) => {
+    test.setTimeout(120_000)
+    const page = await sharedLoginAs(browser, 'admin')
+    const nombre = `Programado Hub ${Date.now()}`
+    const { cliente } = await createCliente(page, { nombre })
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto(`${BASE}/pedidos`)
+    await appMain(page).getByTestId('fab-main').click()
+    await page.getByTestId('fab-pedido-envio').click()
+    await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
+    await expect(page.getByTestId('programar-entrega-toggle')).toHaveAttribute('aria-expanded', 'false')
+    await page.getByTestId('cliente-search-input').fill(nombre)
+    await page.getByTestId('cliente-search-result').filter({ hasText: nombre }).click()
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 20_000 })
+    const manana = new Date(Date.now() + 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    await page.getByTestId('programar-entrega-toggle').click()
+    await page.getByTestId('programar-fecha').fill(manana)
+    await page.getByTestId('programar-hora').fill('15:30')
+    await page.getByTestId('workspace-commit').click()
+    await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+    await expect(async () => {
+      const pedidos = await prisma.pedido.findMany({ where: { clienteId: cliente.id } })
+      expect(pedidos).toHaveLength(1)
+      expect(pedidos[0].fechaEntrega?.toISOString()).toBe(new Date(`${manana}T12:00:00-05:00`).toISOString())
+      expect(pedidos[0].entregaNoAntesDe).toBe('15:30')
+      expect(pedidos[0].estadoEntrega).toBe('PENDIENTE')
+    }).toPass({ timeout: 20_000 })
+
+    // El acceso real desde la ficha de Clientes, en móvil, no debe volver al legacy.
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(`${BASE}/clientes?openCliente=${cliente.id}`)
+    await page.getByRole('link', { name: 'Crear Pedido', exact: true }).click()
+    await expect(page.getByTestId('pedidos-workspace')).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByTestId('comprador-nombre')).toContainText(nombre)
+    await expect(page.getByTestId('programar-entrega-toggle')).toHaveAttribute('aria-expanded', 'false')
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 20_000 })
+    await page.getByTestId('programar-entrega-toggle').click()
+    await page.getByTestId('programar-hora').fill('16:00')
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    await page.getByTestId('workspace-commit').click()
+    await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+    await expect(async () => {
+      const pedidos = await prisma.pedido.findMany({ where: { clienteId: cliente.id } })
+      expect(pedidos).toHaveLength(2)
+      const segundo = pedidos.find(p => p.entregaNoAntesDe === '16:00')
+      expect(segundo?.fechaEntrega?.toISOString()).toBe(new Date(`${hoy}T12:00:00-05:00`).toISOString())
+      expect(segundo?.estadoEntrega).toBe('PENDIENTE')
+    }).toPass({ timeout: 20_000 })
+  })
+
   test('shell: filtros visibles y acceso independiente a Fiados/Alertas (#515)', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
     const app = appMain(page)
@@ -216,6 +269,12 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await page.getByTestId('cliente-search-input').fill(nombre)
     await page.getByTestId('cliente-search-result').first().click()
 
+    // #889: programar una fecha explícita antes de que se pierda la señal.
+    const manana = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    await page.getByTestId('programar-entrega-toggle').click()
+    await page.getByTestId('programar-fecha').fill(manana)
+    await page.getByTestId('programar-hora').fill('15:30')
+
     // se pierde la señal ANTES de componer: no habrá preview del servidor
     await page.context().setOffline(true)
     await page.getByTestId('workspace-inc-PACA_AGUA').click()
@@ -229,11 +288,15 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     // apagado: se dispara con el helper de test); exactamente un pedido en BD
     const encolados = await page.evaluate(() => (window as unknown as { __bambu: { getRequestQueue: () => Promise<unknown[]> } }).__bambu.getRequestQueue())
     expect(encolados).toHaveLength(1)
+    expect(JSON.stringify(encolados)).toContain('15:30')
     await page.context().setOffline(false)
     const sync = () => page.evaluate(() => (window as unknown as { __bambu: { syncWithServer: () => Promise<unknown> } }).__bambu.syncWithServer())
     await sync()
     await expect(async () => {
-      expect(await prisma.pedido.count({ where: { clienteId: cliente.id } })).toBe(1)
+      const pedidos = await prisma.pedido.findMany({ where: { clienteId: cliente.id } })
+      expect(pedidos).toHaveLength(1)
+      expect(pedidos[0].fechaEntrega?.toISOString()).toBe(new Date(`${manana}T12:00:00-05:00`).toISOString())
+      expect(pedidos[0].entregaNoAntesDe).toBe('15:30')
     }).toPass({ timeout: 20000 })
     // un segundo drenaje (reintento) no duplica: misma clave de borrador
     await sync()
