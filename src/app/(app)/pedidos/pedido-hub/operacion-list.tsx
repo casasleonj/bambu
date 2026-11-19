@@ -6,7 +6,6 @@ import { deriveOperacion, origenLabel, embarqueLinea } from './derive-operacion'
 import type { AccionKey, DeriveContext, Pedido } from './types'
 import { OperacionConsulta,type AccionesConsulta } from './operacion-consulta'
 import { useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
 import { GrupoBarrioEncabezado } from './grupo-barrio-encabezado'
 import { useAhora } from '@/hooks/use-ahora'
 import { ordenarPorFranja, type Franja } from '@/lib/pedidos-franja'
@@ -205,8 +204,7 @@ export function OperacionList({
   // #859: recorrido manual temporal de la vista, sin alterar FIFO del servidor.
   const [modoRecorrido, setModoRecorrido] = useState(false)
   const [barrioSeleccionado, setBarrioSeleccionado] = useState("")
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const searchParams = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search)
   const clavesGlobales = consulta?.grupos?.map(g => g.clave) ?? []
   const clavesManuales = searchParams.getAll('recorrido')
   const ordenRecorrido = [
@@ -219,7 +217,7 @@ export function OperacionList({
     for (const clave of orden) params.append('recorrido', clave)
     params.set('agrupar', 'barrio')
     params.set('page', '1')
-    router.replace('?' + params.toString(), { scroll: false })
+    window.location.assign('?' + params.toString())
   }
   if (pedidos.length === 0) {
     return (
