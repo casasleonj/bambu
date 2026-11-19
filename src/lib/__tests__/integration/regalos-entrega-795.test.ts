@@ -214,6 +214,28 @@ describe('#795 · entrega, exigible, cantidades físicas y comisión', () => {
       expect(await db.entregaExigible.count({ where: { pedidoId: p.id } })).toBe(2)
     } finally { vi.stubEnv('FIADO_ENTREGA_PARCIAL', 'true') }
   })
+  it('devolver 52 no entregadas tras una parcial de 10+1 concilia la carga de 63 sin devolver lo ya regalado', async () => {
+    const p = await crear()
+    const emb = await db.embarque.create({ data: {
+      trabajadorId, fecha: new Date(), estado: 'EN_RUTA', numeroDia: 23, baseDinero: 0,
+      productos: { create: { producto: 'PACA_AGUA', cargadas: 63 } },
+      movimientos: { create: { tipo: 'CARGA', producto: 'PACA_AGUA', cantidad: 63, origen: 'ALMACEN', destino: 'VEHICULO' } },
+    } })
+    await db.pedido.update({ where: { id: p.id }, data: { embarqueId: emb.id, estado: 'EN_RUTA', estadoEntrega: 'EN_RUTA' } })
+    await entregarPedidoUseCase.execute({ pedidoId: p.id, actorId: adminId, offlineId: randomUUID(), embarqueEntregaId: emb.id,
+      itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 10, cantidadRegalo: 1 }] })
+    const cerrar = new CerrarEmbarqueUseCase(new PrismaEmbarqueRepository(), new PrismaGastoEmbarqueRepository(),
+      new PrismaEmbarqueProductoRepository(), new PrismaTransactionManager(), adminId, 'ADMIN')
+    const result = await cerrar.execute({ id: emb.id, pedidos: [], dineroEntregado: 0, offlineId: randomUUID(),
+      productosRetorno: [{ producto: 'PACA_AGUA', devueltas: 52, cambios: 0, rotas: 0 }] })
+    expect(result.discrepanciaTotal).toBe(0)
+    const movimientos = await db.embarqueMovimiento.findMany({ where: { embarqueId: emb.id } })
+    expect(movimientos.filter(m => m.tipo === 'ENTREGA').reduce((s, m) => s + m.cantidad, 0)).toBe(10)
+    expect(movimientos.filter(m => m.tipo === 'PROMOCION').reduce((s, m) => s + m.cantidad, 0)).toBe(1)
+    expect((await db.embarqueProducto.findUniqueOrThrow({ where: { embarqueId_producto: { embarqueId: emb.id, producto: 'PACA_AGUA' } } })).devueltas).toBe(52)
+    expect((await leerExigibles(db, { id: p.id })).get(p.id)).toBe(23000)
+    expect((await db.pedido.findUniqueOrThrow({ where: { id: p.id } })).estadoEntrega).toBe('PENDIENTE')
+  })
   it('una primera entrega solo gratuita conserva el modo vivo al apagar el flag y concilia al cerrar', async () => {
     const p = await crear()
     const emb = await db.embarque.create({ data: { trabajadorId, fecha: new Date(), estado: 'EN_RUTA', numeroDia: 22, baseDinero: 0,
