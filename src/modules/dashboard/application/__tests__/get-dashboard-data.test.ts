@@ -56,6 +56,29 @@ function makeDeps(overrides = {}) {
 }
 
 describe('getDashboardData', () => {
+  it('usa entregas del periodo para cantidad, desglose y ventas sin cambiar la cohorte de pedidos', async () => {
+    const range = { start: new Date('2026-11-18T05:00:00Z'), end: new Date('2026-11-19T05:00:00Z') }
+    const ayer = { start: new Date('2026-11-17T05:00:00Z'), end: range.start }
+    const entregas = (agua: number, total: number) => ({
+      unidades: { agua, hielo: 0, botellon: 0, bolsaAgua: 0, bolsaHielo: 0, aproximados: [] },
+      desglose: [{ producto: 'PACA_AGUA', canal: 'DOMICILIO', precio: 2300, cantidad: agua, subtotal: total }],
+      total, sinPrecio: 0,
+    })
+    const deps = makeDeps({
+      finanzas: { leer: vi.fn().mockResolvedValue({
+        pedidosHoy: [], pedidosAyer: [], baseDia: 0, totalGastos: 0, fiadosTotal: 0,
+        clientesConFiado: 0, cobros: null, consultadoAt: null,
+        ventasEntregadasHoy: entregas(280, 651800), ventasEntregadasAyer: entregas(100, 230000),
+      }) },
+    })
+    const r = await getDashboardData(range, ayer, deps as unknown as GetDashboardDeps)
+    expect(r.kpis.pedidosHoy).toBe(0)
+    expect(r.kpis.ventasHoy).toBe(651800)
+    expect(r.kpis.ventasAyer).toBe(230000)
+    expect(r.vendidos.agua).toBe(280)
+    expect(r.ventasPorPrecio[0].cantidad).toBe(280)
+  })
+
   it('usa la fecha de Bogota para el key de BASE_DIA_', async () => {
     const deps = makeDeps()
     const todayRange = {

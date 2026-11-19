@@ -625,14 +625,32 @@ export function DashboardClient({
           Ventas por Precio
         </h2>
         <p className="mb-4 text-xs text-gray-600">
-          Canal del pedido · Punto / mostrador o Domicilio · pedidos de hoy
-          entregados
+          Punto / mostrador o Domicilio · entregas del día · precio comercial vigente
         </p>
+        {data.ventasAdvertencia && (
+          data.ventasAdvertencia.sinPrecio > 0 ||
+          data.ventasAdvertencia.aproximados > 0 ||
+          data.ventasAdvertencia.ayerSinPrecio > 0 ||
+          data.ventasAdvertencia.ayerAproximados > 0
+        ) && (
+          <p role="status" className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+            {data.ventasAdvertencia.sinPrecio > 0 && (
+              <>Hay {data.ventasAdvertencia.sinPrecio} unidades entregadas sin precio inequívoco. El importe mostrado es parcial. </>
+            )}
+            {data.ventasAdvertencia.aproximados > 0 && (
+              <>Hay {data.ventasAdvertencia.aproximados} pedidos con fecha de entrega aproximada. </>
+            )}
+            {(data.ventasAdvertencia.ayerSinPrecio > 0 || data.ventasAdvertencia.ayerAproximados > 0) && (
+              <>La comparación con ayer puede ser incompleta. </>
+            )}
+            <Link href="/pedidos" className="underline">Revisar pedidos</Link>
+          </p>
+        )}
         {ventasPorPrecio.length === 0 ? (
           <div className="py-6 text-center text-sm text-gray-500">
             {ventas > 0
               ? 'Hay ventas entregadas sin desglose de producto disponible. Consulta los pedidos para revisarlo.'
-              : 'No hay ventas entregadas de pedidos de hoy.'}
+              : 'No hay ventas entregadas con desglose de precio disponible.'}
             <Link
               href="/pedidos"
               className="mt-3 flex min-h-11 items-center justify-center text-blue-700 underline"

@@ -1,5 +1,6 @@
 import { leerExigibles } from '@/lib/entregas-exigibles-db'
 import { Prisma } from '@prisma/client'
+import { leerVentasEntregadasDia, type VentasEntregadasDia } from './ventas-entregadas.repository'
 import { prisma } from '@/shared/infrastructure'
 import { leerCobrosPeriodo, type CobrosPeriodo } from '@/lib/cobros-periodo'
 import type { PedidoRaw } from '../domain'
@@ -9,6 +10,8 @@ import { PrismaGastosRepository } from './operaciones.repository'
 
 type Rango = { start: Date; end: Date }
 export interface FinanzasDashboard {
+  ventasEntregadasHoy?: VentasEntregadasDia
+  ventasEntregadasAyer?: VentasEntregadasDia
   pedidosHoy: PedidoRaw[]
   pedidosAyer: PedidoRaw[]
   baseDia: number
@@ -44,6 +47,8 @@ export class PrismaFinanzasRepository implements FinanzasRepository {
           fiadosTotal,
           clientesConFiado,
           cobros,
+          ventasEntregadasHoy,
+          ventasEntregadasAyer,
         ] = await Promise.all([
           pedidos.findByDateRange(hoy.start, hoy.end),
           pedidos.findByDateRange(ayer.start, ayer.end),
@@ -54,6 +59,8 @@ export class PrismaFinanzasRepository implements FinanzasRepository {
             where: { activo: true, pedidos: { some: { id: { in: [...exigibles].filter(([, n]) => n > 0).map(([id]) => id) } } } },
           })),
           leerCobrosPeriodo(tx, hoy.start, hoy.end),
+          leerVentasEntregadasDia(tx, hoy),
+          leerVentasEntregadasDia(tx, ayer),
         ])
         return {
           pedidosHoy,
@@ -64,6 +71,8 @@ export class PrismaFinanzasRepository implements FinanzasRepository {
           clientesConFiado,
           cobros,
           consultadoAt: instante.instante.toISOString(),
+          ventasEntregadasHoy,
+          ventasEntregadasAyer,
         }
       },
       {
