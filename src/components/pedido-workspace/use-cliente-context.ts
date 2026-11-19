@@ -17,68 +17,77 @@ function isReal(clienteId: string | null): clienteId is string {
   return !!clienteId && clienteId !== 'CONSUMIDOR_FINAL'
 }
 
-/**
- * Contexto del cliente para el PedidosWorkspace (C1b): banner de fiados y
- * patrón de consumo. Mismo comportamiento que el monolito `pedido-form-unified`:
- * - `fiado-status` se carga al seleccionar cliente (abortable, guard anti-carrera).
- * - el patrón de consumo NO se carga solo (2G/3G): se dispara con `loadPatron()`.
- * `CONSUMIDOR_FINAL` no tiene contexto (venta anónima).
+type ContextState = Omit<ClienteContext, 'loadPatron'> & { clienteId: string | null; generation: number }
+type ActiveContext = { generation: number; controller: AbortController; patronPending: boolean }
+function empty(clienteId: string | null, generation: number): ContextState {
+  return { clienteId, generation, fiadoStatus: null, patron: null, patronLoading: false }
+}
+
+/** #891: una generación por selección, no por id solamente (A→B→A).
+ * Los updates de contexto no pueden alcanzar a una selección posterior.
+ * Mantiene patrón bajo demanda, lecturas frescas y sin caché financiero.
  */
 export function useClienteContext(clienteId: string | null): ClienteContext {
-  const [fiadoStatus, setFiadoStatus] = useState<FiadoStatus | null>(null)
-  const [patron, setPatron] = useState<PatronConsumo | null>(null)
-  const [patronLoading, setPatronLoading] = useState(false)
-  const idRef = useRef<string | null>(clienteId)
-
-  // Reset en render al cambiar de cliente — evita mostrar datos del cliente
-  // anterior mientras el nuevo fetch está en vuelo (patrón sancionado:
-  // https://react.dev/learn/you-might-not-need-an-effect).
-  const [prevClienteId, setPrevClienteId] = useState(clienteId)
-  if (clienteId !== prevClienteId) {
-    setPrevClienteId(clienteId)
-    setFiadoStatus(null)
-    setPatron(null)
-    setPatronLoading(false)
+  const [context, setContext] = useState(() => empty(clienteId, 0))
+  const activeRef = useRef<ActiveContext | null>(null)
+  if (context.clienteId !== clienteId) {
+    setContext(empty(clienteId, context.generation + 1))
   }
+  const generation = context.generation
 
   useEffect(() => {
-    idRef.current = clienteId
     if (!isReal(clienteId)) return
-    const captured = clienteId
     const controller = new AbortController()
-
-    fetch(`/api/clientes/${captured}/fiado-status`, { signal: controller.signal, cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => {
-        if (controller.signal.aborted || idRef.current !== captured) return
-        setFiadoStatus(d?.success && d.status ? d.status : null)
-      })
-      .catch((err) => {
-        if (err?.name === 'AbortError') return
-        setFiadoStatus(null)
-      })
-
-    return () => controller.abort()
-  }, [clienteId])
+    const active: ActiveContext = { generation, controller, patronPending: false }
+    activeRef.current = active
+    const current = () => activeRef.current === active && !controller.signal.aborted
+    const update = (status: FiadoStatus | null) => {
+      if (!current()) return
+      setContext(prev => prev.generation === generation ? { ...prev, fiadoStatus: status } : prev)
+    }
+    fetch(`/api/clientes/${clienteId}/fiado-status`, { signal: controller.signal, cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => update(d?.success && d.status ? d.status : null))
+      .catch(() => update(null))
+    return () => {
+      controller.abort()
+      if (activeRef.current === active) activeRef.current = null
+    }
+  }, [clienteId, generation])
 
   const loadPatron = useCallback(() => {
-    if (!isReal(clienteId) || patronLoading || patron) return
-    const captured = clienteId
-    setPatronLoading(true)
+    const active = activeRef.current
+    if (!isReal(clienteId) || context.patronLoading || context.patron || !active ||
+      active.generation !== generation || active.controller.signal.aborted || active.patronPending) return
+    active.patronPending = true
+    const current = () => activeRef.current === active && !active.controller.signal.aborted
+    const update = (part: Partial<Pick<ContextState, 'patron' | 'patronLoading'>>) => {
+      if (!current()) return
+      setContext(prev => prev.generation === generation ? { ...prev, ...part } : prev)
+    }
+    update({ patronLoading: true })
     fetchClienteDetailFresh<{
       frecuenciaSugerida?: { dias: number; label: string } | null
       productosSugeridos?: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }>
-    }>(captured).then((result) => {
-      if (idRef.current !== captured) return
-      setPatronLoading(false)
+    }>(clienteId, active.controller.signal).then(result => {
       if (result.ok) {
-        setPatron({
-          frecuenciaSugerida: result.cliente.frecuenciaSugerida ?? null,
-          productosSugeridos: result.cliente.productosSugeridos ?? [],
+        update({
+          patron: {
+            frecuenciaSugerida: result.cliente.frecuenciaSugerida ?? null,
+            productosSugeridos: result.cliente.productosSugeridos ?? [],
+          },
         })
       }
-    }).catch(() => setPatronLoading(false))
-  }, [clienteId, patron, patronLoading])
+    }).catch(() => update({ patron: null })).finally(() => {
+      active.patronPending = false
+      update({ patronLoading: false })
+    })
+  }, [clienteId, generation, context.patron, context.patronLoading])
 
-  return { fiadoStatus, patron, patronLoading, loadPatron }
+  return {
+    fiadoStatus: context.clienteId === clienteId ? context.fiadoStatus : null,
+    patron: context.clienteId === clienteId ? context.patron : null,
+    patronLoading: context.clienteId === clienteId && context.patronLoading,
+    loadPatron,
+  }
 }

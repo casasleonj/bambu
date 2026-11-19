@@ -693,7 +693,9 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
       {/* ── Zona: Entrega (adaptativa por suficiencia — F-ENTREGA-i) ── */}
       {(!esVentaRapida || state.draft.canal === 'DOMICILIO') && (
         <WorkspaceEntrega
+          key={state.destinoRevision}
           entrega={state.preview?.entrega}
+          entregaAnterior={!state.preview && !state.error ? state.entregaVisual : undefined}
           canal={state.draft.canal}
           direccionEntrega={state.draft.direccionEntrega ?? ''}
           barrioEntrega={state.draft.barrioEntrega ?? ''}
@@ -701,7 +703,7 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
           onBarrioChange={(v) => dispatch({ type: 'SET_DIRECCION', direccion: state.draft.direccionEntrega ?? '', barrio: v })}
           entregaLat={state.draft.entregaLat ?? null}
           entregaLng={state.draft.entregaLng ?? null}
-          onUbicacionChange={(lat, lng) => dispatch({ type: 'SET_UBICACION', lat, lng })}
+          onUbicacionChange={(lat, lng) => dispatch({ type: 'SET_UBICACION', lat, lng, destinoRevision: state.destinoRevision })}
           previewPending={state.previewPending}
           ventaRapida={esVentaRapida}
           opcional={Boolean(ventaEnRuta)}

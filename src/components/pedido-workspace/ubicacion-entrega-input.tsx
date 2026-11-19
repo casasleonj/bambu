@@ -25,6 +25,7 @@ export function UbicacionEntregaInput({
   const [linkTexto, setLinkTexto] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [resolviendo, setResolviendo] = useState(false)
+  const requestRef = useRef<AbortController | null>(null)
   // callback estable: un re-render del padre no debe reiniciar la resolución en curso.
   const onChangeRef = useRef(onChange)
   useEffect(() => {
@@ -37,20 +38,24 @@ export function UbicacionEntregaInput({
   useEffect(() => {
     const texto = linkTexto.trim()
     if (!texto || !isShortMapsUrl(texto)) return
-    let cancelado = false
+    const controller = new AbortController()
+    requestRef.current = controller
     const timer = setTimeout(() => {
+      if (controller.signal.aborted) return
       setResolviendo(true)
       fetch('/api/geo/expand-maps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: texto }),
+        signal: controller.signal,
       })
         .then(async (r) => {
           const body = await r.json().catch(() => ({}))
-          if (cancelado) return
+          if (controller.signal.aborted) return
           const coords = body?.data?.coords ?? body?.coords ?? null
           if (r.ok && coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lng)) {
             setError(null)
+            setResolviendo(false)
             setLinkTexto('')
             onChangeRef.current(coords.lat, coords.lng)
           } else {
@@ -58,17 +63,23 @@ export function UbicacionEntregaInput({
           }
         })
         .catch(() => {
-          if (!cancelado) setError('Sin conexión para leer ese link. Escribe la dirección o intenta de nuevo.')
+          if (!controller.signal.aborted) setError('Sin conexión para leer ese link. Escribe la dirección o intenta de nuevo.')
         })
-        .finally(() => setResolviendo(false))
+        .finally(() => {
+          if (!controller.signal.aborted) setResolviendo(false)
+        })
     }, RESOLVER_LINK_DEBOUNCE_MS)
     return () => {
-      cancelado = true
+      controller.abort()
       clearTimeout(timer)
+      if (requestRef.current === controller) requestRef.current = null
     }
   }, [linkTexto])
 
   const aplicarLink = (texto: string) => {
+    if (texto === linkTexto) return
+    requestRef.current?.abort()
+    setResolviendo(false)
     setLinkTexto(texto)
     setError(null)
     if (!texto.trim()) return

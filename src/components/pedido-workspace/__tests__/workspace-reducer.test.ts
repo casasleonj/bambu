@@ -400,3 +400,26 @@ describe('#891 / #347 — continuidad del pago offline', () => {
     expect(canCommit(denied)).toBe(false)
   })
 })
+
+describe('#891 F2 — snapshot de presentación y cambio de comprador', () => {
+  it('cantidad retiene entrega para presentar, nunca permiso ni total; A→B→A borra el snapshot y rechaza ubicación vieja', () => {
+    const a = initWorkspace({ clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 3 }] })
+    const entrega: NonNullable<PreviewPedidoResult['entrega']> = {
+      estado: 'SUFICIENTE', via: 'TEXTO', direccion: 'Cra 1', barrio: 'Centro', referencia: null,
+      coords: null, linkUbicacion: null, linkResoluble: null, cobertura: 'no_evaluada',
+      faltaComplementario: [], faltaBloqueante: [],
+    }
+    const ready = workspaceReducer(a, { type: 'PREVIEW_RECEIVED', revision: a.previewRevision, preview: previewOk({ entrega }) })
+    const pending = workspaceReducer(ready, { type: 'SET_ITEM_CANTIDAD', producto: 'PACA_AGUA', cantidad: 5 })
+    expect(pending.entregaVisual).toEqual(entrega)
+    expect(pending.preview).toBeNull()
+    expect(canCommit(pending)).toBe(false)
+    const b = workspaceReducer(pending, { type: 'SET_CLIENTE', clienteId: 'c2' })
+    const again = workspaceReducer(b, { type: 'SET_CLIENTE', clienteId: 'c1' })
+    expect(again.entregaVisual).toBeUndefined()
+    expect(workspaceReducer(again, { type: 'SET_UBICACION', lat: 10.45, lng: -73.25, destinoRevision: a.destinoRevision })).toBe(again)
+    expect(workspaceReducer(again, { type: 'PREVIEW_RECEIVED', revision: a.previewRevision, preview: previewOk({ entrega }) })).toBe(again)
+    const failed = workspaceReducer(pending, { type: 'PREVIEW_ERROR', revision: pending.previewRevision, kind: 'VALIDATION_ERROR', message: 'error' })
+    expect(failed.entregaVisual).toBeUndefined()
+  })
+})

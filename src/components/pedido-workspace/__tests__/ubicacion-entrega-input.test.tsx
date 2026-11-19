@@ -91,3 +91,28 @@ describe('UbicacionEntregaInput — links acortados de Maps (P1-4, #419)', () =>
     unmount()
   })
 })
+
+describe('#891 — dos links en vuelo', () => {
+  it('el cierre de la primera petición no apaga la carga ni fija el segundo link', async () => {
+    vi.useFakeTimers()
+    try {
+      type ResponseStub = { ok: boolean; json: () => Promise<{ coords: { lat: number; lng: number } }> }
+      const pending: Array<(value: ResponseStub) => void> = []
+      const fetchMock = vi.fn(() => new Promise<ResponseStub>(r => { pending.push(r) }))
+      vi.stubGlobal('fetch', fetchMock)
+      const onChange = vi.fn()
+      render(<UbicacionEntregaInput lat={null} lng={null} onChange={onChange} />)
+      const input = screen.getByTestId('workspace-entrega-link')
+      fireEvent.change(input, { target: { value: CORTO } })
+      await act(async () => { await vi.advanceTimersByTimeAsync(501) })
+      fireEvent.change(input, { target: { value: 'https://maps.app.goo.gl/Segundo' } })
+      await act(async () => { await vi.advanceTimersByTimeAsync(501) })
+      await act(async () => { pending[0]({ ok: true, json: async () => ({ coords: { lat: 1, lng: 2 } }) }) })
+      expect(onChange).not.toHaveBeenCalled()
+      expect(screen.getByTestId('workspace-entrega-link-resolviendo')).toBeInTheDocument()
+      await act(async () => { pending[1]({ ok: true, json: async () => ({ coords: { lat: 3, lng: 4 } }) }) })
+      expect(onChange).toHaveBeenCalledExactlyOnceWith(3, 4)
+      expect(screen.queryByTestId('workspace-entrega-link-resolviendo')).not.toBeInTheDocument()
+    } finally { vi.useRealTimers(); vi.unstubAllGlobals() }
+  })
+})

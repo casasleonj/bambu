@@ -35,3 +35,15 @@ function toRequestBody(draft: DraftPedido, pedidoId?: string, borradorId?: strin
 export function previewRequestKey(draft: DraftPedido, pedidoId?: string, borradorId?: string): string {
   return JSON.stringify(toRequestBody(draft, pedidoId, borradorId))
 }
+
+/** Identidad editable del destino (NO incluye cantidades, precios ni pagos). */
+export function entregaDraftKey(draft: DraftPedido): string {
+  const { clienteId, clienteNuevo, negocioId, canal, direccionEntrega, barrioEntrega, entregaLat, entregaLng, origen, ventaEnRuta, entregado } = toRequestBody(draft)
+  return JSON.stringify([clienteId, clienteNuevo, negocioId, canal, direccionEntrega, barrioEntrega, entregaLat, entregaLng, origen, ventaEnRuta, entregado])
+}
+
+/** Un link propio que se está leyendo pertenece a una selección concreta. */
+export function compradorDestinoKey(draft: DraftPedido): string {
+  const { clienteId, clienteNuevo, negocioId, canal } = toRequestBody(draft)
+  return JSON.stringify([clienteId, clienteNuevo, negocioId, canal])
+}
