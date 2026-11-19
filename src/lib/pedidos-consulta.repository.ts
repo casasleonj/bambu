@@ -242,7 +242,8 @@ export async function consultarPedidos(
         }
       }
     }
-    const a = { ...primera, pedidos: acumulados };
+    // La vista histórica conserva el límite de cinco; el total sigue siendo global.
+    const a = { ...primera, pedidos: f.agrupar === 'barrio' ? acumulados : acumulados.slice(0, 5) };
     // #841: un pedido que ya se ve en «Pendientes» no se repite en las entregas de
     // pedidos anteriores; su fila de pendientes ya dice cuánto se entregó y cuánto falta.
     // Solo se quita lo que realmente se muestra (los más antiguos, con tope): un parcial
@@ -261,7 +262,7 @@ export async function consultarPedidos(
           }
         : {}),
       arrastrados: a.pedidos,
-      arrastradosTotal: a.pedidos.length,
+      arrastradosTotal: primera.total,
     };
   } catch (error) {
     logger.warn({ err: error }, "No se pudieron leer los pendientes de días anteriores");
@@ -429,6 +430,7 @@ async function leerConsultaPedidos(
           .sort((a, b) =>
             (posicionesFIFO.get(a.clave) ?? Number.MAX_SAFE_INTEGER) -
             (posicionesFIFO.get(b.clave) ?? Number.MAX_SAFE_INTEGER) ||
+            (a.clave === 'sin-barrio' ? 1 : b.clave === 'sin-barrio' ? -1 : 0) ||
             a.etiqueta.localeCompare(b.etiqueta)
           );
         // El recorrido manual se aplica al conjunto completo antes de paginar.
