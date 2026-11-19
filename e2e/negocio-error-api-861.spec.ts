@@ -16,8 +16,9 @@ test.describe("#861 — error del API en el formulario de Negocio", () => {
   ] as const) {
     test(`${nombre}: un 409 muestra el mensaje y el formulario sigue abierto`, async ({ page }) => {
       await page.setViewportSize(viewport);
+      const sufijo = String(Date.now()) + String(Math.floor(Math.random() * 1000));
       await loginAs(page, "admin");
-      const { cliente } = await createCliente(page, { nombre: "Cliente 861", telefono: "3009990861" });
+      const { cliente } = await createCliente(page, { nombre: `Cliente 861 ${sufijo}`, telefono: `300${sufijo.slice(-7)}` });
       const { negocio } = await createNegocio(page, { clienteId: cliente.id, nombre: "Tienda 861", tipoNegocio: "Tienda" });
       // updatedAt con microsegundos: el guardado condicional por updatedAt no coincide → 409 real.
       await db.$executeRaw`UPDATE "Negocio" SET "updatedAt" = '2026-11-01 10:00:00.123456' WHERE id = ${negocio.id}`;
@@ -32,7 +33,7 @@ test.describe("#861 — error del API en el formulario de Negocio", () => {
       await expect(page.getByText(/Objects are not valid as a React child/)).toHaveCount(0);
       // el formulario sigue ahí para reintentar y conserva lo escrito
       await expect(page.getByRole("button", { name: "Actualizar" })).toBeVisible();
-      await expect(page.getByDisplayValue("Tienda 861")).toBeVisible();
+      await expect(page.locator('input[type="text"]').first()).toHaveValue("Tienda 861");
     });
   }
 });
