@@ -24,13 +24,14 @@ async function crear(
   opts: {
     estadoEntrega?: "PENDIENTE" | "EN_RUTA" | "NO_ENTREGADO" | "ENTREGADO" | "ANULADO" | "CANCELADO";
     nombre?: string;
+    telefono?: string;
     canal?: "PUNTO" | "DOMICILIO";
     hora?: string;
   } = {},
 ) {
   const estadoEntrega = opts.estadoEntrega ?? "PENDIENTE";
   const cliente = await testPrisma.cliente.create({
-    data: { nombre: opts.nombre ?? `797 ${randomUUID()}`, telefono: randomUUID() },
+    data: { nombre: opts.nombre ?? `797 ${randomUUID()}`, telefono: opts.telefono ?? randomUUID() },
   });
   return testPrisma.pedido.create({
     data: {
@@ -88,18 +89,26 @@ describe("#797 — pendientes de días anteriores en PostgreSQL", () => {
   });
 
   it("E10: incluye pendiente, en ruta y no entregado; excluye entregado, anulado y cancelado", async () => {
+    // #882: "E10" también puede estar en el teléfono UUID de otro fixture.
+    // Probar la colisión explícitamente, sin cambiar la búsqueda del ERP.
+    const ajeno = await crear(AYER, {
+      nombre: "Cliente ajeno a estados 797",
+      telefono: "00000000-e100-4000-8000-000000000001",
+    });
+    const porTelefono = await consultarPedidos({ ...hoy(), search: "00000000-e100-4000-8000-000000000001" }, "ADMIN");
+    expect(porTelefono.arrastrados!.map((p) => p.id)).toContain(ajeno.id);
     const [pend, ruta, noEnt, entregado, anulado, cancelado] = await Promise.all([
-      crear(AYER, { nombre: "E10 pend" }),
-      crear(AYER, { nombre: "E10 ruta", estadoEntrega: "EN_RUTA" }),
-      crear(AYER, { nombre: "E10 noent", estadoEntrega: "NO_ENTREGADO" }),
-      crear(AYER, { nombre: "E10 entregado", estadoEntrega: "ENTREGADO" }),
-      crear(AYER, { nombre: "E10 anulado", estadoEntrega: "ANULADO" }),
-      crear(AYER, { nombre: "E10 cancelado", estadoEntrega: "CANCELADO" }),
+      crear(AYER, { nombre: "E10 estados pend" }),
+      crear(AYER, { nombre: "E10 estados ruta", estadoEntrega: "EN_RUTA" }),
+      crear(AYER, { nombre: "E10 estados noent", estadoEntrega: "NO_ENTREGADO" }),
+      crear(AYER, { nombre: "E10 estados entregado", estadoEntrega: "ENTREGADO" }),
+      crear(AYER, { nombre: "E10 estados anulado", estadoEntrega: "ANULADO" }),
+      crear(AYER, { nombre: "E10 estados cancelado", estadoEntrega: "CANCELADO" }),
     ]);
-    const r = await consultarPedidos({ ...hoy(), search: "E10" }, "ADMIN");
+    const r = await consultarPedidos({ ...hoy(), search: "E10 estados" }, "ADMIN");
     const ids = r.arrastrados!.map((p) => p.id);
     expect(ids).toEqual(expect.arrayContaining([pend.id, ruta.id, noEnt.id]));
-    for (const x of [entregado, anulado, cancelado]) expect(ids).not.toContain(x.id);
+    for (const x of [entregado, anulado, cancelado, ajeno]) expect(ids).not.toContain(x.id);
     expect(r.arrastradosTotal).toBe(3);
   });
 
