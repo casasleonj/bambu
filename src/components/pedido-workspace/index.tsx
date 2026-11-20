@@ -314,13 +314,35 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
   const ultimaInvalidacionPrecio = useRef<string | null>(null)
   const pricingSnapshotData = pricingSnapshot.data
   const reloadPricing = pricingSnapshot.reload
+  // Una regla comercial puede cambiar mientras el formulario permanece
+  // abierto. No basta recargar la tabla: también hay que renovar el preview
+  // remoto para evitar dejar el botón de confirmar bloqueado indefinidamente.
+  // La clave excluye previewRevision para impedir ciclos de reintentos cuando
+  // un desfase es persistente (p. ej., configuración incompleta).
+  const identidadCotizacion = pricingSnapshotData
+    ? JSON.stringify([
+        pricingSnapshotData.version,
+        state.draft.clienteId,
+        state.draft.negocioId,
+        state.draft.canal,
+        state.draft.items,
+      ])
+    : null
   useEffect(() => {
-    if (!precioDesactualizado || !pricingSnapshotData) return
-    const key = `${state.previewRevision}:${pricingSnapshotData.version}`
-    if (ultimaInvalidacionPrecio.current === key) return
-    ultimaInvalidacionPrecio.current = key
-    reloadPricing()
-  }, [precioDesactualizado, pricingSnapshotData, reloadPricing, state.previewRevision])
+    if (!precioDesactualizado || !pricingSnapshotData || !identidadCotizacion) return
+    if (state.phase === 'COMMITTING' || state.phase === 'COMMITTED') return
+    if (ultimaInvalidacionPrecio.current === identidadCotizacion) return
+    ultimaInvalidacionPrecio.current = identidadCotizacion
+    // Diferir fuera de la ejecución del effect evita actualizaciones de
+    // estado síncronas en cascada. El cleanup cancela previews obsoletos.
+    let active = true
+    void Promise.resolve().then(() => {
+      if (!active) return
+      reloadPricing()
+      dispatch({ type: 'REVALIDATE_PREVIEW' })
+    })
+    return () => { active = false }
+  }, [precioDesactualizado, pricingSnapshotData, identidadCotizacion, reloadPricing, state.phase])
 
   const cantOf = useCallback(
     (codigo: ProductoCodigo) => state.draft.items.find((i) => i.producto === codigo)?.cantidad ?? 0,
