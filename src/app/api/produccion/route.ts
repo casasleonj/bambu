@@ -11,7 +11,7 @@ import { logger } from '@/lib/logger'
 import { getVentasDelDia } from '@/lib/ventas'
 import { calcComSellador, itemBotellon } from '@/lib/comisiones'
 import { getTodayRange, getDateRange } from '@/lib/dates'
-import { motivoFechaProduccionInvalida } from '@/lib/produccion-fecha'
+import { DIAS_MAX_PRODUCCION_ATRASADA, motivoFechaProduccionInvalida } from '@/lib/produccion-fecha'
 import { netoPrevioDelDia } from '@/lib/produccion-previas'
 import { startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
@@ -94,13 +94,13 @@ export async function POST(request: NextRequest) {
 
   // FIX 1.6: fecha truncada a medianoche Bogotá para que
   // @@unique([trabajadorId, fecha, turno]) funcione como "1 por día"
-  // #645: con `fecha` (cierre atrasado) la producción se registra en ese día, hasta 7 días atrás y nunca en el futuro.
+  // #645: con `fecha` (cierre atrasado) la producción se registra en ese día, hasta 30 días atrás y nunca en el futuro (#899).
   const hoy = todayInBogota()
   const diaProduccion = parsed.data.fecha ?? hoy
   if (parsed.data.fecha) {
     const motivo = motivoFechaProduccionInvalida(diaProduccion, hoy)
     if (motivo === 'FECHA_FUTURA') return apiError('No se puede registrar producción de un día que no ha llegado', 422, { code: motivo })
-    if (motivo) return apiError('Solo se registra producción de hoy y de los 7 días anteriores', 422, { code: motivo })
+    if (motivo) return apiError(`Solo se registra producción de hoy y de los ${DIAS_MAX_PRODUCCION_ATRASADA} días anteriores`, 422, { code: motivo })
   }
   const fechaProduccion = startOfDayInBogota(diaProduccion)
   const { startDate: startOfDay, endDate: endOfDay } = getDateRange(diaProduccion, diaProduccion)

@@ -54,12 +54,12 @@ describe('#645 — producción de un día atrasado, jornada completa y varias pr
     expect(p.items.find((i) => i.producto === 'PACA_AGUA')?.ventas).toBe(7)
   })
 
-  it('rechaza fechas futuras, de más de 7 días y de un día ya cerrado', async () => {
+  it('rechaza fechas futuras, de más de 30 días y de un día ya cerrado', async () => {
     const s = await sellador()
     const futuro = await crearProduccion(post(cuerpo(s.id, 'TARDE', { fecha: dia(-1) })))
     expect(futuro.status).toBe(422)
     expect((await futuro.json()).error.code).toBe('FECHA_FUTURA')
-    const antigua = await crearProduccion(post(cuerpo(s.id, 'TARDE', { fecha: dia(8) })))
+    const antigua = await crearProduccion(post(cuerpo(s.id, 'TARDE', { fecha: dia(31) })))
     expect(antigua.status).toBe(422)
     expect((await antigua.json()).error.code).toBe('FECHA_MUY_ANTIGUA')
 
@@ -103,7 +103,7 @@ describe('#645 — producción de un día atrasado, jornada completa y varias pr
     expect(despues.items.find((i) => i.producto === 'PACA_AGUA')!.stockIni).toBe(iniPrimera + 18)
   })
 
-  it('corregir la producción de un día atrasado (sin cerrar) funciona; la de hace más de 7 días no', async () => {
+  it('corregir la producción de un día atrasado (sin cerrar) funciona; la de hace más de 30 días no', async () => {
     const s = await sellador()
     const dia6 = dia(6)
     expect((await crearProduccion(post(cuerpo(s.id, 'MANANA', { fecha: dia6 })))).status).toBe(201)
@@ -116,7 +116,7 @@ describe('#645 — producción de un día atrasado, jornada completa y varias pr
     expect(ok.status, JSON.stringify(await ok.clone().json())).toBe(200)
 
     const vieja = await testPrisma.produccion.create({ data: {
-      fecha: startOfDayInBogota(dia(10)), turno: 'TARDE', trabajadorId: s.id, comSellTotal: 0,
+      fecha: startOfDayInBogota(dia(31)), turno: 'TARDE', trabajadorId: s.id, comSellTotal: 0,
       items: { create: [{ producto: 'PACA_AGUA' }, { producto: 'PACA_HIELO' }] },
     } })
     expect((await put(vieja.id, { obs: 'No debe poder' })).status).toBe(400)
