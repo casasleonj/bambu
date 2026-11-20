@@ -24,7 +24,7 @@ const esNumero = (v: unknown): v is number =>
  * muestra el error y las demás cifras no se tocan. Un error nunca se pinta
  * como cero.
  */
-export function EntregasHoyCard() {
+export function EntregasHoyCard({ rango }: { rango?: { from: string; to: string } | null }) {
   const [estado, setEstado] = useState<Estado>({ tipo: 'cargando' })
   const [intento, setIntento] = useState(0)
 
@@ -35,7 +35,7 @@ export function EntregasHoyCard() {
     const timer = setTimeout(() => controller.abort(), 10000)
     const leer = async () => {
       try {
-        const res = await fetch('/api/dashboard/entregas-hoy', {
+        const res = await fetch(rango ? `/api/dashboard/entregas-hoy?from=${encodeURIComponent(rango.from)}&to=${encodeURIComponent(rango.to)}` : '/api/dashboard/entregas-hoy', {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -66,7 +66,7 @@ export function EntregasHoyCard() {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [intento])
+  }, [intento, rango?.from, rango?.to])
 
   useRealtimeListener(['pedido.created', 'pedido.updated'], () => {
     setIntento((n) => n + 1)
@@ -83,11 +83,11 @@ export function EntregasHoyCard() {
       data-testid="entregas-hoy-card"
     >
       <p className="flex items-center justify-between gap-2 text-sm text-gray-500">
-        Entregas de hoy
+        {rango ? 'Entregas del período' : 'Entregas de hoy'}
         <Truck aria-hidden="true" className="h-6 w-6 text-sky-600" />
       </p>
       <p className="text-xs text-gray-400">
-        Pedidos con entrega registrada hoy
+        Pedidos con entrega registrada {rango ? 'en el período' : 'hoy'}
       </p>
       {estado.tipo === 'cargando' && (
         <div
