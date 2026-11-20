@@ -818,7 +818,7 @@ async function leerConsultaPedidos(
           zonaCli: direccion.direccion ?? "",
           barrioCli: direccion.barrio ?? "",
           ...(grupoPorId?.get(raw.id) ? { grupoBarrio: grupoPorId.get(raw.id) } : {}),
-          ...(diaOperativo && raw.fecha < rango.desde ? { diaAnterior: true } : {}),
+          ...(fArrastre && raw.fecha < rango.desde ? { diaAnterior: true, diaReferenciaConsulta: f.desde } : {}),
           ...(diaOperativo ? { actividadOperativa: true } : {}),
           ...(diaOperativo && hechos.some((e) =>
             e.fuente !== "HISTORICO" && e.fecha >= rango.desde && e.fecha < rango.hasta
