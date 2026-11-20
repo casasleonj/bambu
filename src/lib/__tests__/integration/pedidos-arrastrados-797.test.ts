@@ -101,8 +101,8 @@ describe("#797 — pendientes de días anteriores en PostgreSQL", () => {
     const ajenoPorNombre = await crear(AYER, { nombre: nombreAjeno });
     const porTelefono = await consultarPedidos({ ...hoy(), search: telefonoAjeno }, "ADMIN");
     const porNombre = await consultarPedidos({ ...hoy(), search: nombreAjeno }, "ADMIN");
-    expect(porTelefono.arrastrados?.map((p) => p.id)).toContain(ajeno.id);
-    expect(porNombre.arrastrados?.map((p) => p.id)).toContain(ajenoPorNombre.id);
+    expect(porTelefono.pedidos.map((p) => p.id)).toContain(ajeno.id);
+    expect(porNombre.pedidos.map((p) => p.id)).toContain(ajenoPorNombre.id);
 
     // El marcador incorpora palabras y un UUID; no puede coincidir por azar
     // con un teléfono UUID y aísla esta comprobación de otros fixtures.
