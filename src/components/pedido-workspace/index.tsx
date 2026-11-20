@@ -277,17 +277,23 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
   // (o bloqueando) el registro del pedido, sin esperar para mostrar el total.
   const preciosLocales = useMemo(() => {
     if (!pricingSnapshot.data) return null
-    return resolverPreciosPedido({
-      items: state.draft.items.map((i) => ({
-        codigo: i.producto,
-        cantidad: i.cantidad,
-        precioManual: i.precioManual,
-      })),
-      canal: state.draft.canal,
-      clienteOverrides: pricingSnapshot.data.pricing.clienteOverrides,
-      tiersByCode: pricingSnapshot.data.pricing.tiersByCode,
-      productosByCode: pricingSnapshot.data.pricing.productosByCode,
-    })
+    try {
+      return resolverPreciosPedido({
+        items: state.draft.items.map((i) => ({
+          codigo: i.producto,
+          cantidad: i.cantidad,
+          precioManual: i.precioManual,
+        })),
+        canal: state.draft.canal,
+        clienteOverrides: pricingSnapshot.data.pricing.clienteOverrides,
+        tiersByCode: pricingSnapshot.data.pricing.tiersByCode,
+        productosByCode: pricingSnapshot.data.pricing.productosByCode,
+      })
+    } catch {
+      // Cantidad insegura o precio inválido: no romper el render ni fabricar
+      // un importe. El preview remoto y el commit siguen siendo obligatorios.
+      return null
+    }
   }, [pricingSnapshot.data, state.draft.items, state.draft.canal])
   const totalLocal = useMemo(() =>
     preciosLocales === null ? null :
@@ -321,13 +327,18 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
       const localItem = preciosLocales?.find((c) => c.producto === codigo)
       // El precio de referencia (placeholder/tachado) también corresponde
       // al tramo ACTUAL, nunca al primero de la lista de volumen.
-      const precioBase = pricingSnapshot.data
-        ? resolverPrecioUnitario(
+      const precioBase = (() => {
+        if (!pricingSnapshot.data) return precioBaseFor(codigo, state.draft.canal)
+        try {
+          return resolverPrecioUnitario(
             codigo, draftItem?.cantidad ?? 0, state.draft.canal, null, undefined,
             pricingSnapshot.data.pricing.tiersByCode[codigo] ?? [],
             pricingSnapshot.data.pricing.productosByCode[codigo],
           ).precio
-        : precioBaseFor(codigo, state.draft.canal)
+        } catch {
+          return 0 // la validación remota informará el error sin tumbar la vista
+        }
+      })()
       return {
         prodId,
         cantidad: draftItem?.cantidad ?? 0,
