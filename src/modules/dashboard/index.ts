@@ -5,6 +5,7 @@
  * This is the only file the presentation layer should import from this module.
  */
 
+import { dashboardDateRange, dashboardPreviousPeriod, dashboardToday } from '@/lib/dashboard-date-range'
 import { PrismaFinanzasRepository } from './infrastructure/finanzas.repository'
 import { getDashboardData } from './application'
 import { prisma } from '@/shared/infrastructure'
@@ -56,3 +57,13 @@ export function fetchCurrentDashboardData(now = new Date()) {
   const ayer = { start: new Date(+start - 86_400_000), end: start }
   return fetchDashboardData(hoy, ayer)
 }
+
+/** Query a selected Bogotá calendar range against an equally sized preceding period. */
+export function fetchDashboardDateRange(from: string, to = from) {
+  const selected = dashboardDateRange(from, to)
+  const previous = dashboardPreviousPeriod(selected)
+  return fetchDashboardData(selected, previous)
+}
+
+/** Shared default period for consumers that need to render the selector. */
+export { dashboardToday }
