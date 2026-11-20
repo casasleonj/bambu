@@ -573,7 +573,7 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
       // creación normal: derivado de si hay cliente real.
       origen: modoEdicion ? state.draft.origen : origenCreacion,
       pedidoOrigenId: state.draft.pedidoOrigenId,
-      precioEsperado: calc?.total,
+      precioEsperado: calc?.total ?? totalLocal ?? undefined,
       items: state.draft.items
         .filter((i) => i.cantidad > 0 || (i.cantidadRegalo ?? 0) > 0)
         .map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual, cantidadRegalo: i.cantidadRegalo })),
