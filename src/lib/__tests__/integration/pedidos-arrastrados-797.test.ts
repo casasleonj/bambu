@@ -130,9 +130,11 @@ describe("#797 — pendientes de días anteriores en PostgreSQL", () => {
       data: { estadoEntrega: "ENTREGADO", estado: "ENTREGADO", entregadoAt: en(HOY, "11:54:00") },
     });
     const r = await consultarPedidos({ ...hoy(), search: "Entrega 797" }, "ADMIN");
-    expect(r.total).toBe(0);
-    // entregadoAt sin evento físico verificable no genera una fila ficticia «Entregado hoy».
-    expect(r.pedidos.map((x) => x.id)).not.toContain(p.id);
+    expect(r.total).toBe(1);
+    // La fecha aproximada conserva visibilidad, PERO no se presenta como entrega verificada.
+    const incierta = r.pedidos.find(x => x.id === p.id);
+    expect(incierta?.entregaEnPeriodo?.unidades).toBeNull();
+    expect(incierta?.entregaEnPeriodo?.porConciliar).toBe(true);
   });
 
   it("orden: más antiguos primero, sin tope artificial y con total real", async () => {
