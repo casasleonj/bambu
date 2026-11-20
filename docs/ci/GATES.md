@@ -78,17 +78,20 @@ que `main` tenga protección efectiva ni que Vercel espere por una certificació
   Los grupos de concurrencia de borrador y normal se separan para que una
   reejecución antigua de borrador no cancele un candidato listo.
 - El check de integración conserva su nombre histórico por compatibilidad,
-  pero ya no usa continue-on-error y el gate exige tanto resultado success como
-  suite_ok=true escrito tras el exit real de Vitest. Lint conserva su política
-  anterior. No se eliminan specs ni se cambian flags/proyectos E2E. El fixture
-  E10 de #882 usa contexto de búsqueda inequívoco, con una colisión de teléfono
-  explícita; la corrección queda pendiente de demostrar en PostgreSQL real.
+  y conserva temporalmente continue-on-error a nivel de job por compatibilidad,
+  pero el gate exige el resultado real suite_ok=true del paso Vitest y el
+  resultado success del job. Un fallo de integración ya NO certifica CI verde.
+  Lint sigue siendo informativo en CI ordinario y bloqueante en nightly_full.
+  No se eliminan specs ni se cambian flags/proyectos E2E. La estabilización
+  del fixture E10 se implementa por separado en el PR #907 (Refs #882).
 - Reversión del piloto: variable ausente o distinta de true y nueva validación
   del candidato; revertir los cambios de código si hace falta. No revertir datos.
 - Alcance de esta fase: solo preparación, comparación de resultados y
-  feedback de borrador. No activa promoción protegida, selección por dependencia,
-  reutilización de suites, build compartido, cron nocturno ni deduplicación
-  push-main/PR: requieren fases posteriores y evidencia. Nunca usar un éxito
+  feedback de borrador y gate de integración verificable. La regresión
+  nocturna y la observación de deduplicación YA están en main por #905;
+  el selector de dependencias permanece en el PR #901 (modo sombra, sin
+  permisos para omitir). No activa promoción protegida, selección E2E activa,
+  reutilización de suites PR→main ni build compartido. Nunca usar un éxito
   de borrador como comprobante de promoción.
 
 Comprobación local: `node --test scripts/ci/__tests__/politica-ci.node.test.mjs`.
@@ -96,3 +99,10 @@ Validar además GitHub Actions con PR docs-only, código, borrador piloto OFF y,
 solo con autorización y aislamiento, borrador piloto ON + ready_for_review,
 diff incompleto, cancelación y fallo real de integración. Verificar identidad
 del SHA/base y check requerido, no solo conclusión nominal del workflow.
+
+La protección de rama de main figuraba desactivada en el endpoint GitHub
+branches/main al preparar esta fase; ningún workflow puede por sí solo impedir
+que alguien con permisos de escritura fusione sin esperar checks si el
+repositorio no exige el `CI gate (resumen)`. Configurar required check y
+restricción de push/promoción es una acción de administración separada;
+**no se debe declarar hecha ni usar este piloto para sustituirla**.
