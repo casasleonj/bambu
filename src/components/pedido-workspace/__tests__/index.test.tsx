@@ -180,6 +180,11 @@ describe('PedidosWorkspace (Composición)', () => {
     fireEvent.click(screen.getByTestId('workspace-commit'))
     await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled())
     expect(screen.getByText(/no se duplica/i)).toBeInTheDocument()
+    // #925: un rechazo del commit obliga a refrescar las reglas del comprador,
+    // pero conserva el offlineId y no cambia las cantidades ni el diseño.
+    await waitFor(() => expect(
+      vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/api/precios/cotizacion')).length,
+    ).toBeGreaterThan(1))
 
     fireEvent.click(screen.getByTestId('workspace-commit'))
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2))
