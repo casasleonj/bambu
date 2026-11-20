@@ -282,6 +282,14 @@ export class CrearPedidoUseCase {
       // (La decisión vive en `estadoEntregaAlCrear`, compartida con el preview.)
       const estadoEntrega = EstadoEntregaVO.create(estadoEntregaCreacion)
       const total = preciosResueltos.reduce((sum, pr) => sum + Math.round(pr.subtotal * 100), 0) / 100
+      // #925: la comparación ocurre DENTRO del lock/tx, ANTES de consumir
+      // saldo a favor, registrar pagos, factura, inventario o comisiones.
+      // El offlineId conserva su dedup anterior: los reintentos ya creados
+      // retornan antes de este punto sin generar efectos duplicados.
+      if (input.precioEsperado !== undefined &&
+          Math.round(input.precioEsperado * 100) !== Math.round(total * 100)) {
+        throw new Error('PRECIO_CAMBIO_CONFIRMACION')
+      }
 
       // P0 (docs/pedidos/HUB_REVISION_INTEGRAL_v1.0.md §11): CONSUMIDOR_FINAL
       // es ausencia de cliente real — no tiene a quién devolverle ni de quién
