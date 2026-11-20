@@ -35,4 +35,10 @@ describe('itemsCambiaron — regla compartida cliente/servidor', () => {
   it('lineaSinCambio: línea inexistente → cambio', () => {
     expect(lineaSinCambio(undefined, { cantidad: 1 })).toBe(false)
   })
+  it('#795: cambiar solo el regalo sí envía items; omitirlo en un cliente anterior lo conserva', () => {
+    const originales = [{ producto: 'PACA_AGUA', cantidad: 60, cantidadRegalo: 3, precio: 2300, precioOrigen: 'manual' }]
+    expect(itemsCambiaron(originales, [{ producto: 'PACA_AGUA', cantidad: 60 }])).toBe(false)
+    expect(itemsCambiaron(originales, [{ producto: 'PACA_AGUA', cantidad: 60, cantidadRegalo: 4 }])).toBe(true)
+    expect(itemsCambiaron(originales, [{ producto: 'PACA_AGUA', cantidad: 60, cantidadRegalo: 0 }])).toBe(true)
+  })
 })

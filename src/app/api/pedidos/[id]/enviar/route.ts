@@ -6,10 +6,11 @@ import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { ROLES } from '@/lib/constants'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
-import { calcularPesoEmbarque } from '@/lib/embarque-capacidad'
+import { calcularPesoEmbarque, pedidoParaCargaPendiente } from '@/lib/embarque-capacidad'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { acquireAdvisoryLockTx } from '@/lib/locks'
 
 const EnviarPedidoSchema = z.object({
   embarqueId: z.string().min(1),
@@ -66,6 +67,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       | { deduped: false; pedidoId: string; embarqueId: string | null; estadoEntrega: string; numero: number }
 
     const result: EnviarResult = await prisma.$transaction(async (tx) => {
+      // Mismo lock que la asignación en bloque: dos pedidos no consumen el
+      // mismo espacio disponible al validar en paralelo (#795).
+      await acquireAdvisoryLockTx(tx, 'EMBARQUE_CARGA', embarqueId)
       const current = await tx.pedido.findUnique({
         where: { id },
         select: {
@@ -81,6 +85,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           cBotellonDomPed: true,
           cBolsaAguaPed: true,
           cBolsaHieloPed: true,
+          cPacaAguaEnt: true, cPacaHieloEnt: true,
+          cBotellonFabEnt: true, cBotellonDomEnt: true,
+          cBolsaAguaEnt: true, cBolsaHieloEnt: true,
+          items: { select: { producto: true, cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true } },
         },
       })
       if (!current) {
@@ -107,7 +115,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       const embarque = await tx.embarque.findUnique({
         where: { id: embarqueId },
-        include: { pedidos: true },
+        include: { pedidos: { include: { items: true } } },
       })
       if (!embarque) {
         throw new Error('EMBARQUE_NOT_FOUND')
@@ -116,20 +124,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         throw new Error('EMBARQUE_NOT_OPEN')
       }
 
-      const pesoActual = calcularPesoEmbarque(embarque.pedidos)
+      const pesoActual = calcularPesoEmbarque(embarque.pedidos.map(pedidoParaCargaPendiente))
 
       const embarqueData = await tx.trabajador.findUnique({
         where: { id: embarque.trabajadorId },
         select: { capacidadKg: true },
       })
 
-      const pesoPedido =
-        (current.cPacaAguaPed || 0) * 10.0 +
-        (current.cPacaHieloPed || 0) * 11.0 +
-        (current.cBotellonFabPed || 0) * 20.0 +
-        (current.cBotellonDomPed || 0) * 20.0 +
-        (current.cBolsaAguaPed || 0) * 0.25 +
-        (current.cBolsaHieloPed || 0) * 0.55
+      const pesoPedido = calcularPesoEmbarque([pedidoParaCargaPendiente(current)])
 
       const capacidadKg = embarqueData?.capacidadKg || 500
       if (pesoActual + pesoPedido > capacidadKg) {

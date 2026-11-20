@@ -61,6 +61,11 @@ interface PrismaPedido {
     precio: number | { toNumber: () => number }
     subtotal: number | { toNumber: () => number }
     precioOrigen: string
+    cantRegaloPedido?: number
+    cantRegaloEntrega?: number
+    regaloAutorizadoPorId?: string | null
+    regaloAutorizadoEn?: Date | null
+    regaloMotivo?: string | null
   }>
   pagos: Array<{
     metodo: string
@@ -96,6 +101,13 @@ export class PedidoMapper {
         UnitPrice.fromDecimal(toNumber(i.precio)),
         i.precioOrigen || 'base',
         i.cantEntrega,
+        (i.cantRegaloPedido ?? 0) !== 0 || (i.cantRegaloEntrega ?? 0) !== 0 ? {
+          cantidad: i.cantRegaloPedido ?? 0,
+          entregada: i.cantRegaloEntrega ?? 0,
+          autorizadoPorId: i.regaloAutorizadoPorId ?? '',
+          autorizadoEn: i.regaloAutorizadoEn ?? new Date(Number.NaN),
+          motivo: i.regaloMotivo ?? '',
+        } : undefined,
       ),
     )
 
@@ -197,14 +209,7 @@ export class PedidoMapper {
       createdById: pedido.createdById || null,
       ...legacy,
       items: {
-        create: pedido.items.map(i => ({
-          producto: i.producto,
-          cantPedido: i.cantPedido,
-          cantEntrega: i.cantEntrega,
-          precio: i.precio.toDecimal(),
-          subtotal: i.subtotalPedido.toDecimal(),
-          precioOrigen: i.precioOrigen,
-        })),
+        create: this.toPrismaItemsCreate(pedido),
       },
     }
 
@@ -247,14 +252,22 @@ export class PedidoMapper {
   }
 
   static toPrismaItemsCreate(pedido: Pedido): Array<Record<string, unknown>> {
-    return pedido.items.map(i => ({
-      producto: i.producto,
-      cantPedido: i.cantPedido,
-      cantEntrega: i.cantEntrega,
-      precio: i.precio.toDecimal(),
-      subtotal: i.subtotalPedido.toDecimal(),
-      precioOrigen: i.precioOrigen,
-    }))
+    return pedido.items.map(i => {
+      const regalo = i.regalo
+      return {
+        producto: i.producto,
+        cantPedido: i.cantPedido,
+        cantEntrega: i.cantEntrega,
+        precio: i.precio.toDecimal(),
+        subtotal: i.subtotalPedido.toDecimal(),
+        precioOrigen: i.precioOrigen,
+        cantRegaloPedido: i.cantRegaloPedido,
+        cantRegaloEntrega: i.cantRegaloEntrega,
+        regaloAutorizadoPorId: regalo?.autorizadoPorId ?? null,
+        regaloAutorizadoEn: regalo?.autorizadoEn ?? null,
+        regaloMotivo: regalo?.motivo ?? null,
+      }
+    })
   }
 
   static facturaSnapshotFromPrisma(raw: {

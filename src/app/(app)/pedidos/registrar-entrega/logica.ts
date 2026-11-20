@@ -3,6 +3,7 @@
 // reglas (ver `EntregarPedidoUseCase`); aquí solo se anticipan para guiar a
 // quien usa la pantalla con mensajes sencillos antes de enviar.
 import { valorEntregadoPedidoCentavos } from '@/lib/valor-entregado-pedido'
+import { importeEntregaCentavos } from '@/shared/domain/unit-price'
 
 export type MetodoCobro = 'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA'
 
@@ -33,7 +34,7 @@ export interface PedidoParaEntrega {
   totalPagado: number
   /** Repartidor ya fijado por una entrega anterior de este pedido. */
   entregadoPorId?: string | null
-  items: Array<{ producto: string; cantPedido: number; cantEntrega: number; precio?: number }>
+  items: Array<{ producto: string; cantPedido: number; cantEntrega: number; cantRegaloPedido?: number; cantRegaloEntrega?: number; precio?: number }>
 }
 
 export interface Repartidor { id: string; nombre: string }
@@ -43,6 +44,7 @@ export interface DatosEntrega {
   alcance: 'COMPLETA' | 'MENOS' | null
   /** Unidades que se entregan AHORA por producto (solo cuando `alcance === 'MENOS'`). */
   cantidades: Record<string, number>
+  regalos?: Record<string, number>
   repartidorId: string
   /** YYYY-MM-DD (calendario de Bogotá). */
   fecha: string
@@ -76,16 +78,19 @@ export function sumarDias(dia: string, dias: number): string {
 }
 
 /** Unidades que faltan por entregar en cada línea. */
-export function pendientes(p: PedidoParaEntrega): Array<{ producto: string; pendiente: number }> {
+export function pendientes(p: PedidoParaEntrega): Array<{ producto: string; pendiente: number; pendienteRegalo?: number }> {
   return p.items
-    .map((i) => ({ producto: i.producto, pendiente: Math.max(0, i.cantPedido - i.cantEntrega) }))
-    .filter((i) => i.pendiente > 0)
+    .map((i) => ({ producto: i.producto, pendiente: Math.max(0, i.cantPedido - i.cantEntrega),
+      ...((i.cantRegaloPedido ?? 0) > 0 ? { pendienteRegalo: Math.max(0, (i.cantRegaloPedido ?? 0) - (i.cantRegaloEntrega ?? 0)) } : {}),
+    }))
+    .filter((i) => i.pendiente + (i.pendienteRegalo ?? 0) > 0)
 }
 
 export function datosIniciales(p: PedidoParaEntrega, ahora: Date = new Date()): DatosEntrega {
   return {
     alcance: null,
     cantidades: Object.fromEntries(pendientes(p).map((i) => [i.producto, i.pendiente])),
+    regalos: {},
     repartidorId: p.entregadoPorId ?? '',
     fecha: hoyBogota(ahora),
     lineas: [{ metodo: 'EFECTIVO', monto: '' }],
@@ -96,12 +101,16 @@ export function datosIniciales(p: PedidoParaEntrega, ahora: Date = new Date()): 
 }
 
 /** Unidades que se entregarán ahora, por producto. */
-export function itemsAEntregar(p: PedidoParaEntrega, d: DatosEntrega): Array<{ producto: string; cantidad: number }> {
+export function itemsAEntregar(p: PedidoParaEntrega, d: DatosEntrega): Array<{ producto: string; cantidad: number; cantidadRegalo?: number }> {
   const pend = pendientes(p)
-  if (d.alcance === 'COMPLETA') return pend.map((i) => ({ producto: i.producto, cantidad: i.pendiente }))
+  if (d.alcance === 'COMPLETA') return pend.map((i) => ({ producto: i.producto, cantidad: i.pendiente,
+    ...(i.pendienteRegalo !== undefined ? { cantidadRegalo: i.pendienteRegalo } : {}),
+  }))
   return pend
-    .map((i) => ({ producto: i.producto, cantidad: Math.min(i.pendiente, Math.max(0, Math.floor(d.cantidades[i.producto] ?? 0))) }))
-    .filter((i) => i.cantidad > 0)
+    .map((i) => ({ producto: i.producto, cantidad: Math.min(i.pendiente, Math.max(0, Math.floor(d.cantidades[i.producto] ?? 0))),
+      ...(i.pendienteRegalo !== undefined ? { cantidadRegalo: Math.min(i.pendienteRegalo, Math.max(0, Math.floor(d.regalos?.[i.producto] ?? 0))) } : {}),
+    }))
+    .filter((i) => i.cantidad + (i.cantidadRegalo ?? 0) > 0)
 }
 
 export function parsearMonto(texto: string): number {
@@ -146,7 +155,25 @@ export function saldoActual(p: PedidoParaEntrega): number {
 /** ¿Esta entrega deja el pedido completo (todo lo pendiente se entrega)? */
 export function completa(p: PedidoParaEntrega, d: DatosEntrega): boolean {
   const aEntregar = itemsAEntregar(p, d)
-  return pendientes(p).every((pe) => (aEntregar.find((a) => a.producto === pe.producto)?.cantidad ?? 0) >= pe.pendiente)
+  return pendientes(p).every((pe) => {
+    const a = aEntregar.find(i => i.producto === pe.producto)
+    return (a?.cantidad ?? 0) >= pe.pendiente && (a?.cantidadRegalo ?? 0) >= (pe.pendienteRegalo ?? 0)
+  })
+}
+
+/** Resumen físico/comercial del mismo delta que se enviará, solo si el pedido tiene regalos. */
+export function resumenRegalos(p: PedidoParaEntrega, d: DatosEntrega): { fisicas: number; valor: number | null } | null {
+  if (!p.items.some(i => (i.cantRegaloPedido ?? 0) > 0) || !d.alcance) return null
+  const lineas = itemsAEntregar(p, d)
+  let valor = 0
+  for (const l of lineas) {
+    const item = p.items.find(i => i.producto === l.producto)
+    if (l.cantidad > 0 && (item?.precio === undefined || !Number.isFinite(item.precio))) {
+      return { fisicas: lineas.reduce((s, i) => s + i.cantidad + (i.cantidadRegalo ?? 0), 0), valor: null }
+    }
+    if (l.cantidad > 0) valor += importeEntregaCentavos(item!.precio!, l.cantidad, item!.cantEntrega)
+  }
+  return { fisicas: lineas.reduce((s, i) => s + i.cantidad + (i.cantidadRegalo ?? 0), 0), valor: valor / 100 }
 }
 
 /** Previsión de la validación de promesa del servidor; no cambia la deuda ni sustituye su lectura. */
@@ -172,9 +199,14 @@ export function validar(p: PedidoParaEntrega, d: DatosEntrega, ahora: Date = new
   if (!d.alcance) e.alcance = 'Indica si se entregó todo o menos.'
   const aEntregar = itemsAEntregar(p, d)
   if (d.alcance === 'MENOS') {
-    const unidades = aEntregar.reduce((s, i) => s + i.cantidad, 0)
+    const unidades = aEntregar.reduce((s, i) => s + i.cantidad + (i.cantidadRegalo ?? 0), 0)
     if (unidades <= 0) e.cantidades = 'Indica cuántas unidades se entregaron.'
     else if (completa(p, d)) e.cantidades = 'Marcaste todo lo pendiente: elige «Sí, se entregó todo».'
+    if (pendientes(p).some(i => {
+      const cantidad = d.cantidades[i.producto] ?? 0, regalo = d.regalos?.[i.producto] ?? 0
+      return !Number.isSafeInteger(cantidad) || cantidad < 0 || cantidad > i.pendiente ||
+        !Number.isSafeInteger(regalo) || regalo < 0 || regalo > (i.pendienteRegalo ?? 0)
+    })) e.cantidades = 'Indica cantidades enteras dentro de lo pendiente, separando las unidades con precio y las de regalo.'
   }
 
   if (esDomicilio && !p.entregadoPorId && !d.repartidorId) e.repartidor = 'Elige quién entregó el pedido.'
@@ -215,7 +247,9 @@ export function resumen(p: PedidoParaEntrega, d: DatosEntrega, repartidores: Rep
   const aEntregar = itemsAEntregar(p, d)
   const total = completa(p, d)
   const nombreRep = repartidores.find((r) => r.id === (p.entregadoPorId || d.repartidorId))?.nombre
-  const unidades = aEntregar.map((i) => `${i.cantidad} ${nombreProducto(i.producto)}`).join(', ')
+  const unidades = aEntregar.map((i) => i.cantidadRegalo !== undefined
+    ? `${i.cantidad + i.cantidadRegalo} ${nombreProducto(i.producto)} (${i.cantidad} con precio + ${i.cantidadRegalo} de regalo)`
+    : `${i.cantidad} ${nombreProducto(i.producto)}`).join(', ')
 
   frases.push(
     total

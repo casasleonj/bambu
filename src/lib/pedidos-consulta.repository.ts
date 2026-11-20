@@ -412,7 +412,7 @@ async function leerConsultaPedidos(
             where: whereLista,
             select: {
               id: true, clienteId: true, origen: true, fecha: true, createdAt: true, numero: true, estadoEntrega: true, fechaEntrega: true, direccionEntrega: true, barrioEntrega: true,
-              items: { select: { producto: true, cantPedido: true, cantEntrega: true } },
+              items: { select: { producto: true, cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true } },
               cliente: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
               negocio: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
             },
@@ -444,7 +444,7 @@ async function leerConsultaPedidos(
           !esVentaAnonima(c) &&
           !["ENTREGADO", "CANCELADO", "ANULADO"].includes(c.estadoEntrega) &&
           (!c.fechaEntrega || c.fechaEntrega <= ahora) &&
-          c.items.some(item => item.cantPedido > item.cantEntrega)
+          c.items.some(item => item.cantPedido > item.cantEntrega || item.cantRegaloPedido > item.cantRegaloEntrega)
         );
         const fifo = ordenarBarriosFIFO(abiertos.map(c => ({
           id: c.id, barrioClave: grupoPorId!.get(c.id)!.clave, createdAt: c.createdAt,
@@ -635,7 +635,7 @@ async function leerConsultaPedidos(
             tx.pedidoItem.groupBy({
               by: ["producto"],
               where: { pedido: { is: fin } },
-              _sum: { cantPedido: true, cantEntrega: true },
+              _sum: { cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true },
             }),
             tx.pedido.aggregate({
               where: { AND: [fin, { items: { none: {} } }] },
@@ -660,8 +660,8 @@ async function leerConsultaPedidos(
               l.producto,
               {
                 producto: l.producto,
-                pedidas: l._sum.cantPedido ?? 0,
-                entregadas: l._sum.cantEntrega ?? 0,
+                pedidas: (l._sum.cantPedido ?? 0) + (l._sum.cantRegaloPedido ?? 0),
+                entregadas: (l._sum.cantEntrega ?? 0) + (l._sum.cantRegaloEntrega ?? 0),
               },
             ]),
           );

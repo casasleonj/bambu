@@ -9,6 +9,7 @@ export interface PedidoItemEditorItem {
   /** Clave interna del producto (id de `PRODUCTO_INFO`), no el `codigo` canónico. */
   prodId: string
   cantidad: number
+  cantidadRegalo?: number
   /** Precio efectivo (manual si existe, si no el resuelto/base) — ya calculado por el padre (`getPrecio`). */
   precio: number
   /** Precio de tabla/base, sin manual — usado como referencia tachada y como placeholder del input de precio manual. */
@@ -28,6 +29,8 @@ export interface PedidoItemEditorProps {
   onCantidadChange: (prodId: string, value: string) => void
   onPrecioManualChange: (codigo: string, valor: number) => void
   onConfirmarPrecioBajo: (codigo: string) => void
+  puedeAutorizarRegalos?: boolean
+  onCantidadRegaloChange?: (prodId: string, value: string) => void
   /** prefijo de los `data-testid` de cada control (`<prefix>-inc-<codigo>`, etc.). */
   testIdPrefix?: string
 }
@@ -58,13 +61,15 @@ export function PedidoItemEditor({
   onCantidadChange,
   onPrecioManualChange,
   onConfirmarPrecioBajo,
+  puedeAutorizarRegalos = false,
+  onCantidadRegaloChange,
   testIdPrefix = 'item',
 }: PedidoItemEditorProps) {
   return (
     <div className="bg-white border rounded-xl p-4">
       <h3 className="font-semibold text-gray-700 text-sm mb-3">Productos</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {items.map(({ prodId, cantidad: cant, precio, precioBase, precioManual, precioOrigen, tiers, precioBajoConfirmado }) => {
+        {items.map(({ prodId, cantidad: cant, cantidadRegalo = 0, precio, precioBase, precioManual, precioOrigen, tiers, precioBajoConfirmado }) => {
           const info = PRODUCTO_INFO[prodId]
           const Icon = getProductoIconConfig(info.codigo).Icon
 
@@ -146,6 +151,32 @@ export function PedidoItemEditor({
                     Confirmar
                   </button>
                 </div>
+              )}
+              {(cant > 0 || cantidadRegalo > 0) && puedeAutorizarRegalos && onCantidadRegaloChange && (
+                <details className="mt-2 text-xs">
+                  <summary className="cursor-pointer text-amber-800 underline underline-offset-2">
+                    {cantidadRegalo > 0 ? `${cantidadRegalo} de regalo · editar` : '+ Agregar unidades de regalo'}
+                  </summary>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <label className="flex items-center gap-2">
+                      <span>De regalo</span>
+                      <Input type="number" min="0" max="2147483647" step="1" inputMode="numeric"
+                        aria-label={`Unidades de regalo de ${info.nombre}`}
+                        data-testid={`${testIdPrefix}-regalo-${info.codigo}`}
+                        value={cantidadRegalo || ''} placeholder="0"
+                        onChange={e => onCantidadRegaloChange(prodId, e.target.value)}
+                        className="h-8 w-20 bg-white text-center text-sm" />
+                    </label>
+                    {cantidadRegalo > 0 && <button type="button" onClick={() => onCantidadRegaloChange(prodId, '0')}
+                      className="text-gray-600 underline underline-offset-2">Quitar regalo</button>}
+                  </div>
+                </details>
+              )}
+              {cantidadRegalo > 0 && (
+                <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-900"
+                  data-testid={`${testIdPrefix}-regalo-resumen-${info.codigo}`}>
+                  {cant} con precio + {cantidadRegalo} de regalo = <strong>{cant + cantidadRegalo} para entregar</strong>
+                </p>
               )}
               {tiers.length > 0 && cant > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">

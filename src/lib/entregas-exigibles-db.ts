@@ -11,9 +11,11 @@ export interface LineaEntregada {
 }
 export async function registrarEntregaExigible(tx: Prisma.TransactionClient, input: {
   pedidoId: string; entregadoAt: Date; lineas: LineaEntregada[]; eventoId?: string; huella?: string
+  /** Conserva el hecho y su clave para regalos aunque la proyección de fiados esté apagada. */
+  conservarEvento?: boolean
   pedido: { total: number; totalPagado: number; saldo: number }
 }): Promise<void> {
-  if (!exigiblesActivos()) return
+  if (!exigiblesActivos() && !input.conservarEvento) return
   const lineas = input.lineas.filter(l => l.cantidad > 0)
   if (!lineas.length && !input.eventoId) return
   if (lineas.some(l => !Number.isSafeInteger(l.cantidad) || !Number.isSafeInteger(l.precioCents) || l.precioCents < 0))

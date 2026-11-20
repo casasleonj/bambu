@@ -6,7 +6,7 @@ import { comisionesDelCierre } from '@/lib/comision-pagada'
 import { resumirAbonosDelDia } from '@/lib/cobro-cartera'
 import { resumirVentasCierre } from '@/lib/cierre-totales'
 import { logger } from '@/lib/logger'
-import { unidadesEntregadasDelDia } from '@/lib/unidades-entregadas-dia'
+import { unidadesEntregadasDelDia, unidadesFisicasEntregadas } from '@/lib/unidades-entregadas-dia'
 import { resolverStockInicial } from '@/lib/stock-inicial'
 import { PAGO_DE_PEDIDO_VIGENTE } from '@/lib/pago-confirmacion'
 import { desglosarCobros, detallarPorConfirmar, listarFiadosDelDia, listarGastosDelDia } from '@/lib/cierre-desglose-cobros'
@@ -209,12 +209,13 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
     const unidades = await unidadesEntregadasDelDia(prisma, { desde: startOfDay, hasta: endOfDay }).catch((err) => {
       unidadesError = true
       logger.error({ err, fechaStr }, 'cierre: no se pudo repartir las unidades por día de entrega')
+      const acumulados = pedidos.map(unidadesFisicasEntregadas)
       return {
-        agua: pedidos.reduce((t, p) => t + p.cPacaAguaEnt, 0),
-        hielo: pedidos.reduce((t, p) => t + p.cPacaHieloEnt, 0),
-        botellon: pedidos.reduce((t, p) => t + p.cBotellonFabEnt + p.cBotellonDomEnt, 0),
-        bolsaAgua: pedidos.reduce((t, p) => t + p.cBolsaAguaEnt, 0),
-        bolsaHielo: pedidos.reduce((t, p) => t + p.cBolsaHieloEnt, 0),
+        agua: acumulados.reduce((t, p) => t + p.agua, 0),
+        hielo: acumulados.reduce((t, p) => t + p.hielo, 0),
+        botellon: acumulados.reduce((t, p) => t + p.botellon, 0),
+        bolsaAgua: acumulados.reduce((t, p) => t + p.bolsaAgua, 0),
+        bolsaHielo: acumulados.reduce((t, p) => t + p.bolsaHielo, 0),
         aproximados: [],
       }
     })

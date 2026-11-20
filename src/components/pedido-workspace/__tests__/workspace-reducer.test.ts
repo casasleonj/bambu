@@ -46,6 +46,18 @@ describe('workspaceReducer — máquina de UI adaptativa', () => {
     expect(canCommit(s, 'actualizar')).toBe(false) // el preview solo permite 'crear'
   })
 
+  it('#795: un preview anterior no permite confirmar después de cambiar el regalo', () => {
+    const inicial = initWorkspace({ clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 60, cantidadRegalo: 3 }] })
+    const autorizado = workspaceReducer(inicial, { type: 'PREVIEW_RECEIVED', revision: inicial.previewRevision, preview: previewOk() })
+    expect(canCommit(autorizado)).toBe(true)
+    const editado = workspaceReducer(autorizado, { type: 'SET_ITEM_REGALO', producto: 'PACA_AGUA', cantidad: 4 })
+    const tardio = workspaceReducer(editado, { type: 'PREVIEW_RECEIVED', revision: autorizado.previewRevision, preview: previewOk() })
+    expect(tardio.draft.items[0].cantidadRegalo).toBe(4)
+    expect(canCommit(tardio)).toBe(false)
+    const vigente = workspaceReducer(tardio, { type: 'PREVIEW_RECEIVED', revision: editado.previewRevision, preview: previewOk() })
+    expect(canCommit(vigente)).toBe(true)
+  })
+
   it('canCommit(state, "actualizar") — cruza con allowedActions del preview de edición', () => {
     let s: WorkspaceState = { ...s0(), phase: 'DRAFTING', draft: { ...EMPTY_DRAFT, clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 10 }] } }
     s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', revision: s.previewRevision, preview: previewOk({ allowedActions: ['actualizar'] }) })

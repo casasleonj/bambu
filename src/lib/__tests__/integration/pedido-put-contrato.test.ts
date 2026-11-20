@@ -98,7 +98,12 @@ const PEDIDO_IDENTIDAD = new Set([
   'totalPagado',
 ])
 
-const ITEM_GESTIONADAS = new Set(['cantPedido', 'precio', 'subtotal', 'precioOrigen', 'cantEntrega'])
+const ITEM_GESTIONADAS = new Set([
+  'cantPedido', 'precio', 'subtotal', 'precioOrigen', 'cantEntrega',
+  // #795: solo un cambio explícito/autorizado del regalo modifica su cantidad
+  // y evidencia. Editar otra cosa o reenviar la misma línea los conserva.
+  'cantRegaloPedido', 'regaloAutorizadoPorId', 'regaloAutorizadoEn', 'regaloMotivo',
+])
 const ITEM_IDENTIDAD = new Set(['id', 'pedidoId', 'producto'])
 
 function columnas(model: 'Pedido' | 'PedidoItem'): string[] {
@@ -194,7 +199,8 @@ describe('PR-1 — contrato PUT /api/pedidos/[id] (Postgres real)', () => {
     expect(sinClasificar, `Pedido: columnas sin clasificar → ${sinClasificar.join(', ')}`).toEqual([])
 
     const itemsSinClasificar = columnas('PedidoItem').filter(
-      (c) => !ITEM_GESTIONADAS.has(c) && !ITEM_IDENTIDAD.has(c) && !['autorizadoPorAdmin', 'autorizadoPorId', 'autorizadoEn'].includes(c),
+      (c) => !ITEM_GESTIONADAS.has(c) && !ITEM_IDENTIDAD.has(c) && // La entrega gratuita ya realizada no se modifica mediante el PUT.
+        !['autorizadoPorAdmin', 'autorizadoPorId', 'autorizadoEn', 'cantRegaloEntrega'].includes(c),
     )
     expect(itemsSinClasificar, `PedidoItem: columnas sin clasificar → ${itemsSinClasificar.join(', ')}`).toEqual([])
   })
@@ -222,6 +228,26 @@ describe('PR-1 — contrato PUT /api/pedidos/[id] (Postgres real)', () => {
     expect(despues.items.map((i) => ({ ...i, id: undefined }))).toEqual(antes.items.map((i) => ({ ...i, id: undefined })))
     // Pagos/factura intactos
     expect(serial(despues.factura)).toBe(serial(antes.factura))
+  })
+
+  it.each(['nota', 'mismas líneas'] as const)('#795: editar %s conserva regalos y autorización con entrega parcial ya realizada', async (cambio) => {
+    const id = await crearPedidoPoblado()
+    await testPrisma.pedidoItem.updateMany({
+      where: { pedidoId: id, producto: 'PACA_AGUA' },
+      data: { cantRegaloPedido: 3, cantRegaloEntrega: 1, cantEntrega: 1,
+        regaloAutorizadoPorId: adminId, regaloAutorizadoEn: new Date('2026-03-04T05:06:07.000Z'),
+        regaloMotivo: 'Regalo autorizado antes de la edición' },
+    })
+    const antes = await fila(id)
+    const body = cambio === 'nota' ? { obs: 'nueva nota con regalo' } : {
+      obs: 'nota al reenviar líneas', items: [{ producto: 'PACA_AGUA', cantidad: 4 }, { producto: 'PACA_HIELO', cantidad: 2 }],
+    }
+    expect((await put(id, body)).status).toBe(200)
+    const despues = await fila(id)
+    await expectConservadas(antes, despues)
+    expect(serial(despues.items)).toBe(serial(antes.items))
+    expect(serial(despues.factura)).toBe(serial(antes.factura))
+    expect([Number(despues.total), Number(despues.totalPagado)]).toEqual([Number(antes.total), Number(antes.totalPagado)])
   })
 
   it('obs: null y obs: "" LIMPIAN la observación (antes era imposible borrarla)', async () => {

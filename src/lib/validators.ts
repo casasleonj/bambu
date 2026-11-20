@@ -1,4 +1,5 @@
 import { UnitPrice, MAX_UNIT_PRICE } from '@/shared/domain/unit-price'
+import { cantidadesRegaloValidas } from '@/shared/domain/cantidades-regalo'
 import { z } from "zod";
 import { validarPlanPago } from '@/lib/sueldos-fijos'
 import { importeFiadoSchema, metodoFiadoSchema, sumarCobroFiado } from './fiados-cobro'
@@ -64,10 +65,14 @@ export const PrecioUnitarioSchema = z.number().min(0).max(MAX_UNIT_PRICE).refine
 export const PedidoItemSchema = z.object({
   producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),
   cantidad: z.coerce.number().int().min(0),
+  cantidadRegalo: z.number().int().min(0).max(2147483647).optional(),
+  motivoRegalo: z.string().trim().min(1).max(500).optional(),
   precioManual: PrecioUnitarioSchema.optional().refine(
     val => val === undefined || val > 0,
     { message: 'Precio manual debe ser mayor a 0' }
   ),
+}).refine(i => cantidadesRegaloValidas(i.cantidad, i.cantidadRegalo ?? 0), {
+  path: ['cantidadRegalo'], message: 'El regalo requiere unidades con precio y una cantidad física válida.',
 })
 
 // ====================
@@ -218,6 +223,7 @@ export const EntregaOficinaSchema = z.object({
   itemsEntregados: z.array(z.object({
     producto: z.string().min(1),
     cantidad: z.number().int().min(0),
+    cantidadRegalo: z.number().int().min(0).max(2147483647).optional(),
   })).min(1, 'Indica qué se entregó'),
   repartidorId: z.string().min(1).optional(),
   recibioDinero: z.enum(['REPARTIDOR', 'OFICINA']).optional(),
@@ -251,6 +257,7 @@ export const EntregaSchema = z.object({
   itemsEntregados: z.array(z.object({
     producto: z.string(),
     cantidad: z.number().int().min(0),
+    cantidadRegalo: z.number().int().min(0).max(2147483647).optional(),
   })).optional(),
   pagos: z.array(z.object({
     metodo: z.string(),
@@ -281,6 +288,9 @@ export const EntregaSchema = z.object({
   // Offline-first: dedup si la request se encola y se reintenta
   offlineId: z.string().optional(),
 }).superRefine((data, ctx) => {
+  if (data.itemsEntregados?.some(i => i.cantidadRegalo !== undefined) && !data.offlineId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['offlineId'], message: 'Falta la clave de reintento de la entrega con regalos.' })
+  }
   // ADR-PAGO-EMBARQUE-CAPTURA-001 §4.1: un pago de misión DEBE declarar el
   // embarque de captura. Nunca `null` silencioso.
   const tieneCobro = (data.pagos ?? []).some((p) => p.monto > 0)
@@ -315,7 +325,9 @@ export const EntregaSchema = z.object({
 
 export const VentaLibreSchema = z.object({
   clienteId: z.string().min(1),
-  items: z.array(PedidoItemSchema).min(1),
+  items: z.array(PedidoItemSchema.refine(i => !i.cantidadRegalo, {
+    message: 'Registra los regalos autorizados desde Pedidos; este flujo no concede regalos.', path: ['cantidadRegalo'],
+  })).min(1),
   pagos: z.array(z.object({
     metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
     monto: z.coerce.number().min(0),

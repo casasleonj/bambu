@@ -734,6 +734,7 @@ jobs:
         run: >
           npx playwright test --reporter=html --project=chromium
           e2e/pedidos-hub.spec.ts
+          e2e/regalos-explicitos-795.spec.ts
           e2e/pedidos-hub-recurrentes.spec.ts
           e2e/pedidos-entrega-suficiencia.spec.ts
           e2e/pedidos-g11.spec.ts

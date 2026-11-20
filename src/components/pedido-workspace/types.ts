@@ -8,6 +8,7 @@ export type ProductoCodigo = 'PACA_AGUA' | 'PACA_HIELO' | 'BOTELLON' | 'BOLSA_AG
 export interface DraftItem {
   producto: ProductoCodigo
   cantidad: number
+  cantidadRegalo?: number
   precioManual?: number
 }
 
@@ -143,6 +144,7 @@ export type WorkspaceAction =
   | { type: 'SET_SOLO_PARA_ESTE_PEDIDO'; value: boolean }
   | { type: 'SET_GUARDAR_DIRECCION_EN_CLIENTE'; value: boolean }
   | { type: 'SET_ITEM_CANTIDAD'; producto: ProductoCodigo; cantidad: number }
+  | { type: 'SET_ITEM_REGALO'; producto: ProductoCodigo; cantidad: number }
   | { type: 'SET_ITEM_PRECIO_MANUAL'; producto: ProductoCodigo; precioManual: number | undefined }
   | { type: 'CONFIRMAR_PRECIO_BAJO'; producto: ProductoCodigo }
   | { type: 'SET_PAGOS'; pagos: DraftPago[] }

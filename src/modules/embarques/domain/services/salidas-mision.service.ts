@@ -8,6 +8,8 @@
  */
 
 import { acquireAdvisoryLockTx } from '@/lib/locks'
+import type { Prisma } from '@prisma/client'
+import { leerEntregasRegalosDeMisiones } from '@/lib/entregas-consulta'
 import {
   CAPTURA_ENTREGA_PEDIDO,
   embarqueUsaEntregaVivaPorFlag,
@@ -18,8 +20,7 @@ import {
 import type { ProductCode } from '../value-objects/Carga'
 import type { PedidoRawInput, EntregaDelCierre } from './procesar-pedido.service'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type TxOrPrisma = any
+type TxOrPrisma = Prisma.TransactionClient
 
 export interface VentaLibreCantidades {
   cPacaAgua?: number
@@ -70,9 +71,24 @@ export class SalidasMisionService {
   async esModoVivo(client: TxOrPrisma, embarqueId: string, createdAt: Date): Promise<boolean> {
     if (embarqueUsaEntregaVivaPorFlag(createdAt)) return true
     const atribuidos = await client.embarqueMovimiento.count({
-      where: { embarqueId, tipo: 'ENTREGA', metadata: { path: ['captura'], equals: CAPTURA_ENTREGA_PEDIDO } },
+      where: { embarqueId, tipo: { in: ['ENTREGA', 'PROMOCION'] }, metadata: { path: ['captura'], equals: CAPTURA_ENTREGA_PEDIDO } },
     })
     return atribuidos > 0
+  }
+
+  /** Lo comercial de regalos en misiones anteriores sale de sus deltas explícitos,
+   * no del acumulado actual de un pedido que pudo pasar por varias misiones. La
+   * PROMOCION se lee aparte del ledger por el conciliador y no se duplica aquí. */
+  async entregadasLegadas(client: TxOrPrisma, embarqueId: string, pedidosRaw: PedidoRawInput[], ventasLibres: VentaLibreCantidades[]): Promise<Record<ProductCode, number>> {
+    const entregadas = this.entregadasPorAcumulado(pedidosRaw.filter(p => !p.items.some(i => (i.cantRegaloPedido ?? 0) > 0)), ventasLibres)
+    const hechos = await leerEntregasRegalosDeMisiones(client, [embarqueId])
+    if (hechos.some(e => e.incompleto || !e.cantidades)) {
+      throw new Error('REGALO_MISION_SIN_EVIDENCIA: las entregas con regalo de esta misión requieren conciliación; no se reconstruyen del acumulado del pedido.')
+    }
+    for (const e of hechos) for (const l of e.cantidades ?? []) {
+      if (l.producto in entregadas) entregadas[l.producto as ProductCode] += l.cantidad - (l.cantidadRegalo ?? 0)
+    }
+    return entregadas
   }
 
   async bloquearPedidos(client: TxOrPrisma, embarqueId: string): Promise<void> {

@@ -17,6 +17,7 @@ import { aplicarEntregaConObligacion } from '@/lib/obligacion-guard'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 import {
   CAPTURA_ENTREGA_PEDIDO,
+  CAPTURA_REGALO_LEGADO,
   claveEventoEntrega,
   embarqueUsaEntregaVivaPorFlag,
 } from '@/lib/entrega-fisica-viva'
@@ -27,6 +28,8 @@ import { EntregaOficinaError } from '../../domain/services/entrega-oficina.error
 import { nominaQueCubre } from '@/lib/nomina-cobertura'
 import { todayStringBogota } from '@/lib/dates'
 import { diaBogota, validarFechaHechoOficina } from '@/lib/gestion-admin-fecha'
+import { RegaloPedidoError } from '../services/regalo-pedido.service'
+import type { RegaloPedidoItem } from '../../domain/entities/PedidoItem'
 
 
 const tieneCobro = (input: EntregarPedidoInput): boolean => (input.pagos ?? []).some((p) => p.monto > 0)
@@ -61,6 +64,8 @@ export class EntregarPedidoUseCase {
     return this.txManager.executeWithLock('PEDIDO', input.pedidoId, async (tx) => {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
+      const tieneRegalos = pedido.items.some(i => i.cantRegaloPedido > 0)
+      if (tieneRegalos && !input.offlineId) throw new RegaloPedidoError('REGALO_CLAVE_REQUERIDA')
 
       const huellaEntrega = createHash('sha256').update(JSON.stringify({
         items: [...input.itemsEntregados].sort((a, b) => a.producto.localeCompare(b.producto)),
@@ -71,7 +76,7 @@ export class EntregarPedidoUseCase {
         fecha: input.entregadoAt ?? null, embarqueId: input.embarqueId ?? null,
         embarqueEntregaId: input.embarqueEntregaId ?? null, clienteRetiro: input.clienteRetiro ?? false,
       })).digest('hex')
-      if (input.offlineId && exigiblesActivos()) {
+      if (input.offlineId && (exigiblesActivos() || tieneRegalos)) {
         const anterior = await tx.entregaExigible.findUnique({
           where: { pedidoId_eventoId: { pedidoId: input.pedidoId, eventoId: input.offlineId } },
           select: { huella: true },
@@ -99,6 +104,11 @@ export class EntregarPedidoUseCase {
       // parciales; la clave por línea del evento (`entrega:<id>:<PRODUCTO>`, única
       // en `EmbarqueMovimiento.offlineId`) sí.
       const eventoFisico = await this.resolverEventoFisico(tx, input)
+      const misionRegalo = tieneRegalos && input.embarqueEntregaId
+        ? await tx.embarque.findUnique({ where: { id: input.embarqueEntregaId }, select: { id: true, estado: true, trabajadorId: true } }) : null
+      if (tieneRegalos && input.embarqueEntregaId && (!misionRegalo || misionRegalo.estado === 'CANCELADO')) {
+        throw new Error('EMBARQUE_ENTREGA_INVALIDO')
+      }
       if (eventoFisico) {
         const previo = await tx.embarqueMovimiento.findFirst({
           where: { offlineId: { startsWith: claveEventoEntrega(eventoFisico.eventoEntregaId, '') } },
@@ -144,12 +154,22 @@ export class EntregarPedidoUseCase {
       // parcial) nunca sobrepasa `cantPedido` ni queda atascado en la cola.
       const entregasClampeadas = input.itemsEntregados.map(ie => {
         const item = pedido.items.find(i => i.producto === ie.producto)
+        if (item?.cantRegaloPedido && ie.cantidadRegalo === undefined) {
+          throw new RegaloPedidoError('REGALO_DESGLOSE_REQUERIDO')
+        }
+        const cantidadRegalo = ie.cantidadRegalo ?? 0
+        if (!Number.isSafeInteger(cantidadRegalo) || cantidadRegalo < 0 || cantidadRegalo > 2_147_483_647 ||
+            (cantidadRegalo > 0 && !item?.cantRegaloPedido)) {
+          throw new RegaloPedidoError('REGALO_CANTIDAD_INVALIDA')
+        }
         const resto = item ? item.cantPedido - item.cantEntrega : ie.cantidad
         return {
           producto: ie.producto,
           cantPedido: item?.cantPedido ?? 0,
           cantEntregaActual: item?.cantEntrega ?? 0,
           cantidadAEntregar: Math.max(0, Math.min(ie.cantidad, resto)),
+          cantidadRegaloAEntregar: Math.min(cantidadRegalo, item?.faltanteRegalo ?? 0),
+          regalo: item?.regalo,
         }
       })
 
@@ -162,7 +182,7 @@ export class EntregarPedidoUseCase {
       await aplicarEntregaConObligacion(tx, input.pedidoId, entregasClampeadas, input.actorId)
 
       pedido.entregar(
-        entregasClampeadas.map(e => ({ producto: e.producto, cantidad: e.cantidadAEntregar })),
+        entregasClampeadas.map(e => ({ producto: e.producto, cantidad: e.cantidadAEntregar, cantidadRegalo: e.cantidadRegaloAEntregar })),
         {
           fotoEntrega: input.fotoEntrega,
           gpsLat: input.gpsLat,
@@ -261,6 +281,7 @@ export class EntregarPedidoUseCase {
       // #656: cada entrega registra su valor exigible en la MISMA transacción. Precio tomado del item del pedido.
       await registrarEntregaExigible(tx, {
         pedidoId: input.pedidoId,
+        conservarEvento: tieneRegalos,
         eventoId: input.offlineId, huella: huellaEntrega,
         entregadoAt: oficina ? oficina.fechaEntrega : (input.entregadoAt ? new Date(input.entregadoAt) : new Date()),
         lineas: entregasClampeadas.map(e => ({
@@ -287,6 +308,12 @@ export class EntregarPedidoUseCase {
       // cantidad realmente aplicada tras el clamp (nunca la pedida; nunca 0).
       if (eventoFisico) {
         await this.registrarEventoFisico(tx, eventoFisico, input.pedidoId, entregasClampeadas)
+      } else if (input.embarqueEntregaId && input.offlineId && entregasClampeadas.some(e => e.regalo)) {
+        // Una misión anterior no se convierte al modo vivo por recibir un
+        // regalo. Su parte comercial se concilia al cerrar; la gratuita sale
+        // una vez como PROMOCION y conserva el vínculo explícito del hecho.
+        await this.registrarEventoFisico(tx, { embarqueId: input.embarqueEntregaId, eventoEntregaId: input.offlineId,
+          posCierre: misionRegalo?.estado === 'CERRADO', legado: true }, input.pedidoId, entregasClampeadas)
       }
 
       // FASE FINAL (ADR-MONETARIO-001, §12): proyección de auditoría de los pagos.
@@ -343,8 +370,18 @@ export class EntregarPedidoUseCase {
             fecha: (oficina?.fechaEntrega ?? (input.entregadoAt ? new Date(input.entregadoAt) : new Date())).toISOString(),
             repartidorId: oficina ? repartidorOficinaId ?? null : eventoFisico
               ? (await tx.embarque.findUnique({ where: { id: eventoFisico.embarqueId }, select: { trabajadorId: true } }))?.trabajadorId ?? null : null,
+            ...(tieneRegalos ? {
+              regalosPedido: true,
+              ...(misionRegalo ? { embarqueId: misionRegalo.id,
+                repartidorId: misionRegalo.trabajadorId,
+                ...(misionRegalo.estado === 'CERRADO' ? { posCierre: true } : {}),
+              } : {}),
+            } : {}),
             eventoEntregaId: eventoFisico?.eventoEntregaId ?? null,
-            cantidades: entregasClampeadas.map(e => ({ producto: e.producto, cantidad: e.cantidadAEntregar })),
+            cantidades: entregasClampeadas.map(e => ({ producto: e.producto,
+              cantidad: e.cantidadAEntregar + e.cantidadRegaloAEntregar,
+              ...(e.regalo ? { cantidadConPrecio: e.cantidadAEntregar, cantidadRegalo: e.cantidadRegaloAEntregar } : {}),
+            })),
           },
           ...(oficina
             ? {
@@ -475,7 +512,7 @@ export class EntregarPedidoUseCase {
     const activo =
       embarqueUsaEntregaVivaPorFlag(embarque.createdAt) ||
       (await tx.embarqueMovimiento.count({
-        where: { embarqueId: embarque.id, tipo: 'ENTREGA', metadata: { path: ['captura'], equals: CAPTURA_ENTREGA_PEDIDO } },
+        where: { embarqueId: embarque.id, tipo: { in: ['ENTREGA', 'PROMOCION'] }, metadata: { path: ['captura'], equals: CAPTURA_ENTREGA_PEDIDO } },
       })) > 0
     if (!activo) return null
     return { embarqueId: embarque.id, eventoEntregaId: input.offlineId, posCierre: embarque.estado === 'CERRADO' }
@@ -483,13 +520,12 @@ export class EntregarPedidoUseCase {
 
   private async registrarEventoFisico(
     tx: TransactionClient,
-    evento: { embarqueId: string; eventoEntregaId: string; posCierre: boolean },
+    evento: { embarqueId: string; eventoEntregaId: string; posCierre: boolean; legado?: boolean },
     pedidoId: string,
-    lineas: Array<{ producto: string; cantidadAEntregar: number }>,
+    lineas: Array<{ producto: string; cantidadAEntregar: number; cantidadRegaloAEntregar: number; regalo?: RegaloPedidoItem }>,
   ): Promise<void> {
     for (const l of lineas) {
-      if (l.cantidadAEntregar <= 0) continue
-      await tx.embarqueMovimiento.create({
+      if (l.cantidadAEntregar > 0 && !evento.legado) await tx.embarqueMovimiento.create({
         data: {
           embarqueId: evento.embarqueId,
           tipo: 'ENTREGA',
@@ -502,6 +538,21 @@ export class EntregarPedidoUseCase {
             captura: CAPTURA_ENTREGA_PEDIDO,
             pedidoId,
             eventoEntregaId: evento.eventoEntregaId,
+            ...(evento.posCierre ? { posCierre: true } : {}),
+          },
+        },
+      })
+      // ADR-PROMOCION-001: lo gratuito sale como PROMOCION, nunca además como
+      // ENTREGA. Ambas partes comparten identidad y auditoría del mismo hecho.
+      if (l.cantidadRegaloAEntregar > 0 && l.regalo) await tx.embarqueMovimiento.create({
+        data: {
+          embarqueId: evento.embarqueId, tipo: 'PROMOCION', producto: l.producto,
+          cantidad: l.cantidadRegaloAEntregar, origen: 'VEHICULO', destino: 'CLIENTE',
+          offlineId: claveEventoEntrega(evento.eventoEntregaId, `REGALO:${l.producto}`),
+          userId: l.regalo.autorizadoPorId,
+          authorization: l.regalo.motivo,
+          metadata: { captura: evento.legado ? CAPTURA_REGALO_LEGADO : CAPTURA_ENTREGA_PEDIDO, pedidoId, eventoEntregaId: evento.eventoEntregaId,
+            regaloPedido: true, autorizadoEn: l.regalo.autorizadoEn.toISOString(),
             ...(evento.posCierre ? { posCierre: true } : {}),
           },
         },

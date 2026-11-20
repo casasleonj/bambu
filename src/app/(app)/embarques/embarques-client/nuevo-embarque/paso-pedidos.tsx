@@ -10,7 +10,7 @@ import {
   type PedidoSeleccionable,
   type UrgenciaBucket,
 } from './filtrar-pedidos'
-import { resumenSeleccion } from './derivar-carga'
+import { derivarCarga, resumenSeleccion } from './derivar-carga'
 import type { WizardState, WizardAction } from './wizard-reducer'
 
 interface PasoPedidosProps {
@@ -19,22 +19,9 @@ interface PasoPedidosProps {
   onCancel: () => void
 }
 
-const PROD_LABEL: Record<string, string> = {
-  cPacaAguaPed: 'PACA_AGUA',
-  cPacaHieloPed: 'PACA_HIELO',
-  cBotellonFabPed: 'BOTELLON',
-  cBotellonDomPed: 'BOTELLON',
-  cBolsaAguaPed: 'BOLSA_AGUA',
-  cBolsaHieloPed: 'BOLSA_HIELO',
-}
-
 function productosResumen(p: PedidoSeleccionable): string {
-  const acc: Record<string, number> = {}
-  for (const [campo, key] of Object.entries(PROD_LABEL)) {
-    const n = (p as unknown as Record<string, number>)[campo] || 0
-    if (n > 0) acc[key] = (acc[key] || 0) + n
-  }
-  return Object.entries(acc)
+  return Object.entries(derivarCarga([p]))
+    .filter(([, n]) => n > 0)
     .map(([k, n]) => `${getProductoEmoji(k)} ${n}`)
     .join('  ')
 }

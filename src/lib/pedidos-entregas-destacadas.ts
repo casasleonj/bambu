@@ -47,7 +47,7 @@ export async function listarEntregasDestacadas(
       entregadoAt: true,
       cliente: { select: { nombre: true, apellido: true } },
       negocio: { select: { nombre: true } },
-      items: { select: { producto: true, cantPedido: true, cantEntrega: true } },
+      items: { select: { producto: true, cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true } },
       cPacaAguaPed: true,
       cPacaAguaEnt: true,
       cPacaHieloPed: true,
@@ -91,7 +91,7 @@ export async function listarEntregasDestacadas(
   }
   const vistas = pedidos.flatMap((p) => {
     const pedidas: CantidadEntrega[] = p.items.length
-      ? p.items.map((i) => ({ producto: i.producto, cantidad: i.cantPedido }))
+      ? p.items.map((i) => ({ producto: i.producto, cantidad: i.cantPedido + (i.cantRegaloPedido ?? 0) }))
       : [
           { producto: "PACA_AGUA", cantidad: p.cPacaAguaPed },
           { producto: "PACA_HIELO", cantidad: p.cPacaHieloPed },
@@ -100,7 +100,7 @@ export async function listarEntregasDestacadas(
           { producto: "BOLSA_HIELO", cantidad: p.cBolsaHieloPed },
         ].filter((l) => l.cantidad > 0);
     const entregadas: CantidadEntrega[] = p.items.length
-      ? p.items.map((i) => ({ producto: i.producto, cantidad: i.cantEntrega }))
+      ? p.items.map((i) => ({ producto: i.producto, cantidad: i.cantEntrega + (i.cantRegaloEntrega ?? 0) }))
       : [
           { producto: "PACA_AGUA", cantidad: p.cPacaAguaEnt },
           { producto: "PACA_HIELO", cantidad: p.cPacaHieloEnt },

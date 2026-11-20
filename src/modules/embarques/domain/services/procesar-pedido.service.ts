@@ -85,7 +85,7 @@ export interface PedidoRawInput {
   totalPagado: number | { toNumber: () => number }
   obs: string | null
   createdById: string | null
-  items: Array<{ producto: string }>
+  items: Array<{ producto: string; cantRegaloPedido?: number; cantRegaloEntrega?: number }>
   factura: { id: string } | null
 }
 
@@ -185,6 +185,9 @@ function validarEntregaCompleta(pedido: PedidoRawInput, entProd: ProductosEntreg
     )
   }
   const faltantes = filas.filter((f) => f.acum < f.pedido)
+  if (pedido.items.some(i => (i.cantRegaloEntrega ?? 0) < (i.cantRegaloPedido ?? 0))) {
+    throw new Error(`REGALO_DESGLOSE_REQUERIDO: el pedido #${pedido.numero} aún tiene regalos pendientes. Registre su entrega con el desglose de unidades con precio y de regalo desde Pedidos antes de declararlo completo.`)
+  }
   if (faltantes.length > 0) {
     const detalle = faltantes.map((f) => `${f.producto} ${f.acum}/${f.pedido}`).join(', ')
     throw new Error(
@@ -253,6 +256,15 @@ export class ProcesarPedidoService {
     // NO_ENTREGADO case
     if (cuadre.entregado === 'NO_ENTREGADO') {
       return this.procesarNoEntregado(client, pedido, cuadre, pedidosActualizados)
+    }
+
+    // El cuadre legado no captura cuántas de las unidades de la línea son
+    // gratuitas. No interpretar un número físico como cantidad con precio.
+    // La entrega desglosada existe en Pedidos; un cierre con delta cero sigue
+    // conciliando ese hecho, sin obligar a registrar de nuevo la entrega.
+    const deltas = construirEntregasAValidar(pedido, entProd)
+    if (deltas.some(e => pedido.items.some(i => i.producto === e.producto && (i.cantRegaloPedido ?? 0) > 0))) {
+      throw new Error(`REGALO_DESGLOSE_REQUERIDO: el pedido #${pedido.numero} tiene unidades de regalo. Registre su entrega desglosada desde Pedidos y vuelva al cierre; no se aplicó este cuadre.`)
     }
 
     // B-12 (AB-ALS-EMB-2026-10-13, Adenda v1.2 §4): `COMPLETO` exige que la
@@ -520,7 +532,8 @@ export class ProcesarPedidoService {
     const totalEntregadoAcum =
       acum.cPacaAguaEnt + acum.cPacaHieloEnt + acum.cBotellonFabEnt +
       acum.cBotellonDomEnt + acum.cBolsaAguaEnt + acum.cBolsaHieloEnt
-    const completo = totalEntregadoAcum >= totalPedido && totalPedido > 0
+    const completo = totalEntregadoAcum >= totalPedido && totalPedido > 0 &&
+      pedido.items.every(i => (i.cantRegaloEntrega ?? 0) === (i.cantRegaloPedido ?? 0))
 
     // PR-2 (ADR-PAGO-EMBARQUE-CAPTURA-001 §7 / F9): cobro nuevo de esta misión.
     const montoPagado = cuadre.pagos.reduce((sum, p) => sum + p.monto, 0)
@@ -754,14 +767,15 @@ export class ProcesarPedidoService {
     }
     const conLineas = filas.filter((f) => f.pedido > 0)
     const totalEntregado = filas.reduce((s, f) => s + f.acum, 0)
-    const completoPorProducto = conLineas.length > 0 && conLineas.every((f) => f.acum === f.pedido)
+    const completoPorProducto = conLineas.length > 0 && conLineas.every((f) => f.acum === f.pedido) &&
+      pedido.items.every(i => (i.cantRegaloEntrega ?? 0) === (i.cantRegaloPedido ?? 0))
 
     if (completoPorProducto) {
       pedidosActualizados.push({ id: pedido.id, estado: pedido.estadoEntrega })
       return 0
     }
 
-    const parcialmenteEntregado = totalEntregado > 0
+    const parcialmenteEntregado = totalEntregado > 0 || pedido.items.some(i => (i.cantRegaloEntrega ?? 0) > 0)
     const updateData: Record<string, unknown> = parcialmenteEntregado
       ? {
           estadoEntrega: 'PENDIENTE',

@@ -25,6 +25,7 @@ export interface EmbarqueProducto {
 }
 
 export interface Pedido {
+  items?: Array<{ producto: string; cantPedido: number; cantEntrega: number; cantRegaloPedido?: number; cantRegaloEntrega?: number }>
   id: string
   numero: number
   estado: string

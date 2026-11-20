@@ -191,6 +191,11 @@ export class PrismaPedidoRepository implements IPedidoRepository {
         data: {
           cantPedido: nuevo.cantPedido as number,
           cantEntrega: nuevo.cantEntrega as number,
+          cantRegaloPedido: nuevo.cantRegaloPedido as number,
+          cantRegaloEntrega: nuevo.cantRegaloEntrega as number,
+          regaloAutorizadoPorId: nuevo.regaloAutorizadoPorId as string | null,
+          regaloAutorizadoEn: nuevo.regaloAutorizadoEn as Date | null,
+          regaloMotivo: nuevo.regaloMotivo as string | null,
           precio: nuevo.precio as never,
           subtotal: nuevo.subtotal as never,
           precioOrigen: nuevo.precioOrigen as string,

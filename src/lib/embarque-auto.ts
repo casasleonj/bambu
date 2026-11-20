@@ -6,39 +6,18 @@
  * hoy solo se cubre vía E2E contra DB real).
  */
 
-import { PESOS_KG } from '@/lib/embarque-capacidad'
+import { calcularPacasEmbarque, calcularPesoEmbarque, type PedidoCapacidadInput } from '@/lib/embarque-capacidad'
 
-export interface PedidoCantidades {
-  cPacaAguaPed?: number | null
-  cPacaHieloPed?: number | null
-  cBotellonFabPed?: number | null
-  cBotellonDomPed?: number | null
-  cBolsaAguaPed?: number | null
-  cBolsaHieloPed?: number | null
-}
+export type PedidoCantidades = PedidoCapacidadInput
 
 /** Unidades totales (pacas + botellones + bolsas) de un pedido. */
 export function unidadesPedido(p: PedidoCantidades): number {
-  return (
-    (p.cPacaAguaPed || 0) +
-    (p.cPacaHieloPed || 0) +
-    (p.cBotellonFabPed || 0) +
-    (p.cBotellonDomPed || 0) +
-    (p.cBolsaAguaPed || 0) +
-    (p.cBolsaHieloPed || 0)
-  )
+  return calcularPacasEmbarque([p])
 }
 
 /** Peso en KG de un pedido según pesos reales por unidad. */
 export function pesoPedido(p: PedidoCantidades): number {
-  return (
-    (p.cPacaAguaPed || 0) * PESOS_KG.PACA_AGUA +
-    (p.cPacaHieloPed || 0) * PESOS_KG.PACA_HIELO +
-    (p.cBotellonFabPed || 0) * PESOS_KG.BOTELLON +
-    (p.cBotellonDomPed || 0) * PESOS_KG.BOTELLON +
-    (p.cBolsaAguaPed || 0) * PESOS_KG.BOLSA_AGUA +
-    (p.cBolsaHieloPed || 0) * PESOS_KG.BOLSA_HIELO
-  )
+  return calcularPesoEmbarque([p])
 }
 
 /**

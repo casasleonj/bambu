@@ -197,7 +197,7 @@ export class Pedido {
    * chk_pedido_montopagado_le_total CHECK constraint.
    */
   entregar(
-    entregas: Array<{ producto: ProductCode; cantidad: number }>,
+    entregas: Array<{ producto: ProductCode; cantidad: number; cantidadRegalo?: number }>,
     metadata?: {
       fotoEntrega?: string
       gpsLat?: number
@@ -216,12 +216,21 @@ export class Pedido {
       throw new Error(`Transición inválida: ${this.estadoEntrega.get()} → ENTREGADO`)
     }
 
+    const previstas = new Map<ProductCode, PedidoItem>()
     for (const e of entregas) {
       const item = this.props.items.find(i => i.producto === e.producto)
       if (!item) {
         throw new Error(`Producto ${e.producto} no encontrado en pedido ${this.id.get()}`)
       }
-      item.entregar(e.cantidad)
+      const prevista = previstas.get(e.producto) ?? item.cloneWithPrecio(item.precio, item.precioOrigen)
+      prevista.entregar(e.cantidad, e.cantidadRegalo ?? 0)
+      previstas.set(e.producto, prevista)
+    }
+    // Validar todas las líneas antes de aplicar cualquiera, incluidos regalos
+    // y deltas repetidos del mismo producto: un rechazo conserva el pedido.
+    for (const e of entregas) {
+      const item = this.props.items.find(i => i.producto === e.producto)!
+      item.entregar(e.cantidad, e.cantidadRegalo ?? 0)
     }
 
     // PR-1 (integridad de entrega parcial): la entrega FÍSICA no modifica la
@@ -229,8 +238,8 @@ export class Pedido {
     // saldo canónico sigue siendo `total - totalPagado`. Antes se recalculaba
     // `total` con el valor de lo entregado y se recortaba `totalPagado` con
     // `min()` — eso destruía el prepago del faltante (ADR PR-1, docs/pedidos).
-    const totalPedido = this.props.items.reduce((sum, i) => sum + i.cantPedido, 0)
-    const totalEntregado = this.props.items.reduce((sum, i) => sum + i.cantEntrega, 0)
+    const totalPedido = this.props.items.reduce((sum, i) => sum + i.cantidadFisicaPedida, 0)
+    const totalEntregado = this.props.items.reduce((sum, i) => sum + i.cantidadFisicaEntregada, 0)
     const completo = totalEntregado >= totalPedido
 
     // Mientras falte cantidad el pedido NO está entregado: queda PENDIENTE
@@ -403,6 +412,9 @@ export class Pedido {
    * Create a child order with undelivered items (for PARCIAL delivery).
    */
   crearPedidoHijo(numeroHijo: number): PedidoHijoData | null {
+    if (this.props.items.some(i => i.faltanteRegalo > 0)) {
+      throw new Error('REGALO_REQUIERE_ENTREGA_EN_PEDIDO_ORIGINAL')
+    }
     const faltantes = this.props.items
       .filter(i => i.faltante > 0)
       .map(i => ({
