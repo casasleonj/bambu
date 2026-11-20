@@ -95,6 +95,9 @@ export function analyze({root, files, entries, hubSpecs=[]}) {
   // Include direct business relations, without claiming these are exhaustive.
   const expanded=new Set(affectedDomains)
   for(const d of affectedDomains) for(const dependent of RELATIONS[d]??[]) expanded.add(dependent)
+  // #896: business edges are dependencies, not permissions to omit critical checks.
+  // Clientes can affect Pedidos/Cartera/Facturas even without a static import.
+  if ([...expanded].some(d=>CRITICAL.has(d))) reasons.add('CRITICAL_BUSINESS_DEPENDENCY')
   const hypotheses=[], unclassified=[]
   for(const file of inventory) {
     const domains=new Set(info.get(file)?.domains??[])
