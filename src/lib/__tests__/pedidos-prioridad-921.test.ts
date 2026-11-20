@@ -4,7 +4,7 @@ import { ordenarPrioridadPedidos } from '../pedidos-prioridad-921'
 const ahora = new Date('2026-11-20T14:30:00Z') // 09:30 Bogotá
 function p(id: string, created: string, pago: number, hora: string | null = null, fecha = '2026-11-20', entregado = 0) {
   return {
-    id, createdAt: new Date(created), total: 1000, totalPagado: pago, saldo: 1000 - pago,
+    id, createdAt: new Date(created), total: 1000, totalPagado: pago, confirmado: pago, saldo: 1000 - pago,
     fechaEntrega: new Date(`${fecha}T08:00:00-05:00`), entregaNoAntesDe: hora,
     estadoEntrega: entregado === 10 ? 'ENTREGADO' : 'PENDIENTE',
     items: [{ cantPedido: 10, cantEntrega: entregado, cantRegaloPedido: 0, cantRegaloEntrega: 0 }],
@@ -31,6 +31,12 @@ describe('#921 prioridad por compromiso y pago', () => {
   it('pagado futuro no desplaza pendiente de hoy', () => {
     expect(ids([p('futuro', '2026-11-19T12:00:00Z', 1000, '09:00', '2026-11-21'),
       p('hoy', '2026-11-20T12:00:00Z', 0)])).toEqual(['hoy', 'futuro'])
+  })
+  it('dinero reportado sin confirmar no concede prioridad', () => {
+    const reportado = p('reportado', '2026-11-20T11:00:00Z', 1000)
+    reportado.confirmado = 0
+    expect(ids([reportado, p('confirmado', '2026-11-20T14:00:00Z', 1000)]))
+      .toEqual(['confirmado', 'reportado'])
   })
   it('no muta la lista original', () => {
     const x = [p('nuevo', '2026-11-20T14:00:00Z', 0), p('viejo', '2026-11-20T12:00:00Z', 0)]
