@@ -332,6 +332,26 @@ base ni se escriben operaciones sintéticas allí. Consulta de columnas producti
 repetida el 20-11: los cinco campos siguen ausentes. No se ejecutó DDL/DML ni se
 cambió configuración o permisos de Vercel/Supabase.
 
+## Certificación CI y contrato de edición (20-11)
+
+La certificación [44742667518](https://github.com/casasleonj/bambu/actions/runs/44742667518)
+del commit `67db3641` terminó con **TypeScript/unitarias, lint, los ocho shards y
+Hub aprobados**. Integración: **1330 aprobadas y 1 fallida**, en 181 archivos.
+El fallo nuevo fue la clasificación exhaustiva del DMMF en
+`pedido-put-contrato.test.ts`: los cinco campos de regalo aún no estaban
+clasificados. No es una exención de baseline ni flakiness; main `608478be` no
+tenía esas columnas y su CI pasó.
+
+Se clasifica la cantidad gratuita y su autorización como gestionadas solo ante
+un cambio explícito permitido; una nota o reenviar líneas las conserva. La
+cantidad gratuita ya entregada no la modifica PUT. Dos casos adicionales con
+valores no nulos y una entrega parcial verifican cantidad, autor, instante,
+motivo, precio, factura y dinero conservados. **36/36 PostgreSQL**, contrato PUT
+y persistencia de regalos, exit 0. Se mantiene la exigencia de clasificar todas
+las columnas; no se elimina ni debilita la aserción. El ajuste solo modifica
+pruebas y documentación, sin cambiar el código de producto validado en navegador.
+La nueva ejecución completa de CI sigue siendo necesaria antes de liberar.
+
 ## Preparación de liberación
 
 Consulta de metadatos de la base conectada, solo lectura (19-11): los cinco campos
