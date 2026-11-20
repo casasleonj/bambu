@@ -159,3 +159,29 @@ describe("filtro «Agrupar por barrio»", () => {
     expect(() => leerFiltrosConsulta(new URLSearchParams("grupoBarrio=%25drop"), "2026-11-09")).toThrow();
   });
 });
+
+describe("#909 — Recorrido ↔ FIFO", () => {
+  it("«FIFO» apaga el modo Recorrido aunque no haya prioridades en la URL", () => {
+    montar([fila("a", 1, CENTRO), fila("b", 2, VILLA)]);
+    const recorrido = screen.getByRole("button", { name: "Recorrido" });
+    fireEvent.click(recorrido);
+    expect(recorrido).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("recorrido-barrio-select")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Volver al orden FIFO"));
+    expect(recorrido).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByTestId("recorrido-barrio-select")).toBeNull();
+    expect(screen.queryByLabelText("Subir Centro")).toBeNull();
+  });
+
+  it("sin barrios en la consulta de hoy, el Recorrido usa los barrios visibles (arrastres)", () => {
+    montar([fila("a", 1, CENTRO), fila("b", 2, VILLA)], { grupos: [] });
+    fireEvent.click(screen.getByRole("button", { name: "Recorrido" }));
+    const select = screen.getByTestId("recorrido-barrio-select") as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      "Selecciona cualquier barrio", "Centro (1 pedidos)", "Villa Nueva (1 pedidos)",
+    ]);
+    fireEvent.change(select, { target: { value: "b:villa" } });
+    expect(screen.getByTestId("recorrido-priorizar")).toHaveAttribute("href", expect.stringContaining("recorrido=b%3Avilla"));
+    expect(screen.getByLabelText("Bajar Centro")).toHaveAttribute("href", expect.stringContaining("recorrido=b%3Avilla"));
+  });
+});
