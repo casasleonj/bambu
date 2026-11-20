@@ -36,6 +36,10 @@ export function revisarGate(contexto, resultados) {
     if (resultados[key] !== 'success') errores.push(`${key}: ${resultados[key] || 'ausente'}`)
   }
   if (resultados.integrationOk !== 'true') errores.push('Integración sin evidencia explícita de éxito')
+  // En regresión suplementaria nocturna lint también es obligatorio; no
+  // confundir el estado nominal del job con la salida de sus pasos.
+  if (contexto.nightlyFull === 'true' && resultados.lint !== 'success') errores.push('Lint nocturno no aprobado')
+  if (contexto.nightlyFull === 'true' && contexto.required !== 'true') errores.push('La regresión nocturna exige E2E completo')
   if (plan) {
     if (resultados.run !== plan.e2e_run || resultados.deferred !== plan.draft_deferred) {
       errores.push('Plan E2E ausente o no coincide con el contexto')
@@ -51,7 +55,8 @@ export function revisarGate(contexto, resultados) {
 
 function contexto(env) {
   return { event: env.CI_EVENT, action: env.CI_ACTION, draft: env.CI_DRAFT,
-    fastDraft: env.CI_FAST_DRAFT, required: env.E2E_REQUIRED, diffOk: env.CI_DIFF_OK }
+    fastDraft: env.CI_FAST_DRAFT, required: env.E2E_REQUIRED, diffOk: env.CI_DIFF_OK,
+    nightlyFull: env.NIGHTLY_FULL }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -69,8 +74,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     } else if (process.argv[2] === 'gate') {
       const r = revisarGate(contexto(env), { detect: env.R_DETECT, quality: env.R_QUALITY,
         integration: env.R_INTEGRATION, integrationOk: env.INTEGRATION_OK,
-        e2e: env.R_E2E, hub: env.R_HUB, run: env.E2E_RUN, deferred: env.DRAFT_DEFERRED })
-      console.log(`INFO lint (informativo): ${env.R_LINT || 'ausente'}`)
+        e2e: env.R_E2E, hub: env.R_HUB, run: env.E2E_RUN, deferred: env.DRAFT_DEFERRED,
+        lint: env.R_LINT })
+      if (env.NIGHTLY_FULL !== 'true') console.log(`INFO lint (informativo): ${env.R_LINT || 'ausente'}`)
       for (const error of r.errores) console.error(error)
       if (r.ok) console.log('CI gate: validaciones exigidas aprobadas')
       else process.exitCode = 1
