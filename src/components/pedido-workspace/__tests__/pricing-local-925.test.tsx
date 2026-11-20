@@ -24,7 +24,7 @@ const pricing = {
   productosByCode: { PACA_AGUA: { precioBase: 2800, aplicaDomicilio: false, sobreCostoDomicilio: 0 } },
 }
 
-const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
+const fetchRoute = async (url: string, init?: { body?: string }) => {
   if (url === '/api/precios/cotizacion') {
     const body = JSON.parse(init?.body ?? '{}') as { clienteId?: string; canal: string }
     return { ok: true, json: async () => ({
@@ -37,10 +37,12 @@ const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
     { codigo: 'PACA_AGUA', aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 2800 },
   ] }) }
   return { ok: true, json: async () => ({ success: true }) }
-})
+}
+const fetchMock = vi.fn(fetchRoute)
 
 beforeEach(() => {
-  fetchMock.mockClear()
+  fetchMock.mockReset()
+  fetchMock.mockImplementation(fetchRoute)
   vi.stubGlobal('fetch', fetchMock)
 })
 afterEach(() => vi.unstubAllGlobals())
@@ -80,7 +82,7 @@ describe('#925 · precio local del workspace', () => {
   })
 
   it('precio especial prevalece sobre volumen sin redibujar controles', async () => {
-    fetchMock.mockImplementationOnce(async (url: string, init?: { body?: string }) => {
+    fetchMock.mockImplementation(async (url: string, init?: { body?: string }) => {
       if (url === '/api/precios/cotizacion') {
         const body = JSON.parse(init?.body ?? '{}') as { clienteId: string; canal: string }
         return { ok: true, json: async () => ({
@@ -89,7 +91,7 @@ describe('#925 · precio local del workspace', () => {
           pricing: { ...pricing, clienteOverrides: { PACA_AGUA: 2400 } },
         }) }
       }
-      return fetchMock.getMockImplementation()?.(url, init) ?? { ok: true, json: async () => ({ success: true }) }
+      return fetchRoute(url, init)
     })
     render(<PedidosWorkspace
       clientes={[]}
