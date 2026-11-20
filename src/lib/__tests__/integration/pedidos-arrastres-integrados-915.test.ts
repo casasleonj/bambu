@@ -1,5 +1,5 @@
-// #915 (refs #859) — con la vista agrupada por barrio, los pendientes/parciales de días anteriores y las
-// «entregas de pedidos anteriores» van DENTRO del grupo de su barrio (una sola vez por pedido, sin tope de 5).
+// #927 amplía #915: pendientes y entregas físicas anteriores en el MISMO universo
+// de Hoy, tanto en lista general como barrio, sin duplicados ni tope artificial.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from "./setup";
@@ -72,18 +72,23 @@ describe("#915 — arrastres y entregas anteriores dentro del barrio (Postgres r
   }, 120000);
   afterAll(disconnect);
 
-  it("los arrastres entran a la lista principal, sin tope de 5, una sola vez por pedido y con su marca «día anterior»", async () => {
+  it("pedidos anteriores abiertos y completados hoy entran en la misma lista sin duplicados", async () => {
     const r = await q();
     expect(r.arrastradosIntegrados).toBe(true);
     expect(r.arrastrados).toBeUndefined();
     const lista = r.pedidos.map((p) => p.id);
     expect(new Set(lista).size).toBe(lista.length);
-    expect(lista.sort()).toEqual([ids.hoyCentro, ids.arrCentro, ...villaIds].sort());
-    expect(r.total).toBe(8);
+    expect(lista.sort()).toEqual([ids.hoyCentro, ids.arrCentro, ...villaIds, ids.entregadoCentro, ids.entregadoSolo].sort());
+    expect(r.total).toBe(10);
+    expect(r.actividadIntegrada).toBe(true);
+    expect(r.destacadas ?? []).toHaveLength(0);
+    expect(r.pedidos.find(p => p.id === ids.entregadoCentro)?.entregaEnPeriodo?.unidades).toBe(3);
     const marca = Object.fromEntries(r.pedidos.map((p) => [p.id, p.diaAnterior === true]));
     expect(marca[ids.hoyCentro]).toBe(false);
     expect(marca[ids.arrCentro]).toBe(true);
     for (const v of villaIds) expect(marca[v]).toBe(true);
+    expect(marca[ids.entregadoCentro]).toBe(true);
+    expect(marca[ids.entregadoSolo]).toBe(true);
   });
 
   it("cada pedido va en el grupo de su barrio; FIFO entre barrios y dentro del barrio; totales físicos con los arrastres", async () => {
@@ -94,7 +99,7 @@ describe("#915 — arrastres y entregas anteriores dentro del barrio (Postgres r
     const centro = r.grupos!.find((g) => g.clave === claves.centro)!;
     expect(villa.total).toBe(6);
     expect(villa.unidadesPendientes).toBe(3 * 5 + 2); // 5 pedidos × 3 + el parcial (3 − 1)
-    expect(centro.total).toBe(2);
+    expect(centro.total).toBe(3);
     expect(centro.unidadesPendientes).toBe(3 + 3);
     const filasVilla = r.pedidos.filter((p) => p.grupoBarrio?.clave === claves.villa);
     expect(filasVilla.map((p) => +new Date(p.createdAt!))).toEqual([...filasVilla.map((p) => +new Date(p.createdAt!))].sort((a, b) => a - b));
@@ -105,27 +110,29 @@ describe("#915 — arrastres y entregas anteriores dentro del barrio (Postgres r
     expect(r.resumen!.importe).toBe(6900); // solo el pedido de hoy
   });
 
-  it("las entregas de pedidos anteriores llevan su barrio; el parcial que ya es fila no se repite como tarjeta", async () => {
+  it("las entregas verificadas de pedidos anteriores tienen fila propia y barrio (sin tarjetas paralelas)", async () => {
     const r = await q();
-    const porPedido = Object.fromEntries((r.destacadas ?? []).map((d) => [d.pedidoId, d.grupoBarrio?.clave]));
+    const porPedido = Object.fromEntries(r.pedidos.map((p) => [p.id, p.grupoBarrio?.clave]));
     expect(porPedido[ids.entregadoCentro]).toBe(claves.centro);
-    expect(porPedido[ids.entregadoSolo]).toBe(claves.solo); // barrio sin pedidos pendientes: solo tiene la entrega
-    expect(Object.keys(porPedido)).not.toContain(villaIds.at(-1));
+    expect(porPedido[ids.entregadoSolo]).toBe(claves.solo);
+    expect(r.destacadas ?? []).toHaveLength(0);
+    expect(r.pedidos.filter(p => p.id === villaIds.at(-1))).toHaveLength(1);
   });
 
   it("con un barrio elegido no se cuelan arrastres ni entregas de otros barrios", async () => {
     const r = await q(`&grupoBarrio=${encodeURIComponent(claves.centro)}`);
-    expect(r.pedidos.map((p) => p.id).sort()).toEqual([ids.hoyCentro, ids.arrCentro].sort());
-    expect((r.destacadas ?? []).every((d) => d.grupoBarrio?.clave === claves.centro)).toBe(true);
-    expect(r.destacadas!.map((d) => d.pedidoId)).toContain(ids.entregadoCentro);
+    expect(r.pedidos.map((p) => p.id).sort()).toEqual([ids.hoyCentro, ids.arrCentro, ids.entregadoCentro].sort());
+    expect(r.destacadas ?? []).toHaveLength(0);
   });
 
-  it("sin agrupar, o con filtros que se resuelven por ids ajenos (repartidor), conserva la sección aparte de siempre", async () => {
-    const sin = await consultarPedidos(leerFiltrosConsulta(new URLSearchParams(`desde=${HOY}&hasta=${HOY}&agrupar=`), HOY), "ADMIN");
-    expect(sin.arrastradosIntegrados).toBeUndefined();
-    expect(sin.arrastrados!.length).toBe(5); // tope histórico de la sección aparte
-    expect(sin.arrastradosTotal).toBe(7);
+  it("sin agrupar y con repartidor se preserva el mismo universo filtrable", async () => {
+    const sin = await consultarPedidos(leerFiltrosConsulta(new URLSearchParams(`desde=${HOY}&hasta=${HOY}&agrupar=&pageSize=100`), HOY), "ADMIN");
+    expect(sin.arrastradosIntegrados).toBe(true);
+    expect(sin.pedidos.map(p => p.id).sort()).toEqual([ids.hoyCentro, ids.arrCentro, ...villaIds, ids.entregadoCentro, ids.entregadoSolo].sort());
+    expect(sin.arrastrados).toBeUndefined();
+    expect(sin.total).toBe(10);
     const rep = await q(`&repartidorId=${randomUUID()}`);
-    expect(rep.arrastradosIntegrados).toBeUndefined();
+    expect(rep.arrastradosIntegrados).toBe(true);
+    expect(rep.pedidos).toHaveLength(0);
   });
 });
