@@ -5,7 +5,7 @@ import { pedidoItemsResumen } from '../pedido-items'
 import { deriveOperacion, origenLabel, embarqueLinea } from './derive-operacion'
 import type { AccionKey, DeriveContext, Pedido } from './types'
 import { OperacionConsulta,type AccionesConsulta } from './operacion-consulta'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { GrupoBarrioEncabezado } from './grupo-barrio-encabezado'
 import { useAhora } from '@/hooks/use-ahora'
@@ -206,12 +206,15 @@ export function OperacionList({
   const [modoRecorrido, setModoRecorrido] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('recorrido'))
   const [barrioSeleccionado, setBarrioSeleccionado] = useState("")
   const searchParams = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search)
-  const clavesGlobales = consulta?.grupos?.map(g => g.clave) ?? []
   const clavesManuales = searchParams.getAll('recorrido')
-  const ordenRecorrido = [
-    ...clavesManuales.filter(clave => clavesGlobales.includes(clave)),
-    ...clavesGlobales.filter(clave => !clavesManuales.includes(clave)),
-  ]
+  // #909: si la URL pierde las prioridades (volver a FIFO, limpiar filtros, atrás), el modo
+  // Recorrido de esta lista también se apaga; no se queda «congelado» con los controles de Recorrido.
+  const habiaPrioridadesUrl = useRef(clavesManuales.length > 0)
+  const hayPrioridadesUrl = clavesManuales.length > 0
+  useEffect(() => {
+    if (habiaPrioridadesUrl.current && !hayPrioridadesUrl) setModoRecorrido(false)
+    habiaPrioridadesUrl.current = hayPrioridadesUrl
+  }, [hayPrioridadesUrl])
   const urlRecorrido = (orden: string[]) => {
     const params = new URLSearchParams(searchParams.toString())
     params.delete('recorrido')
@@ -243,7 +246,18 @@ export function OperacionList({
       if (ultimo && g && ultimo.clave === g.clave) ultimo.filas.push(p)
       else bloques.push({ clave: g?.clave ?? 'sin-barrio', etiqueta: g?.etiqueta ?? 'Sin barrio', filas: [p] })
     }
-    const ordenEfectivo = ordenRecorrido
+    // #909: los barrios del Recorrido son los de la consulta MÁS los de los bloques que se ven.
+    // Sin esto, una lista de «Pendientes de días anteriores» sin pedidos de hoy tenía el selector
+    // vacío y «Llevar al primero», Subir y Bajar no hacían nada.
+    const gruposRecorrido = [...(consulta.grupos ?? [])]
+    for (const b of bloques) {
+      if (!gruposRecorrido.some(g => g.clave === b.clave)) gruposRecorrido.push({ clave: b.clave, etiqueta: b.etiqueta, total: b.filas.length })
+    }
+    const clavesGlobales = gruposRecorrido.map(g => g.clave)
+    const ordenEfectivo = [
+      ...clavesManuales.filter(clave => clavesGlobales.includes(clave)),
+      ...clavesGlobales.filter(clave => !clavesManuales.includes(clave)),
+    ]
     const bloquesVisibles = bloques
     const priorizarUrl = (clave: string) => urlRecorrido([clave, ...clavesManuales.filter(k => k !== clave)])
     const moverUrl = (clave: string, desplazamiento: number) => {
@@ -257,7 +271,7 @@ export function OperacionList({
     return (
       <div data-testid="pedidos-agrupados-barrio">
         <div className="my-2 flex flex-wrap items-center gap-2 text-xs">
-          <Link scroll={false} href={urlRecorrido([])} aria-label="Volver al orden FIFO"
+          <Link scroll={false} href={urlRecorrido([])} aria-label="Volver al orden FIFO" aria-pressed={!modoRecorrido} onClick={() => setModoRecorrido(false)}
             className={`rounded-md border px-3 py-1.5 ${!modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>FIFO</Link>
           <button type="button" aria-pressed={modoRecorrido} onClick={() => setModoRecorrido(true)}
             className={`rounded-md border px-3 py-1.5 ${modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>Recorrido</button>
@@ -268,7 +282,7 @@ export function OperacionList({
                 value={barrioSeleccionado} onChange={e => setBarrioSeleccionado(e.target.value)}
                 className="max-w-full rounded-md border border-stone-400 bg-white px-2 py-1.5">
                 <option value="">Selecciona cualquier barrio</option>
-                {(consulta.grupos ?? []).map(g => (
+                {gruposRecorrido.map(g => (
                   <option key={g.clave} value={g.clave}>{g.etiqueta} ({g.total} pedidos)</option>
                 ))}
               </select>
