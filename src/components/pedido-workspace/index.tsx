@@ -471,17 +471,21 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
     : null
   // No se pisa en silencio: con otra ubicación ya guardada hay que elegir; mientras se revisa, se espera.
   const faltaElegirUbicacion = guardarUbic && (ubicacionDestino.estado === 'cargando' || (hayOtraUbicacion(ubicacionDestino, puntoPedido) && ubicEleccion.reemplazar === null))
+  // B-20/#925: la cola offline requiere conocer el importe mostrado. Sin
+  // un precio local verificable no se puede confirmar un total a ciegas.
+  const totalEstimado = sinConexion && !calc
+    ? (totalLocal ?? estimarTotalOffline(state.draft.items, state.draft.canal, tabla, configs))
+    : null
   const commitEnabled = !precioDesactualizado && canCommit(state, accionCommit)
     && (state.phase === 'PREVIEW_READY' || (sinConexion && state.phase === 'DRAFTING'))
+    && (!sinConexion || totalEstimado !== null)
     && !faltaCompradorParaDespues
     && !compradorSinResolver
     && (!ventaRepetida || otraVentaConfirmada)
     && !faltaElegirUbicacion
-  // B-20: sin preview del servidor, el cobro "completo" usa un total estimado con la tabla ya cargada.
-  const totalEstimado = sinConexion && !calc
-    ? (totalLocal ?? estimarTotalOffline(state.draft.items, state.draft.canal, tabla, configs))
-    : null
-  const blockedReason = precioDesactualizado
+  const blockedReason = sinConexion && totalEstimado === null
+    ? 'Sin conexión y sin tabla de precios vigente: no se puede confirmar el importe del pedido.'
+    : precioDesactualizado
     ? 'Los precios cambiaron. Espera la actualización antes de registrar el pedido.'
     : compradorSinResolver
     ? 'No se ha podido cargar el comprador. Reintenta o vuelve a seleccionarlo.'
@@ -575,7 +579,7 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
       // creación normal: derivado de si hay cliente real.
       origen: modoEdicion ? state.draft.origen : origenCreacion,
       pedidoOrigenId: state.draft.pedidoOrigenId,
-      precioEsperado: calc?.total ?? totalLocal ?? undefined,
+      precioEsperado: calc?.total ?? totalLocal ?? totalEstimado ?? undefined,
       items: state.draft.items
         .filter((i) => i.cantidad > 0 || (i.cantidadRegalo ?? 0) > 0)
         .map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual, cantidadRegalo: i.cantidadRegalo })),
