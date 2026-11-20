@@ -383,10 +383,11 @@ jobs:
 
   e2e:
     name: E2E (${{ matrix.shard }}/${{ strategy.job-total }})
-    # #875: ubuntu-latest ya es Ubuntu 26.04, que Playwright 1.59.1 no soporta
-    # («does not support chromium on ubuntu26.04-x64»). Se fija 24.04 solo en los
-    # trabajos que instalan Playwright; revisar al actualizar Playwright.
-    runs-on: ubuntu-24.04
+    # #875: ubuntu-latest ya es Ubuntu 26.04 y Playwright lo soporta desde la 1.61.
+    # Con 1.59.1 la instalación fallaba («does not support chromium on
+    # ubuntu26.04-x64»). Si una imagen futura vuelve a romperla, fijar aquí la
+    # versión anterior (p. ej. ubuntu-24.04) y revisar la versión de Playwright.
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: detect-changes
     # Suite legacy (V2 OFF). La regresión nocturna #896 también exige
@@ -594,10 +595,11 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   e2e-hub:
     name: E2E Hub (V2 ON)
-    # #875: ubuntu-latest ya es Ubuntu 26.04, que Playwright 1.59.1 no soporta
-    # («does not support chromium on ubuntu26.04-x64»). Se fija 24.04 solo en los
-    # trabajos que instalan Playwright; revisar al actualizar Playwright.
-    runs-on: ubuntu-24.04
+    # #875: ubuntu-latest ya es Ubuntu 26.04 y Playwright lo soporta desde la 1.61.
+    # Con 1.59.1 la instalación fallaba («does not support chromium on
+    # ubuntu26.04-x64»). Si una imagen futura vuelve a romperla, fijar aquí la
+    # versión anterior (p. ej. ubuntu-24.04) y revisar la versión de Playwright.
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     # Mismo criterio que el job `e2e` (#778): si el diff es estrictamente
     # declarativo, el Hub tampoco tiene nada que probar. Sin este `if:` corría
