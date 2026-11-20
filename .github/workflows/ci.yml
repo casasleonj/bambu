@@ -7,6 +7,15 @@ on:
   pull_request:
     branches:
       - main
+  workflow_call:
+    inputs:
+      nightly_full:
+        description: 'Regresión suplementaria completa, sin alterar gate de release'
+        type: boolean
+        default: false
+      pedidos_v2:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       pedidos_v2:
@@ -32,8 +41,8 @@ concurrency:
   # `github.event_name` en el grupo: una corrida programada (soak) y una
   # corrida de push a `main` (validación de cambio) NO deben cancelarse
   # entre sí — son señales distintas y ambas deben quedar registradas.
-  group: ci-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name }}-${{ github.ref }}${{ inputs.nightly_full && '-nightly' || '' }}
+  cancel-in-progress: ${{ !inputs.nightly_full }}
 
 jobs:
   # ───────────────────────────────────────────────────────────────────────────
@@ -131,10 +140,10 @@ jobs:
       - name: Classify diff (declarative vs. requires E2E)
         id: classify
         run: |
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
+          if [ "${{ inputs.nightly_full }}" = "true" ] || [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "e2e_required=true" >> "$GITHUB_OUTPUT"
             echo "skill_declarativa=false" >> "$GITHUB_OUTPUT"
-            echo "No es un pull_request (evento: ${{ github.event_name }}) — el E2E completo siempre corre."
+            echo "Regresión full o evento no PR: el E2E completo siempre corre."
             exit 0
           fi
 
@@ -162,8 +171,8 @@ jobs:
     name: Type check + Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # El cron cada 4h es exclusivamente para el soak del Hub (job `e2e-hub`).
-    if: github.event_name != 'schedule'
+    # #896: el cron de regresión invoca este workflow completo de forma explícita.
+    if: github.event_name != 'schedule' || inputs.nightly_full
 
     steps:
       - name: Checkout repository
@@ -208,8 +217,9 @@ jobs:
     name: Lint (non-blocking)
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    continue-on-error: true
-    if: github.event_name != 'schedule'
+    # #896: en regresión nocturna un fallo real debe ser visible.
+    continue-on-error: ${{ !inputs.nightly_full }}
+    if: github.event_name != 'schedule' || inputs.nightly_full
 
     steps:
       - name: Checkout repository
@@ -238,8 +248,9 @@ jobs:
     # el desarrollador lo hacía). Igual que Lint cuando se introdujo:
     # queda non-blocking hasta confirmar que el suite completo es estable
     # en un entorno de CI fresco, antes de promoverlo a gate obligatorio.
-    continue-on-error: true
-    if: github.event_name != 'schedule'
+    # #896: en regresión nocturna un fallo real debe ser visible.
+    continue-on-error: ${{ !inputs.nightly_full }}
+    if: github.event_name != 'schedule' || inputs.nightly_full
 
     env:
       DATABASE_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
@@ -345,20 +356,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     needs: detect-changes
-    # Suite legacy (V2 OFF). `github.event_name != 'schedule'` es la
-    # exclusión ORIGINAL de este job (previa a la política de skip
-    # docs-only, sin relación con ella): el cron de 3h es exclusivamente el
-    # soak de `e2e-hub` (más abajo) — la suite legacy de 8 shards nunca
-    # corrió en `schedule`, para no pagar el costo completo de Playwright
-    # cada 3h además del soak dedicado. `detect-changes.outputs.e2e_required`
-    # es la política de skip para PRs docs-only — ver el comentario extenso
-    # en ese job — y ahora es fiable en todo evento (2026-09-13: se corrigió
-    # que `detect-changes` se saltaba a sí mismo en `schedule`, lo que
-    # hubiera dejado este `needs.detect-changes.outputs...` vacío ahí; no
-    # cambia nada en la práctica porque el `!= 'schedule'` de la izquierda ya
-    # excluía `schedule` de todas formas, pero antes del fix dependía de dos
-    # condiciones redundantes en vez de una sola fuente de verdad fiable).
-    if: github.event_name != 'schedule' && needs.detect-changes.outputs.e2e_required == 'true'
+    # Suite legacy (V2 OFF). La regresión nocturna #896 también exige
+    # los ocho shards; conservar #778 para PR declarativo.
+    if: (github.event_name != 'schedule' || inputs.nightly_full) && needs.detect-changes.outputs.e2e_required == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -544,9 +544,8 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   # e2e-hub — soak del Pedido Hub V2 (Fase 10-C).
   #
-  # Se ejecuta en push a `main`, en cada PR y por `workflow_dispatch`. Ya no hay
-  # cron de soak (#703); los `if: github.event_name != 'schedule'` de otros jobs
-  # quedan como defensa por si se restaura.
+  # Se ejecuta en push a main, PR, dispatch y regresión nocturna completa #896.
+  # No se restaura el cron de soak de #703.
   #
   # Job SEPARADO y transitorio: corre SOLO la suite del Hub con
   # NEXT_PUBLIC_PEDIDOS_V2=true, mientras el job `e2e` de arriba se mantiene
@@ -576,7 +575,7 @@ jobs:
     # `if:` se reporta como Success y no bloquea el merge. Lo que NO debe
     # marcarse como required son los legs del matrix `E2E (n/8)`.
     needs: detect-changes
-    if: github.event_name != 'schedule' && needs.detect-changes.outputs.e2e_required == 'true'
+    if: (github.event_name != 'schedule' || inputs.nightly_full) && needs.detect-changes.outputs.e2e_required == 'true'
 
     env:
       DATABASE_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
@@ -769,6 +768,7 @@ jobs:
           R_LINT: ${{ needs.lint.result }}
           R_INTEGRATION: ${{ needs.integration.result }}
           E2E_REQUIRED: ${{ needs.detect-changes.outputs.e2e_required }}
+          NIGHTLY_FULL: ${{ inputs.nightly_full }}
         run: |
           fail=0
           check() { # nombre resultado esperado-descripcion
@@ -801,6 +801,32 @@ jobs:
             omitido_legitimo "e2e-hub (V2 ON)" "$R_HUB" "$E2E_REQUIRED" "el diff es declarativo (docs/** o skills Markdown)"
             omitido_legitimo "e2e (8 turnos)" "$R_E2E" "$E2E_REQUIRED" "el diff es declarativo (docs/** o skills Markdown)"
           fi
-          echo "INFO lint (informativo): $R_LINT"
-          echo "INFO integration (informativo): $R_INTEGRATION"
+          if [ "$NIGHTLY_FULL" = "true" ]; then
+            check "nightly exige full" "$([ "$E2E_REQUIRED" = "true" ] && echo success || echo failure)"
+            check "lint" "$R_LINT"
+            check "integration" "$R_INTEGRATION"
+          else
+            echo "INFO lint (informativo): $R_LINT"
+            echo "INFO integration (informativo): $R_INTEGRATION"
+          fi
           exit $fail
+
+      # Identidad observacional de candidato PR; no es un comprobante de release
+      # y no autoriza omisiones. Se verifica el estado real de jobs por API.
+      - name: Record candidate identity (shadow only)
+        id: candidate-marker
+        if: success() && !inputs.nightly_full && github.event_name == 'pull_request' && needs.detect-changes.outputs.e2e_required == 'true' && needs.e2e.result == 'success' && needs.e2e-hub.result == 'success' && needs.integration.result == 'success'
+        continue-on-error: true
+        run: |
+          printf '{"sha":"%s","run":%s,"attempt":%s,"event":"pull_request","canSkipRelease":false}\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > "$RUNNER_TEMP/ci-candidate.json"
+
+      - name: Archive candidate identity (shadow only)
+        if: success() && steps.candidate-marker.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/ci-candidate.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
