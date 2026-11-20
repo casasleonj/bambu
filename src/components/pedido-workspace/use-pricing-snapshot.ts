@@ -105,7 +105,7 @@ export function usePricingSnapshot(draft: DraftPedido): {
   const data = ready && saved?.key === key ? saved.data : null
   return {
     data,
-    loading: ready && (request?.key !== key || request.loading),
+    loading: ready && (request === null || request.key !== key || request.loading),
     reload,
   }
 }
