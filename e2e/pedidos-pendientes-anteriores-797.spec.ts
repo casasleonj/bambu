@@ -57,7 +57,7 @@ test.describe("#797 — Pendientes de días anteriores en Hoy", () => {
       await expect(app.getByTestId("operacion-row-" + ayer.p.id)).toBeVisible();
       await expect(app.getByTestId("operacion-row-" + deHoy.p.id)).toBeVisible();
       await expect(app.getByTestId("operacion-dia-anterior-" + ayer.p.id)).toContainText("De ayer");
-      await expect(app.getByRole("heading", { name: "Pedidos de hoy y anteriores con actividad hoy", level: 2 })).toHaveCount(1);
+      await expect(app.getByRole("heading", { name: "Pedidos de hoy y anteriores", level: 2 })).toHaveCount(1);
       // Una sola fila por pedido en toda la pantalla: no se duplica.
       await expect(app.getByTestId("operacion-row-" + ayer.p.id)).toHaveCount(1);
       // La fecha del pedido sigue siendo la de ayer.
