@@ -267,7 +267,7 @@ export class PreviewPedidoUseCase {
       (negocio?.lat != null && negocio?.lng != null) || (cliente.lat != null && cliente.lng != null)
     const coordsDeLink =
       canal === 'DOMICILIO' && !hayCoordsAlmacenadas && efectivoLink &&
-      !(input.entregaLat != null && input.entregaLng != null)
+      !ubicacionEntregaValida(input.entregaLat, input.entregaLng)
         ? await this.deps.resolverCoordsDeLink(efectivoLink)
         : null
 
