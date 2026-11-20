@@ -89,17 +89,21 @@ describe("#797 — pendientes de días anteriores en PostgreSQL", () => {
   });
 
   it("E10: incluye pendiente, en ruta y no entregado; excluye entregado, anulado y cancelado", async () => {
-    // #882: la búsqueda usa también Cliente.telefono (contains insensible).
-    // Una coincidencia aleatoria "e10" dentro de un UUID de otra prueba
-    // añadía un cuarto arrastrado: el fallo de CI NO era una entrega extra.
-    // Reproducir la colisión deliberadamente antes de consultar los estados.
+    // #882: la búsqueda también indexa nombre y teléfono de Cliente.
+    // Un UUID aleatorio puede contener "e10" en cualquiera de ambos campos:
+    // eso introducía un cuarto pedido en la consulta sin ser regresión ERP.
+    // Reproducir los dos caminos con clientes ajenos antes de filtrar estados.
     const telefonoAjeno = `e10${randomUUID()}`;
     const ajeno = await crear(AYER, {
       nombre: `Cliente ajeno a estados ${randomUUID()}`,
       telefono: telefonoAjeno,
     });
+    const nombreAjeno = `Cliente con E10 ${randomUUID()}`;
+    const ajenoPorNombre = await crear(AYER, { nombre: nombreAjeno });
     const porTelefono = await consultarPedidos({ ...hoy(), search: telefonoAjeno }, "ADMIN");
+    const porNombre = await consultarPedidos({ ...hoy(), search: nombreAjeno }, "ADMIN");
     expect(porTelefono.arrastrados?.map((p) => p.id)).toContain(ajeno.id);
+    expect(porNombre.arrastrados?.map((p) => p.id)).toContain(ajenoPorNombre.id);
 
     // El marcador incorpora palabras y un UUID; no puede coincidir por azar
     // con un teléfono UUID y aísla esta comprobación de otros fixtures.
@@ -115,7 +119,7 @@ describe("#797 — pendientes de días anteriores en PostgreSQL", () => {
     const r = await consultarPedidos({ ...hoy(), search: marcador }, "ADMIN");
     const ids = r.arrastrados!.map((p) => p.id);
     expect(ids).toEqual(expect.arrayContaining([pend.id, ruta.id, noEnt.id]));
-    for (const x of [entregado, anulado, cancelado, ajeno]) expect(ids).not.toContain(x.id);
+    for (const x of [entregado, anulado, cancelado, ajeno, ajenoPorNombre]) expect(ids).not.toContain(x.id);
     expect(r.arrastradosTotal).toBe(3);
   });
 
