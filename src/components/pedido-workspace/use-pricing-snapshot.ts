@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { z } from 'zod'
 import { onPriceUpdate } from '@/lib/price-sync'
 import type { PricingData } from '@/modules/pedidos/domain/repositories/IPricingPort'
 import type { DraftPedido } from './types'
@@ -17,6 +18,29 @@ interface ScopedSnapshot {
   key: string
   data: PricingSnapshot
 }
+
+const PrecioTierSchema = z.object({
+  cantMin: z.number().int().min(1),
+  cantMax: z.number().int().min(1).nullable(),
+  precio: z.number().finite().min(0),
+})
+const PrecioConfigSchema = z.object({
+  aplicaDomicilio: z.boolean(),
+  sobreCostoDomicilio: z.number().finite().min(0),
+  precioBase: z.number().finite().min(0),
+})
+const PricingSnapshotSchema = z.object({
+  success: z.literal(true),
+  clienteId: z.string().min(1),
+  negocioId: z.string().nullable(),
+  canal: z.enum(['PUNTO', 'DOMICILIO']),
+  version: z.string().regex(/^[a-f0-9]{64}$/),
+  pricing: z.object({
+    clienteOverrides: z.record(z.string(), z.number().finite().min(0)),
+    tiersByCode: z.record(z.string(), z.array(PrecioTierSchema)),
+    productosByCode: z.record(z.string(), PrecioConfigSchema),
+  }),
+})
 
 /**
  * #925: una sola carga por comprador/canal, más invalidación al regresar
@@ -66,12 +90,11 @@ export function usePricingSnapshot(draft: DraftPedido): {
     }).then(async (response) => {
       if (!response.ok) throw new Error('Contexto de precios no disponible')
       const body: unknown = await response.json()
-      if (!body || typeof body !== 'object' || !('success' in body) || body.success !== true ||
-          !('pricing' in body) || !('version' in body) || typeof body.version !== 'string') {
-        throw new Error('Respuesta inválida del contexto de precios')
-      }
+      const parsed = PricingSnapshotSchema.safeParse(body)
+      if (!parsed.success) throw new Error('Respuesta inválida del contexto de precios')
+      // El resultado está validado campo por campo; no se fuerzan tipos.
       if (!controller.signal.aborted) {
-        setSaved({ key, data: body as PricingSnapshot })
+        setSaved({ key, data: parsed.data })
       }
     }).catch(() => {
       // Fail closed: ante error no se inventan precios. El preview puede
