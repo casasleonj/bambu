@@ -198,7 +198,7 @@ export function ConsultaPedidosHub(props: Props) {
             : filtrosLeidos?.resumen
               ? "Pedidos de la consulta"
               : integrado
-                ? "Pedidos de hoy y anteriores con actividad hoy"
+                ? "Pedidos de hoy y anteriores"
                 : "Pedidos de hoy"}
         </h2>
         <p className="mt-1 text-xs text-slate-500">
