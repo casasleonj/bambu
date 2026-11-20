@@ -125,7 +125,7 @@ export async function listarEntregasDestacadas(
       !!primerHecho.precisionDia ||
       !!primerHecho.incompleto ||
       !primerHecho.cantidades?.length ||
-      r.resueltoAt >= primerHecho.fecha,
+      r.resueltoAt.getTime() >= primerHecho.fecha.getTime(),
     );
     const ajusteIncierto = ajustesPosteriores.has(p.id) || reduccionIncierta;
     const vista = proyectarEntregaHistorial(
