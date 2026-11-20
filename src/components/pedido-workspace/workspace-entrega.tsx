@@ -18,7 +18,10 @@ const mapsHref = (lat: number, lng: number) => `https://www.google.com/maps?q=${
  * `entrega-suficiencia-plan.md` §4, F-ENTREGA-i).
  *
  * Consume `preview.entrega` y, solo para presentación durante recálculo,
- * el último resultado del mismo destino. NO recalcula suficiencia en
+ * el último resultado del mismo destino. El recálculo comercial no cambia
+ * esa dirección ni requiere avisar de una supuesta modificación. La copia
+ * visible nunca autoriza el commit, que depende del preview fresco.
+ * NO recalcula suficiencia en
  * React (la autoridad es `resolverEntrega` en el backend). Los 3 estados son
  * experiencias distintas: SUFICIENTE (nada que pedir) · COMPLEMENTARIA
  * (puede continuar, se muestra qué falta sin marcarlo error) · INSUFICIENTE
@@ -223,10 +226,6 @@ export function WorkspaceEntrega({
         <p className="text-xs text-gray-400" data-testid="workspace-entrega-resolviendo">
           {previewPending ? 'Resolviendo información de entrega…' : 'Elegí un cliente para resolver la entrega.'}
         </p>
-      )}
-
-      {porVerificar && (
-        <p className="mt-0.5 text-[11px] text-gray-500" data-testid="workspace-entrega-anterior">Destino anterior · por verificar</p>
       )}
 
       {entrega && destinoPropio && (
