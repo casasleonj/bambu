@@ -606,6 +606,8 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
       origen: modoEdicion ? state.draft.origen : origenCreacion,
       pedidoOrigenId: state.draft.pedidoOrigenId,
       precioEsperado: calc?.total ?? totalLocal ?? totalEstimado ?? undefined,
+      preciosEsperados: calc?.items.map((i) => ({ producto: i.producto, precio: i.precioUnitario, origen: i.precioOrigen }))
+        ?? preciosLocales?.map((i) => ({ producto: i.producto, precio: i.precio, origen: i.origen })),
       items: state.draft.items
         .filter((i) => i.cantidad > 0 || (i.cantidadRegalo ?? 0) > 0)
         .map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual, cantidadRegalo: i.cantidadRegalo })),
