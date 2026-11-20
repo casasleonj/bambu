@@ -520,7 +520,7 @@ async function leerConsultaPedidos(
           .map(p => p.id);
       }
       // #921 + #836: «Para hoy» conserva las franjas como prioridad primaria;
-      // dentro de cada franja aplica pago confirmado y FIFO, sobre TODO el conjunto.
+      // dentro de cada franja aplica pago confirmado y FIFO, sobre el conjunto completo.
       // No modificar la vista agrupada por barrio ni las consultas de arrastre.
       if (!ordenPagina && f.foco === "paraHoy" && !f.grupoBarrio && !f.agrupar && !arrastre) {
         const candidatos = await tx.pedido.findMany({
