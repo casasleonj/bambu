@@ -6,7 +6,7 @@
  * (eso requiere un workflow distinto, fuera de scope).
  *
  * Reglas:
- * - Solo Produccion de hoy y de los 7 días anteriores (#645: cierre atrasado).
+ * - Solo Produccion de hoy y de los 30 días anteriores (#645/#899: cierre atrasado).
  * - Solo ADMIN/ASISTENTE.
  * - Si la Produccion pertenece a un CierreDia cerrado → 409.
  * - Re-validar FIX 1.5: obs requerida si hay diferencia != 0.
@@ -32,7 +32,7 @@ import { logger } from '@/lib/logger'
 import { getVentasDelDia } from '@/lib/ventas'
 import { calcComSellador, itemBotellon } from '@/lib/comisiones'
 import { startOfDayInBogota, todayInBogota, dayInBogota } from '@/lib/date-helpers'
-import { motivoFechaProduccionInvalida } from '@/lib/produccion-fecha'
+import { DIAS_MAX_PRODUCCION_ATRASADA, motivoFechaProduccionInvalida } from '@/lib/produccion-fecha'
 import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
 
@@ -84,7 +84,7 @@ export async function PUT(
           throw new Error('PRODUCCION_NO_ENCONTRADA')
         }
 
-        // 2. #645: se puede corregir la producción de hoy y de los 7 días anteriores (cierre atrasado), nunca más antigua.
+        // 2. #645: se puede corregir la producción de hoy y de los 30 días anteriores (cierre atrasado), nunca más antigua.
         const hoy = todayInBogota()
         const diaProduccion = dayInBogota(existing.fecha)
         if (motivoFechaProduccionInvalida(diaProduccion, hoy) !== null) {
@@ -274,7 +274,7 @@ export async function PUT(
       return apiError('Producción no encontrada', 404)
     }
     if (err.message === 'PRODUCCION_NO_EDITABLE_HISTORICA') {
-      return apiError('Solo se pueden corregir producciones de hoy y de los 7 días anteriores', 400)
+      return apiError(`Solo se pueden corregir producciones de hoy y de los ${DIAS_MAX_PRODUCCION_ATRASADA} días anteriores`, 400)
     }
     if (err.message === 'PRODUCCION_EN_CIERRE_CERRADO') {
       return apiError('No se puede editar: el día ya fue cerrado', 409)

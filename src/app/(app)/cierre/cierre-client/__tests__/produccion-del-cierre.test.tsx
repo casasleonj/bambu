@@ -146,9 +146,14 @@ describe('ProduccionDelCierre (#645)', () => {
     expect(await screen.findByTestId('form-produccion-cierre')).toBeInTheDocument()
   })
 
-  it('una fecha de hace más de 7 días o futura no deja registrar; un día cerrado tampoco', () => {
+  it('una fecha de hace 8 días ya permite registrar; una de hace 31 días no', () => {
     montar({ fecha: '2026-11-02' })
-    expect(screen.getByTestId('produccion-fecha-invalida')).toHaveTextContent('7 días anteriores')
+    expect(screen.getByTestId('form-produccion-cierre')).toBeInTheDocument()
+    expect(screen.queryByTestId('produccion-fecha-invalida')).toBeNull()
+  })
+  it('una fecha de hace 31 días se bloquea con mensaje de 30 días', () => {
+    montar({ fecha: '2026-10-10' })
+    expect(screen.getByTestId('produccion-fecha-invalida')).toHaveTextContent('30 días anteriores')
     expect(screen.queryByTestId('form-produccion-cierre')).toBeNull()
   })
   it('una fecha futura se explica', () => {
