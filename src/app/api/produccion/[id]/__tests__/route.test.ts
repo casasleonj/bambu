@@ -17,9 +17,10 @@ describe('FASE F: PUT /api/produccion/[id] solo ADMIN + auditoría', () => {
     expect(putSource).not.toMatch(/ROLES\.ASISTENTE/)
   })
 
-  it('rechaza edición de producción histórica (400): solo hoy y los 7 días anteriores (#645)', () => {
+  it('rechaza edición de producción histórica (400): solo hoy y los 30 días anteriores (#899)', () => {
     expect(putSource).toMatch(/PRODUCCION_NO_EDITABLE_HISTORICA/)
-    expect(putSource).toMatch(/Solo se pueden corregir producciones de hoy y de los 7 días anteriores/)
+    expect(putSource).toMatch(/DIAS_MAX_PRODUCCION_ATRASADA/)
+    expect(putSource).toMatch(/Solo se pueden corregir producciones de hoy y de los/)
     expect(putSource).toMatch(/400/)
   })
 

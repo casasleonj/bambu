@@ -72,12 +72,15 @@ export async function listarEntregasDestacadas(
     }),
     tx.pedidoReduccionComercial.findMany({
       where: { pedidoId: { in: pedidosIds }, estado: "APLICADA" },
-      select: { pedidoId: true },
+      select: { pedidoId: true, resueltoAt: true },
     }),
   ]);
-  // Una reducción comercial no demuestra una entrega física; nunca inventar
-  // la fecha de completitud solo porque bajó la obligación original.
-  const ajustados = new Set([...ajustes, ...reducciones].map((a) => a.pedidoId));
+  const ajustesPosteriores = new Set(ajustes.map((a) => a.pedidoId));
+  const reduccionesPorPedido = new Map<string, typeof reducciones>();
+  for (const reduccion of reducciones) {
+    const previas = reduccionesPorPedido.get(reduccion.pedidoId) ?? [];
+    reduccionesPorPedido.set(reduccion.pedidoId, [...previas, reduccion]);
+  }
   const hechosPorPedido = new Map<string, typeof historial>();
   const ultimoEnRango = new Map<string, number>();
   for (const e of historial) {
@@ -106,6 +109,25 @@ export async function listarEntregasDestacadas(
           { producto: "BOLSA_HIELO", cantidad: p.cBolsaHieloEnt },
         ].filter((l) => l.cantidad > 0);
     const hechosPedido = hechosPorPedido.get(p.id) ?? [];
+    const primerHecho = hechosPedido.reduce<(typeof hechosPedido)[number] | null>(
+      (primero, hecho) => !primero || hecho.fecha < primero.fecha ? hecho : primero,
+      null,
+    );
+    // #911: una reducción ANTERIOR a la primera entrega física verificada
+    // ya forma parte de la obligación final; no es un ajuste posterior.
+    // Si ocurre después de una entrega (aun el mismo día), no tiene fecha
+    // o solo hay evidencia imprecisa, conservar la advertencia: reducir la
+    // obligación NO demuestra que se haya completado físicamente.
+    const reduccionIncierta = (reduccionesPorPedido.get(p.id) ?? []).some((r) =>
+      !r.resueltoAt ||
+      !primerHecho ||
+      primerHecho.fuente === "HISTORICO" ||
+      !!primerHecho.precisionDia ||
+      !!primerHecho.incompleto ||
+      !primerHecho.cantidades?.length ||
+      r.resueltoAt.getTime() >= primerHecho.fecha.getTime(),
+    );
+    const ajusteIncierto = ajustesPosteriores.has(p.id) || reduccionIncierta;
     const vista = proyectarEntregaHistorial(
       {
         id: p.id,
@@ -113,7 +135,7 @@ export async function listarEntregasDestacadas(
         nombre: p.negocio?.nombre ?? [p.cliente.nombre, p.cliente.apellido].filter(Boolean).join(" "),
         fecha: p.fecha,
         solicitadas: pedidas,
-        ajustePosterior: ajustados.has(p.id),
+        ajustePosterior: ajusteIncierto,
       },
       hechosPedido,
       rango,
@@ -131,7 +153,7 @@ export async function listarEntregasDestacadas(
       entregadoAt: p.entregadoAt,
       solicitadas: pedidas,
       entregadas,
-      tieneAjuste: ajustados.has(p.id),
+      tieneAjuste: ajusteIncierto,
     }, hechosPedido, vista)) return [];
     if (clasificarParcialHistorica && vista.estadoAlCorte !== "PARCIAL") return [];
     return [vista];

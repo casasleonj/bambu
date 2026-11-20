@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { AyudaTermino } from '@/components/ui/ayuda-termino'
 import { Desplegable } from '@/components/ui/desplegable'
 import { todayStringBogota } from '@/lib/dates'
-import { motivoFechaProduccionInvalida } from '@/lib/produccion-fecha'
+import { DIAS_MAX_PRODUCCION_ATRASADA, motivoFechaProduccionInvalida } from '@/lib/produccion-fecha'
 import { cn } from '@/lib/utils'
 import type { CierreData } from './types'
 
@@ -42,7 +42,7 @@ const VACIO = {
 /**
  * Producción dentro del cierre (#645, 2c-2): lo que se registra aquí es el MISMO registro de la sección Producción.
  * Una cifra por producto (se guarda como conteo A = conteo B); el doble conteo sigue en la sección Producción.
- * La fecha es la del cierre (cierre atrasado): hoy y hasta 7 días atrás, solo días sin cerrar.
+ * La fecha es la del cierre (cierre atrasado): hoy y hasta 30 días atrás, solo días sin cerrar.
  */
 export function ProduccionDelCierre({ fecha, diaCerrado, producciones, esperadoPrevio, botellonesVendidos, sinProduccion, onSinProduccionChange, onGuardada }: Props) {
   const [selladores, setSelladores] = useState<Sellador[]>([])
@@ -206,7 +206,7 @@ export function ProduccionDelCierre({ fecha, diaCerrado, producciones, esperadoP
         <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" data-testid="produccion-fecha-invalida">
           {motivoFecha === 'FECHA_FUTURA'
             ? 'Ese día aún no llega: no se puede registrar producción.'
-            : 'Solo se registra producción de hoy y de los 7 días anteriores. Si falta, pide ayuda a un administrador.'}
+            : `Solo se registra producción de hoy y de los ${DIAS_MAX_PRODUCCION_ATRASADA} días anteriores. Para fechas más antiguas, el registro requiere regularización.`}
         </p>
       )}
 
