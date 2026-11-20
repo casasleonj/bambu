@@ -105,6 +105,26 @@ describe("#915 — arrastres y entregas anteriores dentro del barrio (Postgres r
     expect(filasVilla.map((p) => +new Date(p.createdAt!))).toEqual([...filasVilla.map((p) => +new Date(p.createdAt!))].sort((a, b) => a - b));
   });
 
+  it("pagina el universo unido antes de ordenar y no repite pedidos entre páginas", async () => {
+    const primera = await consultarPedidos(leerFiltrosConsulta(new URLSearchParams(
+      `desde=${HOY}&hasta=${HOY}&agrupar=&page=1&pageSize=3`
+    ), HOY), "ADMIN");
+    const segunda = await consultarPedidos(leerFiltrosConsulta(new URLSearchParams(
+      `desde=${HOY}&hasta=${HOY}&agrupar=&page=2&pageSize=3`
+    ), HOY), "ADMIN");
+    expect(primera.total).toBe(10);
+    expect(segunda.total).toBe(10);
+    expect(primera.pedidos).toHaveLength(3);
+    expect(segunda.pedidos).toHaveLength(3);
+    expect(new Set([...primera.pedidos, ...segunda.pedidos].map(p => p.id)).size).toBe(6);
+  });
+
+  it("no cuenta las entregas de pedidos anteriores en el importe comercial del día", async () => {
+    const r = await q("&resumen=1");
+    expect(r.resumen!.importe).toBe(6900);
+    expect(r.total).toBe(10);
+  });
+
   it("el resumen del día no se mezcla con los arrastres (XMOD)", async () => {
     const r = await q("&resumen=1");
     expect(r.resumen!.importe).toBe(6900); // solo el pedido de hoy
