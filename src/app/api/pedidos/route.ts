@@ -358,6 +358,7 @@ export async function POST(request: NextRequest) {
       canal: (canal || 'DOMICILIO') as import('@/modules/pedidos/domain/types').Canal,
       origen: origen as import('@/modules/pedidos/domain/types').OrigenPedido | undefined,
       items: itemsInput,
+      precioEsperado: parsed.data.precioEsperado,
       pagos: pagosData.map((p: { metodo: string; monto: number }) => ({
         metodo: p.metodo as import('@/modules/pedidos/domain/types').MetodoPago,
         monto: p.monto,
