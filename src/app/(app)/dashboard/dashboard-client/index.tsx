@@ -174,6 +174,9 @@ export function DashboardClient({
       if (seq === solicitud.current.seq) setRefreshing(false)
     }
   }, [rangoSeleccionado])
+  useEffect(() => {
+    if (rangoSeleccionado) void actualizar()
+  }, [rangoSeleccionado, actualizar])
   const programarActualizacionBase = useCallback(() => {
     if (!vivo.current) return
     if (temporizadorBase.current) clearTimeout(temporizadorBase.current)
