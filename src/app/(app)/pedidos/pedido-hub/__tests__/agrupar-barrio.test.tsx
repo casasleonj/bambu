@@ -126,6 +126,39 @@ describe("#836 F3 — lista agrupada por barrio", () => {
   });
 });
 
+describe("#927 — etiquetas de actividad en la misma fila", () => {
+  it("parcial de ayer con entrega hoy combina tres etiquetas y cantidades", () => {
+    const parcial = {
+      ...fila("anterior", 1084),
+      fecha: "2026-10-28T15:00:00Z",
+      diaAnterior: true,
+      actividadOperativa: true,
+      entregaEnPeriodo: { unidades: 2 },
+    };
+    montar([parcial]);
+    expect(screen.getByTestId("operacion-dia-anterior-anterior")).toHaveTextContent("De ayer");
+    expect(screen.getByTestId("operacion-parcial-anterior")).toHaveTextContent("Parcial");
+    expect(screen.getByTestId("operacion-entrega-hoy-anterior")).toHaveTextContent("Entrega hoy");
+    expect(screen.getByTestId("operacion-cantidades-anterior")).toHaveTextContent("Pedidas: 5 · Entregadas: 3 · Pendientes: 2 · Hoy: 2");
+  });
+
+  it("pedido antiguo completado hoy se rotula una vez, sin parcial", () => {
+    const completo = {
+      ...fila("completo", 1095),
+      fecha: "2026-10-28T15:00:00Z",
+      estadoEntrega: "ENTREGADO",
+      items: base.items.map((i) => ({ ...i, cantEntrega: i.cantPedido })),
+      diaAnterior: true,
+      actividadOperativa: true,
+      entregaEnPeriodo: { unidades: 2 },
+    };
+    montar([completo]);
+    expect(screen.getByTestId("operacion-entrega-hoy-completo")).toHaveTextContent("Entregado hoy");
+    expect(screen.queryByTestId("operacion-parcial-completo")).toBeNull();
+    expect(screen.getAllByTestId("operacion-row-completo")).toHaveLength(1);
+  });
+});
+
 describe("GrupoBarrioEncabezado", () => {
   it("singular y plural", () => {
     const { rerender } = render(<GrupoBarrioEncabezado grupo={{ clave: "x", etiqueta: "X", total: 1 }} enPagina={1} soloEste={false} />);
