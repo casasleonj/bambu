@@ -7,6 +7,8 @@ import type { AccionKey, DeriveContext, Pedido } from './types'
 import { OperacionConsulta,type AccionesConsulta } from './operacion-consulta'
 import { useEffect, useRef, useState } from 'react'
 import { GrupoBarrioEncabezado } from './grupo-barrio-encabezado'
+import { EntregasDestacadas } from './entregas-destacadas'
+import type { EntregaDestacada } from '@/lib/pedidos-entregas-historial'
 import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import { CLAVE_VENTA_ANONIMA } from '@/lib/barrios/grupo-barrio'
 import { useAhora } from '@/hooks/use-ahora'
@@ -243,6 +245,20 @@ export function OperacionList({
       if (ultimo && g && ultimo.clave === g.clave) ultimo.filas.push(p)
       else bloques.push({ clave: g?.clave ?? 'sin-barrio', etiqueta: g?.etiqueta ?? 'Sin barrio', filas: [p] })
     }
+    // #915: las entregas de pedidos anteriores van dentro del grupo de su barrio; un barrio que solo tiene
+    // esas entregas (sin pedidos pendientes) también obtiene su bloque, antes de «Sin barrio» y las ventas anónimas.
+    const entregasPorClave = new Map<string, EntregaDestacada[]>()
+    for (const d of consulta.entregasAnteriores?.entregas ?? []) {
+      const clave = d.grupoBarrio?.clave ?? 'sin-barrio'
+      entregasPorClave.set(clave, [...(entregasPorClave.get(clave) ?? []), d])
+    }
+    for (const [clave, lista] of entregasPorClave) {
+      if (bloques.some(b => b.clave === clave) || !consulta.entregasAnteriores?.primeraPagina) continue
+      const nuevo = { clave, etiqueta: lista[0].grupoBarrio?.etiqueta ?? 'Sin barrio', filas: [] as Pedido[] }
+      const i = bloques.findIndex(b => b.clave === 'sin-barrio' || b.clave === CLAVE_VENTA_ANONIMA)
+      if (i < 0) bloques.push(nuevo)
+      else bloques.splice(i, 0, nuevo)
+    }
     // #909: los barrios del Recorrido son los de la consulta MÁS los de los bloques que se ven.
     // Sin esto, una lista de «Pendientes de días anteriores» sin pedidos de hoy tenía el selector
     // vacío y «Llevar al primero», Subir y Bajar no hacían nada.
@@ -316,7 +332,23 @@ export function OperacionList({
                     className="rounded border px-2 py-1 text-xs disabled:pointer-events-none disabled:opacity-40">↓ Bajar</button>
                 </div>
               )}
-              <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre}/>
+              {b.filas.length > 0 && (
+                <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre}/>
+              )}
+              {consulta.entregasAnteriores && entregasPorClave.has(b.clave) && bloquesVisibles.findIndex(x => x.clave === b.clave) === i && (
+                <div className="mt-2" data-testid={`entregas-anteriores-${b.clave}`}>
+                  <EntregasDestacadas
+                    entregas={entregasPorClave.get(b.clave)!}
+                    total={entregasPorClave.get(b.clave)!.length}
+                    rangoAmplio={false}
+                    hasta={consulta.entregasAnteriores.hasta}
+                    periodo={consulta.entregasAnteriores.periodo}
+                    plegable
+                    onVerPedido={consulta.onVerPedido}
+                    onVerTodas={consulta.entregasAnteriores.onVerTodas}
+                  />
+                </div>
+              )}
             </section>
           )
         })}

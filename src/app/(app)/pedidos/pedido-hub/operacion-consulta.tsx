@@ -19,6 +19,7 @@ import { NotaPedido } from "./nota-pedido";
 import { CompromisoChip, CierreNegocioChip, HoraAcordadaChip } from "./compromiso-chip";
 import { importesEntregaPedido } from "@/lib/valor-entregado-pedido";
 import type { GrupoBarrioConsulta } from "@/lib/pedidos-consulta";
+import type { EntregaDestacada } from "@/lib/pedidos-entregas-historial";
 import styles from "./operacion-consulta.module.css";
 import { esVentaAnonima } from "@/lib/barrios/grupo-barrio";
 
@@ -32,6 +33,15 @@ export interface AccionesConsulta {
   onDescartarPendiente?: (id: string) => void;
   /** #836 F3: totales por barrio de la consulta completa (solo con «Agrupar por barrio»). */
   grupos?: GrupoBarrioConsulta[];
+  /** #915: entregas de pedidos anteriores, ubicadas dentro del grupo de su barrio (vista agrupada). */
+  entregasAnteriores?: {
+    entregas: EntregaDestacada[];
+    /** Los bloques de barrios que solo tienen entregas (sin pedidos) salen solo en la primera página. */
+    primeraPagina: boolean;
+    hasta: string;
+    periodo: "hoy" | "en el período";
+    onVerTodas: () => void;
+  };
   /** #836 F3: clave del único barrio que se está viendo, si hay. */
   grupoActivo?: string;
   onGrupoBarrio?: (clave: string | null) => void;
@@ -198,6 +208,15 @@ export function OperacionConsulta({
                   >
                     {etiquetaArrastre(p.fecha, hoyBogota)}
                   </p>
+                )}
+                {/* #915: pedido de un día anterior, integrado al grupo de su barrio. */}
+                {p.diaAnterior && (
+                  <span
+                    data-testid={`operacion-dia-anterior-${p.id}`}
+                    className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"
+                  >
+                    ⏳ Día anterior
+                  </span>
                 )}
                 <CompromisoChip id={p.id} pedido={p} hoyBogota={hoyBogota} />
                 <HoraAcordadaChip id={p.id} pedido={p} />

@@ -46,7 +46,8 @@ async function pedido(
     });
   return p;
 }
-const hoy = () => consultarPedidos(leerFiltrosConsulta(new URLSearchParams()), "ADMIN");
+// #915: sin agrupar por barrio los arrastres siguen como sección aparte (con agrupación van dentro de su barrio).
+const hoy = () => consultarPedidos(leerFiltrosConsulta(new URLSearchParams("agrupar=")), "ADMIN");
 
 describe("#841 — no repetir el pedido pendiente en las entregas", () => {
   beforeEach(async () => { await resetAndSeed(); }, 60000);

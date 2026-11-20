@@ -226,3 +226,43 @@ describe("#913 — Recorrido inmediato y sin viaje al servidor", () => {
     expect(orden().at(-1)).toBe("Barrio Ventas en punto sin cliente");
   });
 });
+
+describe("#915 — arrastres y entregas anteriores dentro del grupo de su barrio", () => {
+  const entrega = (pedidoId: string, numero: number, g: { clave: string; etiqueta: string }) => ({
+    pedidoId, numero, nombre: `Cliente ${numero}`, fechaPedido: "2026-10-28", estadoAlCorte: "PRIMERA_ENTREGA" as const,
+    cantidadesDelRango: [{ producto: "PACA_AGUA", cantidad: 4 }], cantidadesAlCorte: [{ producto: "PACA_AGUA", cantidad: 4 }],
+    fechaCompletado: "2026-10-29", hitos: [{ fecha: "2026-10-29", cantidades: [{ producto: "PACA_AGUA", cantidad: 4 }], completado: true, porConciliar: false }],
+    pedidoAnterior: true, grupoBarrio: g,
+  });
+  const SOLO = { clave: "b:solo", etiqueta: "Barrio Solo" };
+  const ent = (extra: Record<string, unknown> = {}) => ({
+    entregasAnteriores: { entregas: [entrega("e1", 501, CENTRO), entrega("e2", 502, SOLO)], primeraPagina: true, hasta: "2026-10-29", periodo: "hoy" as const, onVerTodas: vi.fn(), ...extra },
+  });
+
+  it("el pedido de un día anterior lleva su tag «Día anterior» y el de hoy no", () => {
+    montar([{ ...fila("a", 1, CENTRO), diaAnterior: true }, fila("b", 2, CENTRO)]);
+    expect(screen.getByTestId("operacion-dia-anterior-a")).toHaveTextContent("Día anterior");
+    expect(screen.queryByTestId("operacion-dia-anterior-b")).toBeNull();
+  });
+
+  it("las entregas de pedidos anteriores salen dentro del bloque de su barrio, plegadas", () => {
+    montar([fila("a", 1, CENTRO), fila("b", 2, VILLA)], ent());
+    const centro = screen.getByRole("region", { name: "Barrio Centro" });
+    expect(within(centro).getByTestId("entregas-historicas-toggle")).toHaveTextContent("1 pedido anterior con entregas hoy");
+    const villa = screen.getByRole("region", { name: "Barrio Villa Nueva" });
+    expect(within(villa).queryByTestId("entregas-historicas-toggle")).toBeNull();
+  });
+
+  it("un barrio con solo entregas (sin pedidos) obtiene su bloque, antes de «Sin barrio»; en páginas siguientes no se repite", () => {
+    montar([fila("a", 1, CENTRO), fila("c", 3, SIN)], ent());
+    const regiones = screen.getAllByRole("region").map((r) => r.getAttribute("aria-label")).filter((l) => l?.startsWith("Barrio "));
+    expect(regiones).toEqual(["Barrio Centro", "Barrio Barrio Solo", "Barrio Sin barrio"]);
+    expect(within(screen.getByRole("region", { name: "Barrio Barrio Solo" })).getByTestId("entregas-historicas-toggle")).toBeInTheDocument();
+  });
+
+  it("en la página 2 no aparecen los bloques de solo entregas", () => {
+    montar([fila("a", 1, CENTRO)], ent({ primeraPagina: false }));
+    expect(screen.queryByRole("region", { name: "Barrio Barrio Solo" })).toBeNull();
+    expect(within(screen.getByRole("region", { name: "Barrio Centro" })).getByTestId("entregas-historicas-toggle")).toBeInTheDocument();
+  });
+});

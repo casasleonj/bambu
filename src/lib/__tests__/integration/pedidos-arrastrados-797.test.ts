@@ -16,7 +16,7 @@ const AYER = antes(1);
 const ANTEAYER = antes(2);
 const en = (dia: string, h: string) => new Date(`${dia}T${h}-05:00`);
 const hoy = (s = "") =>
-  leerFiltrosConsulta(new URLSearchParams(s), HOY);
+  leerFiltrosConsulta(new URLSearchParams(s ? `${s}&agrupar=` : 'agrupar='), HOY); // #915: contrato sin agrupar (sección aparte)
 let adminId: string;
 
 async function crear(

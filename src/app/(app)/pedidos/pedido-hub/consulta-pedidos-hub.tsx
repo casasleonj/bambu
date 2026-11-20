@@ -5,6 +5,7 @@ import { useConsultaPedidos } from "@/hooks/use-consulta-pedidos";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import type { EstadoGestionAdmin } from "@/hooks/use-gestion-admin";
 import {
+  arrastreIntegrado,
   baseEfectiva,
   clavesConsultaPedidos,
   filtrosArrastrados,
@@ -170,6 +171,9 @@ export function ConsultaPedidosHub(props: Props) {
         : datos
           ? `${datos.total} resultado(s) de toda la consulta`
           : "Consultando…";
+  // #915: agrupado por barrio, los pendientes/parciales de días anteriores y las entregas de pedidos
+  // anteriores van DENTRO del grupo de su barrio, no como secciones sueltas.
+  const integrado = arrastreIntegrado(filtrosLeidos ?? consulta.filtros);
   const encabezado = compromiso ? (
     <div className="mb-3" data-testid="encabezado-compromiso">
       <p className="text-xs text-slate-500">
@@ -193,7 +197,9 @@ export function ConsultaPedidosHub(props: Props) {
             ? "Todos los períodos"
             : filtrosLeidos?.resumen
               ? "Pedidos de la consulta"
-              : "Pedidos de hoy"}
+              : integrado
+                ? "Pedidos de hoy y pendientes de días anteriores"
+                : "Pedidos de hoy"}
         </h2>
         <p className="mt-1 text-xs text-slate-500">
           {estadoLinea} · hora de Colombia
@@ -213,11 +219,12 @@ export function ConsultaPedidosHub(props: Props) {
   );
   const baseArrastrados = filtrosLeidos ?? consulta.filtros;
   const aplicaArrastrados = !!filtrosArrastrados(baseArrastrados);
+
   const verArrastrados = () => {
     const fa = filtrosArrastrados(baseArrastrados);
     if (fa) aplicar({ ...fa, resumen: true, pageSize: baseArrastrados.pageSize });
   };
-  const arrastrados = aplicaArrastrados
+  const arrastrados = aplicaArrastrados && !integrado
     ? {
         pedidos: datos?.arrastrados ?? [],
         total: datos?.arrastradosTotal ?? 0,
@@ -229,8 +236,15 @@ export function ConsultaPedidosHub(props: Props) {
     : undefined;
   // #841: las entregas de pedidos anteriores van plegadas, después de los pendientes.
   const hoyEntregas = getTodayString();
+  const periodoEntregas: "hoy" | "en el período" =
+    filtrosLeidos && filtrosLeidos.desde === hoyEntregas && filtrosLeidos.hasta === hoyEntregas
+      ? "hoy"
+      : "en el período";
+  const entregasAplican = !!datos && !!filtrosLeidos && baseEfectiva(filtrosLeidos) === "pedido" && !filtrosLeidos.all;
+  // Sin filas que agrupar, las entregas anteriores se muestran como antes (no deben desaparecer).
+  const integradoConFilas = integrado && !!datos && datos.pedidos.length > 0;
   const entregasNode =
-    datos && filtrosLeidos && baseEfectiva(filtrosLeidos) === "pedido" && !filtrosLeidos.all ? (
+    entregasAplican && !integradoConFilas && datos && filtrosLeidos ? (
       <EntregasDestacadas
         entregas={datos.destacadas ?? []}
         total={datos.destacadasTotal ?? 0}
@@ -484,6 +498,15 @@ export function ConsultaPedidosHub(props: Props) {
                   onCorregirPendiente: props.onCorregirPendiente,
                   onDescartarPendiente: props.onDescartarPendiente,
                   grupos: datos?.grupos,
+                  entregasAnteriores: integradoConFilas && entregasAplican && datos && filtrosLeidos
+                    ? {
+                        entregas: datos.destacadas ?? [],
+                        primeraPagina: datos.page <= 1,
+                        hasta: filtrosLeidos.hasta,
+                        periodo: periodoEntregas,
+                        onVerTodas: () => aplicar({ ...filtrosLeidos, fechaBase: "entrega", resumen: true, page: 1 }),
+                      }
+                    : undefined,
                   grupoActivo: filtrosLeidos?.grupoBarrio || undefined,
                   franjas: filtrosLeidos?.foco === "paraHoy",
                   vacioCompromiso: rotulosCompromiso(filtrosLeidos?.foco) ?? undefined,
