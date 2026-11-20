@@ -297,13 +297,15 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
   const precioDesactualizado = totalLocal !== null && calc !== undefined &&
     Math.round(totalLocal * 100) !== Math.round(calc.total * 100)
   const ultimaInvalidacionPrecio = useRef<string | null>(null)
+  const pricingSnapshotData = pricingSnapshot.data
+  const reloadPricing = pricingSnapshot.reload
   useEffect(() => {
-    if (!precioDesactualizado || !pricingSnapshot.data) return
-    const key = `${state.previewRevision}:${pricingSnapshot.data.version}`
+    if (!precioDesactualizado || !pricingSnapshotData) return
+    const key = `${state.previewRevision}:${pricingSnapshotData.version}`
     if (ultimaInvalidacionPrecio.current === key) return
     ultimaInvalidacionPrecio.current = key
-    pricingSnapshot.reload()
-  }, [precioDesactualizado, pricingSnapshot.data, pricingSnapshot.reload, state.previewRevision])
+    reloadPricing()
+  }, [precioDesactualizado, pricingSnapshotData, reloadPricing, state.previewRevision])
 
   const cantOf = useCallback(
     (codigo: ProductoCodigo) => state.draft.items.find((i) => i.producto === codigo)?.cantidad ?? 0,
