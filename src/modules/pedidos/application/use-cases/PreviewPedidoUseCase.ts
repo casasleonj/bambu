@@ -28,6 +28,41 @@ import { calcularAlertasCliente } from '@/lib/alertas-detector'
 import { draftToPedidoBase, pedidoEntityToPedidoBase } from './pedido-to-pedido-base'
 import { resolverEntrega } from '../../domain/services/entrega-suficiencia.service'
 
+
+// Cache de proceso para expansión de enlaces: los cambios de cantidades no
+// deben repetir la misma consulta externa. Solo se guardan éxitos; errores y
+// resultados nulos se reintentan. TTL corto y tamaño acotado. El commit
+// conserva sus validaciones independientes.
+const LINK_COORDS_TTL_MS = 5 * 60_000
+const LINK_COORDS_MAX = 256
+const linkCoordsCache = new Map<string, { coords: { lat: number; lng: number }; expires: number }>()
+const linkCoordsInFlight = new Map<string, Promise<{ lat: number; lng: number } | null>>()
+
+async function resolverCoordsDeLinkConCache(
+  link: string,
+  resolver: (link: string) => Promise<{ lat: number; lng: number } | null>,
+): Promise<{ lat: number; lng: number } | null> {
+  const now = Date.now()
+  const cached = linkCoordsCache.get(link)
+  if (cached && cached.expires > now) return cached.coords
+  if (cached) linkCoordsCache.delete(link)
+  const pending = linkCoordsInFlight.get(link)
+  if (pending) return pending
+
+  const task = Promise.resolve().then(() => resolver(link)).then((coords) => {
+    if (coords && ubicacionEntregaValida(coords.lat, coords.lng)) {
+      if (linkCoordsCache.size >= LINK_COORDS_MAX) {
+        const oldest = linkCoordsCache.keys().next().value
+        if (oldest !== undefined) linkCoordsCache.delete(oldest)
+      }
+      linkCoordsCache.set(link, { coords, expires: Date.now() + LINK_COORDS_TTL_MS })
+    }
+    return coords
+  }).finally(() => { linkCoordsInFlight.delete(link) })
+  linkCoordsInFlight.set(link, task)
+  return task
+}
+
 export class ClienteNotFoundError extends Error {
   constructor(id: string) { super(`CLIENTE_NOT_FOUND: ${id}`); this.name = 'ClienteNotFoundError' }
 }
@@ -275,7 +310,7 @@ export class PreviewPedidoUseCase {
       : ubicacionEntregaValida(destinoExistente?.lat, destinoExistente?.lng)
     const coordsDeLink =
       canal === 'DOMICILIO' && !hayCoordsAlmacenadas && efectivoLink && !coordsPropiasParaLink
-        ? await this.deps.resolverCoordsDeLink(efectivoLink)
+        ? await resolverCoordsDeLinkConCache(efectivoLink, this.deps.resolverCoordsDeLink)
         : null
 
     // Ubicación propia del pedido (destino puntual). Creación: la del input.
