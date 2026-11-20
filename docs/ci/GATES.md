@@ -47,3 +47,62 @@ La sesión de Claude **no puede escribir** la protección (GitHub responde 403 �
 3. Entonces agregar a `vercel.json`: `"ignoreCommand": "node scripts/vercel-ignore-build.mjs"` (opcionalmente `GITHUB_TOKEN` de solo lectura en Vercel para no depender del límite anónimo de la API de GitHub).
 
 Hasta entonces sigue vigente la regla manual de AGENTS.md (Flujo de Entrega, paso 7): aplicar la migración en producción **antes** de fusionar.
+
+
+## #896 — fase piloto: feedback de borrador y certificación (propuesto para esta rama)
+
+El estado del 08–09/11 anterior es histórico. Este cambio de código no demuestra
+que `main` tenga protección efectiva ni que Vercel espere por una certificación.
+
+- Por defecto no se cambia la cobertura E2E de los PR: ausencia de
+  `BAMBU_CI_896_DRAFT_PILOT=true` conserva la política #778. La decisión
+  `draft_candidate` se registra en el log sin usarla para omitir pruebas.
+- **No habilitar todavía** la variable del repositorio
+  `BAMBU_CI_896_DRAFT_PILOT`. Primero verificar reglas efectivas de GitHub,
+  actualizar la base del candidato, exigir el check estable `CI gate (resumen)`
+  sin bypass administrativo no autorizado, comprobar protección de cambios al
+  propio workflow y controles de despliegue; ejecutar casos del piloto aislado.
+- Con el piloto habilitado, únicamente se difiere E2E en un PR que GitHub
+  identifica como borrador en opened/synchronize/reopened, con diff no vacío,
+  legible y formado por cambios A/M/D de archivos normales en src/ o docs/.
+  Renames, symlinks, modos ejecutables, e2e/, scripts/, prisma/, configuración
+  y demás rutas fuera de esas dos áreas conservan E2E. No es una clasificación
+  por riesgo del producto: incluso un cambio de negocio de src/ debe completar
+  todas las pruebas requeridas antes de liberar. El gate del borrador diferido
+  falla explícitamente como **pendiente de certificación**, no como falso verde.
+- Abrir un PR directamente listo para revisión, synchronize/reopened no-draft,
+  ready_for_review, push a main y dispatch conservan la exigencia E2E definida
+  por #778. Un ready_for_review ejecuta la validación de nuevo, incluso con el
+  piloto OFF, para no confiar en una corrida antigua. Esto puede sumar una
+  ejecución durante la transición: medir coste antes de habilitar el piloto.
+  Los grupos de concurrencia de borrador y normal se separan para que una
+  reejecución antigua de borrador no cancele un candidato listo.
+- El check de integración conserva su nombre histórico por compatibilidad,
+  y conserva temporalmente continue-on-error a nivel de job por compatibilidad,
+  pero el gate exige el resultado real suite_ok=true del paso Vitest y el
+  resultado success del job. Un fallo de integración ya NO certifica CI verde.
+  Lint sigue siendo informativo en CI ordinario y bloqueante en nightly_full.
+  No se eliminan specs ni se cambian flags/proyectos E2E. La estabilización
+  del fixture E10 se implementa por separado en el PR #907 (Refs #882).
+- Reversión del piloto: variable ausente o distinta de true y nueva validación
+  del candidato; revertir los cambios de código si hace falta. No revertir datos.
+- Alcance de esta fase: solo preparación, comparación de resultados y
+  feedback de borrador y gate de integración verificable. La regresión
+  nocturna y la observación de deduplicación YA están en main por #905;
+  el selector de dependencias permanece en el PR #901 (modo sombra, sin
+  permisos para omitir). No activa promoción protegida, selección E2E activa,
+  reutilización de suites PR→main ni build compartido. Nunca usar un éxito
+  de borrador como comprobante de promoción.
+
+Comprobación local: `node --test scripts/ci/__tests__/politica-ci.node.test.mjs`.
+Validar además GitHub Actions con PR docs-only, código, borrador piloto OFF y,
+solo con autorización y aislamiento, borrador piloto ON + ready_for_review,
+diff incompleto, cancelación y fallo real de integración. Verificar identidad
+del SHA/base y check requerido, no solo conclusión nominal del workflow.
+
+La protección de rama de main figuraba desactivada en el endpoint GitHub
+branches/main al preparar esta fase; ningún workflow puede por sí solo impedir
+que alguien con permisos de escritura fusione sin esperar checks si el
+repositorio no exige el `CI gate (resumen)`. Configurar required check y
+restricción de push/promoción es una acción de administración separada;
+**no se debe declarar hecha ni usar este piloto para sustituirla**.

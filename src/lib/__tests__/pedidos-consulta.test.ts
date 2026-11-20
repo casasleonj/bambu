@@ -164,3 +164,16 @@ describe("#854 baseEfectiva", () => {
     expect(parametrosConsulta(x).get("fechaBase")).toBe("pedido");
   });
 });
+
+describe("#903 — el Recorrido viaja en la consulta", () => {
+  it("parametrosConsulta conserva la prioridad manual de barrios, en orden, e ida y vuelta", () => {
+    const f = leer("all=true&agrupar=barrio&recorrido=b:norte&recorrido=sin-barrio&recorrido=b:sur");
+    expect(f.recorrido).toEqual(["b:norte", "sin-barrio", "b:sur"]);
+    const p = parametrosConsulta(f);
+    expect(p.getAll("recorrido")).toEqual(["b:norte", "sin-barrio", "b:sur"]);
+    expect(leerFiltrosConsulta(p, "2026-10-30").recorrido).toEqual(f.recorrido);
+  });
+  it("sin recorrido no agrega el parámetro", () => {
+    expect(parametrosConsulta(leer("all=true&agrupar=barrio")).has("recorrido")).toBe(false);
+  });
+});

@@ -42,6 +42,8 @@ export interface EntregaDestacada {
   fechaCompletado: string | null;
   hitos: HitoEntrega[];
   pedidoAnterior: boolean;
+  /** #915: barrio efectivo del pedido (solo con la vista agrupada). */
+  grupoBarrio?: { clave: string; etiqueta: string };
 }
 
 const zona = "America/Bogota";

@@ -14,9 +14,23 @@
  */
 import type { PedidoDireccionInput } from '@/lib/geo/pedido-direccion'
 import { normalizeBarrioNombre } from './normalizer'
+import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 
 export const CLAVE_SIN_BARRIO = 'sin-barrio'
 export const ETIQUETA_SIN_BARRIO = 'Sin barrio'
+/** #913: ventas en punto SIN cliente (Consumidor Final). Grupo no territorial: nunca es un barrio ni entra al FIFO. */
+export const CLAVE_VENTA_ANONIMA = 'venta-anonima'
+export const ETIQUETA_VENTA_ANONIMA = 'Ventas en punto sin cliente'
+const ORIGENES_VENTA_ANONIMA: ReadonlySet<string> = new Set(['VENTA_RAPIDA', 'VENTA_LIBRE'])
+
+/**
+ * #913: identidad CANÓNICA de venta anónima: cliente Consumidor Final + origen de venta en punto/libre.
+ * No se deduce por nombre ni por canal: una venta PUNTO con cliente registrado sigue siendo territorial,
+ * y un pedido a domicilio del Consumidor Final (origen PEDIDO) sí necesita entrega.
+ */
+export function esVentaAnonima(p: { clienteId?: string | null; origen?: string | null }): boolean {
+  return p.clienteId === CANONICAL_CONSUMIDOR_FINAL_ID && !!p.origen && ORIGENES_VENTA_ANONIMA.has(p.origen)
+}
 
 export interface BarrioCatalogoItem {
   id: string
@@ -86,11 +100,11 @@ export interface GrupoConTotal extends GrupoBarrio {
   total: number
 }
 
-/** Más pedidos primero; «Sin barrio» siempre al final; desempate estable por etiqueta. */
+/** Más pedidos primero; «Sin barrio» y luego las ventas anónimas siempre al final; desempate estable por etiqueta. */
 export function ordenarGrupos(grupos: GrupoConTotal[]): GrupoConTotal[] {
+  const cola = (clave: string) => (clave === CLAVE_VENTA_ANONIMA ? 2 : clave === CLAVE_SIN_BARRIO ? 1 : 0)
   return [...grupos].sort((a, b) => {
-    if (a.clave === CLAVE_SIN_BARRIO) return 1
-    if (b.clave === CLAVE_SIN_BARRIO) return -1
+    if (cola(a.clave) !== cola(b.clave)) return cola(a.clave) - cola(b.clave)
     return b.total - a.total || a.etiqueta.localeCompare(b.etiqueta, 'es') || a.clave.localeCompare(b.clave)
   })
 }

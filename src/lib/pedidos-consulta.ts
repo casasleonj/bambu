@@ -58,6 +58,8 @@ export interface ResultadoConsultaPedidos {
    */
   arrastrados?: Pedido[];
   arrastradosTotal?: number;
+  /** #915: en la vista agrupada los pendientes/parciales de días anteriores ya vienen DENTRO de `pedidos`. */
+  arrastradosIntegrados?: boolean;
   /** La lectura de arrastrados falló; la lista principal sigue siendo válida. */
   arrastradosError?: boolean;
 }
@@ -161,7 +163,7 @@ function lista(
 function leerGrupoBarrio(p: URLSearchParams): string {
   const v = p.get("grupoBarrio") || "";
   if (!v) return "";
-  if (v.length > 120 || !/^(sin-barrio|[bt]:[^\u0000-\u001f]+)$/.test(v))
+  if (v.length > 120 || !/^(sin-barrio|venta-anonima|[bt]:[^\u0000-\u001f]+)$/.test(v))
     throw new FiltroPedidosError("Revisa el filtro «grupoBarrio».");
   return v;
 }
@@ -385,6 +387,8 @@ export function parametrosConsulta(f: FiltrosConsultaPedidos): URLSearchParams {
   // Preserve explicit ungrouped selection; absence means operational barrio default.
   p.set("agrupar", f.agrupar);
   if (f.grupoBarrio) p.set("grupoBarrio", f.grupoBarrio);
+  // #903: la prioridad manual de barrios (Recorrido) debe viajar al servidor.
+  f.recorrido?.forEach((clave) => p.append("recorrido", clave));
   p.set("resumen", f.resumen ? "1" : "0");
   p.set("page", String(f.page));
   p.set("pageSize", String(f.pageSize));
@@ -444,6 +448,24 @@ function diaAnterior(dia: string): string {
  * activos. Conserva búsqueda, canal, origen, cliente y pago; ignora horas, que
  * delimitan el día consultado, no los días previos.
  */
+/**
+ * #915: con la vista agrupada por barrio, los pendientes y parciales de días anteriores se leen en la MISMA
+ * consulta que los de hoy (un solo universo, una sola agrupación y paginación) en vez de como sección aparte.
+ * No aplica con filtros que se resuelven por ids ajenos al rango (repartidor, fiados, esperando pago).
+ */
+export function arrastreIntegrado(
+  f: FiltrosConsultaPedidos,
+  hoy = getTodayString(),
+): boolean {
+  return (
+    f.agrupar === "barrio" &&
+    !f.repartidorId.length &&
+    f.pago !== "fiado" &&
+    f.foco !== "esperandoPago" &&
+    !!filtrosArrastrados(f, hoy)
+  );
+}
+
 export function filtrosArrastrados(
   f: FiltrosConsultaPedidos,
   hoy = getTodayString(),

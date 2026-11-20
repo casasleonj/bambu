@@ -9,7 +9,11 @@ import { getAnonymousClientDisplayName } from "./cliente-canonical";
 import { pickCoords } from "./geo/pedido-coords";
 import { pickDireccionTexto } from "./geo/pedido-direccion";
 import {
+  type CatalogoBarrios,
+  CLAVE_VENTA_ANONIMA,
+  ETIQUETA_VENTA_ANONIMA,
   construirCatalogoBarrios,
+  esVentaAnonima,
   ordenarGrupos,
   resolverGrupoBarrio,
   type GrupoBarrio,
@@ -33,6 +37,7 @@ import {
 } from "./entregas-consulta";
 import {
   parametrosConsulta,
+  arrastreIntegrado,
   filtrosArrastrados,
   esFocoCompromiso,
   rangoConsultaPedidos,
@@ -217,13 +222,32 @@ const dec = (v: unknown) => centavos(v) / 100;
  * #797: añade los pendientes de días anteriores como lectura aparte; su fallo
  * no invalida la lista principal.
  */
+/** #913: sin demanda FIFO, «Sin barrio» va tras los barrios y las ventas anónimas al final de todo. */
+const colaNoTerritorial = (clave: string) => (clave === CLAVE_VENTA_ANONIMA ? 2 : clave === "sin-barrio" ? 1 : 0);
+
 export async function consultarPedidos(
   f: FiltrosConsultaPedidos,
   role: string | null,
   client = prisma,
 ): Promise<ResultadoConsultaPedidos> {
-  const resultado = await leerConsultaPedidos(f, role, client);
   const fa = filtrosArrastrados(f);
+  // #915: vista agrupada → los pendientes/parciales de días anteriores entran en la MISMA consulta
+  // (un solo universo deduplicado por pedido, sin tope de 5, agrupado y paginado en el servidor).
+  if (fa && arrastreIntegrado(f)) {
+    const integrado = await leerConsultaPedidos(f, role, client, false, fa);
+    // #841: una entrega parcial de un pedido que ya se ve como fila de esta página no se repite como tarjeta.
+    const visibles = new Set(integrado.pedidos.map((p) => p.id));
+    const destacadas = integrado.destacadas?.filter((d) => !visibles.has(d.pedidoId));
+    const quitadas = (integrado.destacadas?.length ?? 0) - (destacadas?.length ?? 0);
+    return {
+      ...integrado,
+      ...(destacadas
+        ? { destacadas, destacadasTotal: Math.max(0, (integrado.destacadasTotal ?? 0) - quitadas) }
+        : {}),
+      arrastradosIntegrados: true,
+    };
+  }
+  const resultado = await leerConsultaPedidos(f, role, client);
   if (!fa) return resultado;
   try {
     // #859: leer TODAS las páginas de arrastres, no solamente las primeras cinco.
@@ -275,6 +299,8 @@ async function leerConsultaPedidos(
   role: string | null,
   client = prisma,
   arrastre = false,
+  /** #915: filtros de arrastre cuando se integran a esta misma consulta (vista agrupada). */
+  fArrastre: FiltrosConsultaPedidos | null = null,
 ): Promise<ResultadoConsultaPedidos> {
   return client.$transaction(
     async (tx) => {
@@ -285,6 +311,12 @@ async function leerConsultaPedidos(
       const rango = rangoConsultaPedidos(f),
         where = whereConsultaPedidos(f, coincidencias);
       const and = where.AND as Prisma.PedidoWhereInput[];
+      // #915: universo de la lista = rango de hoy ∪ pendientes de días anteriores. El resumen del día
+      // (importes, cobros, conteos) sigue usando solo `where`, para no mezclar días.
+      let whereLista: Prisma.PedidoWhereInput = fArrastre
+        ? { OR: [where, whereConsultaPedidos(fArrastre, coincidencias)] }
+        : where;
+      let catalogoBarrios: CatalogoBarrios | null = null;
       let cobros: CobrosPeriodo | null = null,
         entregas: EntregaConsulta[] | null = null;
       // #854: «Entregado» sin fecha ni evento de entrega (ventas de mostrador antiguas o
@@ -377,9 +409,9 @@ async function leerConsultaPedidos(
         const canonico = { select: { id: true, nombre: true } } as const;
         const [candidatos, barrios] = await Promise.all([
           tx.pedido.findMany({
-            where,
+            where: whereLista,
             select: {
-              id: true, fecha: true, createdAt: true, numero: true, estadoEntrega: true, fechaEntrega: true, direccionEntrega: true, barrioEntrega: true,
+              id: true, clienteId: true, origen: true, fecha: true, createdAt: true, numero: true, estadoEntrega: true, fechaEntrega: true, direccionEntrega: true, barrioEntrega: true,
               items: { select: { producto: true, cantPedido: true, cantEntrega: true } },
               cliente: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
               negocio: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
@@ -390,13 +422,17 @@ async function leerConsultaPedidos(
           }),
         ]);
         const catalogo = construirCatalogoBarrios(barrios);
+        catalogoBarrios = catalogo;
         const porGrupo = new Map<string, { g: GrupoBarrio; items: typeof candidatos }>();
         grupoPorId = new Map();
         for (const c of candidatos) {
-          const g = resolverGrupoBarrio(
-            { overrideDireccion: c.direccionEntrega, overrideBarrio: c.barrioEntrega, cliente: c.cliente, negocio: c.negocio },
-            catalogo,
-          );
+          // #913: la venta anónima en punto no es de ningún barrio: grupo propio, fuera del FIFO.
+          const g: GrupoBarrio = esVentaAnonima(c)
+            ? { clave: CLAVE_VENTA_ANONIMA, etiqueta: ETIQUETA_VENTA_ANONIMA }
+            : resolverGrupoBarrio(
+                { overrideDireccion: c.direccionEntrega, overrideBarrio: c.barrioEntrega, cliente: c.cliente, negocio: c.negocio },
+                catalogo,
+              );
           grupoPorId.set(c.id, g);
           const e = porGrupo.get(g.clave) ?? { g, items: [] };
           e.items.push(c);
@@ -405,6 +441,7 @@ async function leerConsultaPedidos(
         // #859: el FIFO usa únicamente demanda física abierta y exigible.
         const ahora = new Date();
         const abiertos = candidatos.filter(c =>
+          !esVentaAnonima(c) &&
           !["ENTREGADO", "CANCELADO", "ANULADO"].includes(c.estadoEntrega) &&
           (!c.fechaEntrega || c.fechaEntrega <= ahora) &&
           c.items.some(item => item.cantPedido > item.cantEntrega)
@@ -430,7 +467,7 @@ async function leerConsultaPedidos(
           .sort((a, b) =>
             (posicionesFIFO.get(a.clave) ?? Number.MAX_SAFE_INTEGER) -
             (posicionesFIFO.get(b.clave) ?? Number.MAX_SAFE_INTEGER) ||
-            (a.clave === 'sin-barrio' ? 1 : b.clave === 'sin-barrio' ? -1 : 0) ||
+            colaNoTerritorial(a.clave) - colaNoTerritorial(b.clave) ||
             a.etiqueta.localeCompare(b.etiqueta)
           );
         // El recorrido manual se aplica al conjunto completo antes de paginar.
@@ -443,7 +480,10 @@ async function leerConsultaPedidos(
           );
         }
         const elegibles = f.grupoBarrio ? (porGrupo.get(f.grupoBarrio)?.items ?? []) : candidatos;
-        if (f.grupoBarrio) and.push({ id: { in: elegibles.map((c) => c.id) } });
+        if (f.grupoBarrio) {
+          and.push({ id: { in: elegibles.map((c) => c.id) } });
+          if (fArrastre) whereLista = { AND: [whereLista, { id: { in: elegibles.map((c) => c.id) } }] };
+        }
         if (f.agrupar === "barrio") {
           const posGrupo = new Map(grupos.map((g, i) => [g.clave, i]));
           ordenPagina = [...elegibles]
@@ -476,9 +516,9 @@ async function leerConsultaPedidos(
       }
       const fin: Prisma.PedidoWhereInput = { AND: [where, validoFinanciero] };
       const [total, rowsSinOrden, repartidores, sumas, parciales] = await Promise.all([
-        tx.pedido.count({ where }),
+        tx.pedido.count({ where: whereLista }),
         tx.pedido.findMany({
-          where: ordenPagina ? { AND: [where, { id: { in: ordenPagina } }] } : where,
+          where: ordenPagina ? { AND: [whereLista, { id: { in: ordenPagina } }] } : whereLista,
           orderBy: arrastre
             ? [{ fecha: "asc" }, { numero: "asc" }, { id: "asc" }]
             : [{ fecha: "desc" }, { numero: "desc" }, { id: "asc" }],
@@ -721,6 +761,7 @@ async function leerConsultaPedidos(
           zonaCli: direccion.direccion ?? "",
           barrioCli: direccion.barrio ?? "",
           ...(grupoPorId?.get(raw.id) ? { grupoBarrio: grupoPorId.get(raw.id) } : {}),
+          ...(fArrastre && raw.fecha < rango.desde ? { diaAnterior: true } : {}),
           // #836 F2: tramos del negocio para avisar «cierra ese día»; solo si tiene horario configurado.
           ...(raw.negocio?.horarios?.length ? { negocioHorarios: raw.negocio.horarios } : {}),
           rutaNombre:
@@ -780,6 +821,29 @@ async function leerConsultaPedidos(
       const consultaDestacadas = !arrastre && base === "pedido" && !f.all && !esFocoCompromiso(f.foco)
         ? await listarEntregasDestacadas(tx, whereConsultaPedidos({ ...f, fechaBase: "entrega", foco: f.foco === "entregaParcial" ? "" : f.foco }), rango, f.repartidorId, f.foco === "entregaParcial")
         : null;
+      // #915: con la vista agrupada, cada entrega de un pedido anterior se ubica en el grupo de su barrio efectivo
+      // (misma resolución que las filas: override del pedido > negocio > cliente; venta anónima aparte).
+      if (consultaDestacadas && catalogoBarrios && consultaDestacadas.destacadas.length) {
+        const fuentes = await tx.pedido.findMany({
+          where: { id: { in: consultaDestacadas.destacadas.map((d) => d.pedidoId) } },
+          select: {
+            id: true, clienteId: true, origen: true, direccionEntrega: true, barrioEntrega: true,
+            cliente: { select: { direccion: true, barrio: true, barrioCanonico: { select: { id: true, nombre: true } } } },
+            negocio: { select: { direccion: true, barrio: true, barrioCanonico: { select: { id: true, nombre: true } } } },
+          },
+        });
+        const grupoDe = new Map<string, GrupoBarrio>(fuentes.map((c) => [c.id, esVentaAnonima(c)
+          ? { clave: CLAVE_VENTA_ANONIMA, etiqueta: ETIQUETA_VENTA_ANONIMA }
+          : resolverGrupoBarrio(
+              { overrideDireccion: c.direccionEntrega, overrideBarrio: c.barrioEntrega, cliente: c.cliente, negocio: c.negocio },
+              catalogoBarrios!,
+            )]));
+        const conBarrio = consultaDestacadas.destacadas.map((d) => ({ ...d, ...(grupoDe.get(d.pedidoId) ? { grupoBarrio: grupoDe.get(d.pedidoId) } : {}) }));
+        // Con un barrio elegido no se cuelan entregas de otros barrios (A07).
+        const dentro = f.grupoBarrio ? conBarrio.filter((d) => d.grupoBarrio?.clave === f.grupoBarrio) : conBarrio;
+        consultaDestacadas.destacadasTotal = Math.max(0, consultaDestacadas.destacadasTotal - (conBarrio.length - dentro.length));
+        consultaDestacadas.destacadas = dentro;
+      }
       const [{ ahora }] = await tx.$queryRaw<
         Array<{ ahora: Date }>
       >`SELECT transaction_timestamp() AS ahora`;

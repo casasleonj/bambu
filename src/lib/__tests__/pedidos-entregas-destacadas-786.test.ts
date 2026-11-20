@@ -47,11 +47,15 @@ const crearPedido = () => ({
   cBolsaHieloEnt: 0,
 });
 type Fila = ReturnType<typeof crearPedido>;
-function transaccion(filas: Fila[], conAjuste = false): Prisma.TransactionClient {
+function transaccion(
+  filas: Fila[],
+  conAjuste = false,
+  reducciones: Array<{ pedidoId: string; resueltoAt: Date | null }> = [],
+): Prisma.TransactionClient {
   return {
     pedido: { findMany: vi.fn().mockResolvedValue(filas) },
     pedidoCantidadAjuste: { findMany: vi.fn().mockResolvedValue(conAjuste ? [{ pedidoId: "prueba-786" }] : []) },
-    pedidoReduccionComercial: { findMany: vi.fn().mockResolvedValue([]) },
+    pedidoReduccionComercial: { findMany: vi.fn().mockResolvedValue(reducciones) },
   } as unknown as Prisma.TransactionClient;
 }
 
@@ -110,5 +114,117 @@ describe("#786 — vista complementaria de pedidos", () => {
     const r = await listarEntregasDestacadas(transaccion([crearPedido()]), {}, dia);
     expect(r.destacadasTotal).toBe(1);
     expect(r.destacadas[0].estadoAlCorte).toBe("POR_CONCILIAR");
+  });
+});
+
+describe("#911 — reducción comercial y verificación de la entrega física", () => {
+  const rango = {
+    desde: new Date("2026-09-19T05:00:00Z"),
+    hasta: new Date("2026-09-20T05:00:00Z"),
+  };
+  const fechaEntrega = new Date("2026-09-19T16:00:00Z");
+  const entregaVerificada: EntregaConsulta = {
+    id: "auditoria-911",
+    pedidoId: "prueba-786",
+    fecha: fechaEntrega,
+    repartidorId: null,
+    cantidades: [{ producto: "PACA_AGUA", cantidad: 7 }],
+    fuente: "AUDITORIA",
+    precisionDia: false,
+  };
+  const p = {
+    ...crearPedido(),
+    origen: "PEDIDO" as const,
+    fecha: new Date("2026-09-19T12:00:00Z"),
+    entregadoAt: fechaEntrega,
+    items: [{ producto: "PACA_AGUA", cantPedido: 7, cantEntrega: 7 }],
+  };
+  const reduccion = (resueltoAt: Date | null) => [
+    { pedidoId: p.id, resueltoAt },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    leerMock.mockResolvedValue([entregaVerificada]);
+  });
+
+  it("regresión: reducción anterior a la primera entrega verificada no duplica una entrega completa del día", async () => {
+    // Caso enteramente sintético: 5 → 9 → 6 → 7; se entregan 7.
+    const tx = transaccion([p], false, reduccion(new Date("2026-09-19T15:00:00Z")));
+    const result = await listarEntregasDestacadas(tx, {}, rango);
+
+    expect(result).toEqual({ destacadas: [], destacadasTotal: 0, rangoAmplio: false });
+    expect(tx.pedidoReduccionComercial.findMany).toHaveBeenCalledWith({
+      where: { pedidoId: { in: [p.id] }, estado: "APLICADA" },
+      select: { pedidoId: true, resueltoAt: true },
+    });
+  });
+
+  it("reducción previa + pedido de ayer entregado completo hoy conserva su registro y fecha", async () => {
+    const anterior = { ...p, fecha: new Date("2026-09-18T15:00:00Z") };
+    const result = await listarEntregasDestacadas(
+      transaccion([anterior], false, reduccion(new Date("2026-09-19T14:00:00Z"))),
+      {}, rango,
+    );
+    expect(result.destacadasTotal).toBe(1);
+    expect(result.destacadas[0].estadoAlCorte).toBe("PRIMERA_ENTREGA");
+    expect(result.destacadas[0].fechaCompletado).toBe("2026-09-19");
+    expect(result.destacadas[0].cantidadesDelRango).toEqual([{ producto: "PACA_AGUA", cantidad: 7 }]);
+  });
+
+  const fechasInciertas: Array<[string, Date | null]> = [
+    ["posterior a entrega del mismo día", new Date("2026-09-19T17:00:00Z")],
+    ["posterior al corte", new Date("2026-09-20T12:00:00Z")],
+    ["sin fecha verificable", null],
+    ["exactamente simultánea a la entrega", fechaEntrega],
+  ];
+  it.each(fechasInciertas)("mantiene Por conciliar cuando la reducción es %s", async (_caso, fechaReduccion) => {
+    const result = await listarEntregasDestacadas(
+      transaccion([p], false, reduccion(fechaReduccion)), {}, rango,
+    );
+    expect(result.destacadasTotal).toBe(1);
+    expect(result.destacadas[0].estadoAlCorte).toBe("POR_CONCILIAR");
+    expect(result.destacadas[0].fechaCompletado).toBeNull();
+  });
+
+  it("una reducción entre la primera entrega parcial y la segunda no inventa una finalización", async () => {
+    leerMock.mockResolvedValue([
+      { ...entregaVerificada, id: "parte-1", fecha: new Date("2026-09-19T14:30:00Z"), cantidades: [{ producto: "PACA_AGUA", cantidad: 2 }] },
+      { ...entregaVerificada, id: "parte-2", cantidades: [{ producto: "PACA_AGUA", cantidad: 5 }] },
+    ]);
+    const result = await listarEntregasDestacadas(
+      transaccion([p], false, reduccion(new Date("2026-09-19T15:00:00Z"))),
+      {}, rango,
+    );
+    expect(result.destacadas[0].estadoAlCorte).toBe("POR_CONCILIAR");
+  });
+
+  const evidenciasInciertas: Array<[string, EntregaConsulta]> = [
+    ["legado sin desglose", { ...entregaVerificada, fuente: "HISTORICO", cantidades: null, incompleto: true }],
+    ["precisión de día", { ...entregaVerificada, precisionDia: true }],
+    ["evidencia marcada incompleta", { ...entregaVerificada, incompleto: true }],
+  ];
+  it.each(evidenciasInciertas)("no oculta la alerta con %s aunque la reducción fuera anterior", async (_caso, hecho) => {
+    leerMock.mockResolvedValue([hecho]);
+    const result = await listarEntregasDestacadas(
+      transaccion([p], false, reduccion(new Date("2026-09-19T14:00:00Z"))),
+      {}, rango,
+    );
+    expect(result.destacadas[0].estadoAlCorte).toBe("POR_CONCILIAR");
+  });
+
+  it("una reducción anterior no tapa discrepancia de producto/cantidad ni ajuste posterior", async () => {
+    leerMock.mockResolvedValue([{ ...entregaVerificada, cantidades: [{ producto: "PACA_AGUA", cantidad: 6 }] }]);
+    const tx = transaccion([p], false, reduccion(new Date("2026-09-19T14:00:00Z")));
+    const parcial = await listarEntregasDestacadas(tx, {}, rango);
+    expect(parcial.destacadasTotal).toBe(1);
+    expect(parcial.destacadas[0].estadoAlCorte).toBe("PARCIAL");
+
+    leerMock.mockResolvedValue([entregaVerificada]);
+    const posterior = await listarEntregasDestacadas(
+      transaccion([p], true, reduccion(new Date("2026-09-19T14:00:00Z"))),
+      {}, rango,
+    );
+    expect(posterior.destacadas[0].estadoAlCorte).toBe("POR_CONCILIAR");
   });
 });
