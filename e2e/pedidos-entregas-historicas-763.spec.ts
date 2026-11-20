@@ -82,21 +82,23 @@ test.describe("#763 — Pedidos y entregas efectivas de otros días", () => {
       await loginAs(page, "admin");
       await goto(page, "/pedidos?clienteId=" + cliente.id);
       const app = appMain(page);
-      const bloque = app.getByTestId("entregas-historicas-763");
-      // #841: la sección empieza plegada en una línea; se despliega para ver el detalle.
-      await bloque.getByTestId("entregas-historicas-toggle").click();
-      const tarjeta = bloque.getByTestId("entrega-historica-" + pedido.numero);
-      await expect(bloque).toBeVisible();
-      await expect(tarjeta).toContainText("Completado tras parcial");
-      await expect(tarjeta).toContainText("3 pacas de agua");
-      await expect(tarjeta).toContainText("6 pacas de agua");
-      await expect(tarjeta).toContainText("Completado el");
-      // El mismo pedido NO se creó hoy: la lista por fecha de pedido queda vacía.
-      await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(0);
-      // Los dos eventos tienen fechas distintas, pero solamente una identidad.
-      await expect(bloque.locator('[data-testid^="entrega-historica-"]')).toHaveCount(1);
-      // Se puede abrir el pedido original sin crear un hijo.
-      await tarjeta.getByRole("button", { name: "Ver pedido " + pedido.numero }).click();
+      // #927: Hoy es una lista de actividad operativa, sin sección histórica paralela.
+      // Un pedido creado ayer, con una entrega ayer y otra hoy, aparece UNA vez
+      // con su fecha original y la magnitud física de hoy, no como venta nueva.
+      const fila = app.getByTestId("operacion-row-" + pedido.id);
+      await expect(fila).toBeVisible();
+      await expect(app.getByTestId("operacion-dia-anterior-" + pedido.id)).toContainText("De ayer");
+      await expect(app.getByTestId("operacion-entrega-hoy-" + pedido.id)).toContainText("Entregado hoy");
+      const cantidades = app.getByTestId("operacion-cantidades-" + pedido.id);
+      await expect(cantidades).toContainText("Pedidas: 6");
+      await expect(cantidades).toContainText("Entregadas: 6");
+      await expect(cantidades).toContainText("Pendientes: 0");
+      await expect(cantidades).toContainText("Hoy: 3");
+      await expect(fila).toHaveCount(1);
+      await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(1);
+      await expect(app.getByTestId("entregas-historicas-763")).toHaveCount(0);
+      // Se puede abrir el pedido ORIGINAL; no existe un pedido hijo.
+      await fila.click();
       await expect(page.getByText("Pedido #" + pedido.numero).first()).toBeVisible();
       // La consulta histórica no se reetiqueta retrospectivamente como completada.
       await goto(page, "/pedidos?clienteId=" + cliente.id + "&desde=" + diaAyer + "&hasta=" + diaAyer);
