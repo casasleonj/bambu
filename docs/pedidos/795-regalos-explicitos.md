@@ -8,6 +8,28 @@ Estado: **implementado y validado localmente; QA del Hub y de la interfaz anteri
 La migración de regalos se aplicó y repitió únicamente en PostgreSQL local aislado.
 No hay migración de regalos aplicada ni escrituras de prueba en producción.
 
+## Reanudación del 20-11
+
+Rebase adicional sobre `main` `608478be`: preservados los cambios recientes de
+Fiados, filtros por barrio, comprador precargado y protección de previews por
+revisión. El cuerpo de preview ahora se construye en `preview-request.ts`; allí
+se conserva el regalo, de modo que una respuesta anterior no habilite confirmar
+una cantidad nueva. Se probaron la identidad del comprador/destino y la respuesta
+atrasada después de cambiar de 3 a 4 gratuitas.
+
+Después del rebase: 300 pruebas / 28 archivos de los cruces, 47 pruebas focalizadas
+(reductor/preview), 37 PostgreSQL de regalos y comisiones, y 6 PostgreSQL de
+asignación individual/en bloque pasaron, exit 0. Son lotes solapados y momentos
+distintos; no sumar como una única suite. Typecheck y ESLint del diff: exit 0.
+La suite amplia y el build/navegador del candidato actualizado se vuelven a validar.
+El reinicio del entorno eliminó los builds temporales; las capturas y resultados
+del 19-11 se conservan como evidencia histórica, no como prueba del nuevo main.
+
+La asignación en bloque reutiliza cantidades físicas pendientes y no vuelve a
+sumar una selección ya asignada a esa misión. Consultas de embarques conservan
+los componentes gratuitos para los consumidores físicos; los registros reales
+de carga y retorno siguen siendo su fuente propia, sin inferir otra custodia.
+
 ## Autoridad recuperada
 
 - [Decisión de captura mínima](https://github.com/casasleonj/bambu/issues/795#issuecomment-6837993978): enlace por producto, conservar tarjetas; sin regalos el flujo ordinario no cambia.

@@ -16,6 +16,7 @@ vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn().mockResolvedValue(undefin
 
 import { crearPedidoUseCase, entregarPedidoUseCase } from '@/modules/pedidos'
 import { POST as enviar } from '@/app/api/pedidos/[id]/enviar/route'
+import { PUT as asignarBloque } from '@/app/api/embarques/[id]/route'
 
 describe('#795 · enviar al embarque usa peso físico pendiente y capacidad serializada', () => {
   beforeAll(async () => { await resetAndSeed(); sesion.id = (await getAdminUser()).id })
@@ -33,6 +34,9 @@ describe('#795 · enviar al embarque usa peso físico pendiente y capacidad seri
   const asignar = (pedidoId: string, embarqueId: string, offlineId = randomUUID()) => enviar(new NextRequest(`http://localhost/api/pedidos/${pedidoId}/enviar`, {
     method: 'POST', body: JSON.stringify({ embarqueId, offlineId }),
   }), { params: Promise.resolve({ id: pedidoId }) })
+  const bloque = (pedidoIds: string[], embarqueId: string) => asignarBloque(new NextRequest(`http://localhost/api/embarques/${embarqueId}`, {
+    method: 'PUT', body: JSON.stringify({ pedidoIds, offlineId: randomUUID() }),
+  }), { params: Promise.resolve({ id: embarqueId }) })
 
   it('rechaza 63 físicas en capacidad de 620 kg aunque las 60 con precio sí cabrían', async () => {
     const p = await pedido(), e = await mision(620)
@@ -61,6 +65,17 @@ describe('#795 · enviar al embarque usa peso físico pendiente y capacidad seri
     const a = await pedido(2, 1), b = await pedido(2, 1), e = await mision(50)
     const respuestas = await Promise.all([asignar(a.id, e.id), asignar(b.id, e.id)])
     expect(respuestas.map(r => r.status).sort()).toEqual([201, 400])
+    expect(await db.pedido.count({ where: { embarqueId: e.id } })).toBe(1)
+  })
+  it('el envío en bloque también rechaza 72 físicas para el límite de 70', async () => {
+    const p = await pedido(69, 3), e = await mision(2000)
+    expect((await bloque([p.id], e.id)).status).toBe(400)
+    expect((await db.pedido.findUniqueOrThrow({ where: { id: p.id } })).embarqueId).toBeNull()
+  })
+  it('reenviar la selección al mismo embarque no duplica las 63 unidades comprometidas', async () => {
+    const p = await pedido(), e = await mision(2000)
+    expect((await bloque([p.id], e.id)).status).toBe(200)
+    expect((await bloque([p.id], e.id)).status).toBe(200)
     expect(await db.pedido.count({ where: { embarqueId: e.id } })).toBe(1)
   })
 })

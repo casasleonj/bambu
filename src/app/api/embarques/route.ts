@@ -135,6 +135,7 @@ export async function GET(request: NextRequest) {
               cBotellonDomEnt: true,
               cBolsaAguaEnt: true,
               cBolsaHieloEnt: true,
+              items: { select: { producto: true, cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true } },
               negocioId: true,
               cliente: { select: { id: true, nombre: true, apellido: true, barrio: true, telefono: true } },
             },
