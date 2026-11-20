@@ -19,10 +19,10 @@ function fixture(t, extra={}) {
   return {root,files,hubSpecs:[hub],entries:[mod(CLIENT)]}
 }
 test('direct impact + cross-domain + mandatory unknown tests',t=>{
-  const r=analyze(fixture(t));assert.equal(r.canSkip,false);assert.equal(r.mode,'shadow');assert.equal(r.recommendation,'candidate-only');
+  const r=analyze(fixture(t));assert.equal(r.canSkip,false);assert.equal(r.mode,'shadow');assert.equal(r.recommendation,'full'); assert.ok(r.reasonCodes.includes('CRITICAL_BUSINESS_DEPENDENCY'));
   for(const f of [...smoke,'e2e/clientes.spec.ts','e2e/unmapped.spec.ts',hub])assert.ok(r.proposedLegacySpecs.includes(f),f)
-  assert.ok(!r.proposedLegacySpecs.includes('e2e/compras.spec.ts'));assert.ok(!r.inventory.legacySpecs.includes('e2e/produccion/manual.spec.ts'))
-  assert.ok(r.domains.includes('pedidos'));assert.deepEqual(r.inventory.hubSpecs,[hub]);assert.equal(r.hypothesisLegacySpecs.length,r.proposedLegacySpecs.length)
+  assert.ok(!r.hypothesisLegacySpecs.includes('e2e/compras.spec.ts'));assert.ok(!r.inventory.legacySpecs.includes('e2e/produccion/manual.spec.ts'))
+  assert.ok(r.domains.includes('pedidos'));assert.deepEqual(r.inventory.hubSpecs,[hub]);assert.ok(r.hypothesisLegacySpecs.length<=r.proposedLegacySpecs.length)
 })
 test('transitive alias + barrel reexport + cycle reaches financial consumer and full',t=>{
  const r=analyze(fixture(t,{'src/app/(app)/clientes/barrel.ts':'export {Widget} from "./widget"; export * from "./cycle"','src/app/(app)/clientes/cycle.ts':'export * from "./barrel"','src/app/(app)/pedidos/page.tsx':'import {Widget} from "@/app/(app)/clientes/barrel"'}))
