@@ -337,11 +337,10 @@ async function leerConsultaPedidos(
         ? { OR: [where, anterioresExigibles] }
         : where;
       if (actividadIntegrada) {
-        // Priorizar hechos físicos auditables: entregadoAt por sí solo no basta.
+        // La evidencia histórica incierta se muestra «Por conciliar», jamás
+        // como entrega física confirmada ni como movimiento contable nuevo.
         const hechosHoy = await leerEntregasConsulta(tx, { rango });
-        const idsEntregados = [...new Set(hechosHoy
-          .filter((e) => e.fuente !== "HISTORICO")
-          .map((e) => e.pedidoId))];
+        const idsEntregados = [...new Set(hechosHoy.map((e) => e.pedidoId))];
         if (idsEntregados.length) {
           const sinFechaPedido = whereConsultaPedidos({ ...f, all: true }, coincidencias);
           whereLista = {
@@ -832,14 +831,18 @@ async function leerConsultaPedidos(
           ...((fArrastre || diaOperativo) && raw.fecha < rango.desde ? { diaAnterior: true, diaReferenciaConsulta: f.desde } : {}),
           ...(diaOperativo ? { actividadOperativa: true } : {}),
           ...(diaOperativo && hechos.some((e) =>
-            e.fuente !== "HISTORICO" && e.fecha >= rango.desde && e.fecha < rango.hasta
+            e.fecha >= rango.desde && e.fecha < rango.hasta
           ) ? {
             entregaEnPeriodo: {
+              porConciliar: hechos.some((e) =>
+                e.fecha >= rango.desde && e.fecha < rango.hasta &&
+                (e.fuente === "HISTORICO" || e.incompleto || !e.cantidades)
+              ),
               unidades: hechos.some((e) =>
-                e.fuente !== "HISTORICO" && e.fecha >= rango.desde && e.fecha < rango.hasta &&
-                (e.incompleto || !e.cantidades)
+                e.fecha >= rango.desde && e.fecha < rango.hasta &&
+                (e.fuente === "HISTORICO" || e.incompleto || !e.cantidades)
               ) ? null : hechos
-                .filter((e) => e.fuente !== "HISTORICO" && e.fecha >= rango.desde && e.fecha < rango.hasta)
+                .filter((e) => e.fecha >= rango.desde && e.fecha < rango.hasta)
                 .reduce((n, e) => n + (e.cantidades ?? []).reduce((subtotal, l) => subtotal + l.cantidad, 0), 0),
             },
           } : {}),
