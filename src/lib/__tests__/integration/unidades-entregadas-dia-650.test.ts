@@ -5,6 +5,7 @@ import { testPrisma as db, resetAndSeed } from './setup'
 import { unidadesEntregadasDelDia } from '@/lib/unidades-entregadas-dia'
 import { getVentasDelDia } from '@/lib/ventas'
 import { construirResumenCierre } from '@/lib/cierre-resumen'
+import { leerVentasEntregadasDia } from '@/modules/dashboard/infrastructure/ventas-entregadas.repository'
 
 const d1 = new Date('2031-04-03T00:00:00-05:00')
 const d2 = new Date(+d1 + 86_400_000)
@@ -78,6 +79,32 @@ describe('unidadesEntregadasDelDia (#650 2b)', () => {
       const prod = await getVentasDelDia(new Date(`${dia}T12:00:00-05:00`))
       expect(cierre.cierre.hieloVendido).toBe(esperado)
       expect(prod.hieloVendido).toBe(esperado)
+    }
+  })
+  it('#883: mismo evento en dashboard, cierre y producción; parcial de varios días, anulado y precio', async () => {
+    const inicio = new Date('2031-04-10T00:00:00-05:00')
+    const medio = new Date(+inicio + 86400000)
+    const fin = new Date(+medio + 86400000)
+    const a = await db.pedido.create({ data: {
+      clienteId, canal: 'DOMICILIO', origen: 'PEDIDO', estado: 'ENTREGADO',
+      estadoEntrega: 'ENTREGADO', estadoPago: 'PENDIENTE', total: 34500, saldo: 34500,
+      totalPagado: 0, fecha: new Date(+inicio + H), entregadoAt: new Date(+medio + H),
+      cPacaHieloPed: 15, cPacaHieloEnt: 15,
+      items: { create: [{ producto: 'PACA_HIELO', cantPedido: 15, cantEntrega: 15, precio: 2300, subtotal: 34500 }] },
+    } })
+    await evento(a.id, new Date(+medio - 1), 5)
+    await evento(a.id, medio, 10)
+    const anulado = await pedido({ fecha: inicio, hielo: 13, entregadoAt: medio, estadoEntrega: 'ANULADO' })
+    await evento(anulado.id, medio, 13)
+    for (const [start, end, dia, cantidad] of [[inicio, medio, '2031-04-10', 5], [medio, fin, '2031-04-11', 10]] as const) {
+      const ventas = await leerVentasEntregadasDia(db, { start, end })
+      const cierre = await construirResumenCierre(db, dia)
+      const prod = await getVentasDelDia(new Date(`${dia}T12:00:00-05:00`))
+      expect(ventas.unidades.hielo).toBe(cantidad)
+      expect(ventas.total).toBe(cantidad * 2300)
+      expect(ventas.desglose).toEqual([{ producto: 'PACA_HIELO', canal: 'DOMICILIO', cantidad, precio: 2300, subtotal: cantidad * 2300 }])
+      expect(cierre.cierre.hieloVendido).toBe(cantidad)
+      expect(prod.hieloVendido).toBe(cantidad)
     }
   })
 })

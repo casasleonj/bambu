@@ -37,6 +37,15 @@ const CLAVE: Record<string, keyof UnidadesDelDia> = {
 const diaBogota = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 const total = (u: UnidadesDelDia) => u.agua + u.hielo + u.botellon + u.bolsaAgua + u.bolsaHielo
 
+export interface UnidadEntregadaDetalle {
+  pedidoId: string
+  producto: string
+  cantidad: number // unidades físicas
+  cantidadPrevia: number // unidades físicas anteriores
+  cantidadRegalo?: number // ausente cuando la evidencia no distingue regalos
+  cantidadRegaloPrevia: number
+}
+
 /** Acumulado físico actual, también para el fallback explícitamente aproximado del cierre. */
 export function unidadesFisicasEntregadas(p: {
   cPacaAguaEnt: number; cPacaHieloEnt: number; cBotellonFabEnt: number; cBotellonDomEnt: number
@@ -56,6 +65,11 @@ export function unidadesFisicasEntregadas(p: {
 }
 
 export async function unidadesEntregadasDelDia(db: Db, rango: RangoDia): Promise<UnidadesEntregadasDelDia> {
+  return (await detalleUnidadesEntregadasDelDia(db, rango)).unidades
+}
+
+/** Procedencia compartida, con deltas físicos y comerciales para valoraciones diarias. */
+export async function detalleUnidadesEntregadasDelDia(db: Db, rango: RangoDia) {
   // Eventos de entrega con fecha dentro del día (más sus hermanos de otros días, para validar la suma).
   const delDia = await leerEntregasConsulta(db, { rango })
   const idsEventos = [...new Set(delDia.map((e) => e.pedidoId))]
@@ -83,6 +97,7 @@ export async function unidadesEntregadasDelDia(db: Db, rango: RangoDia): Promise
   for (const e of todos) porPedido.set(e.pedidoId, [...(porPedido.get(e.pedidoId) ?? []), e])
 
   const res: UnidadesEntregadasDelDia = { ...vacio(), aproximados: [] }
+  const detalle: UnidadEntregadaDetalle[] = []
   for (const p of candidatos) {
     const acumulado = unidadesFisicasEntregadas(p)
     if (total(acumulado) === 0) continue
@@ -90,18 +105,37 @@ export async function unidadesEntregadasDelDia(db: Db, rango: RangoDia): Promise
     const seguro = eventos.length > 0 && eventos.every((e) => !e.incompleto && e.cantidades && !e.precisionDia)
     if (seguro) {
       const entra = delDia.filter((e) => e.pedidoId === p.id).map((e) => e.id)
-      for (const e of eventos) {
-        if (!entra.includes(e.id)) continue
+      const entraIds = new Set(entra)
+      const previas = new Map<string, number>()
+      const previasRegalo = new Map<string, number>()
+      for (const e of [...eventos].sort((a, b) => +a.fecha - +b.fecha || a.id.localeCompare(b.id))) {
         for (const l of e.cantidades ?? []) {
           const k = CLAVE[l.producto]
-          if (k) res[k] += l.cantidad
+          if (!k || l.cantidad <= 0) continue
+          const cantidadPrevia = previas.get(l.producto) ?? 0
+          const cantidadRegaloPrevia = previasRegalo.get(l.producto) ?? 0
+          if (entraIds.has(e.id)) {
+            res[k] += l.cantidad
+            detalle.push({ pedidoId: p.id, producto: l.producto, cantidad: l.cantidad, cantidadPrevia,
+              ...(l.cantidadRegalo !== undefined ? { cantidadRegalo: l.cantidadRegalo } : {}),
+              cantidadRegaloPrevia })
+          }
+          previas.set(l.producto, cantidadPrevia + l.cantidad)
+          if (l.cantidadRegalo !== undefined) previasRegalo.set(l.producto, cantidadRegaloPrevia + l.cantidadRegalo)
         }
       }
       continue
     }
     // Sin detalle por día confiable: todo al día de creación y se informa como aproximado.
     if (p.fecha >= rango.desde && p.fecha < rango.hasta) {
-      for (const k of Object.keys(acumulado) as Array<keyof UnidadesDelDia>) res[k] += acumulado[k]
+      for (const [producto, k] of Object.entries(CLAVE)) {
+        res[k] += acumulado[k]
+        if (acumulado[k] > 0) {
+          const regalos = p.items.reduce((n, i) => n + (i.producto === producto ? (i.cantRegaloEntrega ?? 0) : 0), 0)
+          detalle.push({ pedidoId: p.id, producto, cantidad: acumulado[k], cantidadPrevia: 0,
+            cantidadRegalo: regalos, cantidadRegaloPrevia: 0 })
+        }
+      }
       // Solo es dudoso si la entrega pudo ocurrir otro día; creado y entregado el mismo día no necesita aviso.
       const mismoDia = p.entregadoAt && diaBogota(p.entregadoAt) === diaBogota(p.fecha)
       if (!mismoDia) {
@@ -109,5 +143,5 @@ export async function unidadesEntregadasDelDia(db: Db, rango: RangoDia): Promise
       }
     }
   }
-  return res
+  return { unidades: res, detalle }
 }

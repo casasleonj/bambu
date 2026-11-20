@@ -32,6 +32,7 @@ export interface DashboardData {
   franjas: FranjaHoraria[]
   maxFranja: number
   ventasPorPrecio: VentaPorPrecio[]
+  ventasAdvertencia?: { sinPrecio: number; aproximados: number; ayerSinPrecio: number; ayerAproximados: number }
   aguaVendida: number
   hieloVendido: number
   botellonVendido: number
