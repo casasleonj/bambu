@@ -1,5 +1,5 @@
-// #841: un pedido que ya se ve en «Pendientes de días anteriores» no se repite en
-// «Entregas parciales y de pedidos anteriores»; lo que no está arriba se conserva.
+// #841 + #927: pedidos anteriores pendientes, parciales y completados hoy
+// comparten UNA lista con una fila por pedido, sin paneles ni tope de cinco.
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from "./setup";
@@ -46,52 +46,64 @@ async function pedido(
     });
   return p;
 }
-// #915: sin agrupar por barrio los arrastres siguen como sección aparte (con agrupación van dentro de su barrio).
-const hoy = () => consultarPedidos(leerFiltrosConsulta(new URLSearchParams("agrupar=")), "ADMIN");
+// #927: la vista general Hoy integra todos los pedidos operativos en la misma consulta.
+const hoy = () => consultarPedidos(leerFiltrosConsulta(new URLSearchParams("agrupar=&pageSize=100")), "ADMIN");
 
 describe("#841 — no repetir el pedido pendiente en las entregas", () => {
   beforeEach(async () => { await resetAndSeed(); }, 60000);
   afterAll(disconnect);
 
-  it("el parcial pendiente sale solo en pendientes; el completado hoy, solo en entregas", async () => {
+  it("un parcial, un pendiente y uno completado hoy aparecen una sola vez en la lista", async () => {
     const parcial = await pedido("Sin repetir parcial", { entregadas: 1, estado: "PENDIENTE" });
     const completo = await pedido("Sin repetir completo", { entregadas: 3, estado: "ENTREGADO" });
     const nada = await pedido("Sin repetir sin entrega", { entregadas: 0, estado: "PENDIENTE" });
     const r = await hoy();
-    const pend = (r.arrastrados ?? []).map((p) => p.id);
-    const ent = (r.destacadas ?? []).map((d) => d.pedidoId);
-    expect(pend).toEqual(expect.arrayContaining([parcial.id, nada.id]));
-    expect(pend).not.toContain(completo.id);
-    expect(ent).toEqual([completo.id]);
-    expect(ent).not.toContain(parcial.id);
-    expect(r.destacadasTotal).toBe(1);
+    const visibles = r.pedidos.map((p) => p.id);
+    expect(r.actividadIntegrada).toBe(true);
+    expect(r.arrastrados).toBeUndefined();
+    expect(r.destacadas).toBeUndefined();
+    expect(r.total).toBe(3);
+    expect(new Set(visibles)).toEqual(new Set([parcial.id, completo.id, nada.id]));
+    expect(visibles).toHaveLength(3);
+    expect(r.pedidos.find((p) => p.id === parcial.id)?.entregaEnPeriodo?.unidades).toBe(1);
+    expect(r.pedidos.find((p) => p.id === completo.id)?.entregaEnPeriodo?.unidades).toBe(3);
+    expect(r.pedidos.find((p) => p.id === nada.id)?.entregaEnPeriodo).toBeUndefined();
   });
 
-  it("si todas las entregas son de pedidos ya visibles arriba, las entregas quedan vacías", async () => {
-    await pedido("Solo parcial", { entregadas: 1, estado: "PENDIENTE" });
+  it("una entrega parcial pendiente solo aparece como fila operativa", async () => {
+    const parcial = await pedido("Solo parcial", { entregadas: 1, estado: "PENDIENTE" });
     const r = await hoy();
-    expect(r.destacadas).toEqual([]);
-    expect(r.destacadasTotal).toBe(0);
-    expect(r.arrastradosTotal).toBe(1);
+    expect(r.pedidos.map((p) => p.id)).toEqual([parcial.id]);
+    expect(r.total).toBe(1);
+    expect(r.arrastrados).toBeUndefined();
+    expect(r.destacadas).toBeUndefined();
+    expect(r.pedidos[0].entregaEnPeriodo?.unidades).toBe(1);
   });
 
-  it("un parcial pendiente fuera de los 5 mostrados se queda en las entregas", async () => {
-    for (let i = 0; i < 5; i++)
-      await pedido("Antiguo " + i, { entregadas: 0, estado: "PENDIENTE", dia: antes(3), hora: `0${i + 1}:00:00` });
+  it("los seis pedidos anteriores permanecen en el mismo universo sin tope de cinco", async () => {
+    const antiguos: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const p = await pedido("Antiguo " + i, { entregadas: 0, estado: "PENDIENTE", dia: antes(3), hora: "0" + (i + 1) + ":00:00" });
+      antiguos.push(p.id);
+    }
     const parcial = await pedido("Parcial reciente", { entregadas: 1, estado: "PENDIENTE", dia: antes(1) });
     const r = await hoy();
-    expect(r.arrastradosTotal).toBe(6);
-    expect((r.arrastrados ?? []).map((p) => p.id)).not.toContain(parcial.id);
-    expect((r.destacadas ?? []).map((d) => d.pedidoId)).toContain(parcial.id);
-    expect(r.destacadasTotal).toBe(1);
+    expect(r.total).toBe(6);
+    expect(r.pedidos.map((p) => p.id)).toHaveLength(6);
+    expect(new Set(r.pedidos.map((p) => p.id))).toEqual(new Set([...antiguos, parcial.id]));
+    expect(r.pedidos.find((p) => p.id === parcial.id)?.entregaEnPeriodo?.unidades).toBe(1);
+    expect(r.arrastrados).toBeUndefined();
+    expect(r.destacadas).toBeUndefined();
   });
 
-  it("sin pendientes de días anteriores no se quita nada de las entregas", async () => {
+  it("un pedido anterior completado hoy también entra en una única fila", async () => {
     const completo = await pedido("Solo completo", { entregadas: 3, estado: "ENTREGADO" });
     const r = await hoy();
-    expect(r.arrastradosTotal).toBe(0);
-    expect((r.destacadas ?? []).map((d) => d.pedidoId)).toEqual([completo.id]);
-    expect(r.destacadasTotal).toBe(1);
+    expect(r.total).toBe(1);
+    expect(r.pedidos.map((p) => p.id)).toEqual([completo.id]);
+    expect(r.pedidos[0].entregaEnPeriodo?.unidades).toBe(3);
+    expect(r.arrastrados).toBeUndefined();
+    expect(r.destacadas).toBeUndefined();
   });
 
   it("un rango que empieza ayer no trata el pedido de ayer como arrastrado", async () => {
