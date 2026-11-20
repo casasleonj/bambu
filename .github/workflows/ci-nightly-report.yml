@@ -1,0 +1,76 @@
+name: CI nightly reporting
+
+on:
+  workflow_run:
+    workflows: [CI nightly and dedup observation]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      failed_run_id:
+        description: 'ID de ejecución nocturna fallida (replay idempotente)'
+        required: true
+        type: string
+      failed_attempt:
+        description: 'Intento original'
+        required: true
+        type: string
+        default: '1'
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: Measure actual nightly runner time
+    if: github.event_name == 'workflow_run' && github.ref == 'refs/heads/main' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository && (github.event.workflow_run.event == 'schedule' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          name: nightly-decision-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: ${{ runner.temp }}/nightly-evidence
+      - name: Verify original run and calculate runner time
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIGHT_DECISION_FILE: ${{ runner.temp }}/nightly-evidence/nightly-decision.json
+        run: node scripts/ci/reporte-nocturno.mjs measure
+
+  incident:
+    name: Record failed nightly attempt
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository && (github.event.workflow_run.event == 'schedule' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.conclusion != 'success'))
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    concurrency:
+      group: ci-nightly-incidents-${{ github.repository }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Register or append incident (idempotent)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_RUN_ID: ${{ inputs.failed_run_id }}
+          REPORT_RUN_ATTEMPT: ${{ inputs.failed_attempt }}
+        run: node scripts/ci/reporte-nocturno.mjs incident

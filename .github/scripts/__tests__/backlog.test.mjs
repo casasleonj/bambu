@@ -7,13 +7,16 @@ const backlog = require('../backlog.cjs')
 const repo = { owner: 'o', repo: 'r' }
 
 /** Cliente de GitHub simulado: guarda issues en memoria y registra las llamadas de escritura. */
-function fakeGithub(issues, files = []) {
+function fakeGithub(issues, files = [], prsAbiertos = []) {
   const store = new Map(issues.map((i) => [i.number, { ...i, labels: i.labels.map((n) => ({ name: n })) }]))
   const writes = []
   const github = {
-    paginate: async (fn) => (fn === github.rest.pulls.listFiles ? files : [...store.values()].filter((i) => i.state === 'open')),
+    paginate: async (fn) =>
+      fn === github.rest.pulls.listFiles ? files
+      : fn === github.rest.pulls.list ? prsAbiertos
+      : [...store.values()].filter((i) => i.state === 'open'),
     rest: {
-      pulls: { listFiles: () => {} },
+      pulls: { listFiles: () => {}, list: () => {} },
       issues: {
         listForRepo: () => {},
         get: async ({ issue_number }) => {
@@ -359,5 +362,76 @@ describe('TODO/FIXME sin issue (capa 4)', () => {
     })
     await backlog.run(ctx)
     expect(failed).toEqual([])
+  })
+})
+
+// #338: cerrar o editar un PR no debe liberar un issue que otro PR abierto
+// sigue citando. Sin esta comprobación, el issue vuelve a `pendiente` aunque
+// haya trabajo en curso sobre él en otra rama.
+describe('#338 — liberar sólo si ningún otro PR abierto cita el issue', () => {
+  const pr = (over) => ({ title: 't', body: '', labels: [], user: { login: 'u' }, merged: false, ...over })
+  const otroPr = (number, body) => ({ number, title: 'otro', body, labels: [], user: { login: 'u' } })
+
+  it('PR cerrado sin merge no libera si otro PR abierto cita el issue', async () => {
+    const { github, store } = fakeGithub(
+      [issue(20, ['estado:en-curso'])],
+      [],
+      [otroPr(501, 'Refs #20')],
+    )
+    const { ctx } = ctxOf(github, 'pull_request', {
+      action: 'closed',
+      pull_request: pr({ number: 500, body: 'Closes #20' }),
+    })
+    await backlog.handlePullRequest(ctx)
+    expect(estados(store, 20)).toEqual(['estado:en-curso'])
+  })
+
+  it('PR cerrado sin merge sí libera si el único que citaba era él mismo', async () => {
+    const { github, store } = fakeGithub([issue(21, ['estado:en-curso'])], [], [])
+    const { ctx } = ctxOf(github, 'pull_request', {
+      action: 'closed',
+      pull_request: pr({ number: 500, body: 'Closes #21' }),
+    })
+    await backlog.handlePullRequest(ctx)
+    expect(estados(store, 21)).toEqual(['estado:pendiente'])
+  })
+
+  it('quitar una referencia al editar no libera si otro PR abierto la mantiene', async () => {
+    const { github, store } = fakeGithub(
+      [issue(22, ['estado:en-curso']), issue(23, ['estado:en-curso']), issue(26, ['estado:en-curso'])],
+      [],
+      [otroPr(501, 'Refs #22')],
+    )
+    const { ctx } = ctxOf(github, 'pull_request', {
+      action: 'edited',
+      changes: { body: { from: 'Refs #22, #23, #26' } },
+      pull_request: pr({ number: 500, body: 'Refs #23' }),
+    })
+    await backlog.handlePullRequest(ctx)
+    // #22 lo mantiene el PR 501; #23 sigue citado por el propio PR; #26 no lo cita nadie.
+    expect(estados(store, 22)).toEqual(['estado:en-curso'])
+    expect(estados(store, 23)).toEqual(['estado:en-curso'])
+    expect(estados(store, 26)).toEqual(['estado:pendiente'])
+  })
+
+  it('un issue con decision-PO sigue yendo a bloqueado cuando de verdad no queda PR', async () => {
+    const { github, store } = fakeGithub([issue(24, ['decision-PO', 'estado:en-curso'])], [], [])
+    const { ctx } = ctxOf(github, 'pull_request', {
+      action: 'closed',
+      pull_request: pr({ number: 500, body: 'Closes #24' }),
+    })
+    await backlog.handlePullRequest(ctx)
+    expect(estados(store, 24)).toEqual(['estado:bloqueado'])
+  })
+
+  it('una edición que no cambia las referencias no consulta otros PR ni escribe', async () => {
+    const { github, writes } = fakeGithub([issue(25, ['estado:en-curso'])], [], [otroPr(501, 'Refs #25')])
+    const { ctx } = ctxOf(github, 'pull_request', {
+      action: 'edited',
+      changes: { body: { from: 'Refs #25' } },
+      pull_request: pr({ number: 500, body: 'Refs #25' }),
+    })
+    await backlog.handlePullRequest(ctx)
+    expect(writes).toEqual([])
   })
 })
