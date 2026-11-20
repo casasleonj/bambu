@@ -229,7 +229,7 @@ export function OperacionConsulta({
                 )}
                 {p.entregaEnPeriodo && (
                   <span data-testid={`operacion-entrega-hoy-${p.id}`} className="ml-1 inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-                    {p.estadoEntrega === "ENTREGADO" ? "Entregado hoy" : "Entrega hoy"}
+                    {p.entregaEnPeriodo.porConciliar ? "Entrega por conciliar" : p.estadoEntrega === "ENTREGADO" ? "Entregado hoy" : "Entrega hoy"}
                   </span>
                 )}
                 {p.actividadOperativa && items.length > 0 && (
