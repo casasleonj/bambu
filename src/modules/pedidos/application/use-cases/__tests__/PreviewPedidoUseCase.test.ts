@@ -554,3 +554,67 @@ describe('PreviewPedidoUseCase — bloque de crédito y excepción (P0-3, #357)'
     expect(nuevo.credito).toBeUndefined()
   })
 })
+
+
+describe('#891: preview evita consultas redundantes de ubicación', () => {
+  const base = { clienteId: 'c1', canal: 'DOMICILIO' as const, origen: 'PEDIDO', actorId: 'u1',
+    items: [{ producto: 'PACA_AGUA' as const, cantidad: 10 }] }
+  const withLink = (link: string) => {
+    const deps = makeDeps()
+    ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1', nombre: 'X', telefono: '3001112233', direccion: null, barrio: null,
+      bloqueado: false, verificado: true, creadoPorRol: 'ADMIN',
+      limitePedidosFiados: null, preciosEspeciales: null,
+      linkUbicacion: link, lat: null, lng: null,
+    })
+    return deps
+  }
+
+  it('cantidades diferentes comparten resolución exitosa sin cachear el precio ni crédito', async () => {
+    const deps = withLink('https://maps.app.goo.gl/issue891-quantity-success')
+    ;(deps.resolverCoordsDeLink as ReturnType<typeof vi.fn>).mockResolvedValue({ lat: 10.4, lng: -73.3 })
+    const uc = new PreviewPedidoUseCase(deps)
+    await uc.execute(base)
+    await uc.execute({ ...base, items: [{ producto: 'PACA_AGUA', cantidad: 11 }] })
+    expect(deps.resolverCoordsDeLink).toHaveBeenCalledTimes(1)
+    expect(deps.pricingPort.resolverPrecios).toHaveBeenCalledTimes(2)
+    expect(deps.getFiadoStatusUseCase.execute).toHaveBeenCalledTimes(2)
+  })
+
+  it('dos previews simultáneos comparten la consulta externa en curso', async () => {
+    const deps = withLink('https://maps.app.goo.gl/issue891-concurrent-success')
+    let finish!: (coords: { lat: number; lng: number }) => void
+    ;(deps.resolverCoordsDeLink as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise(resolve => { finish = resolve }),
+    )
+    const uc = new PreviewPedidoUseCase(deps)
+    const first = uc.execute(base)
+    const second = uc.execute({ ...base, items: [{ producto: 'PACA_AGUA', cantidad: 12 }] })
+    // Ambos deben alcanzar el resolvedor después de las dependencias asíncronas.
+    await vi.waitFor(() => expect(deps.resolverCoordsDeLink).toHaveBeenCalledTimes(1))
+    finish({ lat: 10.4, lng: -73.3 })
+    await Promise.all([first, second])
+    expect(deps.resolverCoordsDeLink).toHaveBeenCalledTimes(1)
+  })
+
+  it('resultado nulo no se conserva y puede recuperarse en el siguiente intento', async () => {
+    const deps = withLink('https://maps.app.goo.gl/issue891-retry-null')
+    ;(deps.resolverCoordsDeLink as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(null).mockResolvedValueOnce({ lat: 10.4, lng: -73.3 })
+    const uc = new PreviewPedidoUseCase(deps)
+    await uc.execute(base)
+    await uc.execute(base)
+    expect(deps.resolverCoordsDeLink).toHaveBeenCalledTimes(2)
+  })
+
+  it('coordenadas propias válidas evitan el enlace; inválidas conservan validación', async () => {
+    const deps = withLink('https://maps.app.goo.gl/issue891-own-coords')
+    ;(deps.resolverCoordsDeLink as ReturnType<typeof vi.fn>).mockResolvedValue({ lat: 10.4, lng: -73.3 })
+    const uc = new PreviewPedidoUseCase(deps)
+    await uc.execute({ ...base, entregaLat: 10.3, entregaLng: -73.2 })
+    expect(deps.resolverCoordsDeLink).not.toHaveBeenCalled()
+    const invalid = await uc.execute({ ...base, entregaLat: 999, entregaLng: -73.2 })
+    expect(invalid.warnings.some(w => w.code === 'UBICACION_ENTREGA_INVALIDA')).toBe(true)
+    expect(deps.resolverCoordsDeLink).toHaveBeenCalledTimes(1)
+  })
+})
