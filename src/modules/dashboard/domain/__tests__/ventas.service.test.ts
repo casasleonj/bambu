@@ -7,6 +7,18 @@ import {
 import type { PedidoRaw } from '@/modules/dashboard/domain/types'
 
 describe('buildVentasPorPrecio', () => {
+  it('#795: cuenta 63 físicas, pero el grupo de precio conserva 60×2300 y el regalo explícito', () => {
+    const p: PedidoRaw = { id: 'regalo', numero: 1, fecha: new Date(), total: 138000, saldo: 138000, estadoEntrega: 'ENTREGADO', estadoPago: 'PENDIENTE',
+      canal: 'DOMICILIO', cPacaAguaEnt: 60, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0,
+      items: [{ producto: 'PACA_AGUA', cantEntrega: 60, cantRegaloEntrega: 3, precio: 2300 }] }
+    expect(calcularVentas([p])).toBe(138000)
+    expect(calcularVendidos([p]).agua).toBe(63)
+    expect(buildVentasPorPrecio([p])).toEqual([{ producto: 'PACA_AGUA', canal: 'DOMICILIO', cantidad: 60, cantidadRegalo: 3, precio: 2300, subtotal: 138000 }])
+    const soloRegalo = { ...p, estadoEntrega: 'PENDIENTE', items: [{ ...p.items![0], cantEntrega: 0, cantRegaloEntrega: 1 }] }
+    expect(calcularVentas([soloRegalo])).toBe(0)
+    expect(calcularVendidos([soloRegalo]).agua).toBe(1)
+    expect(buildVentasPorPrecio([soloRegalo])[0].subtotal).toBe(0)
+  })
   it('conserva centavos al sumar pedidos y líneas del mismo producto/precio/canal', () => {
     const p: PedidoRaw = {
       id: 'decimal',

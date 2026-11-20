@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { EmbarqueUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
-import { calcularPacasEmbarque, calcularPesoEmbarque, calcularPesoDesdeCarga, getCapacidadInfo, type CargaSnapshot } from '@/lib/embarque-capacidad'
+import { calcularPacasEmbarque, calcularPesoEmbarque, calcularPesoDesdeCarga, pedidoParaCargaPendiente, getCapacidadInfo, type CargaSnapshot } from '@/lib/embarque-capacidad'
 import { withAdvisoryLock } from '@/lib/locks'
 import { emptyStock } from '@/lib/stock'
 import { ROLES } from '@/lib/constants'
@@ -73,6 +73,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                       producto: true,
                       cantPedido: true,
                       cantEntrega: true,
+                      cantRegaloPedido: true,
+                      cantRegaloEntrega: true,
                       precio: true,
                       subtotal: true,
                     },
@@ -272,19 +274,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (pedidoIds && Array.isArray(pedidoIds) && pedidoIds.length > 0) {
         const pedidosActuales = await tx.pedido.findMany({
           where: { embarqueId: id },
+          include: { items: true },
         })
-        const unidadesActuales = pedidosActuales.reduce((s, p) =>
-          s + (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) +
-              (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) +
-              (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0)
+        const unidadesActuales = calcularPacasEmbarque(pedidosActuales.map(pedidoParaCargaPendiente))
 
         const nuevosPedidos = await tx.pedido.findMany({
           where: { id: { in: pedidoIds } },
+          include: { items: true },
         })
-        const unidadesNuevas = nuevosPedidos.reduce((s, p) =>
-          s + (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) +
-              (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) +
-              (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0)
+        const yaAsignados = new Set(pedidosActuales.map(p => p.id))
+        const unidadesNuevas = calcularPacasEmbarque(nuevosPedidos.filter(p => !yaAsignados.has(p.id)).map(pedidoParaCargaPendiente))
 
         const totalUnidades = unidadesActuales + unidadesNuevas
         if (totalUnidades > maxUnidades) {
@@ -375,7 +374,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         include: {
           trabajador: true,
           ruta: { select: { id: true, nombre: true } },
-          pedidos: { include: { cliente: true } },
+          pedidos: { include: { cliente: true, items: true } },
           productos: true,
         },
       })

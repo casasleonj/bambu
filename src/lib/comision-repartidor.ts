@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client'
 import { endOfDayBogota, startOfDayBogota } from '@/lib/dates'
 import { embarqueUsaEntregaVivaPorFlag, leerMetadata, CAPTURA_ENTREGA_PEDIDO, CAPTURA_CIERRE } from '@/lib/entrega-fisica-viva'
 import { calcularPorFuentes, tarifasRepartidor, type TarifasRepartidor, type ComisionRepartidor, type FuenteComision, type RevisionComision, type UnidadesReparto, type PedidoComision } from './comision-repartidor-calculo'
-import { leerEntregasConsulta, type EntregaConsulta } from './entregas-consulta'
+import { leerEntregasConsulta, leerEntregasRegalosDeMisiones, type EntregaConsulta } from './entregas-consulta'
 import { detallePorDia, hayUnidades, type EventoDia } from './comision-detalle-pedidos'
 export { tarifasRepartidor } from './comision-repartidor-calculo'
 export type { TarifasRepartidor, ComisionRepartidor } from './comision-repartidor-calculo'
@@ -17,13 +17,16 @@ type TxEntregasComision = Pick<TxComision, 'embarque' | 'pedido' | 'historial' |
 const conNombres = Prisma.validator<Prisma.PedidoInclude>()({
   cliente: { select: { nombre: true } },
   negocio: { select: { nombre: true } },
-  items: { select: { producto: true, cantPedido: true, cantEntrega: true } },
+  items: { select: { producto: true, cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true } },
 })
 const seleccion = Prisma.validator<Prisma.EmbarqueInclude>()({
   pedidos: { include: conNombres },
   actividades: { where: { cantidadCumplida: { gt: 0 } }, select: { id: true, modo: true } },
   movimientos: {
-    where: { tipo: { in: ['ENTREGA', 'VENTA_RUTA'] } },
+    where: { OR: [
+      { tipo: { in: ['ENTREGA', 'VENTA_RUTA'] } },
+      { tipo: 'PROMOCION', metadata: { path: ['regaloPedido'], equals: true } },
+    ] },
     select: { id: true, tipo: true, producto: true, cantidad: true, createdAt: true, metadata: true, sustitucionEntrega: { select: { id: true } } },
   },
 })
@@ -40,7 +43,7 @@ type PedidoDetallable = Prisma.PedidoGetPayload<{ include: typeof conNombres }>
 function pedidoYEntregado(p: PedidoDetallable): { pedido: UnidadesReparto; entregado: UnidadesReparto } {
   const pedido = vacio(), entregado = vacio()
   if (p.items.length > 0) {
-    for (const i of p.items) { const k = producto(i.producto); if (k) { pedido[k] += i.cantPedido; entregado[k] += i.cantEntrega } }
+    for (const i of p.items) { const k = producto(i.producto); if (k) { pedido[k] += i.cantPedido + (i.cantRegaloPedido ?? 0); entregado[k] += i.cantEntrega + (i.cantRegaloEntrega ?? 0) } }
   } else {
     pedido.agua = p.cPacaAguaPed; pedido.hielo = p.cPacaHieloPed; pedido.botellon = p.cBotellonFabPed + p.cBotellonDomPed
     entregado.agua = p.cPacaAguaEnt; entregado.hielo = p.cPacaHieloEnt; entregado.botellon = p.cBotellonFabEnt + p.cBotellonDomEnt
@@ -76,7 +79,7 @@ function filaHistorica(p: PedidoDetallable, unidades: UnidadesReparto, entregado
 /** Identidad explícita, sin comparar importes, cantidades ni cercanía temporal. */
 async function pedidosConEntregaAtribuida(tx: Pick<TxComision, 'embarque'>, ids: string[]): Promise<Set<string>> {
   if (ids.length === 0) return new Set()
-  const filtro = { tipo: 'ENTREGA' as const, metadata: { path: ['captura'], equals: CAPTURA_ENTREGA_PEDIDO }, OR: ids.map(id => ({ metadata: { path: ['pedidoId'], equals: id } })) }
+  const filtro = { tipo: { in: ['ENTREGA', 'PROMOCION'] as Array<'ENTREGA' | 'PROMOCION'> }, metadata: { path: ['captura'], equals: CAPTURA_ENTREGA_PEDIDO }, OR: ids.map(id => ({ metadata: { path: ['pedidoId'], equals: id } })) }
   const misiones = await tx.embarque.findMany({
     where: { movimientos: { some: filtro } },
     select: { movimientos: { where: filtro, select: { metadata: true } } },
@@ -148,12 +151,12 @@ async function fuentesSinEmbarque(tx: TxEntregasComision, trabajadorId: string, 
     if (moderna) {
       // Cada delta pertenece a su fecha y responsable, aunque el pedido siga
       // pendiente o su acumulado/última fecha cambien al completar otra entrega.
-      const propios = hechos.filter(e => dentro(e.fecha) && e.repartidorId === trabajadorId)
+      const propios = hechos.filter(e => !e.embarqueId && dentro(e.fecha) && e.repartidorId === trabajadorId)
       for (const e of propios) for (const l of e.cantidades ?? []) {
         const prod = producto(l.producto)
         if (prod) u[prod] += l.cantidad
       }
-      if (hechos.some(e => dentro(e.fecha) && (e.repartidorId === trabajadorId || e.repartidorId === null) &&
+      if (hechos.some(e => !e.embarqueId && dentro(e.fecha) && (e.repartidorId === trabajadorId || e.repartidorId === null) &&
         (e.cantidades === null || e.incompleto || e.repartidorId === null))) {
         revision('tiene entregas sin detalle completo verificable; concilia el reparto antes de pagar.')
       }
@@ -183,9 +186,11 @@ async function fuentesSinEmbarque(tx: TxEntregasComision, trabajadorId: string, 
 }
 
 async function fuentesDeMisiones(tx: TxEntregasComision, misiones: Mision[], detalle: boolean) {
+  const regalosLegados = await leerEntregasRegalosDeMisiones(tx, misiones.filter(e => !esMisionViva(e)).map(e => e.id))
   // La asignación actual de Pedido puede ser otra misión. Resolver la identidad
   // del evento por su pedidoId, sin exigir que siga vinculado al embarque original.
-  const ids = [...new Set(misiones.flatMap(e => e.movimientos.map(m => leerMetadata(m.metadata).pedidoId).filter((id): id is string => !!id)))]
+  const ids = [...new Set([...misiones.flatMap(e => e.movimientos.map(m => leerMetadata(m.metadata).pedidoId).filter((id): id is string => !!id)),
+    ...regalosLegados.map(e => e.pedidoId)])]
   const pedidos = ids.length ? await tx.pedido.findMany({ where: { id: { in: ids } }, include: conNombres }) : []
   const porId = new Map(pedidos.map(p => [p.id, p]))
   // #622: entregas por día de los pedidos de las misiones (mismo lector que la comisión sin embarque).
@@ -236,9 +241,25 @@ async function fuentesDeMisiones(tx: TxEntregasComision, misiones: Mision[], det
       }
     } else {
       if (e.actividades.length > 0) revision('La misión histórica tiene actividades cumplidas sin eventos que permitan separar el reparto del retiro en punto.')
+      for (const hecho of regalosLegados.filter(h => h.embarqueId === e.id)) {
+        const p = porId.get(hecho.pedidoId)
+        if (!p || hecho.incompleto || !hecho.cantidades || hecho.repartidorId !== e.trabajadorId) {
+          revision('Una entrega con regalo no tiene desglose y responsable completos; concilia el reparto antes de pagar.')
+          continue
+        }
+        if (p.canal !== 'DOMICILIO' || invalido(p.estadoEntrega)) continue
+        const f = porPedidoU.get(p.id) ?? { u: vacio(), dias: new Set<string>() }
+        for (const l of hecho.cantidades) {
+          const k = producto(l.producto)
+          if (k) { u[k] += l.cantidad; f.u[k] += l.cantidad }
+        }
+        f.dias.add(diaBogota(hecho.fecha))
+        porPedidoU.set(p.id, f)
+      }
       // Excepción histórica explícita: no fabricar eventos a partir del acumulado.
       // Punto sin evidencia de reparto no acredita una entrega domiciliaria.
       for (const p of e.pedidos) {
+        if (p.items.some(i => (i.cantRegaloPedido ?? 0) > 0)) continue // ya contado por hechos explícitos de esta misión
         if (p.canal !== 'DOMICILIO' || p.estadoEntrega !== 'ENTREGADO' || invalido(p.estado)) continue
         if (legadosConEventos.has(p.id)) {
           revision(`El pedido #${p.numero} tiene entregas atribuidas a otra misión; su acumulado no permite separar el reparto de esta misión histórica.`)

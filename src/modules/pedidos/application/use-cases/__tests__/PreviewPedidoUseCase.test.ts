@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { PreviewPedidoUseCase, ClienteNotFoundError, PedidoOrigenNotFoundError, PedidoNotFoundError } from '../PreviewPedidoUseCase'
 import type { PreviewPedidoDeps } from '../PreviewPedidoUseCase'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
+import { createPreviewCoordsResolver } from '@/lib/geo/preview-coords-resolver'
 
 function makeDeps(): PreviewPedidoDeps {
   return {
@@ -40,6 +41,27 @@ function makeDeps(): PreviewPedidoDeps {
 }
 
 describe('PreviewPedidoUseCase — pricing + payment projection', () => {
+  it('#795: preview separa las gratuitas y conserva el importe con autorización del servidor', async () => {
+    const r = await new PreviewPedidoUseCase(makeDeps()).execute({
+      clienteId: 'c1', canal: 'PUNTO', actorId: 'admin-test', actorRol: 'ADMIN',
+      items: [{ producto: 'PACA_AGUA', cantidad: 10, cantidadRegalo: 3, motivoRegalo: 'Regalo acordado' }],
+    })
+    expect(r.permissions.canCreate).toBe(true)
+    expect(r.calculation.items[0].cantidadRegalo).toBe(3)
+    expect(r.calculation.total).toBe(27000)
+  })
+
+  it('#795: preview no presenta como autorizada una concesión de un repartidor', async () => {
+    const r = await new PreviewPedidoUseCase(makeDeps()).execute({
+      clienteId: 'c1', canal: 'PUNTO', actorId: 'repartidor-test', actorRol: 'REPARTIDOR',
+      items: [{ producto: 'PACA_AGUA', cantidad: 10, cantidadRegalo: 3, motivoRegalo: 'Regalo acordado' }],
+    })
+    expect(r.permissions.canCreate).toBe(false)
+    expect(r.allowedActions).toEqual([])
+    expect(r.requiresAuthorization).toBe(true)
+    expect(r.warnings).toContainEqual(expect.objectContaining({ code: 'REGALO_REQUIERE_ADMIN' }))
+  })
+
   it('total = Σ (precio × cantidad); subtotal = total − recargoDomicilio', async () => {
     const r = await new PreviewPedidoUseCase(makeDeps()).execute({
       clienteId: 'c1', canal: 'DOMICILIO', origen: 'PEDIDO',
@@ -552,5 +574,29 @@ describe('PreviewPedidoUseCase — bloque de crédito y excepción (P0-3, #357)'
     ;(nuevoDeps.clienteRepo as unknown as { findByTelefono: ReturnType<typeof vi.fn> }).findByTelefono = vi.fn().mockResolvedValue(null)
     const nuevo = await new PreviewPedidoUseCase(nuevoDeps).execute({ clienteNuevo: { nombre: 'Z', telefono: '573015550000' }, items, actorId: 'u1' })
     expect(nuevo.credito).toBeUndefined()
+  })
+})
+
+describe('#891 — expansión geográfica aislada del cálculo comercial', () => {
+  it('reutiliza solo la expansión; lee cliente, pricing y crédito en cada preview', async () => {
+    const deps = makeDeps()
+    const link = 'https://maps.app.goo.gl/AbC'
+    const cliente = await deps.clienteRepo.findById('c1')
+    vi.mocked(deps.clienteRepo.findById).mockResolvedValue({ ...cliente!, linkUbicacion: link, lat: null, lng: null })
+    const expand = vi.fn().mockResolvedValue({ lat: 10.45, lng: -73.25 })
+    deps.resolverLinkPreview = createPreviewCoordsResolver(expand)
+    const uc = new PreviewPedidoUseCase(deps)
+    const input = { clienteId: 'c1', actorId: 'u1', borradorId: 'b1', canal: 'DOMICILIO' as const, items: [{ producto: 'PACA_AGUA' as const, cantidad: 1 }] }
+    const first = await uc.execute(input)
+    vi.mocked(deps.getFiadoStatusUseCase.execute).mockResolvedValueOnce({ count: 3, limite: 3, nivel: 'limite', pedidos: [], outstandingAmount: 8000, status: 'AT_LIMIT', errorDeuda: 'Bloqueado' } as never)
+    const second = await uc.execute({ ...input, items: [{ producto: 'PACA_AGUA', cantidad: 5 }] })
+    expect(expand).toHaveBeenCalledTimes(1)
+    expect(first.entrega).toEqual(second.entrega)
+    expect(deps.pricingPort.loadPricingContext).toHaveBeenCalledTimes(2)
+    expect(deps.getFiadoStatusUseCase.execute).toHaveBeenCalledTimes(2)
+    expect(second.allowedActions).not.toContain('crear')
+    await uc.execute({ ...input, actorId: 'u2' })
+    await uc.execute({ ...input, borradorId: 'b2' })
+    expect(expand).toHaveBeenCalledTimes(3)
   })
 })

@@ -2,13 +2,13 @@ import type { Prisma } from '@prisma/client'
 import type { ProductCode } from '@/shared/domain'
 import type { VentaPorPrecio } from '../domain'
 import { importeEntregaCentavos } from '@/shared/domain/unit-price'
-import { detalleUnidadesEntregadasDelDia, type UnidadEntregadaDetalle, type UnidadesEntregadasDelDia } from '@/lib/unidades-entregadas-dia'
+import { detalleUnidadesEntregadasDelDia, unidadesFisicasEntregadas, type UnidadEntregadaDetalle, type UnidadesEntregadasDelDia } from '@/lib/unidades-entregadas-dia'
 
 type Db = Pick<Prisma.TransactionClient, 'pedido' | 'historial' | 'embarqueMovimiento'>
 type PedidoPrecio = {
   id: string
   canal: string | null
-  items: { producto: string; precio: unknown; cantEntrega?: number }[]
+  items: { producto: string; precio: unknown; cantEntrega?: number; cantRegaloEntrega?: number }[]
   /** Only set when all currently delivered units belong to this period and the order is complete. */
   totalCompleto?: number
 }
@@ -48,7 +48,7 @@ export function valorarEntregasDia(
   const valorPorPedido = new Map<string, number>()
   let sinPrecio = 0
 
-  function agregar(pedido: PedidoPrecio, producto: string, precio: number, cantidad: number, previa: number) {
+  function agregar(pedido: PedidoPrecio, producto: string, precio: number, cantidad: number, previa: number, regalos = 0) {
     const canal = pedido.canal === 'PUNTO' ? 'PUNTO' : 'DOMICILIO'
     const cents = importeEntregaCentavos(precio, cantidad, previa)
     const key = JSON.stringify([producto, canal, precio])
@@ -56,6 +56,7 @@ export function valorarEntregasDia(
       producto: producto as ProductCode, canal, precio, cantidad: 0, subtotal: 0,
     }
     grupo.cantidad += cantidad
+    if (regalos > 0) grupo.cantidadRegalo = (grupo.cantidadRegalo ?? 0) + regalos
     grupo.subtotal = (Math.round(grupo.subtotal * 100) + cents) / 100
     grupos.set(key, grupo)
     valorPorPedido.set(pedido.id, (valorPorPedido.get(pedido.id) ?? 0) + cents)
@@ -76,7 +77,23 @@ export function valorarEntregasDia(
         sinPrecio += cantidad
         continue
       }
-      for (const l of delProducto) agregar(pedido, producto, precio, l.cantidad, l.cantidadPrevia)
+      // El evento físico debe separar las unidades cobradas de los regalos.
+      // Si el regalo existe pero falta su desglose en un hecho histórico,
+      // conservar las unidades, sin atribuirle ingresos no demostrados.
+      const tieneRegalos = (items[0].cantRegaloEntrega ?? 0) > 0
+      if (tieneRegalos && delProducto.some(l => l.cantidadRegalo === undefined)) {
+        sinPrecio += cantidad
+        continue
+      }
+      if (delProducto.some(l => (l.cantidadRegalo ?? 0) > l.cantidad || l.cantidadRegaloPrevia > l.cantidadPrevia)) {
+        sinPrecio += cantidad
+        continue
+      }
+      for (const l of delProducto) {
+        const regalo = l.cantidadRegalo ?? 0
+        agregar(pedido, producto, precio, l.cantidad - regalo,
+          l.cantidadPrevia - l.cantidadRegaloPrevia, regalo)
+      }
       continue
     }
 
@@ -85,14 +102,16 @@ export function valorarEntregasDia(
     // Si cruza días, ni siquiera tarifas iguales garantizan el mismo redondeo.
     const completoEnRango = delProducto.some(l => l.cantidadPrevia === 0) &&
       items.every(i => Number.isSafeInteger(i.cantEntrega) && (i.cantEntrega ?? -1) >= 0 &&
+        Number.isSafeInteger(i.cantRegaloEntrega ?? 0) && (i.cantRegaloEntrega ?? 0) >= 0 &&
         precioValido(numeroPrecio(i.precio))) &&
-      items.reduce((s, i) => s + (i.cantEntrega ?? 0), 0) === cantidad
+      items.reduce((s, i) => s + (i.cantEntrega ?? 0) + (i.cantRegaloEntrega ?? 0), 0) === cantidad
     if (!completoEnRango) {
       sinPrecio += cantidad
       continue
     }
     for (const item of items) {
-      if (item.cantEntrega) agregar(pedido, producto, numeroPrecio(item.precio), item.cantEntrega, 0)
+      if ((item.cantEntrega ?? 0) + (item.cantRegaloEntrega ?? 0) > 0)
+        agregar(pedido, producto, numeroPrecio(item.precio), item.cantEntrega ?? 0, 0, item.cantRegaloEntrega ?? 0)
     }
   }
 
@@ -130,15 +149,15 @@ export async function leerVentasEntregadasDia(db: Db, rango: { start: Date; end:
       id: true, canal: true, total: true, estadoEntrega: true,
       cPacaAguaEnt: true, cPacaHieloEnt: true, cBotellonFabEnt: true, cBotellonDomEnt: true,
       cBolsaAguaEnt: true, cBolsaHieloEnt: true,
-      items: { select: { producto: true, precio: true, cantEntrega: true } },
+      items: { select: { producto: true, precio: true, cantEntrega: true, cantRegaloEntrega: true } },
     },
   }) : []
   const conPrecio = pedidos.map(p => {
     const delDia = cantidades.get(p.id)
+    const fisico = unidadesFisicasEntregadas(p)
     const acumulado: Record<string, number> = {
-      PACA_AGUA: p.cPacaAguaEnt, PACA_HIELO: p.cPacaHieloEnt,
-      BOTELLON: p.cBotellonFabEnt + p.cBotellonDomEnt,
-      BOLSA_AGUA: p.cBolsaAguaEnt, BOLSA_HIELO: p.cBolsaHieloEnt,
+      PACA_AGUA: fisico.agua, PACA_HIELO: fisico.hielo,
+      BOTELLON: fisico.botellon, BOLSA_AGUA: fisico.bolsaAgua, BOLSA_HIELO: fisico.bolsaHielo,
     }
     const completo = p.estadoEntrega === 'ENTREGADO' && !conEntregasAnteriores.has(p.id) &&
       Object.entries(acumulado).every(([producto, cantidad]) => cantidad === (delDia?.get(producto) ?? 0))

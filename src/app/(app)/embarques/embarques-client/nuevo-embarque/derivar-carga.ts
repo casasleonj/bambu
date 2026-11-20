@@ -1,4 +1,5 @@
 import { unidadesPedido, pesoPedido, type PedidoCantidades } from '@/lib/embarque-auto'
+import { cantidadFisicaProductoPedido, pedidoParaCargaPendiente } from '@/lib/embarque-capacidad'
 
 /**
  * Deriva la carga del motocarga a partir de los pedidos elegidos.
@@ -23,11 +24,8 @@ export function cargaVacia(): Carga {
 export function derivarCarga(pedidos: PedidoCantidades[]): Carga {
   const carga = cargaVacia()
   for (const p of pedidos) {
-    carga.PACA_AGUA += p.cPacaAguaPed || 0
-    carga.PACA_HIELO += p.cPacaHieloPed || 0
-    carga.BOTELLON += (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0)
-    carga.BOLSA_AGUA += p.cBolsaAguaPed || 0
-    carga.BOLSA_HIELO += p.cBolsaHieloPed || 0
+    const pendiente = pedidoParaCargaPendiente(p)
+    for (const producto of PRODUCTOS_CARGA) carga[producto] += cantidadFisicaProductoPedido(pendiente, producto)
   }
   return carga
 }
@@ -40,7 +38,7 @@ export function totalUnidadesCarga(carga: Carga): number {
 /** Unidades y peso de la selección de pedidos (resumen del Paso 1). */
 export function resumenSeleccion(pedidos: PedidoCantidades[]): { unidades: number; pesoKg: number } {
   return {
-    unidades: pedidos.reduce((s, p) => s + unidadesPedido(p), 0),
-    pesoKg: pedidos.reduce((s, p) => s + pesoPedido(p), 0),
+    unidades: pedidos.reduce((s, p) => s + unidadesPedido(pedidoParaCargaPendiente(p)), 0),
+    pesoKg: pedidos.reduce((s, p) => s + pesoPedido(pedidoParaCargaPendiente(p)), 0),
   }
 }

@@ -17,7 +17,11 @@ const mapsHref = (lat: number, lng: number) => `https://www.google.com/maps?q=${
  * Zona "Entrega" del workspace adaptativo (blueprint §3.2, plan
  * `entrega-suficiencia-plan.md` §4, F-ENTREGA-i).
  *
- * **Consume EXCLUSIVAMENTE `preview.entrega`** — NO recalcula suficiencia en
+ * Consume `preview.entrega` y, solo para presentación durante recálculo,
+ * el último resultado del mismo destino. El recálculo comercial no cambia
+ * esa dirección ni requiere avisar de una supuesta modificación. La copia
+ * visible nunca autoriza el commit, que depende del preview fresco.
+ * NO recalcula suficiencia en
  * React (la autoridad es `resolverEntrega` en el backend). Los 3 estados son
  * experiencias distintas: SUFICIENTE (nada que pedir) · COMPLEMENTARIA
  * (puede continuar, se muestra qué falta sin marcarlo error) · INSUFICIENTE
@@ -33,7 +37,8 @@ const mapsHref = (lat: number, lng: number) => `https://www.google.com/maps?q=${
  * PUNTO no tiene domicilio → no se renderiza.
  */
 export function WorkspaceEntrega({
-  entrega,
+  entrega: entregaActual,
+  entregaAnterior,
   canal,
   direccionEntrega,
   barrioEntrega,
@@ -54,6 +59,8 @@ export function WorkspaceEntrega({
   onVolverAGuardada,
 }: {
   entrega: EntregaResuelta | null | undefined
+  /** Último resultado del mismo destino; no es validación de la operación actual. */
+  entregaAnterior?: EntregaResuelta
   canal: 'PUNTO' | 'DOMICILIO'
   direccionEntrega: string
   barrioEntrega: string
@@ -80,6 +87,8 @@ export function WorkspaceEntrega({
   onVolverAGuardada?: () => void
 }) {
   const [abierto, setAbierto] = useState(false)
+  const entrega = entregaActual ?? entregaAnterior
+  const porVerificar = !entregaActual && Boolean(entregaAnterior)
   if (canal !== 'DOMICILIO') return null
 
   const hayUbicacion = entregaLat != null && entregaLng != null
@@ -181,7 +190,7 @@ export function WorkspaceEntrega({
   const resumenTexto = entrega ? [entrega.direccion, entrega.barrio].filter(Boolean).join(' · ') : ''
   const coords = entrega?.coords ?? null
 
-  const VerUbicacion = coords && (
+  const VerUbicacion = !porVerificar && coords && (
     <a
       href={mapsHref(coords.lat, coords.lng)}
       target="_blank"
@@ -196,7 +205,7 @@ export function WorkspaceEntrega({
   return (
     <section
       data-testid="workspace-entrega"
-      data-estado={pendienteDeEscribir ? 'PENDIENTE_DE_ESCRIBIR' : (opcional ? 'OPCIONAL' : (estado ?? undefined))}
+      data-estado={pendienteDeEscribir ? 'PENDIENTE_DE_ESCRIBIR' : (opcional ? 'OPCIONAL' : (porVerificar ? undefined : (estado ?? undefined)))}
       className={`rounded-lg border px-3 py-2 text-sm ${
         insuficiente || pendienteDeEscribir ? 'border-amber-300 bg-amber-50' : 'border-gray-200'
       }`}
@@ -250,7 +259,7 @@ export function WorkspaceEntrega({
             {VerUbicacion}
           </div>
           <p className="mt-0.5 text-[11px] text-gray-500">
-            Puedes continuar. Agregar {entrega.faltaComplementario.map((f) => FALTA_LABEL[f] ?? f).join(' y ')} puede facilitar la entrega.
+            {!porVerificar && 'Puedes continuar. '}Agregar {entrega.faltaComplementario.map((f) => FALTA_LABEL[f] ?? f).join(' y ')} puede facilitar la entrega.
           </p>
         </div>
       )}

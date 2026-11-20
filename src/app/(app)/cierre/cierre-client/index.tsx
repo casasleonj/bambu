@@ -235,6 +235,14 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     return () => ctrl.abort()
   }, [fecha, fetchCierre, checkLastCierre])
 
+  /** #796 fase 2: «Reintentar» del fiado al corte vuelve a pedir el Cierre de la fecha consultada. */
+  const reintentarFiado = () => {
+    abortControllerRef.current?.abort()
+    const ctrl = new AbortController()
+    abortControllerRef.current = ctrl
+    void fetchCierre(fecha, ctrl.signal)
+  }
+
   const handleCerrar = async (e?: React.FormEvent) => {
     e?.preventDefault()
     if (cierreSolicitadoRef.current || cerrando) return
@@ -412,7 +420,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           <p className="text-green-700 text-sm">El cierre para este día ya fue registrado. No se puede volver a cerrar.</p>
         </div>
 
-        <CierreKpiGrid data={data} />
+        <CierreKpiGrid data={data} onReintentarFiado={reintentarFiado} />
         {data.conciliacionComisiones && <FechasPagosComision pagos={data.conciliacionComisiones.pagosCaja}
           efectivo={data.conciliacionComisiones.actual} sinFechaVerificada={data.conciliacionComisiones.sinFechaVerificada}
           conciliacion={data.conciliacionComisiones}
@@ -664,7 +672,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             totalGastos={data.totalGastos} comisiones={comisiones} salarios={salarios} pagosDigitales={data.cobroDigitalHoy ?? 0}
           />
         </div>
-        <CierreKpiGrid data={data} />
+        <CierreKpiGrid data={data} onReintentarFiado={reintentarFiado} />
         <CierreDesgloseCobros data={data} />
         <CierreDetalleVentas data={data} />
       </CierreSection>

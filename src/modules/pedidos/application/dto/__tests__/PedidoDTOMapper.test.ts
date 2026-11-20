@@ -91,6 +91,23 @@ describe('PedidoDTOMapper.toResumen — pagoReportadoPendiente (ADR-PAGO-REPORTA
 })
 
 describe('PedidoDTOMapper.toResumen — issue 3: campo factura', () => {
+  it('#795: serializa el desglose sin convertir regalos en importe ni exponer la autorización', () => {
+    const pedido = makePedidoFixture()
+    const props = pedido.toProps()
+    props.items = [new PedidoItem('PACA_AGUA', 60, Money.fromDecimal(2300), 'manual', 10, {
+      cantidad: 3, entregada: 1, autorizadoPorId: 'admin-interno', autorizadoEn: new Date(), motivo: 'Motivo interno',
+    })]
+    props.total = Money.fromDecimal(138000)
+    const dto = JSON.parse(JSON.stringify(PedidoDTOMapper.toResumen(Pedido.create(props)))) as Record<string, unknown>
+    expect(dto.total).toBe(138000)
+    expect(dto.items).toEqual([{
+      producto: 'PACA_AGUA', cantPedido: 60, cantEntrega: 10, cantRegaloPedido: 3, cantRegaloEntrega: 1,
+      precio: 2300, subtotal: 138000, precioOrigen: 'manual',
+    }])
+    expect(JSON.stringify(dto)).not.toContain('admin-interno')
+    expect(JSON.stringify(dto)).not.toContain('Motivo interno')
+  })
+
   it('incluye factura=null cuando no se pasa raw', () => {
     const pedido = makePedidoFixture('DOMICILIO')
     const dto = PedidoDTOMapper.toResumen(pedido)

@@ -71,7 +71,7 @@ function Seccion({ titulo, children, testId }: { titulo: string; children: React
   )
 }
 
-function itemsDe(p: Pedido): Array<{ producto: string; cantPedido: number; precio: number; precioOrigen?: string; autorizadoPorAdmin?: boolean; tramoVolumen?: { cantMin: number; cantMax: number | null } | null }> {
+function itemsDe(p: Pedido): Array<{ producto: string; cantPedido: number; cantRegaloPedido?: number; precio: number; precioOrigen?: string; autorizadoPorAdmin?: boolean; tramoVolumen?: { cantMin: number; cantMax: number | null } | null }> {
   if (p.items && p.items.length > 0) return p.items
   const legacy: Array<[string, number, number]> = [
     ['PACA_AGUA', p.cPacaAguaPed, Number(p.precioPacaAgua)],
@@ -285,6 +285,7 @@ export function PedidoDetalle({
                       </div>
                       <div className="text-right">
                         <div className="text-sm font-semibold">{item.cantPedido} und</div>
+                        {(item.cantRegaloPedido ?? 0) > 0 && <div className="text-xs text-amber-800">+ {item.cantRegaloPedido} de regalo · {item.cantPedido + (item.cantRegaloPedido ?? 0)} físicas</div>}
                         <div className="text-xs text-gray-500">{formatCurrency(snapshot)} c/u</div>
                         {showDiff && <div className="text-[10px] text-gray-400">Actual: {formatCurrency(actual)}</div>}
                       </div>

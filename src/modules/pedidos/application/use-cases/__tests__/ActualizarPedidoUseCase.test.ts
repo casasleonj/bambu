@@ -123,6 +123,55 @@ function makeUseCase(pedido: Pedido) {
   return { useCase, pedidoRepo, facturaRepo, clienteRepo, pricingPort, executeWithLock, historialCreate, obligacionCount, ajusteCount }
 }
 
+describe('#795 · edición conserva concesiones y evidencia', () => {
+  const regalo = () => ({ cantidad: 3, entregada: 0, autorizadoPorId: 'admin-original', autorizadoEn: new Date('2026-11-18T10:00:00Z'), motivo: 'Regalo acordado' })
+  const conRegalo = (entregada = 0) => makePedido('PENDIENTE', 'ped_1', {
+    items: [new PedidoItem('PACA_AGUA', 2, Money.fromDecimal(10000), 'base', 0, { ...regalo(), entregada })],
+  })
+
+  it('una edición antigua sin campos de regalo conserva la concesión al cambiar cantidad con precio', async () => {
+    const h = makeUseCase(conRegalo())
+    const r = await h.useCase.execute({ pedidoId: 'ped_1', usuarioId: 'asistente', usuarioRol: 'ASISTENTE',
+      items: [{ producto: 'PACA_AGUA', cantidad: 3 }] })
+    expect(r.pedido.items[0].cantRegaloPedido).toBe(3)
+    const saved = vi.mocked(h.pedidoRepo.update).mock.calls[0][0]
+    expect(saved.items[0].regalo).toEqual(regalo())
+    expect(r.pedido.total).toBe(36000)
+  })
+  it('una nota sin cambio económico no vuelve a autorizar ni reprecifica', async () => {
+    const h = makeUseCase(conRegalo(1))
+    await h.useCase.execute({ pedidoId: 'ped_1', usuarioId: 'asistente',
+      items: [{ producto: 'PACA_AGUA', cantidad: 2 }], obs: 'Nota' })
+    expect(h.pricingPort.resolverPrecios).not.toHaveBeenCalled()
+    expect(vi.mocked(h.pedidoRepo.update).mock.calls[0][0].items[0].regalo).toEqual({ ...regalo(), entregada: 1 })
+  })
+  it('un cambio solo de regalo conserva precio y total, y audita antes/después', async () => {
+    const h = makeUseCase(conRegalo())
+    const r = await h.useCase.execute({ pedidoId: 'ped_1', usuarioId: 'admin-nuevo', usuarioRol: 'ADMIN',
+      items: [{ producto: 'PACA_AGUA', cantidad: 2, cantidadRegalo: 4, motivoRegalo: 'Nueva concesión' }] })
+    expect(r.aplicado.campos).toContain('items')
+    expect(r.pedido.total).toBe(20000)
+    expect(r.pedido.items[0].cantRegaloPedido).toBe(4)
+    expect(h.pricingPort.resolverPrecios).not.toHaveBeenCalled()
+    expect(JSON.stringify(h.historialCreate.mock.calls)).toContain('admin-original')
+    expect(JSON.stringify(h.historialCreate.mock.calls)).toContain('admin-nuevo')
+  })
+  it('el asistente no puede retirar una concesión ni desaparecer su producto', async () => {
+    const h = makeUseCase(conRegalo())
+    await expect(h.useCase.execute({ pedidoId: 'ped_1', usuarioId: 'asistente', usuarioRol: 'ASISTENTE',
+      items: [{ producto: 'PACA_AGUA', cantidad: 2, cantidadRegalo: 0 }] })).rejects.toThrow('REGALO_REQUIERE_ADMIN')
+    await expect(h.useCase.execute({ pedidoId: 'ped_1', usuarioId: 'admin', usuarioRol: 'ADMIN',
+      items: [{ producto: 'PACA_HIELO', cantidad: 2 }] })).rejects.toThrow('REGALO_DESGLOSE_REQUERIDO')
+    expect(h.pedidoRepo.update).not.toHaveBeenCalled()
+  })
+  it('haber entregado solo regalo también impide la edición económica ordinaria', async () => {
+    const h = makeUseCase(conRegalo(1))
+    await expect(h.useCase.execute({ pedidoId: 'ped_1', usuarioId: 'admin', usuarioRol: 'ADMIN',
+      items: [{ producto: 'PACA_AGUA', cantidad: 3 }] })).rejects.toThrow('CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD')
+    expect(h.pedidoRepo.update).not.toHaveBeenCalled()
+  })
+})
+
 describe('ActualizarPedidoUseCase — bypass de G11 vía PUT (hallazgo antifraude 2026-09-06)', () => {
   it('rechaza editar items de un pedido ya ENTREGADO (sin cambiar estadoEntrega en el mismo request)', async () => {
     const pedido = makePedido('ENTREGADO')

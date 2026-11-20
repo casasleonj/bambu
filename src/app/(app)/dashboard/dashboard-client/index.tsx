@@ -721,8 +721,9 @@ export function DashboardClient({
                       <td className="px-1 py-3 text-center text-base font-bold text-gray-800 sm:px-3 sm:text-xl">
                         {item.cantidad}
                         <span className="block text-[10px] font-normal text-gray-500">
-                          unidades
+                          {item.cantidadRegalo ? `con precio · + ${item.cantidadRegalo} de regalo` : 'unidades'}
                         </span>
+                        {item.cantidadRegalo ? <span className="block text-[10px] font-normal text-amber-800">{item.cantidad + item.cantidadRegalo} físicas</span> : null}
                       </td>
                       <td className="break-words px-1 py-3 text-right font-semibold text-green-700 sm:px-3">
                         <MoneyDisplay
@@ -767,7 +768,7 @@ export function DashboardClient({
         >
           {(Object.keys(PRODUCT_LABELS) as ProductCode[]).map((code) => {
             const items = ventasPorPrecio.filter((v) => v.producto === code),
-              cantidad = items.reduce((n, v) => n + v.cantidad, 0)
+              cantidad = items.reduce((n, v) => n + v.cantidad + (v.cantidadRegalo ?? 0), 0)
             if (!cantidad) return null
             const { Icon } = getProductoIconConfig(code),
               color = PRODUCTO_COLOR[code]
@@ -786,10 +787,11 @@ export function DashboardClient({
                   {PRODUCT_LABELS[code]}
                 </h2>
                 <p className={`text-2xl font-bold ${color.text}`}>{cantidad}</p>
+                {items.some(v => (v.cantidadRegalo ?? 0) > 0) && <p className="text-xs text-amber-800">Incluye {items.reduce((n, v) => n + (v.cantidadRegalo ?? 0), 0)} de regalo</p>}
                 <div className="mt-3 space-y-2 text-xs">
                   {(['PUNTO', 'DOMICILIO'] as const).map((canal) => {
                     const grupo = items.filter((v) => v.canal === canal),
-                      cant = grupo.reduce((n, v) => n + v.cantidad, 0),
+                      cant = grupo.reduce((n, v) => n + v.cantidad + (v.cantidadRegalo ?? 0), 0),
                       subtotal =
                         grupo.reduce(
                           (n, v) => n + Math.round(v.subtotal * 100),

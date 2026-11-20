@@ -105,6 +105,8 @@ function buildPendingPedido(offlineId: string, payload: CrearPedidoPayload, clie
       producto: i.producto,
       cantPedido: i.cantidad,
       cantEntrega: 0,
+      cantRegaloPedido: i.cantidadRegalo ?? 0,
+      cantRegaloEntrega: 0,
       precio: 0,
       subtotal: 0,
     })),
@@ -1118,7 +1120,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
       if (isEdit) {
         // Edit uses PUT endpoint directly (not yet migrated to hook)
         const itemsEditados = !pedidoEditando || itemsCambiaron(
-          (pedidoEditando.items ?? []).map((i) => ({ producto: i.producto, cantidad: i.cantPedido, precio: Number(i.precio), precioOrigen: i.precioOrigen ?? 'base' })),
+          (pedidoEditando.items ?? []).map((i) => ({ producto: i.producto, cantidad: i.cantPedido, cantidadRegalo: i.cantRegaloPedido, precio: Number(i.precio), precioOrigen: i.precioOrigen ?? 'base' })),
           data.items,
         )
         const cuerpo = {
@@ -1501,7 +1503,10 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
       // PR-1: `entregar()` acumula → se envía el RESTO por línea (`cantPedido − cantEntrega`).
       const itemsEntregados = (pedido.items || []).flatMap((i) => {
         const resto = i.cantPedido - (i.cantEntrega || 0)
-        return resto > 0 ? [{ producto: i.producto, cantidad: resto }] : []
+        const regalo = Math.max(0, (i.cantRegaloPedido ?? 0) - (i.cantRegaloEntrega ?? 0))
+        return resto + regalo > 0 ? [{ producto: i.producto, cantidad: resto,
+          ...((i.cantRegaloPedido ?? 0) > 0 ? { cantidadRegalo: regalo } : {}),
+        }] : []
       })
 
       let gps: { lat: number; lng: number; accuracy?: number } | null = null
@@ -2384,6 +2389,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
           {hubMode && nuevaDemanda ? (
             <PedidosWorkspace
               key={`ws-nd-${nuevaDemanda.pedidoOrigenId}-${modalKey}`}
+              puedeAutorizarRegalos={userRole === 'ADMIN'}
               clientes={clientes}
               modo="nueva-demanda"
               pedidoOrigenNumero={nuevaDemanda.numeroOrigen}
@@ -2398,6 +2404,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
           ) : hubMode && !pedidoInicial ? (
             <PedidosWorkspace
               key={`ws-${modalKey}`}
+              puedeAutorizarRegalos={userRole === 'ADMIN'}
               clientes={clientes}
               intent={showVentaRapida ? 'venta-rapida' : 'pedido'}
               ventaEnRuta={showVentaRapida && ventaEnRutaActiva ? { repartidores: gestionAdmin.repartidores } : undefined}
@@ -2410,6 +2417,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
           ) : (
             <PedidoFormUnified
               key={`${pedidoInicial?.id || 'new'}-${modalKey}`}
+              puedeAutorizarRegalos={userRole === 'ADMIN'}
               contexto={showVentaRapida ? 'PUNTO' : 'DOMICILIO'}
               clientes={clientes}
               onSubmit={handlePedidoSubmit}
@@ -2663,7 +2671,8 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
             total: Number(registrarEntregaPara.total),
             totalPagado: Number(registrarEntregaPara.totalPagado),
             entregadoPorId: registrarEntregaPara.entregadoPorId ?? null,
-            items: (registrarEntregaPara.items ?? []).map((i) => ({ producto: i.producto, cantPedido: i.cantPedido, cantEntrega: i.cantEntrega, precio: i.precio == null ? undefined : Number(i.precio) })),
+            items: (registrarEntregaPara.items ?? []).map((i) => ({ producto: i.producto, cantPedido: i.cantPedido, cantEntrega: i.cantEntrega,
+              cantRegaloPedido: i.cantRegaloPedido, cantRegaloEntrega: i.cantRegaloEntrega, precio: i.precio == null ? undefined : Number(i.precio) })),
           }}
           fiadoParcialActivo={gestionAdmin.fiadoParcialActivo === true}
           repartidores={gestionAdmin.repartidores}
@@ -2716,6 +2725,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
           ? pedidoEditando.items.map((i) => ({
               producto: i.producto,
               cantidad: i.cantPedido,
+              cantidadRegalo: i.cantRegaloPedido,
               precioManual: i.precioOrigen === 'manual' ? Number(i.precio) : undefined,
             }))
           : [
@@ -2746,6 +2756,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
               {hubMode && (pedidoEditando.origen === 'PEDIDO' || pedidoEditando.origen === 'VENTA_RAPIDA') ? (
                 <PedidosWorkspace
                   key={`edit-ws-${pedidoEditando.id}`}
+                  puedeAutorizarRegalos={userRole === 'ADMIN'}
                   clientes={clientes}
                   onSubmit={handlePedidoSubmit}
                   onCancel={() => setPedidoEditando(null)}
@@ -2771,6 +2782,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
               ) : (
                 <PedidoFormUnified
                   key={`edit-${pedidoEditando.id}`}
+                  puedeAutorizarRegalos={userRole === 'ADMIN'}
                   contexto={pedidoEditando.canal as 'PUNTO' | 'DOMICILIO'}
                   clientes={clientes}
                   onSubmit={handlePedidoSubmit}

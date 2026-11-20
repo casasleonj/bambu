@@ -45,3 +45,5 @@
 20261119_negocio_horario
 # #836 F2b: hora acordada del pedido (CHECK de formato HH:MM, columnas aditivas).
 20261120_pedido_hora_acordada
+# #795: cantidades gratuitas y evidencia independiente de autorización (CHECK).
+20261118_pedido_regalos

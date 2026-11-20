@@ -5,15 +5,21 @@
 import type { ProductCode } from '@/shared/domain'
 import type { Canal, OrigenPedido, PagoData, FiadoStatus } from '../../domain/types'
 import type { EntregaResuelta } from '../../domain/services/entrega-suficiencia.service'
+import type { RegaloPedidoSolicitado } from '../services/regalo-pedido.service'
 
 export type { EntregaResuelta }
+
+export interface PedidoItemInput extends RegaloPedidoSolicitado {
+  producto: ProductCode
+  precioManual?: number
+}
 
 export interface CrearPedidoInput {
   clienteId: string
   negocioId?: string
   canal: Canal
   origen?: OrigenPedido
-  items: Array<{ producto: ProductCode; cantidad: number; precioManual?: number }>
+  items: PedidoItemInput[]
   pagos?: PagoData[]
   obs?: string
   fechaEntrega?: Date
@@ -79,7 +85,7 @@ export interface CrearPedidoInput {
 
 export interface ActualizarPedidoInput {
   pedidoId: string
-  items?: Array<{ producto: ProductCode; cantidad: number; precioManual?: number }>
+  items?: PedidoItemInput[]
   estadoEntrega?: string
   obs?: string
   actualizarCliente?: {
@@ -94,6 +100,8 @@ export interface ActualizarPedidoInput {
   entregaLng?: number | null
   /** Quién dispara la actualización — usado para auditar cambios de dirección. */
   usuarioId?: string
+  /** Rol de sesión, nunca del cuerpo de la petición. */
+  usuarioRol?: string
   offlineId?: string
   /** Metadata forense: vincula la actualización a un Caso de antifraude. */
   casoId?: string
@@ -123,7 +131,7 @@ export interface EntregarPedidoInput {
   pedidoId: string
   /** Actor que ejecuta la entrega — propagado a logAudit de la reconexión N2 (obligacion-guard). */
   actorId?: string
-  itemsEntregados: Array<{ producto: ProductCode; cantidad: number }>
+  itemsEntregados: Array<{ producto: ProductCode; cantidad: number; cantidadRegalo?: number }>
   pagos?: PagoData[]
   // ADR-PAGO-EMBARQUE-CAPTURA-001: embarque de captura del cobro. Obligatorio
   // si `pagos` trae montos; nunca se deriva de `Pedido.embarqueId`.
@@ -275,6 +283,9 @@ export interface PedidoResumenDTO {
     producto: string
     cantPedido: number
     cantEntrega: number
+    /** #795: aditivo; ausente en cachés anteriores equivale a cero. */
+    cantRegaloPedido?: number
+    cantRegaloEntrega?: number
     precio: number
     subtotal: number
     precioOrigen: string
@@ -387,7 +398,7 @@ export interface PreviewPedidoInput {
   negocioId?: string
   canal?: 'PUNTO' | 'DOMICILIO'
   origen?: 'PEDIDO' | 'VENTA_RAPIDA'
-  items: Array<{ producto: ProductCode; cantidad: number; precioManual?: number }>
+  items: PedidoItemInput[]
   pagos?: Array<{ metodo: 'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA' | 'BONO'; monto: number }>
   entregado?: boolean
   /** snapshot de dirección/barrio que el usuario capturó para ESTE pedido (gana sobre negocio/cliente). */
@@ -404,6 +415,8 @@ export interface PreviewPedidoInput {
   pedidoId?: string
   /** userId de la sesión — lo inyecta la route, no viene del body. */
   actorId: string
+  /** Rol de sesión, nunca del cuerpo de la petición. */
+  actorRol?: string
   /** F2 (Excepciones de Crédito): ver `CrearPedidoInput.excepcionId`. */
   excepcionId?: string
 }
@@ -411,6 +424,8 @@ export interface PreviewPedidoInput {
 export interface PreviewCalculationItem {
   producto: string
   cantidad: number
+  /** #795: unidades gratuitas; no participan en subtotal ni escalas de precio. */
+  cantidadRegalo?: number
   /** Precio final de Pricing — ya incluye recargo de domicilio si aplica. */
   precioUnitario: number
   /** precioUnitario × cantidad. */

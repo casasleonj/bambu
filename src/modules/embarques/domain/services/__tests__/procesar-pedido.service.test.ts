@@ -221,6 +221,27 @@ describe('PR-1: el cierre PARCIAL no crea hijo y preserva la obligación económ
     expect(client.pago.create).not.toHaveBeenCalled()
   })
 
+  it('#795: un cuadre legado no interpreta regalos como nuevas unidades con precio', async () => {
+    const client = makeClient(vi.fn())
+    const pedido = makePedidoRaw({ items: [{ producto: 'PACA_AGUA', cantRegaloPedido: 1, cantRegaloEntrega: 0 }] })
+    await expect(new ProcesarPedidoService().execute(client as never, pedido, {
+      pedidoId: pedido.id, entregado: 'PARCIAL', pagos: [],
+      productosEntregados: { cPacaAguaEnt: 3, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 },
+    }, 'ADMIN', 'u', [], [])).rejects.toThrow('REGALO_DESGLOSE_REQUERIDO')
+    expect(client.pedido.update).not.toHaveBeenCalled()
+    expect(client.pedidoItem.updateMany).not.toHaveBeenCalled()
+    expect(client.pago.create).not.toHaveBeenCalled()
+  })
+
+  it('#795: completar lo comercial no oculta un regalo pendiente en el cierre', async () => {
+    const client = makeClient(vi.fn())
+    const pedido = makePedidoRaw({ cPacaAguaEnt: 5, items: [{ producto: 'PACA_AGUA', cantRegaloPedido: 1, cantRegaloEntrega: 0 }] })
+    await expect(new ProcesarPedidoService().execute(client as never, pedido, {
+      pedidoId: pedido.id, entregado: 'COMPLETO', pagos: [],
+    }, 'ADMIN', 'u', [], [])).rejects.toThrow('REGALO_DESGLOSE_REQUERIDO')
+    expect(client.pedido.update).not.toHaveBeenCalled()
+  })
+
   it('cierre PARCIAL que completa lo pedido → ENTREGADO (acumulado 3 previas + 2 ahora = 5)', async () => {
     const hijoCreateSpy = vi.fn().mockResolvedValue({ id: 'x', numero: 1 })
     const client = makeClient(hijoCreateSpy)

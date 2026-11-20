@@ -26,6 +26,9 @@ export interface GrupoBarrioConsulta {
   clave: string;
   etiqueta: string;
   total: number;
+  /** Demanda física exigible del barrio, independiente de cobros. */
+  remanentes?: Record<string, number>;
+  unidadesPendientes?: number;
 }
 export interface ResultadoConsultaPedidos {
   consultaKey: string;
@@ -55,6 +58,8 @@ export interface ResultadoConsultaPedidos {
    */
   arrastrados?: Pedido[];
   arrastradosTotal?: number;
+  /** #915: en la vista agrupada los pendientes/parciales de días anteriores ya vienen DENTRO de `pedidos`. */
+  arrastradosIntegrados?: boolean;
   /** La lectura de arrastrados falló; la lista principal sigue siendo válida. */
   arrastradosError?: boolean;
 }
@@ -95,6 +100,8 @@ export interface FiltrosConsultaPedidos {
   agrupar: "" | "barrio";
   /** #836 F3: solo los pedidos de un grupo de barrio (clave de `grupos`). */
   grupoBarrio: string;
+  /** Orden manual temporal, aplicado antes de paginar. */
+  recorrido?: string[];
   resumen: boolean;
   page: number;
   pageSize: number;
@@ -121,6 +128,7 @@ export const clavesConsultaPedidos = [
   "conRecurrencia",
   "agrupar",
   "grupoBarrio",
+  "recorrido",
   "resumen",
   "page",
   "pageSize",
@@ -155,7 +163,7 @@ function lista(
 function leerGrupoBarrio(p: URLSearchParams): string {
   const v = p.get("grupoBarrio") || "";
   if (!v) return "";
-  if (v.length > 120 || !/^(sin-barrio|[bt]:[^\u0000-\u001f]+)$/.test(v))
+  if (v.length > 120 || !/^(sin-barrio|venta-anonima|[bt]:[^\u0000-\u001f]+)$/.test(v))
     throw new FiltroPedidosError("Revisa el filtro «grupoBarrio».");
   return v;
 }
@@ -285,8 +293,17 @@ export function leerFiltrosConsulta(
       "",
     ),
     conRecurrencia: p.get("conRecurrencia") === "true",
-    agrupar: opcion(p, "agrupar", ["", "barrio"], ""),
+    // #859: solo la entrada operativa sin filtros usa agrupación territorial inicial.
+    // Una selección explícita de lista general (agrupar=) y las consultas
+    // históricas/filtradas conservan su comportamiento anterior.
+    agrupar: p.has("agrupar") && p.get("agrupar") === "" ? "" : opcion(
+      p, "agrupar", ["", "barrio"],
+      !all && !p.has("desde") && !p.has("hasta") &&
+      !["fechaBase", "foco", "search", "estadoEntrega", "estadoPago", "registro", "canal", "origen", "clienteId", "pago", "repartidorId", "grupoBarrio"].some(k => p.has(k))
+        ? "barrio" : "",
+    ),
     grupoBarrio: leerGrupoBarrio(p),
+    recorrido: lista(p, "recorrido").filter(v => /^(sin-barrio|[bt]:[^\u0000-\u001f]+)$/.test(v)),
     resumen: p.has("resumen")
       ? p.get("resumen") === "1"
       : [
@@ -367,8 +384,11 @@ export function parametrosConsulta(f: FiltrosConsultaPedidos): URLSearchParams {
   p.set("registro", f.registro);
   p.set("pago", f.pago);
   if (f.conRecurrencia) p.set("conRecurrencia", "true");
-  if (f.agrupar) p.set("agrupar", f.agrupar);
+  // Preserve explicit ungrouped selection; absence means operational barrio default.
+  p.set("agrupar", f.agrupar);
   if (f.grupoBarrio) p.set("grupoBarrio", f.grupoBarrio);
+  // #903: la prioridad manual de barrios (Recorrido) debe viajar al servidor.
+  f.recorrido?.forEach((clave) => p.append("recorrido", clave));
   p.set("resumen", f.resumen ? "1" : "0");
   p.set("page", String(f.page));
   p.set("pageSize", String(f.pageSize));
@@ -428,6 +448,24 @@ function diaAnterior(dia: string): string {
  * activos. Conserva búsqueda, canal, origen, cliente y pago; ignora horas, que
  * delimitan el día consultado, no los días previos.
  */
+/**
+ * #915: con la vista agrupada por barrio, los pendientes y parciales de días anteriores se leen en la MISMA
+ * consulta que los de hoy (un solo universo, una sola agrupación y paginación) en vez de como sección aparte.
+ * No aplica con filtros que se resuelven por ids ajenos al rango (repartidor, fiados, esperando pago).
+ */
+export function arrastreIntegrado(
+  f: FiltrosConsultaPedidos,
+  hoy = getTodayString(),
+): boolean {
+  return (
+    f.agrupar === "barrio" &&
+    !f.repartidorId.length &&
+    f.pago !== "fiado" &&
+    f.foco !== "esperandoPago" &&
+    !!filtrosArrastrados(f, hoy)
+  );
+}
+
 export function filtrosArrastrados(
   f: FiltrosConsultaPedidos,
   hoy = getTodayString(),
@@ -451,8 +489,10 @@ export function filtrosArrastrados(
     all: false,
     registro: "activos",
     estadoEntrega,
-    agrupar: "",
-    grupoBarrio: "",
+    // #859: conservar el barrio elegido también en los pendientes arrastrados.
+    // Eliminarlo mezclaba pedidos antiguos de otros barrios en la vista filtrada.
+    agrupar: f.agrupar,
+    grupoBarrio: f.grupoBarrio,
     resumen: false,
     page: 1,
     pageSize: MAX_ARRASTRADOS,

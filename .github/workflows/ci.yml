@@ -7,6 +7,16 @@ on:
   pull_request:
     branches:
       - main
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_call:
+    inputs:
+      nightly_full:
+        description: 'Regresión suplementaria completa, sin alterar gate de release'
+        type: boolean
+        default: false
+      pedidos_v2:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       pedidos_v2:
@@ -32,8 +42,9 @@ concurrency:
   # `github.event_name` en el grupo: una corrida programada (soak) y una
   # corrida de push a `main` (validación de cambio) NO deben cancelarse
   # entre sí — son señales distintas y ambas deben quedar registradas.
-  group: ci-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  # El PR draft antiguo no debe cancelar la validación de un PR listo.
+  group: ci-${{ github.event_name }}-${{ github.ref }}${{ inputs.nightly_full && '-nightly' || '' }}${{ github.event_name == 'pull_request' && github.event.pull_request.draft && '-draft' || '' }}
+  cancel-in-progress: ${{ !inputs.nightly_full }}
 
 jobs:
   # ───────────────────────────────────────────────────────────────────────────
@@ -112,6 +123,9 @@ jobs:
     outputs:
       e2e_required: ${{ steps.classify.outputs.e2e_required }}
       skill_declarativa: ${{ steps.classify.outputs.skill_declarativa }}
+      e2e_run: ${{ steps.plan.outputs.e2e_run }}
+      draft_deferred: ${{ steps.plan.outputs.draft_deferred }}
+      diff_ok: ${{ steps.classify.outputs.diff_ok }}
 
     steps:
       - name: Checkout repository
@@ -126,15 +140,16 @@ jobs:
       - name: Unit tests of the classifier
         # El clasificador decide si se corren los 8 shards: sus propias pruebas
         # no pueden ser opcionales. Si fallan, el job falla y con él el gate.
-        run: node --test scripts/ci/__tests__/clasificar-cambios.node.test.mjs
+        run: node --test scripts/ci/__tests__/clasificar-cambios.node.test.mjs scripts/ci/__tests__/politica-ci.node.test.mjs
 
       - name: Classify diff (declarative vs. requires E2E)
         id: classify
         run: |
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
+          if [ "${{ inputs.nightly_full }}" = "true" ] || [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "e2e_required=true" >> "$GITHUB_OUTPUT"
             echo "skill_declarativa=false" >> "$GITHUB_OUTPUT"
-            echo "No es un pull_request (evento: ${{ github.event_name }}) — el E2E completo siempre corre."
+            echo 'diff_ok=false' >> "$GITHUB_OUTPUT"
+            echo "Regresión full o evento no PR: el E2E completo siempre corre."
             exit 0
           fi
 
@@ -152,18 +167,37 @@ jobs:
           if ! git diff --raw -z "$BASE_SHA"..."$HEAD_SHA" > /tmp/cambios.raw 2>/dev/null; then
             echo "e2e_required=true" >> "$GITHUB_OUTPUT"
             echo "skill_declarativa=false" >> "$GITHUB_OUTPUT"
+            echo 'diff_ok=false' >> "$GITHUB_OUTPUT"
             echo "No se pudo calcular el diff — el E2E completo corre por seguridad (§4)."
             exit 0
           fi
 
           node scripts/ci/clasificar-cambios.mjs < /tmp/cambios.raw
+          # Sólo el diff inequívoco habilita optar por feedback barato en draft.
+          if node scripts/ci/politica-ci.mjs diff /tmp/cambios.raw; then
+            echo 'diff_ok=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'diff_ok=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Plan de ejecución (#896; piloto OFF por defecto)
+        id: plan
+        env:
+          CI_EVENT: ${{ github.event_name }}
+          CI_ACTION: ${{ github.event.action }}
+          CI_DRAFT: ${{ github.event.pull_request.draft }}
+          CI_FAST_DRAFT: ${{ vars.BAMBU_CI_896_DRAFT_PILOT }}
+          CI_DIFF_OK: ${{ steps.classify.outputs.diff_ok }}
+          E2E_REQUIRED: ${{ steps.classify.outputs.e2e_required }}
+          NIGHTLY_FULL: ${{ inputs.nightly_full }}
+        run: node scripts/ci/politica-ci.mjs plan
 
   quality:
     name: Type check + Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # El cron cada 4h es exclusivamente para el soak del Hub (job `e2e-hub`).
-    if: github.event_name != 'schedule'
+    # #896: el cron de regresión invoca este workflow completo de forma explícita.
+    if: github.event_name != 'schedule' || inputs.nightly_full
 
     steps:
       - name: Checkout repository
@@ -208,8 +242,9 @@ jobs:
     name: Lint (non-blocking)
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    continue-on-error: true
-    if: github.event_name != 'schedule'
+    # #896: en regresión nocturna un fallo real debe ser visible.
+    continue-on-error: ${{ !inputs.nightly_full }}
+    if: github.event_name != 'schedule' || inputs.nightly_full
 
     steps:
       - name: Checkout repository
@@ -238,8 +273,11 @@ jobs:
     # el desarrollador lo hacía). Igual que Lint cuando se introdujo:
     # queda non-blocking hasta confirmar que el suite completo es estable
     # en un entorno de CI fresco, antes de promoverlo a gate obligatorio.
-    continue-on-error: true
-    if: github.event_name != 'schedule'
+    # #896: en regresión nocturna un fallo real debe ser visible.
+    continue-on-error: ${{ !inputs.nightly_full }}
+    if: github.event_name != 'schedule' || inputs.nightly_full
+    outputs:
+      suite_ok: ${{ steps.integration-tests.outputs.suite_ok }}
 
     env:
       DATABASE_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
@@ -305,6 +343,7 @@ jobs:
       # #766: registrar duración real y recursos sin alterar fixtures, tests ni gates.
       # El resumen se emite incluso cuando Vitest falla; el exit code original se conserva.
       - name: Run integration tests
+        id: integration-tests
         shell: bash
         run: |
           started_at=$(date +%s)
@@ -316,6 +355,11 @@ jobs:
           finished_at=$(date +%s)
           echo "Integration suite duration: $((finished_at - started_at)) seconds"
           echo "Integration suite exit code: $result"
+          if [ "$result" -eq 0 ]; then
+            echo 'suite_ok=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'suite_ok=false' >> "$GITHUB_OUTPUT"
+          fi
           exit "$result"
 
       - name: Integration runner diagnostics (#766)
@@ -339,26 +383,16 @@ jobs:
 
   e2e:
     name: E2E (${{ matrix.shard }}/${{ strategy.job-total }})
-    # #875: ubuntu-latest ya es Ubuntu 26.04, que Playwright 1.59.1 no soporta
-    # («does not support chromium on ubuntu26.04-x64»). Se fija 24.04 solo en los
-    # trabajos que instalan Playwright; revisar al actualizar Playwright.
-    runs-on: ubuntu-24.04
+    # #875: ubuntu-latest ya es Ubuntu 26.04 y Playwright lo soporta desde la 1.61.
+    # Con 1.59.1 la instalación fallaba («does not support chromium on
+    # ubuntu26.04-x64»). Si una imagen futura vuelve a romperla, fijar aquí la
+    # versión anterior (p. ej. ubuntu-24.04) y revisar la versión de Playwright.
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: detect-changes
-    # Suite legacy (V2 OFF). `github.event_name != 'schedule'` es la
-    # exclusión ORIGINAL de este job (previa a la política de skip
-    # docs-only, sin relación con ella): el cron de 3h es exclusivamente el
-    # soak de `e2e-hub` (más abajo) — la suite legacy de 8 shards nunca
-    # corrió en `schedule`, para no pagar el costo completo de Playwright
-    # cada 3h además del soak dedicado. `detect-changes.outputs.e2e_required`
-    # es la política de skip para PRs docs-only — ver el comentario extenso
-    # en ese job — y ahora es fiable en todo evento (2026-09-13: se corrigió
-    # que `detect-changes` se saltaba a sí mismo en `schedule`, lo que
-    # hubiera dejado este `needs.detect-changes.outputs...` vacío ahí; no
-    # cambia nada en la práctica porque el `!= 'schedule'` de la izquierda ya
-    # excluía `schedule` de todas formas, pero antes del fix dependía de dos
-    # condiciones redundantes en vez de una sola fuente de verdad fiable).
-    if: github.event_name != 'schedule' && needs.detect-changes.outputs.e2e_required == 'true'
+    # Suite legacy (V2 OFF). La regresión nocturna #896 también exige
+    # los ocho shards; conservar #778 para PR declarativo.
+    if: (github.event_name != 'schedule' || inputs.nightly_full) && needs.detect-changes.outputs.e2e_run == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -544,9 +578,8 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   # e2e-hub — soak del Pedido Hub V2 (Fase 10-C).
   #
-  # Se ejecuta en push a `main`, en cada PR y por `workflow_dispatch`. Ya no hay
-  # cron de soak (#703); los `if: github.event_name != 'schedule'` de otros jobs
-  # quedan como defensa por si se restaura.
+  # Se ejecuta en push a main, PR, dispatch y regresión nocturna completa #896.
+  # No se restaura el cron de soak de #703.
   #
   # Job SEPARADO y transitorio: corre SOLO la suite del Hub con
   # NEXT_PUBLIC_PEDIDOS_V2=true, mientras el job `e2e` de arriba se mantiene
@@ -562,10 +595,11 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   e2e-hub:
     name: E2E Hub (V2 ON)
-    # #875: ubuntu-latest ya es Ubuntu 26.04, que Playwright 1.59.1 no soporta
-    # («does not support chromium on ubuntu26.04-x64»). Se fija 24.04 solo en los
-    # trabajos que instalan Playwright; revisar al actualizar Playwright.
-    runs-on: ubuntu-24.04
+    # #875: ubuntu-latest ya es Ubuntu 26.04 y Playwright lo soporta desde la 1.61.
+    # Con 1.59.1 la instalación fallaba («does not support chromium on
+    # ubuntu26.04-x64»). Si una imagen futura vuelve a romperla, fijar aquí la
+    # versión anterior (p. ej. ubuntu-24.04) y revisar la versión de Playwright.
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     # Mismo criterio que el job `e2e` (#778): si el diff es estrictamente
     # declarativo, el Hub tampoco tiene nada que probar. Sin este `if:` corría
@@ -576,7 +610,7 @@ jobs:
     # `if:` se reporta como Success y no bloquea el merge. Lo que NO debe
     # marcarse como required son los legs del matrix `E2E (n/8)`.
     needs: detect-changes
-    if: github.event_name != 'schedule' && needs.detect-changes.outputs.e2e_required == 'true'
+    if: (github.event_name != 'schedule' || inputs.nightly_full) && needs.detect-changes.outputs.e2e_run == 'true'
 
     env:
       DATABASE_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
@@ -702,6 +736,7 @@ jobs:
         run: >
           npx playwright test --reporter=html --project=chromium
           e2e/pedidos-hub.spec.ts
+          e2e/regalos-explicitos-795.spec.ts
           e2e/pedidos-hub-recurrentes.spec.ts
           e2e/pedidos-entrega-suficiencia.spec.ts
           e2e/pedidos-g11.spec.ts
@@ -749,7 +784,8 @@ jobs:
   # PR solo de documentación, que `detect-changes` omite a propósito).
   # Exige: detect-changes, quality (tsc + unit) y e2e-hub en `success`, y el
   # E2E de 8 turnos en `success` cuando `e2e_required == 'true'`.
-  # `lint` e `integration` son informativos (continue-on-error) y solo se listan.
+  # Lint sigue informativo en CI ordinario, pero integración se comprueba por
+  # resultado real del step y output suite_ok (no confundir continue-on-error con verde).
   # NO está marcado como required en `main`: eso es decisión del PO (ver
   # docs/ci/GATES.md).
   # ───────────────────────────────────────────────────────────────────────────
@@ -760,47 +796,49 @@ jobs:
     if: always()
     needs: [detect-changes, quality, e2e, e2e-hub, lint, integration]
     steps:
+      - name: Checkout policy source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Evaluar resultados exigidos
         env:
+          CI_EVENT: ${{ github.event_name }}
+          CI_ACTION: ${{ github.event.action }}
+          CI_DRAFT: ${{ github.event.pull_request.draft }}
+          CI_FAST_DRAFT: ${{ vars.BAMBU_CI_896_DRAFT_PILOT }}
+          CI_DIFF_OK: ${{ needs.detect-changes.outputs.diff_ok }}
+          NIGHTLY_FULL: ${{ inputs.nightly_full }}
+          E2E_REQUIRED: ${{ needs.detect-changes.outputs.e2e_required }}
+          E2E_RUN: ${{ needs.detect-changes.outputs.e2e_run }}
+          DRAFT_DEFERRED: ${{ needs.detect-changes.outputs.draft_deferred }}
           R_DETECT: ${{ needs.detect-changes.result }}
           R_QUALITY: ${{ needs.quality.result }}
           R_E2E: ${{ needs.e2e.result }}
           R_HUB: ${{ needs.e2e-hub.result }}
           R_LINT: ${{ needs.lint.result }}
           R_INTEGRATION: ${{ needs.integration.result }}
-          E2E_REQUIRED: ${{ needs.detect-changes.outputs.e2e_required }}
+          INTEGRATION_OK: ${{ needs.integration.outputs.suite_ok }}
+        run: node scripts/ci/politica-ci.mjs gate
+
+      # Identidad observacional de candidato PR; no es un comprobante de release
+      # y no autoriza omisiones. Se verifica el estado real de jobs por API.
+      - name: Record candidate identity (shadow only)
+        id: candidate-marker
+        if: success() && !inputs.nightly_full && github.event_name == 'pull_request' && needs.detect-changes.outputs.e2e_required == 'true' && needs.e2e.result == 'success' && needs.e2e-hub.result == 'success' && needs.integration.result == 'success'
+        continue-on-error: true
         run: |
-          fail=0
-          check() { # nombre resultado esperado-descripcion
-            if [ "$2" != "success" ]; then
-              echo "::error::$1: $2 (se esperaba success)"
-              fail=1
-            else
-              echo "OK   $1: success"
-            fi
-          }
-          # Un job omitido por `if:` cuenta como éxito SOLO cuando su propio
-          # criterio lo justifica. Verificar la pareja (resultado, condición) es
-          # lo que impide que un job saltado por un motivo inesperado —o que
-          # nunca se generó— pase como verde: `skipped` sin la condición
-          # correspondiente es un fallo explícito.
-          omitido_legitimo() { # nombre resultado condicion-esperada-descripcion
-            if [ "$2" = "skipped" ] && [ "$3" = "false" ]; then
-              echo "OK   $1: omitido ($4)"
-            else
-              echo "::error::$1: '$2' con e2e_required='$3' no es interpretable como éxito"
-              fail=1
-            fi
-          }
-          check "detect-changes" "$R_DETECT"
-          check "quality (tsc + unit)" "$R_QUALITY"
-          if [ "$E2E_REQUIRED" = "true" ]; then
-            check "e2e-hub (V2 ON)" "$R_HUB"
-            check "e2e (8 turnos)" "$R_E2E"
-          else
-            omitido_legitimo "e2e-hub (V2 ON)" "$R_HUB" "$E2E_REQUIRED" "el diff es declarativo (docs/** o skills Markdown)"
-            omitido_legitimo "e2e (8 turnos)" "$R_E2E" "$E2E_REQUIRED" "el diff es declarativo (docs/** o skills Markdown)"
-          fi
-          echo "INFO lint (informativo): $R_LINT"
-          echo "INFO integration (informativo): $R_INTEGRATION"
-          exit $fail
+          printf '{"sha":"%s","run":%s,"attempt":%s,"event":"pull_request","canSkipRelease":false}\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > "$RUNNER_TEMP/ci-candidate.json"
+
+      - name: Archive candidate identity (shadow only)
+        if: success() && steps.candidate-marker.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/ci-candidate.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14

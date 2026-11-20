@@ -12,7 +12,7 @@ import {
   pesoPedido,
   type PedidoCantidades,
 } from '@/lib/embarque-auto'
-import { PESOS_KG } from '@/lib/embarque-capacidad'
+import { PESOS_KG, cantidadFisicaProductoPedido } from '@/lib/embarque-capacidad'
 
 export type { PedidoCantidades }
 
@@ -25,11 +25,7 @@ export function cargaAgregada(pedidos: PedidoCantidades[]): Record<Producto, num
     PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0,
   }
   for (const p of pedidos) {
-    acc.PACA_AGUA += p.cPacaAguaPed ?? 0
-    acc.PACA_HIELO += p.cPacaHieloPed ?? 0
-    acc.BOTELLON += (p.cBotellonFabPed ?? 0) + (p.cBotellonDomPed ?? 0)
-    acc.BOLSA_AGUA += p.cBolsaAguaPed ?? 0
-    acc.BOLSA_HIELO += p.cBolsaHieloPed ?? 0
+    for (const producto of PRODUCTOS) acc[producto] += cantidadFisicaProductoPedido(p, producto)
   }
   return acc
 }

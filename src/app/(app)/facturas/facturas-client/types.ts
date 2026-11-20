@@ -47,6 +47,8 @@ export interface PedidoItem {
   producto: string
   cantPedido: number
   cantEntrega: number
+  cantRegaloPedido?: number
+  cantRegaloEntrega?: number
   precio: number
   subtotal: number
 }

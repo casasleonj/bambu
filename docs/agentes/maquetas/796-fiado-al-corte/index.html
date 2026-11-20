@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>#796 · Fiado al corte en el Cierre — maqueta para aprobación</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background:#f3f4f6; color:#111827; }
+  h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 30px 0 8px; }
+  p.n { color:#6b7280; font-size:13px; margin: 4px 0 12px; max-width: 920px; }
+  .fila { display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; }
+  .marco { background:#fff; border:1px solid #d1d5db; border-radius:14px; padding:16px; }
+  .tel { width: 360px; } .esc { width: 640px; }
+  .etq { font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; margin-bottom:8px; color:#374151; }
+  .tarjeta { border:1px solid #e5e7eb; border-radius:12px; padding:14px; background:#fff; }
+  .tarjeta h3 { margin:0 0 2px; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; }
+  .monto { font-size:26px; font-weight:700; margin:2px 0; }
+  .sub { font-size:12px; color:#6b7280; margin:2px 0; }
+  .chip { display:inline-block; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; }
+  .corte { background:#eff6ff; color:#1d4ed8; } .vivo { background:#fef3c7; color:#92400e; } .guardado { background:#ecfdf5; color:#166534; }
+  .aprox { background:#fff7ed; color:#9a3412; border:1px solid #fed7aa; }
+  .par { display:flex; gap:12px; flex-wrap:wrap; } .par > .tarjeta { flex:1 1 220px; }
+  .aviso { border-radius:8px; padding:8px 10px; font-size:13px; margin-top:10px; }
+  .err { border:1px solid #fecaca; background:#fef2f2; color:#991b1b; }
+  .info { border:1px solid #bfdbfe; background:#eff6ff; color:#1e3a8a; }
+  .skel { background:linear-gradient(90deg,#e5e7eb,#f3f4f6,#e5e7eb); border-radius:6px; height:26px; width:60%; margin:6px 0; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; } th { text-align:left; font-size:11px; color:#6b7280; text-transform:uppercase; padding:6px 4px; border-bottom:1px solid #e5e7eb; } td { padding:7px 4px; border-bottom:1px solid #f3f4f6; } .r { text-align:right; }
+  button { font: 500 13px system-ui; border:1px solid #111; background:#fff; border-radius:8px; padding:6px 12px; min-height:36px; }
+  ul.l { font-size:13px; color:#374151; margin:6px 0 0 18px; padding:0; }
+  .tel .par > .tarjeta { flex-basis:100%; } .tel button { min-height:44px; }
+</style>
+</head>
+<body>
+<h1>#796 · El fiado de un día pasado deja de cambiar cuando alguien paga después</h1>
+<p class="n">Maqueta para aprobación del PO, escritorio y móvil, con carga, error y «aproximado». Cambia solo lo que se muestra al consultar el Cierre de una fecha <b>anterior a hoy</b>. El día en curso sigue en vivo como hoy. No se reescribe ningún cierre ya guardado. Las cifras de abajo son inventadas.</p>
+
+<h2>1 · Cierre de un día pasado SIN cierre guardado (caso nuevo)</h2>
+<div class="fila">
+  <div>
+    <div class="etq">Escritorio</div>
+    <div class="marco esc">
+      <div class="par">
+        <div class="tarjeta"><h3>Fiado al corte <span class="chip corte">fin del 4-nov</span></h3><div class="monto">$ 160.000</div><div class="sub">Lo que quedó sin pagar de lo entregado hasta ese día. No baja aunque hoy se cobre.</div></div>
+        <div class="tarjeta"><h3>Pendiente hoy <span class="chip vivo">en vivo</span></h3><div class="monto">$ 45.000</div><div class="sub">De ese mismo fiado, lo que todavía no se ha cobrado a esta hora.</div></div>
+      </div>
+      <table><tr><th>Pedido</th><th>Cliente</th><th class="r">Al corte</th><th class="r">Hoy</th></tr>
+        <tr><td>#1001</td><td>Cliente A</td><td class="r">$ 23.000</td><td class="r">$ 0</td></tr>
+        <tr><td>#1002</td><td>Cliente B</td><td class="r">$ 46.000</td><td class="r">$ 45.000</td></tr></table>
+    </div>
+  </div>
+  <div>
+    <div class="etq">Móvil</div>
+    <div class="marco tel">
+      <div class="par">
+        <div class="tarjeta"><h3>Fiado al corte <span class="chip corte">fin del 4-nov</span></h3><div class="monto">$ 160.000</div><div class="sub">Lo que quedó sin pagar ese día. No baja aunque hoy se cobre.</div></div>
+        <div class="tarjeta"><h3>Pendiente hoy <span class="chip vivo">en vivo</span></h3><div class="monto">$ 45.000</div><div class="sub">Lo que sigue sin cobrar a esta hora.</div></div>
+      </div>
+      <p class="sub" style="margin-top:10px">#1001 · Cliente A · al corte $ 23.000 · hoy $ 0<br>#1002 · Cliente B · al corte $ 46.000 · hoy $ 45.000</p>
+    </div>
+  </div>
+</div>
+
+<h2>2 · Día con cierre YA guardado (no cambia)</h2>
+<div class="fila"><div class="marco esc">
+  <div class="tarjeta"><h3>Fiado <span class="chip guardado">cierre guardado el 6-nov 15:10</span></h3><div class="monto">$ 20.000</div><div class="sub">Cifra guardada al cerrar. No se recalcula ni se reescribe. «Pendiente hoy» se sigue mostrando aparte.</div></div>
+</div></div>
+
+<h2>3 · Estados</h2>
+<div class="fila">
+  <div><div class="etq">Cargando</div><div class="marco tel"><div class="tarjeta"><h3>Fiado al corte</h3><div class="skel"></div><div class="sub">Calculando a la fecha de corte…</div></div></div></div>
+  <div><div class="etq">Error</div><div class="marco tel"><div class="tarjeta"><h3>Fiado al corte</h3><div class="monto">—</div></div>
+    <div class="aviso err" role="alert">No se pudo calcular el fiado de ese día. No se cambió nada. <button style="margin-top:8px;display:block">Reintentar</button></div></div></div>
+  <div><div class="etq">Dato aproximado</div><div class="marco tel"><div class="tarjeta"><h3>Fiado al corte <span class="chip corte">fin del 4-nov</span> <span class="chip aprox">aproximado</span></h3><div class="monto">$ 160.000</div></div>
+    <div class="aviso info">2 pedidos no tienen fecha de anulación registrada; se dejaron fuera. <u>Ver cuáles</u></div></div></div>
+  <div><div class="etq">Día en curso (provisional)</div><div class="marco tel"><div class="tarjeta"><h3>Fiado de hoy <span class="chip vivo">provisional · en vivo</span></h3><div class="monto">$ 45.000</div><div class="sub">Cambia mientras se cobra. Queda fijo al terminar el día.</div></div></div></div>
+</div>
+
+<h2>Alcance</h2>
+<ul class="l">
+  <li><b>Dentro:</b> en el Cierre y en el reporte de Fiados, al elegir una fecha anterior a hoy y sin cierre guardado, mostrar el fiado <b>al corte</b> (fin del día de Bogotá) junto al <b>pendiente hoy</b>, con etiqueta de corte, estado de carga, error con «Reintentar» y aviso «aproximado» cuando falte algún dato.</li>
+  <li><b>Fuera:</b> cierres ya guardados (se conservan tal cual), el día en curso (sigue en vivo), cualquier cifra de caja, cobros o clasificación de cobros, permisos, y la factura.</li>
+  <li><b>Decisión que implica:</b> hoy, al consultar ayer, el fiado baja cuando alguien paga hoy; con esto ya no baja. Es un cambio visible de cifras al consultar días pasados.</li>
+</ul>
+</body>
+</html>

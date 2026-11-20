@@ -9,6 +9,8 @@ export interface ItemConsulta {
   producto: string;
   pedidas: number;
   entregadas: number;
+  regaloPedido?: number;
+  regaloEntregado?: number;
 }
 
 export type TonoConsulta = "green" | "amber" | "gray" | "red";
@@ -29,7 +31,7 @@ export function esTerminal(p: Pedido): boolean {
 export function esParcial(p: Pedido): boolean {
   return (
     p.estadoEntrega !== "ENTREGADO" &&
-    (p.items.some((i) => i.cantEntrega > 0) ||
+    (p.items.some((i) => i.cantEntrega + (i.cantRegaloEntrega ?? 0) > 0) ||
       [
         p.cPacaAguaEnt,
         p.cPacaHieloEnt,
@@ -45,8 +47,9 @@ export function itemsConsulta(p: Pedido): ItemConsulta[] {
   const lista = p.items.length
     ? p.items.map((i) => ({
         producto: i.producto,
-        pedidas: i.cantPedido,
-        entregadas: i.cantEntrega,
+        pedidas: i.cantPedido + (i.cantRegaloPedido ?? 0),
+        entregadas: i.cantEntrega + (i.cantRegaloEntrega ?? 0),
+        ...((i.cantRegaloPedido ?? 0) > 0 ? { regaloPedido: i.cantRegaloPedido, regaloEntregado: i.cantRegaloEntrega ?? 0 } : {}),
       }))
     : getItemsFromPedido(p).map((i) => ({
         producto: i.producto,
@@ -68,7 +71,13 @@ export function itemsConsulta(p: Pedido): ItemConsulta[] {
 /** «10 pedidas · por entregar», «6 pedidas · 4 entregadas · 2 por entregar», «pedido anulado»… */
 export function lineaProducto(i: ItemConsulta, p: Pedido): string {
   const terminal = esTerminal(p);
-  return `${i.pedidas} pedidas${
+  if (i.regaloPedido && !terminal && i.entregadas < i.pedidas && i.entregadas > 0) {
+    const gratisEntregadas = i.regaloEntregado ?? 0
+    return `${i.pedidas} pedidas (${i.pedidas - i.regaloPedido} con precio + ${i.regaloPedido} de regalo) · ` +
+      `${i.entregadas} entregadas (${i.entregadas - gratisEntregadas} con precio + ${gratisEntregadas} de regalo) · ` +
+      `${i.pedidas - i.regaloPedido - (i.entregadas - gratisEntregadas)} con precio y ${i.regaloPedido - gratisEntregadas} de regalo por entregar`
+  }
+  return `${i.pedidas} pedidas${i.regaloPedido ? ` (${i.pedidas - i.regaloPedido} con precio + ${i.regaloPedido} de regalo)` : ''}${
     terminal
       ? ` · pedido ${p.estadoEntrega === "ANULADO" ? "anulado" : "cancelado"}`
       : i.entregadas > i.pedidas

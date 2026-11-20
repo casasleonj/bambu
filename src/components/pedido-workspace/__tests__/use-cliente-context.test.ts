@@ -43,3 +43,34 @@ describe('useClienteContext', () => {
     expect(result.current.patron).toBeNull()
   })
 })
+
+describe('#891 — carreras del contexto', () => {
+  it('A→B→A: descarta fiado y patrón de la primera selección A incluso si fetch ignora abort', async () => {
+    type Stub = { ok: boolean; json: () => Promise<unknown> }
+    const fiados: Array<(v: Stub) => void> = []
+    const patrones: Array<(v: Stub) => void> = []
+    vi.stubGlobal('fetch', vi.fn((url: string) => new Promise<Stub>(resolve => {
+      if (url.includes('/fiado-status')) fiados.push(resolve)
+      else patrones.push(resolve)
+    })))
+    const { result, rerender } = renderHook(({ id }) => useClienteContext(id), { initialProps: { id: 'c1' } })
+    act(() => result.current.loadPatron())
+    rerender({ id: 'c2' })
+    rerender({ id: 'c1' })
+    act(() => result.current.loadPatron())
+    await act(async () => {
+      fiados[0]({ ok: true, json: async () => fiadoLimite })
+      patrones[0]({ ok: true, json: async () => clienteDetail })
+    })
+    expect(result.current.fiadoStatus).toBeNull()
+    expect(result.current.patron).toBeNull()
+    expect(result.current.patronLoading).toBe(true)
+    await act(async () => {
+      fiados[2]({ ok: true, json: async () => ({ success: true, status: { nivel: 'ok', count: 0 } }) })
+      patrones[1]({ ok: true, json: async () => ({ success: true, cliente: { frecuenciaSugerida: null, productosSugeridos: [] } }) })
+    })
+    expect(result.current.fiadoStatus?.nivel).toBe('ok')
+    expect(result.current.patron?.productosSugeridos).toEqual([])
+    expect(result.current.patronLoading).toBe(false)
+  })
+})

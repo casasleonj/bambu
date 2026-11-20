@@ -1,6 +1,7 @@
 import { generateUUID } from '@/lib/uuid'
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
+import { mapRegaloPedidoError } from '@/modules/pedidos/presentation/regalo-pedido-http'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireOwnership } from '@/lib/auth-check'
 import { EntregaSchema } from '@/lib/validators'
@@ -174,9 +175,10 @@ export async function POST(
     }
 
     // Build items for delivery
-    const entregas = (itemsEntregados || []).map((ie: { producto: string; cantidad: number }) => ({
+    const entregas = (itemsEntregados || []).map(ie => ({
       producto: ie.producto as import('@/shared/domain').ProductCode,
       cantidad: ie.cantidad,
+      cantidadRegalo: ie.cantidadRegalo,
     }))
 
     // Build payments
@@ -323,6 +325,10 @@ export async function POST(
 
     return apiSuccess(result)
   } catch (error) {
+    const regaloError = mapRegaloPedidoError(error)
+    if (regaloError) return apiError(regaloError.message, regaloError.status, { code: regaloError.code })
+    if (error instanceof Error && error.message === 'EMBARQUE_ENTREGA_INVALIDO')
+      return apiError('La misión de entrega ya no está disponible. Actualiza el pedido antes de registrar.', 409, { code: 'EMBARQUE_ENTREGA_INVALIDO' })
     if (error instanceof Error && error.message === 'ENTREGA_IDEMPOTENCIA_CONFLICTO')
       return apiError('La referencia de entrega ya se usó con otros datos.', 409)
     if (error instanceof Error && error.message === 'PEDIDO_NOT_FOUND') {

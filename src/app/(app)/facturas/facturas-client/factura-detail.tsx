@@ -143,7 +143,7 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
       const meta = getProductoIconConfig(item.producto)
       return `
         <tr>
-          <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;">${meta.label}</td>
+          <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;">${meta.label}${item.cantRegaloPedido ? `<br><small>+ ${item.cantRegaloPedido} de regalo · ${item.cantPedido + item.cantRegaloPedido} unidades físicas</small>` : ''}</td>
           <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;text-align:right;">${item.cantPedido}</td>
           <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;text-align:right;">${formatPrecioUnitario(Number(item.precio))}</td>
           <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;text-align:right;"><strong>${formatCurrency(Number(item.subtotal))}</strong></td>
@@ -512,6 +512,7 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono, onOpen
                           <TableCell className="px-2 sm:px-4 py-3">
                             <Icon size={18} className="inline-block mr-2 align-text-bottom" />
                             <span className="text-sm font-medium">{meta.label}</span>
+                            {(item.cantRegaloPedido ?? 0) > 0 && <p className="mt-1 text-xs text-amber-800">+ {item.cantRegaloPedido} de regalo · {item.cantPedido + (item.cantRegaloPedido ?? 0)} unidades físicas</p>}
                           </TableCell>
                           <TableCell className="px-2 sm:px-4 py-3 text-right text-sm">{item.cantPedido}</TableCell>
                           <TableCell className="px-2 sm:px-4 py-3 text-right text-sm hidden sm:table-cell">{formatPrecioUnitario(Number(item.precio))}</TableCell>

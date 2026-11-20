@@ -40,15 +40,35 @@ const total = (u: UnidadesDelDia) => u.agua + u.hielo + u.botellon + u.bolsaAgua
 export interface UnidadEntregadaDetalle {
   pedidoId: string
   producto: string
-  cantidad: number
-  cantidadPrevia: number
+  cantidad: number // unidades físicas
+  cantidadPrevia: number // unidades físicas anteriores
+  cantidadRegalo?: number // ausente cuando la evidencia no distingue regalos
+  cantidadRegaloPrevia: number
+}
+
+/** Acumulado físico actual, también para el fallback explícitamente aproximado del cierre. */
+export function unidadesFisicasEntregadas(p: {
+  cPacaAguaEnt: number; cPacaHieloEnt: number; cBotellonFabEnt: number; cBotellonDomEnt: number
+  cBolsaAguaEnt: number; cBolsaHieloEnt: number
+  items?: Array<{ producto: string; cantEntrega: number; cantRegaloEntrega?: number }>
+}): UnidadesDelDia {
+  const acumulado = vacio()
+  if (p.items?.length) {
+    for (const i of p.items) {
+      const k = CLAVE[i.producto]
+      if (k) acumulado[k] += i.cantEntrega + (i.cantRegaloEntrega ?? 0)
+    }
+    return acumulado
+  }
+  return { agua: p.cPacaAguaEnt, hielo: p.cPacaHieloEnt, botellon: p.cBotellonFabEnt + p.cBotellonDomEnt,
+    bolsaAgua: p.cBolsaAguaEnt, bolsaHielo: p.cBolsaHieloEnt }
 }
 
 export async function unidadesEntregadasDelDia(db: Db, rango: RangoDia): Promise<UnidadesEntregadasDelDia> {
   return (await detalleUnidadesEntregadasDelDia(db, rango)).unidades
 }
 
-/** Misma atribución que cierre/producción; conserva deltas para valorar sin duplicar. */
+/** Procedencia compartida, con deltas físicos y comerciales para valoraciones diarias. */
 export async function detalleUnidadesEntregadasDelDia(db: Db, rango: RangoDia) {
   // Eventos de entrega con fecha dentro del día (más sus hermanos de otros días, para validar la suma).
   const delDia = await leerEntregasConsulta(db, { rango })
@@ -69,6 +89,7 @@ export async function detalleUnidadesEntregadasDelDia(db: Db, rango: RangoDia) {
       cBotellonDomEnt: true,
       cBolsaAguaEnt: true,
       cBolsaHieloEnt: true,
+      items: { select: { producto: true, cantEntrega: true, cantRegaloEntrega: true } },
     },
   })
   const todos = await leerEntregasConsulta(db, { ids: candidatos.map((p) => p.id) })
@@ -78,29 +99,29 @@ export async function detalleUnidadesEntregadasDelDia(db: Db, rango: RangoDia) {
   const res: UnidadesEntregadasDelDia = { ...vacio(), aproximados: [] }
   const detalle: UnidadEntregadaDetalle[] = []
   for (const p of candidatos) {
-    const acumulado: UnidadesDelDia = {
-      agua: p.cPacaAguaEnt,
-      hielo: p.cPacaHieloEnt,
-      botellon: p.cBotellonFabEnt + p.cBotellonDomEnt,
-      bolsaAgua: p.cBolsaAguaEnt,
-      bolsaHielo: p.cBolsaHieloEnt,
-    }
+    const acumulado = unidadesFisicasEntregadas(p)
     if (total(acumulado) === 0) continue
     const eventos = porPedido.get(p.id) ?? []
     const seguro = eventos.length > 0 && eventos.every((e) => !e.incompleto && e.cantidades && !e.precisionDia)
     if (seguro) {
-      const entra = new Set(delDia.filter((e) => e.pedidoId === p.id).map((e) => e.id))
+      const entra = delDia.filter((e) => e.pedidoId === p.id).map((e) => e.id)
+      const entraIds = new Set(entra)
       const previas = new Map<string, number>()
+      const previasRegalo = new Map<string, number>()
       for (const e of [...eventos].sort((a, b) => +a.fecha - +b.fecha || a.id.localeCompare(b.id))) {
         for (const l of e.cantidades ?? []) {
           const k = CLAVE[l.producto]
-          if (!k || l.cantidad === 0) continue
+          if (!k || l.cantidad <= 0) continue
           const cantidadPrevia = previas.get(l.producto) ?? 0
-          if (entra.has(e.id)) {
+          const cantidadRegaloPrevia = previasRegalo.get(l.producto) ?? 0
+          if (entraIds.has(e.id)) {
             res[k] += l.cantidad
-            detalle.push({ pedidoId: p.id, producto: l.producto, cantidad: l.cantidad, cantidadPrevia })
+            detalle.push({ pedidoId: p.id, producto: l.producto, cantidad: l.cantidad, cantidadPrevia,
+              ...(l.cantidadRegalo !== undefined ? { cantidadRegalo: l.cantidadRegalo } : {}),
+              cantidadRegaloPrevia })
           }
           previas.set(l.producto, cantidadPrevia + l.cantidad)
+          if (l.cantidadRegalo !== undefined) previasRegalo.set(l.producto, cantidadRegaloPrevia + l.cantidadRegalo)
         }
       }
       continue
@@ -109,7 +130,11 @@ export async function detalleUnidadesEntregadasDelDia(db: Db, rango: RangoDia) {
     if (p.fecha >= rango.desde && p.fecha < rango.hasta) {
       for (const [producto, k] of Object.entries(CLAVE)) {
         res[k] += acumulado[k]
-        if (acumulado[k] > 0) detalle.push({ pedidoId: p.id, producto, cantidad: acumulado[k], cantidadPrevia: 0 })
+        if (acumulado[k] > 0) {
+          const regalos = p.items.reduce((n, i) => n + (i.producto === producto ? (i.cantRegaloEntrega ?? 0) : 0), 0)
+          detalle.push({ pedidoId: p.id, producto, cantidad: acumulado[k], cantidadPrevia: 0,
+            cantidadRegalo: regalos, cantidadRegaloPrevia: 0 })
+        }
       }
       // Solo es dudoso si la entrega pudo ocurrir otro día; creado y entregado el mismo día no necesita aviso.
       const mismoDia = p.entregadoAt && diaBogota(p.entregadoAt) === diaBogota(p.fecha)

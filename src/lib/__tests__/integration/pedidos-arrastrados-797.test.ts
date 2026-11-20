@@ -16,7 +16,7 @@ const AYER = antes(1);
 const ANTEAYER = antes(2);
 const en = (dia: string, h: string) => new Date(`${dia}T${h}-05:00`);
 const hoy = (s = "") =>
-  leerFiltrosConsulta(new URLSearchParams(s), HOY);
+  leerFiltrosConsulta(new URLSearchParams(s ? `${s}&agrupar=` : 'agrupar='), HOY); // #915: contrato sin agrupar (sección aparte)
 let adminId: string;
 
 async function crear(
@@ -24,13 +24,14 @@ async function crear(
   opts: {
     estadoEntrega?: "PENDIENTE" | "EN_RUTA" | "NO_ENTREGADO" | "ENTREGADO" | "ANULADO" | "CANCELADO";
     nombre?: string;
+    telefono?: string;
     canal?: "PUNTO" | "DOMICILIO";
     hora?: string;
   } = {},
 ) {
   const estadoEntrega = opts.estadoEntrega ?? "PENDIENTE";
   const cliente = await testPrisma.cliente.create({
-    data: { nombre: opts.nombre ?? `797 ${randomUUID()}`, telefono: randomUUID() },
+    data: { nombre: opts.nombre ?? `797 ${randomUUID()}`, telefono: opts.telefono ?? randomUUID() },
   });
   return testPrisma.pedido.create({
     data: {
@@ -88,18 +89,37 @@ describe("#797 — pendientes de días anteriores en PostgreSQL", () => {
   });
 
   it("E10: incluye pendiente, en ruta y no entregado; excluye entregado, anulado y cancelado", async () => {
+    // #882: la búsqueda también indexa nombre y teléfono de Cliente.
+    // Un UUID aleatorio puede contener "e10" en cualquiera de ambos campos:
+    // eso introducía un cuarto pedido en la consulta sin ser regresión ERP.
+    // Reproducir los dos caminos con clientes ajenos antes de filtrar estados.
+    const telefonoAjeno = `e10${randomUUID()}`;
+    const ajeno = await crear(AYER, {
+      nombre: `Cliente ajeno a estados ${randomUUID()}`,
+      telefono: telefonoAjeno,
+    });
+    const nombreAjeno = `Cliente con E10 ${randomUUID()}`;
+    const ajenoPorNombre = await crear(AYER, { nombre: nombreAjeno });
+    const porTelefono = await consultarPedidos({ ...hoy(), search: telefonoAjeno }, "ADMIN");
+    const porNombre = await consultarPedidos({ ...hoy(), search: nombreAjeno }, "ADMIN");
+    expect(porTelefono.arrastrados?.map((p) => p.id)).toContain(ajeno.id);
+    expect(porNombre.arrastrados?.map((p) => p.id)).toContain(ajenoPorNombre.id);
+
+    // El marcador incorpora palabras y un UUID; no puede coincidir por azar
+    // con un teléfono UUID y aísla esta comprobación de otros fixtures.
+    const marcador = `E10 estados ${randomUUID()}`;
     const [pend, ruta, noEnt, entregado, anulado, cancelado] = await Promise.all([
-      crear(AYER, { nombre: "E10 pend" }),
-      crear(AYER, { nombre: "E10 ruta", estadoEntrega: "EN_RUTA" }),
-      crear(AYER, { nombre: "E10 noent", estadoEntrega: "NO_ENTREGADO" }),
-      crear(AYER, { nombre: "E10 entregado", estadoEntrega: "ENTREGADO" }),
-      crear(AYER, { nombre: "E10 anulado", estadoEntrega: "ANULADO" }),
-      crear(AYER, { nombre: "E10 cancelado", estadoEntrega: "CANCELADO" }),
+      crear(AYER, { nombre: `${marcador} pend` }),
+      crear(AYER, { nombre: `${marcador} ruta`, estadoEntrega: "EN_RUTA" }),
+      crear(AYER, { nombre: `${marcador} noent`, estadoEntrega: "NO_ENTREGADO" }),
+      crear(AYER, { nombre: `${marcador} entregado`, estadoEntrega: "ENTREGADO" }),
+      crear(AYER, { nombre: `${marcador} anulado`, estadoEntrega: "ANULADO" }),
+      crear(AYER, { nombre: `${marcador} cancelado`, estadoEntrega: "CANCELADO" }),
     ]);
-    const r = await consultarPedidos({ ...hoy(), search: "E10" }, "ADMIN");
+    const r = await consultarPedidos({ ...hoy(), search: marcador }, "ADMIN");
     const ids = r.arrastrados!.map((p) => p.id);
     expect(ids).toEqual(expect.arrayContaining([pend.id, ruta.id, noEnt.id]));
-    for (const x of [entregado, anulado, cancelado]) expect(ids).not.toContain(x.id);
+    for (const x of [entregado, anulado, cancelado, ajeno, ajenoPorNombre]) expect(ids).not.toContain(x.id);
     expect(r.arrastradosTotal).toBe(3);
   });
 

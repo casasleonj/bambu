@@ -84,6 +84,10 @@ const CODIGOS_400 = [
 
 /** Traduce un error del caso de uso a la respuesta HTTP; `null` = no es un error conocido. */
 export function mapCierreError(message: string): ErrorHttpCierre | null {
+  if (/^(REGALO_DESGLOSE_REQUERIDO|REGALO_MISION_SIN_EVIDENCIA):/.test(message)) {
+    const [code, ...resto] = message.split(':')
+    return { status: 409, code, message: resto.join(':').trim() }
+  }
   if (message === 'EMBARQUE_NOT_FOUND') return { status: 404, message: 'Embarque no encontrado' }
   if (message === 'EMBARQUE_YA_CERRADO') return { status: 400, message: 'El embarque ya esta cerrado' }
   // La máquina de estados de `EstadoEmbarque` solo permite ABIERTO → EN_RUTA → CERRADO. Antes todo

@@ -4,6 +4,7 @@ export interface VentaPorPrecio {
   canal: 'PUNTO' | 'DOMICILIO'
   precio: number
   cantidad: number
+  cantidadRegalo?: number
   subtotal: number
 }
 

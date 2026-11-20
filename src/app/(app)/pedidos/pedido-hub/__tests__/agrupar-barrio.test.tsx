@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { OperacionList } from "../operacion-list";
 import { GrupoBarrioEncabezado } from "../grupo-barrio-encabezado";
@@ -136,7 +136,7 @@ describe("GrupoBarrioEncabezado", () => {
 });
 
 describe("filtro «Agrupar por barrio»", () => {
-  const f0 = leerFiltrosConsulta(new URLSearchParams(), "2026-11-09");
+  const f0 = leerFiltrosConsulta(new URLSearchParams("agrupar="), "2026-11-09");
   it("alterna, y al desactivar también quita el barrio elegido", () => {
     const on = alternarAgrupar(f0);
     expect(on.agrupar).toBe("barrio");
@@ -157,5 +157,112 @@ describe("filtro «Agrupar por barrio»", () => {
     expect(leerFiltrosConsulta(new URLSearchParams("agrupar=barrio&grupoBarrio=b%3Aabc"), "2026-11-09")).toMatchObject({ agrupar: "barrio", grupoBarrio: "b:abc" });
     expect(() => leerFiltrosConsulta(new URLSearchParams("agrupar=comuna"), "2026-11-09")).toThrow();
     expect(() => leerFiltrosConsulta(new URLSearchParams("grupoBarrio=%25drop"), "2026-11-09")).toThrow();
+  });
+});
+
+describe("#909 — Recorrido ↔ FIFO", () => {
+  it("«FIFO» apaga el modo Recorrido aunque no haya prioridades en la URL", () => {
+    montar([fila("a", 1, CENTRO), fila("b", 2, VILLA)]);
+    const recorrido = screen.getByRole("button", { name: "Recorrido" });
+    fireEvent.click(recorrido);
+    expect(recorrido).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("recorrido-barrio-select")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Volver al orden FIFO"));
+    expect(recorrido).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByTestId("recorrido-barrio-select")).toBeNull();
+    expect(screen.queryByLabelText("Subir Centro")).toBeNull();
+  });
+
+  it("sin barrios en la consulta de hoy, el Recorrido usa los barrios visibles (arrastres)", () => {
+    montar([fila("a", 1, CENTRO), fila("b", 2, VILLA)], { grupos: [] });
+    fireEvent.click(screen.getByRole("button", { name: "Recorrido" }));
+    const select = screen.getByTestId("recorrido-barrio-select") as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      "Selecciona cualquier barrio", "Centro (1 pedidos)", "Villa Nueva (1 pedidos)",
+    ]);
+    fireEvent.change(select, { target: { value: "b:villa" } });
+    expect(screen.getByTestId("recorrido-priorizar")).toBeEnabled();
+  });
+});
+
+describe("#913 — Recorrido inmediato y sin viaje al servidor", () => {
+  const orden = () => screen.getAllByRole("region").map((r) => r.getAttribute("aria-label"));
+  beforeEach(() => window.history.replaceState({}, "", "/pedidos"));
+
+  it("«Llevar al primero» actualiza la URL y reordena los bloques en el acto", () => {
+    montar([fila("a", 1, CENTRO), fila("b", 2, VILLA)]);
+    expect(orden()).toEqual(["Barrio Centro", "Barrio Villa Nueva"]);
+    fireEvent.click(screen.getByRole("button", { name: "Recorrido" }));
+    fireEvent.change(screen.getByTestId("recorrido-barrio-select"), { target: { value: "b:villa" } });
+    fireEvent.click(screen.getByTestId("recorrido-priorizar"));
+    expect(new URLSearchParams(window.location.search).getAll("recorrido")).toEqual(["b:villa"]);
+    expect(new URLSearchParams(window.location.search).get("agrupar")).toBe("barrio");
+    expect(orden()).toEqual(["Barrio Villa Nueva", "Barrio Centro"]);
+  });
+
+  it("Bajar y Subir mueven un barrio y lo reflejan en la lista sin esperar al servidor", () => {
+    montar([fila("a", 1, CENTRO), fila("b", 2, VILLA)]);
+    fireEvent.click(screen.getByRole("button", { name: "Recorrido" }));
+    fireEvent.click(screen.getByLabelText("Bajar Centro"));
+    expect(orden()).toEqual(["Barrio Villa Nueva", "Barrio Centro"]);
+    fireEvent.click(screen.getByLabelText("Subir Centro"));
+    expect(orden()).toEqual(["Barrio Centro", "Barrio Villa Nueva"]);
+  });
+
+  it("la venta anónima en punto va en su propio bloque: sin controles de Recorrido y fuera del selector", () => {
+    const ANON = { clave: "venta-anonima", etiqueta: "Ventas en punto sin cliente" };
+    const anonima = { ...fila("c", 3, ANON), clienteId: "CONSUMIDOR_FINAL", origen: "VENTA_RAPIDA" as const, canal: "PUNTO" as const };
+    montar([fila("a", 1, CENTRO), fila("b", 2, SIN), anonima], { grupos: [{ ...CENTRO, total: 1 }, { ...SIN, total: 1 }, { ...ANON, total: 1, unidadesPendientes: 0, remanentes: {} }] });
+    fireEvent.click(screen.getByRole("button", { name: "Recorrido" }));
+    expect(screen.queryByLabelText("Subir Ventas en punto sin cliente")).toBeNull();
+    expect(screen.queryByLabelText("Bajar Ventas en punto sin cliente")).toBeNull();
+    const select = screen.getByTestId("recorrido-barrio-select") as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["", "b:centro", "sin-barrio"]);
+    expect(screen.getByTestId("grupo-barrio-venta-anonima")).toHaveTextContent("Ventas en punto sin cliente");
+    expect(screen.getByTestId("grupo-barrio-venta-anonima")).not.toHaveTextContent("Por entregar");
+    // la fila anónima no se rotula «Sin barrio»; la de un cliente registrado sin barrio sí
+    expect(screen.queryByTestId("operacion-barrio-c")).toBeNull();
+    expect(screen.getByTestId("operacion-barrio-b")).toHaveTextContent("Sin barrio");
+    expect(orden().at(-1)).toBe("Barrio Ventas en punto sin cliente");
+  });
+});
+
+describe("#915 — arrastres y entregas anteriores dentro del grupo de su barrio", () => {
+  const entrega = (pedidoId: string, numero: number, g: { clave: string; etiqueta: string }) => ({
+    pedidoId, numero, nombre: `Cliente ${numero}`, fechaPedido: "2026-10-28", estadoAlCorte: "PRIMERA_ENTREGA" as const,
+    cantidadesDelRango: [{ producto: "PACA_AGUA", cantidad: 4 }], cantidadesAlCorte: [{ producto: "PACA_AGUA", cantidad: 4 }],
+    fechaCompletado: "2026-10-29", hitos: [{ fecha: "2026-10-29", cantidades: [{ producto: "PACA_AGUA", cantidad: 4 }], completado: true, porConciliar: false }],
+    pedidoAnterior: true, grupoBarrio: g,
+  });
+  const SOLO = { clave: "b:solo", etiqueta: "Barrio Solo" };
+  const ent = (extra: Record<string, unknown> = {}) => ({
+    entregasAnteriores: { entregas: [entrega("e1", 501, CENTRO), entrega("e2", 502, SOLO)], primeraPagina: true, hasta: "2026-10-29", periodo: "hoy" as const, onVerTodas: vi.fn(), ...extra },
+  });
+
+  it("el pedido de un día anterior lleva su tag «Día anterior» y el de hoy no", () => {
+    montar([{ ...fila("a", 1, CENTRO), diaAnterior: true }, fila("b", 2, CENTRO)]);
+    expect(screen.getByTestId("operacion-dia-anterior-a")).toHaveTextContent("Día anterior");
+    expect(screen.queryByTestId("operacion-dia-anterior-b")).toBeNull();
+  });
+
+  it("las entregas de pedidos anteriores salen dentro del bloque de su barrio, plegadas", () => {
+    montar([fila("a", 1, CENTRO), fila("b", 2, VILLA)], ent());
+    const centro = screen.getByRole("region", { name: "Barrio Centro" });
+    expect(within(centro).getByTestId("entregas-historicas-toggle")).toHaveTextContent("1 pedido anterior con entregas hoy");
+    const villa = screen.getByRole("region", { name: "Barrio Villa Nueva" });
+    expect(within(villa).queryByTestId("entregas-historicas-toggle")).toBeNull();
+  });
+
+  it("un barrio con solo entregas (sin pedidos) obtiene su bloque, antes de «Sin barrio»; en páginas siguientes no se repite", () => {
+    montar([fila("a", 1, CENTRO), fila("c", 3, SIN)], ent());
+    const regiones = screen.getAllByRole("region").map((r) => r.getAttribute("aria-label")).filter((l) => l?.startsWith("Barrio "));
+    expect(regiones).toEqual(["Barrio Centro", "Barrio Barrio Solo", "Barrio Sin barrio"]);
+    expect(within(screen.getByRole("region", { name: "Barrio Barrio Solo" })).getByTestId("entregas-historicas-toggle")).toBeInTheDocument();
+  });
+
+  it("en la página 2 no aparecen los bloques de solo entregas", () => {
+    montar([fila("a", 1, CENTRO)], ent({ primeraPagina: false }));
+    expect(screen.queryByRole("region", { name: "Barrio Barrio Solo" })).toBeNull();
+    expect(within(screen.getByRole("region", { name: "Barrio Centro" })).getByTestId("entregas-historicas-toggle")).toBeInTheDocument();
   });
 });

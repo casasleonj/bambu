@@ -88,7 +88,7 @@ describe("#836 F1 — consulta por fecha prometida (Postgres real)", () => {
   });
 
   it("la consulta sin foco sigue igual: por fecha de pedido, el creado hace 3 días no aparece en «hoy»", async () => {
-    const r = await consultarPedidos(leerFiltrosConsulta(new URLSearchParams("pageSize=100")), "ADMIN");
+    const r = await consultarPedidos(leerFiltrosConsulta(new URLSearchParams("pageSize=100&agrupar=")), "ADMIN");
     expect(r.pedidos.map((p) => p.id)).not.toContain(ids.hoyCreadoAntes);
   });
 });

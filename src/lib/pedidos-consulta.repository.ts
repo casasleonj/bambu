@@ -9,11 +9,17 @@ import { getAnonymousClientDisplayName } from "./cliente-canonical";
 import { pickCoords } from "./geo/pedido-coords";
 import { pickDireccionTexto } from "./geo/pedido-direccion";
 import {
+  type CatalogoBarrios,
+  CLAVE_VENTA_ANONIMA,
+  ETIQUETA_VENTA_ANONIMA,
   construirCatalogoBarrios,
+  esVentaAnonima,
   ordenarGrupos,
   resolverGrupoBarrio,
   type GrupoBarrio,
 } from "./barrios/grupo-barrio";
+import { remanentesPorProducto } from "./barrios/remanentes-barrio";
+import { ordenarBarriosFIFO } from "./barrios/fifo-barrio";
 import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
 import { ordenarPorFranja } from "./pedidos-franja";
@@ -31,6 +37,7 @@ import {
 } from "./entregas-consulta";
 import {
   parametrosConsulta,
+  arrastreIntegrado,
   filtrosArrastrados,
   esFocoCompromiso,
   rangoConsultaPedidos,
@@ -215,20 +222,58 @@ const dec = (v: unknown) => centavos(v) / 100;
  * #797: añade los pendientes de días anteriores como lectura aparte; su fallo
  * no invalida la lista principal.
  */
+/** #913: sin demanda FIFO, «Sin barrio» va tras los barrios y las ventas anónimas al final de todo. */
+const colaNoTerritorial = (clave: string) => (clave === CLAVE_VENTA_ANONIMA ? 2 : clave === "sin-barrio" ? 1 : 0);
+
 export async function consultarPedidos(
   f: FiltrosConsultaPedidos,
   role: string | null,
   client = prisma,
 ): Promise<ResultadoConsultaPedidos> {
-  const resultado = await leerConsultaPedidos(f, role, client);
   const fa = filtrosArrastrados(f);
+  // #915: vista agrupada → los pendientes/parciales de días anteriores entran en la MISMA consulta
+  // (un solo universo deduplicado por pedido, sin tope de 5, agrupado y paginado en el servidor).
+  if (fa && arrastreIntegrado(f)) {
+    const integrado = await leerConsultaPedidos(f, role, client, false, fa);
+    // #841: una entrega parcial de un pedido que ya se ve como fila de esta página no se repite como tarjeta.
+    const visibles = new Set(integrado.pedidos.map((p) => p.id));
+    const destacadas = integrado.destacadas?.filter((d) => !visibles.has(d.pedidoId));
+    const quitadas = (integrado.destacadas?.length ?? 0) - (destacadas?.length ?? 0);
+    return {
+      ...integrado,
+      ...(destacadas
+        ? { destacadas, destacadasTotal: Math.max(0, (integrado.destacadasTotal ?? 0) - quitadas) }
+        : {}),
+      arrastradosIntegrados: true,
+    };
+  }
+  const resultado = await leerConsultaPedidos(f, role, client);
   if (!fa) return resultado;
   try {
-    const a = await leerConsultaPedidos(fa, role, client, true);
+    // #859: leer TODAS las páginas de arrastres, no solamente las primeras cinco.
+    // Se conserva el paginado interno para no crear una consulta de tamaño ilimitado.
+    const lote = 100;
+    const primera = await leerConsultaPedidos({ ...fa, page: 1, pageSize: lote }, role, client, true);
+    const acumulados = [...primera.pedidos];
+    const idsLeidos = new Set(acumulados.map(p => p.id));
+    const paginas = Math.ceil(primera.total / lote);
+    for (let pagina = 2; pagina <= paginas; pagina++) {
+      const siguiente = await leerConsultaPedidos({ ...fa, page: pagina, pageSize: lote }, role, client, true);
+      for (const pedido of siguiente.pedidos) {
+        if (!idsLeidos.has(pedido.id)) {
+          idsLeidos.add(pedido.id);
+          acumulados.push(pedido);
+        }
+      }
+    }
+    // La vista histórica conserva el límite de cinco; el total sigue siendo global.
+    const a = { ...primera, pedidos: acumulados.slice(0, 5) };
     // #841: un pedido que ya se ve en «Pendientes» no se repite en las entregas de
     // pedidos anteriores; su fila de pendientes ya dice cuánto se entregó y cuánto falta.
     // Solo se quita lo que realmente se muestra (los más antiguos, con tope): un parcial
     // pendiente fuera de ese tope se queda en las entregas para no desaparecer de la pantalla.
+    const idsPrincipal = new Set(resultado.pedidos.map(p => p.id));
+    a.pedidos = a.pedidos.filter(p => !idsPrincipal.has(p.id));
     const visibles = new Set(a.pedidos.map((p) => p.id));
     const destacadas = resultado.destacadas?.filter((d) => !visibles.has(d.pedidoId));
     const quitadas = (resultado.destacadas?.length ?? 0) - (destacadas?.length ?? 0);
@@ -241,7 +286,7 @@ export async function consultarPedidos(
           }
         : {}),
       arrastrados: a.pedidos,
-      arrastradosTotal: a.total,
+      arrastradosTotal: primera.total,
     };
   } catch (error) {
     logger.warn({ err: error }, "No se pudieron leer los pendientes de días anteriores");
@@ -254,6 +299,8 @@ async function leerConsultaPedidos(
   role: string | null,
   client = prisma,
   arrastre = false,
+  /** #915: filtros de arrastre cuando se integran a esta misma consulta (vista agrupada). */
+  fArrastre: FiltrosConsultaPedidos | null = null,
 ): Promise<ResultadoConsultaPedidos> {
   return client.$transaction(
     async (tx) => {
@@ -264,6 +311,12 @@ async function leerConsultaPedidos(
       const rango = rangoConsultaPedidos(f),
         where = whereConsultaPedidos(f, coincidencias);
       const and = where.AND as Prisma.PedidoWhereInput[];
+      // #915: universo de la lista = rango de hoy ∪ pendientes de días anteriores. El resumen del día
+      // (importes, cobros, conteos) sigue usando solo `where`, para no mezclar días.
+      let whereLista: Prisma.PedidoWhereInput = fArrastre
+        ? { OR: [where, whereConsultaPedidos(fArrastre, coincidencias)] }
+        : where;
+      let catalogoBarrios: CatalogoBarrios | null = null;
       let cobros: CobrosPeriodo | null = null,
         entregas: EntregaConsulta[] | null = null;
       // #854: «Entregado» sin fecha ni evento de entrega (ventas de mostrador antiguas o
@@ -356,9 +409,10 @@ async function leerConsultaPedidos(
         const canonico = { select: { id: true, nombre: true } } as const;
         const [candidatos, barrios] = await Promise.all([
           tx.pedido.findMany({
-            where,
+            where: whereLista,
             select: {
-              id: true, fecha: true, numero: true, direccionEntrega: true, barrioEntrega: true,
+              id: true, clienteId: true, origen: true, fecha: true, createdAt: true, numero: true, estadoEntrega: true, fechaEntrega: true, direccionEntrega: true, barrioEntrega: true,
+              items: { select: { producto: true, cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true } },
               cliente: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
               negocio: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
             },
@@ -368,28 +422,75 @@ async function leerConsultaPedidos(
           }),
         ]);
         const catalogo = construirCatalogoBarrios(barrios);
+        catalogoBarrios = catalogo;
         const porGrupo = new Map<string, { g: GrupoBarrio; items: typeof candidatos }>();
         grupoPorId = new Map();
         for (const c of candidatos) {
-          const g = resolverGrupoBarrio(
-            { overrideDireccion: c.direccionEntrega, overrideBarrio: c.barrioEntrega, cliente: c.cliente, negocio: c.negocio },
-            catalogo,
-          );
+          // #913: la venta anónima en punto no es de ningún barrio: grupo propio, fuera del FIFO.
+          const g: GrupoBarrio = esVentaAnonima(c)
+            ? { clave: CLAVE_VENTA_ANONIMA, etiqueta: ETIQUETA_VENTA_ANONIMA }
+            : resolverGrupoBarrio(
+                { overrideDireccion: c.direccionEntrega, overrideBarrio: c.barrioEntrega, cliente: c.cliente, negocio: c.negocio },
+                catalogo,
+              );
           grupoPorId.set(c.id, g);
           const e = porGrupo.get(g.clave) ?? { g, items: [] };
           e.items.push(c);
           porGrupo.set(g.clave, e);
         }
-        grupos = ordenarGrupos([...porGrupo.values()].map(({ g, items }) => ({ ...g, total: items.length })));
+        // #859: el FIFO usa únicamente demanda física abierta y exigible.
+        const ahora = new Date();
+        const abiertos = candidatos.filter(c =>
+          !esVentaAnonima(c) &&
+          !["ENTREGADO", "CANCELADO", "ANULADO"].includes(c.estadoEntrega) &&
+          (!c.fechaEntrega || c.fechaEntrega <= ahora) &&
+          c.items.some(item => item.cantPedido > item.cantEntrega || item.cantRegaloPedido > item.cantRegaloEntrega)
+        );
+        const fifo = ordenarBarriosFIFO(abiertos.map(c => ({
+          id: c.id, barrioClave: grupoPorId!.get(c.id)!.clave, createdAt: c.createdAt,
+        })));
+        const posicionesFIFO = new Map(fifo.map((g, i) => [g.clave, i]));
+        const demandaPorBarrio = new Map<string, Record<string, number>>();
+        for (const pedido of abiertos) {
+          const clave = grupoPorId!.get(pedido.id)!.clave;
+          const acumulado = demandaPorBarrio.get(clave) ?? {};
+          for (const [producto, cantidad] of Object.entries(remanentesPorProducto(pedido.items))) {
+            acumulado[producto] = (acumulado[producto] ?? 0) + cantidad;
+          }
+          demandaPorBarrio.set(clave, acumulado);
+        }
+        grupos = ordenarGrupos([...porGrupo.values()].map(({ g, items }) => {
+          const remanentes = demandaPorBarrio.get(g.clave) ?? {};
+          return { ...g, total: items.length, remanentes,
+            unidadesPendientes: Object.values(remanentes).reduce((total, n) => total + n, 0) };
+        }))
+          .sort((a, b) =>
+            (posicionesFIFO.get(a.clave) ?? Number.MAX_SAFE_INTEGER) -
+            (posicionesFIFO.get(b.clave) ?? Number.MAX_SAFE_INTEGER) ||
+            colaNoTerritorial(a.clave) - colaNoTerritorial(b.clave) ||
+            a.etiqueta.localeCompare(b.etiqueta)
+          );
+        // El recorrido manual se aplica al conjunto completo antes de paginar.
+        // Los barrios no incluidos conservan su orden FIFO relativo.
+        if (f.recorrido?.length) {
+          const posicionesManual = new Map(f.recorrido.map((clave, i) => [clave, i]));
+          grupos.sort((a, b) =>
+            (posicionesManual.get(a.clave) ?? Number.MAX_SAFE_INTEGER) -
+            (posicionesManual.get(b.clave) ?? Number.MAX_SAFE_INTEGER)
+          );
+        }
         const elegibles = f.grupoBarrio ? (porGrupo.get(f.grupoBarrio)?.items ?? []) : candidatos;
-        if (f.grupoBarrio) and.push({ id: { in: elegibles.map((c) => c.id) } });
+        if (f.grupoBarrio) {
+          and.push({ id: { in: elegibles.map((c) => c.id) } });
+          if (fArrastre) whereLista = { AND: [whereLista, { id: { in: elegibles.map((c) => c.id) } }] };
+        }
         if (f.agrupar === "barrio") {
           const posGrupo = new Map(grupos.map((g, i) => [g.clave, i]));
           ordenPagina = [...elegibles]
             .sort((a, b) =>
               (posGrupo.get(grupoPorId!.get(a.id)!.clave)! - posGrupo.get(grupoPorId!.get(b.id)!.clave)!) ||
-              (b.fecha.getTime() - a.fecha.getTime()) ||
-              (b.numero - a.numero) ||
+              (a.createdAt.getTime() - b.createdAt.getTime()) ||
+              (a.numero - b.numero) ||
               (a.id < b.id ? -1 : 1))
             .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
             .map((c) => c.id);
@@ -415,9 +516,9 @@ async function leerConsultaPedidos(
       }
       const fin: Prisma.PedidoWhereInput = { AND: [where, validoFinanciero] };
       const [total, rowsSinOrden, repartidores, sumas, parciales] = await Promise.all([
-        tx.pedido.count({ where }),
+        tx.pedido.count({ where: whereLista }),
         tx.pedido.findMany({
-          where: ordenPagina ? { AND: [where, { id: { in: ordenPagina } }] } : where,
+          where: ordenPagina ? { AND: [whereLista, { id: { in: ordenPagina } }] } : whereLista,
           orderBy: arrastre
             ? [{ fecha: "asc" }, { numero: "asc" }, { id: "asc" }]
             : [{ fecha: "desc" }, { numero: "desc" }, { id: "asc" }],
@@ -534,7 +635,7 @@ async function leerConsultaPedidos(
             tx.pedidoItem.groupBy({
               by: ["producto"],
               where: { pedido: { is: fin } },
-              _sum: { cantPedido: true, cantEntrega: true },
+              _sum: { cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true },
             }),
             tx.pedido.aggregate({
               where: { AND: [fin, { items: { none: {} } }] },
@@ -559,8 +660,8 @@ async function leerConsultaPedidos(
               l.producto,
               {
                 producto: l.producto,
-                pedidas: l._sum.cantPedido ?? 0,
-                entregadas: l._sum.cantEntrega ?? 0,
+                pedidas: (l._sum.cantPedido ?? 0) + (l._sum.cantRegaloPedido ?? 0),
+                entregadas: (l._sum.cantEntrega ?? 0) + (l._sum.cantRegaloEntrega ?? 0),
               },
             ]),
           );
@@ -660,6 +761,7 @@ async function leerConsultaPedidos(
           zonaCli: direccion.direccion ?? "",
           barrioCli: direccion.barrio ?? "",
           ...(grupoPorId?.get(raw.id) ? { grupoBarrio: grupoPorId.get(raw.id) } : {}),
+          ...(fArrastre && raw.fecha < rango.desde ? { diaAnterior: true } : {}),
           // #836 F2: tramos del negocio para avisar «cierra ese día»; solo si tiene horario configurado.
           ...(raw.negocio?.horarios?.length ? { negocioHorarios: raw.negocio.horarios } : {}),
           rutaNombre:
@@ -719,6 +821,29 @@ async function leerConsultaPedidos(
       const consultaDestacadas = !arrastre && base === "pedido" && !f.all && !esFocoCompromiso(f.foco)
         ? await listarEntregasDestacadas(tx, whereConsultaPedidos({ ...f, fechaBase: "entrega", foco: f.foco === "entregaParcial" ? "" : f.foco }), rango, f.repartidorId, f.foco === "entregaParcial")
         : null;
+      // #915: con la vista agrupada, cada entrega de un pedido anterior se ubica en el grupo de su barrio efectivo
+      // (misma resolución que las filas: override del pedido > negocio > cliente; venta anónima aparte).
+      if (consultaDestacadas && catalogoBarrios && consultaDestacadas.destacadas.length) {
+        const fuentes = await tx.pedido.findMany({
+          where: { id: { in: consultaDestacadas.destacadas.map((d) => d.pedidoId) } },
+          select: {
+            id: true, clienteId: true, origen: true, direccionEntrega: true, barrioEntrega: true,
+            cliente: { select: { direccion: true, barrio: true, barrioCanonico: { select: { id: true, nombre: true } } } },
+            negocio: { select: { direccion: true, barrio: true, barrioCanonico: { select: { id: true, nombre: true } } } },
+          },
+        });
+        const grupoDe = new Map<string, GrupoBarrio>(fuentes.map((c) => [c.id, esVentaAnonima(c)
+          ? { clave: CLAVE_VENTA_ANONIMA, etiqueta: ETIQUETA_VENTA_ANONIMA }
+          : resolverGrupoBarrio(
+              { overrideDireccion: c.direccionEntrega, overrideBarrio: c.barrioEntrega, cliente: c.cliente, negocio: c.negocio },
+              catalogoBarrios!,
+            )]));
+        const conBarrio = consultaDestacadas.destacadas.map((d) => ({ ...d, ...(grupoDe.get(d.pedidoId) ? { grupoBarrio: grupoDe.get(d.pedidoId) } : {}) }));
+        // Con un barrio elegido no se cuelan entregas de otros barrios (A07).
+        const dentro = f.grupoBarrio ? conBarrio.filter((d) => d.grupoBarrio?.clave === f.grupoBarrio) : conBarrio;
+        consultaDestacadas.destacadasTotal = Math.max(0, consultaDestacadas.destacadasTotal - (conBarrio.length - dentro.length));
+        consultaDestacadas.destacadas = dentro;
+      }
       const [{ ahora }] = await tx.$queryRaw<
         Array<{ ahora: Date }>
       >`SELECT transaction_timestamp() AS ahora`;

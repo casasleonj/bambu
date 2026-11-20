@@ -105,7 +105,8 @@ export async function aplicarReduccionComercial(
   // nuevo pedido, deja de estar parcial; no genera otra entrega ni devolución.
   const compromisoCumplido = pedido.items.every(i =>
     (i.id === item.id ? calculo.cantPedidoNueva : i.cantPedido) === i.cantEntrega &&
-      i.cantEntrega >= entregadoLegacy(pedido, i.producto),
+      i.cantEntrega >= entregadoLegacy(pedido, i.producto) &&
+      i.cantRegaloEntrega === i.cantRegaloPedido,
   )
   const estadoEntregaNuevo = compromisoCumplido ? 'ENTREGADO' : pedido.estadoEntrega
 

@@ -13,7 +13,7 @@ import { fetchResilient } from '@/lib/fetch-resilient'
 
 export interface EntregarPedidoPayload {
   pedidoId: string
-  itemsEntregados?: Array<{ producto: string; cantidad: number }>
+  itemsEntregados?: Array<{ producto: string; cantidad: number; cantidadRegalo?: number }>
   pagos?: Array<{ metodo: string; monto: number }>
   // ADR-PAGO-EMBARQUE-CAPTURA-001: embarque de captura del cobro. Obligatorio
   // (400) si `pagos` trae montos. La app captura el embarque de la ruta en el

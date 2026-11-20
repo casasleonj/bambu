@@ -10,8 +10,8 @@
  * reportadas en el cierre.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type TxOrPrisma = any
+import type { Prisma } from '@prisma/client'
+type TxOrPrisma = Pick<Prisma.TransactionClient, 'embarqueMovimiento'>
 
 const PRODUCTOS = ['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO'] as const
 
@@ -59,6 +59,8 @@ export class RegistrarMovimientosCierre {
        * pedido no representa la misión y duplicaría eventos ya vivos.
        */
       entregasCierre?: Record<string, number>
+      /** #795: deltas comerciales verificados de la misión histórica; sin cambiarla a modo vivo. */
+      entregasLegadas?: Record<string, number>
     },
   ): Promise<number> {
     let count = 0
@@ -69,6 +71,8 @@ export class RegistrarMovimientosCierre {
 
     if (input.entregasCierre) {
       for (const producto of PRODUCTOS) entregados[producto] = input.entregasCierre[producto] ?? 0
+    } else if (input.entregasLegadas) {
+      for (const producto of PRODUCTOS) entregados[producto] = input.entregasLegadas[producto] ?? 0
     } else {
       for (const p of input.pedidosRaw) {
         entregados.PACA_AGUA += p.cPacaAguaEnt || 0

@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useReducer, useState } from 'react'
 import { generateUUID } from '@/lib/uuid'
+import { cantidadesRegaloValidas } from '@/shared/domain/cantidades-regalo'
 import { PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
 import { useClienteSearch } from '@/hooks/use-cliente-search'
 import type { NegocioPreseleccionado } from '@/lib/cliente-coincidencia'
@@ -110,11 +111,12 @@ export interface WorkspacePedidoInicial {
    * (VENTA_LIBRE/RECURRENTE siguen en el form legacy — §8.3 PENDIENTE).
    */
   origen: 'PEDIDO' | 'VENTA_RAPIDA'
-  items: Array<{ producto: ProductoCodigo; cantidad: number; precioManual?: number }>
+  items: Array<{ producto: ProductoCodigo; cantidad: number; precioManual?: number; cantidadRegalo?: number }>
   obs?: string | null
 }
 
 export interface PedidosWorkspaceProps {
+  puedeAutorizarRegalos?: boolean
   clientes: Cliente[]
   /** intención inicial — determina el origen del draft. */
   intent?: 'pedido' | 'venta-rapida'
@@ -165,7 +167,7 @@ export interface PedidosWorkspaceProps {
  * "aplicada" del patrón) vive como `useState` local — igual que en el
  * monolito, no es parte del "draft" que se envía.
  */
-export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, clientePrecargado, pedidoInicial, modo = 'crear', pedidoOrigenNumero, offlineIdInicial, onSubmit, onCancel }: PedidosWorkspaceProps) {
+export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, intent, ventaEnRuta, initialDraft, clientePrecargado, pedidoInicial, modo = 'crear', pedidoOrigenNumero, offlineIdInicial, onSubmit, onCancel }: PedidosWorkspaceProps) {
   const modoEdicion = Boolean(pedidoInicial)
   const esNuevaDemanda = modo === 'nueva-demanda'
   // Clave de idempotencia del borrador (plan de integridad v1.2 §5.B): nace al
@@ -182,7 +184,7 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
           clienteId: pedidoInicial.clienteId,
           negocioId: pedidoInicial.negocioId ?? null,
           canal: pedidoInicial.canal,
-          items: pedidoInicial.items.map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual })),
+          items: pedidoInicial.items.map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual, cantidadRegalo: i.cantidadRegalo })),
           obs: pedidoInicial.obs ?? undefined,
           direccionEntrega: (pedidoInicial.negocioId ? pedidoInicial.negocioDireccion : pedidoInicial.clienteDireccion) ?? '',
           barrioEntrega: (pedidoInicial.negocioId ? pedidoInicial.negocioBarrio : pedidoInicial.clienteBarrio) ?? '',
@@ -283,6 +285,7 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
       return {
         prodId,
         cantidad: draftItem?.cantidad ?? 0,
+        cantidadRegalo: draftItem?.cantidadRegalo,
         precio: previewItem?.precioUnitario ?? draftItem?.precioManual ?? precioBase,
         precioBase,
         precioManual: draftItem?.precioManual,
@@ -489,6 +492,10 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
     const hoy = todayStringBogota()
     const programacion = programable ? resolverProgramacion(state.draft.programacionFecha ?? '', state.draft.programacionHora ?? '', hoy) : {}
     if (programacion.error) { setProgramacionError(programacion.error); return }
+    if (state.draft.items.some(i => !cantidadesRegaloValidas(i.cantidad, i.cantidadRegalo ?? 0))) {
+      dispatch({ type: 'COMMIT_ERROR', message: 'Revisa las unidades de regalo: usa cantidades enteras y conserva las unidades con precio.' })
+      return
+    }
     if (faltanDatosRuta) {
       // No se envía nada: se marcan los campos que faltan para que el usuario los complete.
       setIntentoRegistrar(true)
@@ -528,8 +535,8 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
       origen: modoEdicion ? state.draft.origen : origenCreacion,
       pedidoOrigenId: state.draft.pedidoOrigenId,
       items: state.draft.items
-        .filter((i) => i.cantidad > 0)
-        .map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual })),
+        .filter((i) => i.cantidad > 0 || (i.cantidadRegalo ?? 0) > 0)
+        .map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual, cantidadRegalo: i.cantidadRegalo })),
       preciosManuales: Object.fromEntries(
         state.draft.items.filter((i) => i.precioManual).map((i) => [i.producto, i.precioManual as number]),
       ),
@@ -693,7 +700,9 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
       {/* ── Zona: Entrega (adaptativa por suficiencia — F-ENTREGA-i) ── */}
       {(!esVentaRapida || state.draft.canal === 'DOMICILIO') && (
         <WorkspaceEntrega
+          key={state.destinoRevision}
           entrega={state.preview?.entrega}
+          entregaAnterior={!state.preview && !state.error ? state.entregaVisual : undefined}
           canal={state.draft.canal}
           direccionEntrega={state.draft.direccionEntrega ?? ''}
           barrioEntrega={state.draft.barrioEntrega ?? ''}
@@ -701,7 +710,7 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
           onBarrioChange={(v) => dispatch({ type: 'SET_DIRECCION', direccion: state.draft.direccionEntrega ?? '', barrio: v })}
           entregaLat={state.draft.entregaLat ?? null}
           entregaLng={state.draft.entregaLng ?? null}
-          onUbicacionChange={(lat, lng) => dispatch({ type: 'SET_UBICACION', lat, lng })}
+          onUbicacionChange={(lat, lng) => dispatch({ type: 'SET_UBICACION', lat, lng, destinoRevision: state.destinoRevision })}
           previewPending={state.previewPending}
           ventaRapida={esVentaRapida}
           opcional={Boolean(ventaEnRuta)}
@@ -747,6 +756,10 @@ export function PedidosWorkspace({ clientes, intent, ventaEnRuta, initialDraft, 
         <PedidoItemEditor
           testIdPrefix="workspace"
           items={editorItems}
+          puedeAutorizarRegalos={puedeAutorizarRegalos}
+          onCantidadRegaloChange={(prodId, value) => dispatch({ type: 'SET_ITEM_REGALO',
+            producto: PRODUCTO_INFO[prodId].codigo as ProductoCodigo, cantidad: Number(value),
+          })}
           preciosLoading={state.previewPending || pricingLoading}
           onIncrement={(prodId) => setCantidad(prodId, cantOf(PRODUCTO_INFO[prodId].codigo as ProductoCodigo) + 1)}
           onDecrement={(prodId) => setCantidad(prodId, cantOf(PRODUCTO_INFO[prodId].codigo as ProductoCodigo) - 1)}

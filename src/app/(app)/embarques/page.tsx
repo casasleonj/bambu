@@ -41,6 +41,7 @@ export default async function EmbarquesPage() {
             cBotellonDomPed: true,
             cBolsaAguaPed: true,
             cBolsaHieloPed: true,
+            items: { select: { producto: true, cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true } },
           },
         },
         productos: true,

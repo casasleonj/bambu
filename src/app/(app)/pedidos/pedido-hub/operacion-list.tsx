@@ -5,8 +5,12 @@ import { pedidoItemsResumen } from '../pedido-items'
 import { deriveOperacion, origenLabel, embarqueLinea } from './derive-operacion'
 import type { AccionKey, DeriveContext, Pedido } from './types'
 import { OperacionConsulta,type AccionesConsulta } from './operacion-consulta'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { GrupoBarrioEncabezado } from './grupo-barrio-encabezado'
+import { EntregasDestacadas } from './entregas-destacadas'
+import type { EntregaDestacada } from '@/lib/pedidos-entregas-historial'
+import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
+import { CLAVE_VENTA_ANONIMA } from '@/lib/barrios/grupo-barrio'
 import { useAhora } from '@/hooks/use-ahora'
 import { ordenarPorFranja, type Franja } from '@/lib/pedidos-franja'
 
@@ -201,6 +205,24 @@ function ListaPorFranja({
 export function OperacionList({
   pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen, consulta, arrastre,
 }: OperacionListProps) {
+  // #859: recorrido manual temporal de la vista, sin alterar FIFO del servidor.
+  const [modoRecorrido, setModoRecorrido] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('recorrido'))
+  const [barrioSeleccionado, setBarrioSeleccionado] = useState("")
+  // #913: el Recorrido cambia la URL SIN navegación de servidor (antes cada clic repetía la consulta
+  // completa de la página en el servidor y solo después pedía los datos: dos viajes en serie).
+  const urlParams = useShallowSearchParams()
+  const clavesManuales = urlParams.getAll('recorrido')
+  // #909: si la URL pierde las prioridades (volver a FIFO, limpiar filtros, atrás), el modo
+  // Recorrido de esta lista también se apaga; no se queda «congelado» con los controles de Recorrido.
+  const habiaPrioridadesUrl = useRef(clavesManuales.length > 0)
+  const hayPrioridadesUrl = clavesManuales.length > 0
+  useEffect(() => {
+    if (habiaPrioridadesUrl.current && !hayPrioridadesUrl) setModoRecorrido(false)
+    habiaPrioridadesUrl.current = hayPrioridadesUrl
+  }, [hayPrioridadesUrl])
+  // Persist only explicit priorities: the server appends all other barrios in FIFO order.
+  const aplicarRecorrido = (orden: string[]) =>
+    urlParams.set({ recorrido: orden.slice(0, 20), agrupar: 'barrio', page: '1' }, { history: 'push' })
   if (pedidos.length === 0) {
     return (
       <EmptyState
@@ -223,20 +245,110 @@ export function OperacionList({
       if (ultimo && g && ultimo.clave === g.clave) ultimo.filas.push(p)
       else bloques.push({ clave: g?.clave ?? 'sin-barrio', etiqueta: g?.etiqueta ?? 'Sin barrio', filas: [p] })
     }
+    // #915: las entregas de pedidos anteriores van dentro del grupo de su barrio; un barrio que solo tiene
+    // esas entregas (sin pedidos pendientes) también obtiene su bloque, antes de «Sin barrio» y las ventas anónimas.
+    const entregasPorClave = new Map<string, EntregaDestacada[]>()
+    for (const d of consulta.entregasAnteriores?.entregas ?? []) {
+      const clave = d.grupoBarrio?.clave ?? 'sin-barrio'
+      entregasPorClave.set(clave, [...(entregasPorClave.get(clave) ?? []), d])
+    }
+    for (const [clave, lista] of entregasPorClave) {
+      if (bloques.some(b => b.clave === clave) || !consulta.entregasAnteriores?.primeraPagina) continue
+      const nuevo = { clave, etiqueta: lista[0].grupoBarrio?.etiqueta ?? 'Sin barrio', filas: [] as Pedido[] }
+      const i = bloques.findIndex(b => b.clave === 'sin-barrio' || b.clave === CLAVE_VENTA_ANONIMA)
+      if (i < 0) bloques.push(nuevo)
+      else bloques.splice(i, 0, nuevo)
+    }
+    // #909: los barrios del Recorrido son los de la consulta MÁS los de los bloques que se ven.
+    // Sin esto, una lista de «Pendientes de días anteriores» sin pedidos de hoy tenía el selector
+    // vacío y «Llevar al primero», Subir y Bajar no hacían nada.
+    // #913: la venta anónima en punto no es un barrio: no se prioriza ni se mueve en el Recorrido.
+    const gruposRecorrido = (consulta.grupos ?? []).filter(g => g.clave !== CLAVE_VENTA_ANONIMA)
+    for (const b of bloques) {
+      if (b.clave !== CLAVE_VENTA_ANONIMA && !gruposRecorrido.some(g => g.clave === b.clave)) gruposRecorrido.push({ clave: b.clave, etiqueta: b.etiqueta, total: b.filas.length })
+    }
+    const clavesGlobales = gruposRecorrido.map(g => g.clave)
+    const ordenEfectivo = [
+      ...clavesManuales.filter(clave => clavesGlobales.includes(clave)),
+      ...clavesGlobales.filter(clave => !clavesManuales.includes(clave)),
+    ]
+    // #913: el orden se ve al instante: los bloques visibles siguen las prioridades de la URL y el servidor
+    // confirma después con el mismo orden. Sin prioridades se respeta el orden FIFO que ya trae el servidor.
+    const posManual = (clave: string) => { const i = clavesManuales.indexOf(clave); return i < 0 ? Number.MAX_SAFE_INTEGER : i }
+    const bloquesVisibles = clavesManuales.length ? [...bloques].sort((a, b) => posManual(a.clave) - posManual(b.clave)) : bloques
+    const priorizar = (clave: string) => aplicarRecorrido([clave, ...clavesManuales.filter(k => k !== clave)])
+    const mover = (clave: string, desplazamiento: number) => {
+      const actual = [...ordenEfectivo]
+      const indice = actual.indexOf(clave)
+      const destino = indice + desplazamiento
+      if (indice < 0 || destino < 0 || destino >= actual.length) return
+      ;[actual[indice], actual[destino]] = [actual[destino], actual[indice]]
+      aplicarRecorrido(actual.slice(0, destino + 1))
+    }
     return (
       <div data-testid="pedidos-agrupados-barrio">
-        {bloques.map((b, i) => {
+        <div className="my-2 flex flex-wrap items-center gap-2 text-xs">
+          <button type="button" aria-label="Volver al orden FIFO" aria-pressed={!modoRecorrido} onClick={() => { setModoRecorrido(false); aplicarRecorrido([]) }}
+            className={`rounded-md border px-3 py-1.5 ${!modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>FIFO</button>
+          <button type="button" aria-pressed={modoRecorrido} onClick={() => setModoRecorrido(true)}
+            className={`rounded-md border px-3 py-1.5 ${modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>Recorrido</button>
+          {modoRecorrido && (
+            <>
+              <label htmlFor="recorrido-barrio" className="font-medium text-stone-700">Priorizar barrio</label>
+              <select id="recorrido-barrio" data-testid="recorrido-barrio-select"
+                value={barrioSeleccionado} onChange={e => setBarrioSeleccionado(e.target.value)}
+                className="max-w-full rounded-md border border-stone-400 bg-white px-2 py-1.5">
+                <option value="">Selecciona cualquier barrio</option>
+                {gruposRecorrido.map(g => (
+                  <option key={g.clave} value={g.clave}>{g.etiqueta} ({g.total} pedidos)</option>
+                ))}
+              </select>
+              {barrioSeleccionado && ordenEfectivo.includes(barrioSeleccionado) ? (
+                <button type="button" onClick={() => priorizar(barrioSeleccionado)} data-testid="recorrido-priorizar"
+                  className="rounded-md bg-stone-800 px-3 py-1.5 text-white">Llevar al primero</button>
+              ) : (
+                <span aria-disabled="true" className="rounded-md bg-stone-400 px-3 py-1.5 text-white">Llevar al primero</span>
+              )}
+              <span className="text-stone-500">Orden global temporal, sin guardar preferencias.</span>
+            </>
+          )}
+        </div>
+        {bloquesVisibles.map((b, i) => {
           const total = consulta.grupos?.find((g) => g.clave === b.clave)?.total ?? b.filas.length
           return (
             <section key={`${b.clave}-${i}`} aria-label={`Barrio ${b.etiqueta}`}>
               <GrupoBarrioEncabezado
-                grupo={{ clave: b.clave, etiqueta: b.etiqueta, total }}
+                grupo={consulta.grupos?.find((g) => g.clave === b.clave) ?? { clave: b.clave, etiqueta: b.etiqueta, total }}
                 enPagina={b.filas.length}
                 soloEste={consulta.grupoActivo === b.clave}
                 onSoloEste={consulta.onGrupoBarrio ? () => consulta.onGrupoBarrio!(b.clave) : undefined}
                 onTodos={consulta.onGrupoBarrio ? () => consulta.onGrupoBarrio!(null) : undefined}
               />
-              <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre}/>
+              {modoRecorrido && b.clave !== CLAVE_VENTA_ANONIMA && (
+                <div className="mb-1 flex gap-2">
+                  <button type="button" onClick={() => mover(b.clave, -1)} aria-label={`Subir ${b.etiqueta}`} disabled={ordenEfectivo.indexOf(b.clave) === 0}
+                    className="rounded border px-2 py-1 text-xs disabled:pointer-events-none disabled:opacity-40">↑ Subir</button>
+                  <button type="button" onClick={() => mover(b.clave, 1)} aria-label={`Bajar ${b.etiqueta}`} disabled={ordenEfectivo.indexOf(b.clave) === ordenEfectivo.length - 1}
+                    className="rounded border px-2 py-1 text-xs disabled:pointer-events-none disabled:opacity-40">↓ Bajar</button>
+                </div>
+              )}
+              {b.filas.length > 0 && (
+                <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre}/>
+              )}
+              {consulta.entregasAnteriores && entregasPorClave.has(b.clave) && bloquesVisibles.findIndex(x => x.clave === b.clave) === i && (
+                <div className="mt-2" data-testid={`entregas-anteriores-${b.clave}`}>
+                  <EntregasDestacadas
+                    entregas={entregasPorClave.get(b.clave)!}
+                    total={entregasPorClave.get(b.clave)!.length}
+                    rangoAmplio={false}
+                    hasta={consulta.entregasAnteriores.hasta}
+                    periodo={consulta.entregasAnteriores.periodo}
+                    plegable
+                    onVerPedido={consulta.onVerPedido}
+                    onVerTodas={consulta.entregasAnteriores.onVerTodas}
+                  />
+                </div>
+              )}
             </section>
           )
         })}

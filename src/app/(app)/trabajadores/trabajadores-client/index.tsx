@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { EmptyState } from '@/components/empty-state'
@@ -11,6 +11,14 @@ import { TrabajadorCard } from './trabajador-card'
 import { TrabajadorFormModal } from './trabajador-form-modal'
 import { buscarDifuso } from '@/lib/busqueda-fuzzy'
 import { DeudaDetalleDialog } from '@/components/deudas-trabajador/deuda-detalle-dialog'
+
+const FILTROS_ESTADO = [
+  { value: 'activos', label: 'Activos' },
+  { value: 'desactivados', label: 'Desactivados' },
+  { value: 'todos', label: 'Todos' },
+] as const
+
+type FiltroEstado = (typeof FILTROS_ESTADO)[number]['value']
 
 const EMPTY_FORM: TrabajadorFormData = {
   nombre: '',
@@ -35,6 +43,9 @@ export default function TrabajadoresClient({ initialTrabajadores, soloLectura = 
   const [trabajadores, setTrabajadores] = useState<Trabajador[]>(initialTrabajadores)
   const { confirm, modal } = useConfirm()
   const [search, setSearch] = useState('')
+  const [estado, setEstado] = useState<FiltroEstado>('activos')
+  const solicitudActual = useRef(0)
+  const [actualizando, setActualizando] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [isEdit, setIsEdit] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -43,15 +54,25 @@ export default function TrabajadoresClient({ initialTrabajadores, soloLectura = 
   const [deudaAbierta, setDeudaAbierta] = useState<Trabajador | null>(null)
 
   async function fetchTrabajadores() {
-    setFetchError(null)
+    const solicitud = ++solicitudActual.current
+    setActualizando(true)
     try {
-      const res = await fetch('/api/trabajadores?activo=true')
+      const res = await fetch('/api/trabajadores?activo=all', { cache: 'no-store' })
       if (!res.ok) throw new Error('Error al cargar trabajadores')
       const data = await res.json()
-      setTrabajadores(data.trabajadores || [])
+      // Una respuesta de un build anterior no confirma que incluya inactivos.
+      if (data.incluyeDesactivados !== true || !Array.isArray(data.trabajadores)) {
+        throw new Error('Catálogo de trabajadores incompleto')
+      }
+      if (solicitud !== solicitudActual.current) return
+      setTrabajadores(data.trabajadores)
+      setFetchError(null)
     } catch {
-      setFetchError('No se pudieron cargar los trabajadores')
+      if (solicitud !== solicitudActual.current) return
+      setFetchError('No se pudieron actualizar los trabajadores. Se conservan los últimos datos.')
       toast.error('Error cargando trabajadores')
+    } finally {
+      if (solicitud === solicitudActual.current) setActualizando(false)
     }
   }
 
@@ -59,7 +80,8 @@ export default function TrabajadoresClient({ initialTrabajadores, soloLectura = 
     fetchTrabajadores()
   }, 60_000)
 
-  const trabajadoresFiltrados = buscarDifuso(trabajadores, search, (t) => ({
+  const porEstado = trabajadores.filter((t) => estado === 'todos' || t.activo === (estado === 'activos'))
+  const trabajadoresFiltrados = buscarDifuso(porEstado, search, (t) => ({
     textos: [t.nombre, t.rol, t.tipoPago],
     pesosTexto: [3, 2, 1],
     telefonos: [t.telefono],
@@ -102,7 +124,9 @@ export default function TrabajadoresClient({ initialTrabajadores, soloLectura = 
       const res = await fetch(`/api/trabajadores/${id}`, { method: 'DELETE' })
       const data = await res.json()
       if (res.ok) {
-        fetchTrabajadores()
+        // Reflejar el hecho confirmado incluso si falla el refresco posterior.
+        setTrabajadores((prev) => prev.map((t) => t.id === id ? { ...t, activo: false } : t))
+        void fetchTrabajadores()
         toast.success('Trabajador desactivado')
       } else {
         toast.error(data.error?.message || 'Error al desactivar trabajador')
@@ -126,7 +150,20 @@ export default function TrabajadoresClient({ initialTrabajadores, soloLectura = 
         )}
       </div>
 
-      <div className="bg-white p-4 rounded-xl shadow mb-6">
+      <div className="bg-white p-4 rounded-xl shadow mb-6 space-y-3">
+        <div role="group" aria-label="Estado de los trabajadores" className="flex flex-wrap gap-2">
+          {FILTROS_ESTADO.map((filtro) => (
+            <button
+              key={filtro.value}
+              type="button"
+              aria-pressed={estado === filtro.value}
+              onClick={() => setEstado(filtro.value)}
+              className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-blue-600 ${estado === filtro.value ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            >
+              {filtro.label}
+            </button>
+          ))}
+        </div>
         <input
           type="text"
           placeholder="Buscar por nombre, rol, telefono..."
@@ -148,15 +185,30 @@ export default function TrabajadoresClient({ initialTrabajadores, soloLectura = 
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {trabajadores.length === 0 ? (
+      {actualizando && <p role="status" className="mb-3 text-sm text-gray-500">Actualizando trabajadores…</p>}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-busy={actualizando}>
+        {trabajadoresFiltrados.length === 0 && (fetchError || actualizando) ? (
+          <p className="col-span-full py-8 text-center text-sm text-gray-500">
+            {fetchError ? 'No se puede confirmar que no haya resultados.' : 'Comprobando resultados…'}
+          </p>
+        ) : trabajadores.length === 0 ? (
           <div className="col-span-full">
             <EmptyState
               icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
               title="No hay trabajadores"
               description="Registra los trabajadores de tu equipo"
-              actionLabel="+ Crear Trabajador"
-              onAction={openCreateModal}
+              actionLabel={soloLectura ? undefined : '+ Crear Trabajador'}
+              onAction={soloLectura ? undefined : openCreateModal}
+            />
+          </div>
+        ) : porEstado.length === 0 ? (
+          <div className="col-span-full">
+            <EmptyState
+              title={estado === 'activos' ? 'No hay trabajadores activos' : 'No hay trabajadores desactivados'}
+              description="Puedes consultar el listado completo sin crear otro registro."
+              actionLabel="Ver todos"
+              onAction={() => setEstado('todos')}
             />
           </div>
         ) : trabajadoresFiltrados.length === 0 ? (

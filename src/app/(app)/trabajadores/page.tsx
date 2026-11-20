@@ -8,7 +8,7 @@ export default async function TrabajadoresPage() {
   // Crear, editar y desactivar trabajadores es solo del ADMIN (las rutas responden 403 al resto).
   const soloLectura = (session?.user as { role?: string } | undefined)?.role !== 'ADMIN'
   const trabajadores = await prisma.trabajador.findMany({
-    where: { activo: true },
+    // #863: catálogo administrativo completo; el cliente filtra activos por defecto.
     orderBy: { nombre: 'asc' },
   })
 

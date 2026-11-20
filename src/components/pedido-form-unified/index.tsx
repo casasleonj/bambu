@@ -1,6 +1,7 @@
 'use client'
 
 import { importeLineaEditable } from '@/lib/precio-formato'
+import { cantidadesRegaloValidas } from '@/shared/domain/cantidades-regalo'
 
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
@@ -36,6 +37,7 @@ export interface PedidoInicialCliente {
 export interface PedidoInicialItem {
   producto: string
   cantidad: number
+  cantidadRegalo?: number
   precioManual?: number
 }
 
@@ -68,6 +70,7 @@ export interface PedidoInicial {
 }
 
 export interface PedidoFormUnifiedProps {
+  puedeAutorizarRegalos?: boolean
   contexto: 'PUNTO' | 'DOMICILIO'
   clientes: Cliente[]
   onSubmit: (data: PedidoUnifiedData) => void | Promise<boolean>
@@ -79,7 +82,7 @@ export interface PedidoUnifiedData {
   clienteId?: string
   negocioId?: string
   canal: 'PUNTO' | 'DOMICILIO'
-  items: Array<{ producto: string; cantidad: number; precioManual?: number }>
+  items: Array<{ producto: string; cantidad: number; precioManual?: number; cantidadRegalo?: number }>
   preciosManuales: Record<string, number>
   pagos: Array<{ metodo: string; monto: number }>
   obs?: string
@@ -159,9 +162,10 @@ function mapLegacyCodigoToProdId(legacyCodigo: string): string | undefined {
 
 // ==================== COMPONENTE ====================
 
-export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial }: PedidoFormUnifiedProps) {
+export function PedidoFormUnified({ contexto, clientes, puedeAutorizarRegalos = false, onSubmit, pedidoInicial }: PedidoFormUnifiedProps) {
   const [canal, setCanal] = useState<'PUNTO' | 'DOMICILIO'>(contexto)
   const [cantidades, setCantidades] = useState<Record<string, number>>({})
+  const [regalos, setRegalos] = useState<Record<string, number>>({})
   const [searchTerm, setSearchTerm] = useState('')
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
   const [negocioSeleccionado, setNegocioSeleccionado] = useState<string | null>(null)
@@ -488,15 +492,18 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     }
     const items = pedidoInicial.items
     const cantidadesIniciales: Record<string, number> = {}
+    const regalosIniciales: Record<string, number> = {}
     const manuales: Record<string, number> = {}
     for (const item of items) {
       const prodId = Object.keys(PRODUCTO_INFO).find(k => PRODUCTO_INFO[k].codigo === item.producto)
       if (prodId) {
         cantidadesIniciales[prodId] = item.cantidad
+        regalosIniciales[prodId] = item.cantidadRegalo ?? 0
         if (item.precioManual) manuales[PRODUCTO_INFO[prodId].codigo] = item.precioManual
       }
     }
     setCantidades(cantidadesIniciales)
+    setRegalos(regalosIniciales)
     setPreciosManuales(manuales)
     // Price resolution is handled by the useEffect at line 191
     // which triggers when clienteSeleccionado changes.
@@ -733,6 +740,10 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
+    if (productosActuales.some(id => !cantidadesRegaloValidas(cantidades[id] || 0, regalos[id] ?? 0))) {
+      toast.error('Revisa las unidades de regalo: usa cantidades enteras y conserva las unidades con precio.')
+      return
+    }
     if (!Number.isFinite(total)) { toast.error('Revisa las cantidades y los precios: se admiten hasta 6 decimales.'); return }
     // Bloquear el submit mientras el precio real todavía se está resolviendo
     // (debounce + fetch a /api/precios/resolver). El total/precio autoritativo
@@ -788,10 +799,11 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     }
 
     const items = productosActuales
-      .filter(id => (cantidades[id] || 0) > 0)
+      .filter(id => (cantidades[id] || 0) > 0 || (regalos[id] ?? 0) > 0)
       .map(id => ({
         producto: PRODUCTO_INFO[id].codigo,
         cantidad: cantidades[id] || 0,
+        cantidadRegalo: regalos[id],
         precioManual: preciosManuales[PRODUCTO_INFO[id].codigo],
       }))
 
@@ -949,6 +961,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
             return {
               prodId,
               cantidad: cantidades[prodId] || 0,
+              cantidadRegalo: regalos[prodId],
               precio: getPrecio(info.codigo),
               precioBase: getPrecioBase(info.codigo),
               precioManual: preciosManuales[info.codigo],
@@ -958,6 +971,8 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
             }
           })}
           preciosLoading={preciosLoading}
+          puedeAutorizarRegalos={puedeAutorizarRegalos}
+          onCantidadRegaloChange={(prodId, value) => setRegalos(prev => ({ ...prev, [prodId]: Number(value) }))}
           onIncrement={increment}
           onDecrement={decrement}
           onCantidadChange={handleCantidadChange}
