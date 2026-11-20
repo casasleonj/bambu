@@ -2,7 +2,7 @@
 
 ## Contrato y límites
 
-El workflow independiente **CI impact shadow** observa los PR contra main.
+El workflow independiente **CI impact shadow** observa los PR contra main\ncuando cambian código, pruebas o configuración. Los PRs solo documentales\nno disparan el observador para evitar gasto adicional; este check NO es\nobligatorio y nunca participa en la certificación de merge.
 No es un gate requerido. No escribe variables de repositorio, no dispara ni
 cancela el CI principal y no controla merges, despliegues, datos ni migraciones.
 El campo canSkip es siempre false. **No activar omisiones** durante esta fase.
@@ -21,7 +21,7 @@ de código de las pantallas de Clientes y Proveedores no constituye una
 declaración de bajo riesgo. Sus relaciones de negocio iniciales son propuestas
 para contrastar: Clientes con Pedidos, Cartera, Facturas, Territorio,
 Recurrentes y Sugerencias; Proveedores con Compras, Gastos e Insumos.
-La presencia de consumidores críticos, rutas desconocidas, archivos nuevos,
+Las relaciones de negocio que alcanzan dominios críticos también fuerzan\nrecomendación full, aunque el grafo estático no encuentre imports. La hipótesis\nde selección por specs se conserva para medición, pero no autoriza omisiones.\nLa presencia de consumidores críticos, rutas desconocidas, archivos nuevos,
 eliminados, movidos o con modo cambiado, grafo sin resolver, layouts
 transversales o inventario incompleto recomienda full. Un error fatal de
 análisis también recomienda full y deja el workflow sombra en rojo.
