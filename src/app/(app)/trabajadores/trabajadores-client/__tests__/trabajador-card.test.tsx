@@ -55,6 +55,18 @@ describe('TrabajadorCard — deuda pendiente (#566)', () => {
     expect(screen.getByTestId('trabajador-deuda-badge').tagName).toBe('SPAN')
   })
 
+  it('#863: inactivo conserva enlace y deuda, con estado visible y sin acciones de modificación', () => {
+    const ver = vi.fn()
+    const t = { ...base, activo: false, deudaPendiente: 60000 }
+    render(<TrabajadorCard trabajador={t} onEdit={noop} onDelete={noop} onVerDeuda={ver} />)
+    expect(screen.getByText('Desactivado')).toBeTruthy()
+    expect(screen.getByRole('link', { name: t.nombre }).getAttribute('href')).toBe('/trabajadores/t1')
+    expect(screen.queryByRole('button', { name: 'Desactivar' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Editar' })).toBeNull()
+    fireEvent.click(screen.getByTestId('trabajador-deuda-badge'))
+    expect(ver).toHaveBeenCalledWith(t)
+  })
+
   it('soloLectura oculta Editar y Desactivar; sin ella aparecen', () => {
     const { rerender } = render(<TrabajadorCard trabajador={base} onEdit={noop} onDelete={noop} />)
     expect(screen.getByRole('button', { name: 'Editar' })).toBeTruthy()
