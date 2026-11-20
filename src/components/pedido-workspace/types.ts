@@ -157,6 +157,8 @@ export type WorkspaceAction =
   | { type: 'SET_UBICACION'; lat: number | null; lng: number | null; destinoRevision?: number }
   /** flujo "Repetir" — aplica varios campos de una con su procedencia. */
   | { type: 'APPLY_PROPOSAL'; draft: Partial<DraftPedido>; origins: Record<string, ValueOrigin> }
+  /** #925: refrescar cotización remota tras cambios externos de tarifas. */
+  | { type: 'REVALIDATE_PREVIEW' }
   | { type: 'PREVIEW_PENDING'; revision: number }
   | { type: 'PREVIEW_RECEIVED'; preview: PreviewPedidoResult; revision: number }
   | { type: 'PREVIEW_ERROR'; kind: WorkspaceErrorKind; message: string; revision: number }

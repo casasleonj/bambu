@@ -358,6 +358,8 @@ export async function POST(request: NextRequest) {
       canal: (canal || 'DOMICILIO') as import('@/modules/pedidos/domain/types').Canal,
       origen: origen as import('@/modules/pedidos/domain/types').OrigenPedido | undefined,
       items: itemsInput,
+      precioEsperado: parsed.data.precioEsperado,
+      preciosEsperados: parsed.data.preciosEsperados,
       pagos: pagosData.map((p: { metodo: string; monto: number }) => ({
         metodo: p.metodo as import('@/modules/pedidos/domain/types').MetodoPago,
         monto: p.monto,
@@ -449,6 +451,9 @@ export async function POST(request: NextRequest) {
     // offline-first con los hooks que esperan 200 para dedup.
     return apiSuccess({ pedido: result.pedido, deduped: result.deduped, ...(ubicacionGuardada ? { ubicacionGuardada } : {}) }, result.deduped ? 200 : 201)
   } catch (error) {
+    if (error instanceof Error && error.message === 'PRECIO_CAMBIO_CONFIRMACION') {
+      return apiError('El precio cambió antes de guardar. Revisa el total actualizado e inténtalo de nuevo.', 409, { code: 'PRECIO_CAMBIO_CONFIRMACION' })
+    }
     const regaloError = mapRegaloPedidoError(error)
     if (regaloError) return apiError(regaloError.message, regaloError.status, { code: regaloError.code })
     Sentry.captureException(error, {

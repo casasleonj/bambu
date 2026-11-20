@@ -90,6 +90,14 @@ export const PedidoCreateSchema = z.object({
   origen: OrigenPedidoSchema.optional().default('PEDIDO'),
   items: z.array(PedidoItemSchema).min(1, 'Agrega al menos un producto').superRefine(itemsSinProductosDuplicados),
   preciosManuales: z.record(z.string(), PrecioUnitarioSchema).optional(),
+  // #925: importe visible al confirmar; el commit detecta cambios sin cobrar a otro precio.
+  precioEsperado: z.number().finite().min(0).optional(),
+  // #925: impedir diferencias por SKU que se compensen en el total.
+  preciosEsperados: z.array(z.object({
+    producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),
+    precio: PrecioUnitarioSchema,
+    origen: z.enum(['manual', 'cliente', 'volumen', 'base']),
+  })).min(1).optional(),
   pagos: z.array(
     z.object({
       metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),

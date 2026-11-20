@@ -27,9 +27,9 @@ export class PrismaPricingAdapter implements IPricingPort {
       if (negocioId) {
         const negocio = await client.negocio.findUnique({
           where: { id: negocioId },
-          select: { preciosEspeciales: true },
+          select: { preciosEspeciales: true, clienteId: true },
         })
-        if (negocio?.preciosEspeciales) {
+        if (negocio?.clienteId === clienteId && negocio.preciosEspeciales) {
           try {
             clienteOverrides = JSON.parse(negocio.preciosEspeciales)
           } catch { /* ignore invalid JSON */ }

@@ -22,6 +22,10 @@ export interface CrearPedidoPayload {
     precioManual?: number
   }>
   pagos?: Array<{ metodo: string; monto: number }>
+  /** #925: cotización visible que el servidor compara en la transacción. */
+  precioEsperado?: number
+  /** Cotización por línea para evitar reemplazos silenciosos de precios. */
+  preciosEsperados?: Array<{ producto: string; precio: number; origen: string }>
   obs?: string
   fechaEntrega?: string
   /** #836 F2b: hora acordada HH:MM (Bogotá); requiere `fechaEntrega`. */

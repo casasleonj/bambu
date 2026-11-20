@@ -46,6 +46,42 @@ describe('workspaceReducer — máquina de UI adaptativa', () => {
     expect(canCommit(s, 'actualizar')).toBe(false) // el preview solo permite 'crear'
   })
 
+  it('#925: el cambio externo de precio reinicia solo el preview, no los pagos ni el borrador', () => {
+    const initial = initWorkspace({
+      clienteId: 'c1',
+      canal: 'PUNTO',
+      items: [{ producto: 'PACA_AGUA', cantidad: 7 }],
+      pagos: [{ metodo: 'NEQUI', monto: 17500 }],
+    })
+    const ready = workspaceReducer(initial, {
+      type: 'PREVIEW_RECEIVED',
+      revision: initial.previewRevision,
+      preview: previewOk(),
+    })
+    expect(canCommit(ready)).toBe(true)
+
+    const refresh = workspaceReducer(ready, { type: 'REVALIDATE_PREVIEW' })
+    expect(refresh.phase).toBe('DRAFTING')
+    expect(refresh.preview).toBeNull()
+    expect(refresh.previewRevision).toBe(ready.previewRevision + 1)
+    expect(refresh.draft).toEqual(ready.draft)
+    expect(refresh.draft.pagos).toEqual([{ metodo: 'NEQUI', monto: 17500 }])
+    expect(canCommit(refresh)).toBe(false)
+
+    // Una respuesta vieja, de la revisión anterior, no puede habilitar commit.
+    const stale = workspaceReducer(refresh, {
+      type: 'PREVIEW_RECEIVED', revision: ready.previewRevision, preview: previewOk(),
+    })
+    expect(stale).toEqual(refresh)
+
+    const renewed = workspaceReducer(stale, {
+      type: 'PREVIEW_RECEIVED', revision: stale.previewRevision, preview: previewOk(),
+    })
+    expect(canCommit(renewed)).toBe(true)
+    const committing = workspaceReducer(renewed, { type: 'COMMIT_START' })
+    expect(workspaceReducer(committing, { type: 'REVALIDATE_PREVIEW' })).toEqual(committing)
+  })
+
   it('#795: un preview anterior no permite confirmar después de cambiar el regalo', () => {
     const inicial = initWorkspace({ clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 60, cantidadRegalo: 3 }] })
     const autorizado = workspaceReducer(inicial, { type: 'PREVIEW_RECEIVED', revision: inicial.previewRevision, preview: previewOk() })
