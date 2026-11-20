@@ -44,7 +44,7 @@ describe('#925 · confirmar precio visible dentro de la transacción', () => {
       pricingPort as unknown as Args[4],
       txManager as unknown as Args[5],
       vi.fn() as Args[6],
-      {} as Args[7],
+      {} as unknown as Args[7],
     )
 
     await expect(sut.execute({
