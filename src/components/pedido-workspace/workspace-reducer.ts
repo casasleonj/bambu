@@ -211,6 +211,23 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       const s = afterDraftChange(state, draft)
       return { ...s, valueOrigins: { ...s.valueOrigins, ...action.origins } }
     }
+    case 'REVALIDATE_PREVIEW': {
+      // #925: un precio remoto actualizado invalida solo la cotización,
+      // no las cantidades, pagos, datos del comprador ni la dirección.
+      // El hook usePreview usa previewRevision para pedir nuevos datos.
+      if (!isPreviewable(state.draft) ||
+          state.phase === 'COMMITTING' || state.phase === 'COMMITTED') return state
+      return {
+        ...state,
+        phase: 'DRAFTING',
+        previewRevision: state.previewRevision + 1,
+        preview: null,
+        previewPending: false,
+        reviewMotivo: '',
+        sinConexion: false,
+        error: null,
+      }
+    }
     case 'PREVIEW_PENDING':
       if (!acceptsPreview(state, action.revision)) return state
       return { ...state, previewPending: true }
