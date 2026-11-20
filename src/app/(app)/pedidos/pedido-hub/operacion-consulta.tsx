@@ -14,7 +14,7 @@ import {
 } from "./consulta-datos";
 import type { AccionKey, Pedido } from "./types";
 import { fechaConsulta } from "./fecha-consulta";
-import { etiquetaArrastre } from "./arrastrados";
+import { etiquetaAntiguedadPedido, etiquetaArrastre } from "./arrastrados";
 import { NotaPedido } from "./nota-pedido";
 import { CompromisoChip, CierreNegocioChip, HoraAcordadaChip } from "./compromiso-chip";
 import { importesEntregaPedido } from "@/lib/valor-entregado-pedido";
@@ -119,6 +119,10 @@ export function OperacionConsulta({
         const primary = acciones.userRole === "CONTADOR" ? null : destacada;
         const importes = importesEntregaPedido(p), pagado = importes.pagado;
         const items = itemsConsulta(p);
+        const pedidas = items.reduce((n, i) => n + i.pedidas, 0);
+        const entregadas = items.reduce((n, i) => n + i.entregadas, 0);
+        const pendientes = items.reduce((n, i) => n + Math.max(0, i.pedidas - i.entregadas), 0);
+        const parcial = p.actividadOperativa && !terminal && entregadas > 0 && pendientes > 0;
         const resp = responsablesConsulta(p, hoyBogota);
         const repartidores = p.responsablesEntrega ?? [];
         if (p._pendingSync)
@@ -215,8 +219,24 @@ export function OperacionConsulta({
                     data-testid={`operacion-dia-anterior-${p.id}`}
                     className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"
                   >
-                    ⏳ Día anterior
+                    {etiquetaAntiguedadPedido(p.fecha, hoyBogota)}
                   </span>
+                )}
+                {parcial && (
+                  <span data-testid={`operacion-parcial-${p.id}`} className="ml-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
+                    Parcial
+                  </span>
+                )}
+                {p.entregaEnPeriodo && (
+                  <span data-testid={`operacion-entrega-hoy-${p.id}`} className="ml-1 inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                    {p.estadoEntrega === "ENTREGADO" ? "Entregado hoy" : "Entrega hoy"}
+                  </span>
+                )}
+                {p.actividadOperativa && items.length > 0 && (
+                  <p className={styles.meta} data-testid={`operacion-cantidades-${p.id}`}>
+                    Pedidas: {pedidas} · Entregadas: {entregadas} · Pendientes: {pendientes}
+                    {p.entregaEnPeriodo ? ` · Hoy: ${p.entregaEnPeriodo.unidades ?? "por conciliar"}` : ""}
+                  </p>
                 )}
                 <CompromisoChip id={p.id} pedido={p} hoyBogota={hoyBogota} />
                 <HoraAcordadaChip id={p.id} pedido={p} />
