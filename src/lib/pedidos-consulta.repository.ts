@@ -412,7 +412,7 @@ async function leerConsultaPedidos(
             where: whereLista,
             select: {
               id: true, clienteId: true, origen: true, fecha: true, createdAt: true, numero: true, estadoEntrega: true, fechaEntrega: true, direccionEntrega: true, barrioEntrega: true,
-              items: { select: { producto: true, cantPedido: true, cantEntrega: true } },
+              items: { select: { producto: true, cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true } },
               cliente: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
               negocio: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
             },
@@ -444,7 +444,7 @@ async function leerConsultaPedidos(
           !esVentaAnonima(c) &&
           !["ENTREGADO", "CANCELADO", "ANULADO"].includes(c.estadoEntrega) &&
           (!c.fechaEntrega || c.fechaEntrega <= ahora) &&
-          c.items.some(item => item.cantPedido > item.cantEntrega)
+          c.items.some(item => item.cantPedido > item.cantEntrega || item.cantRegaloPedido > item.cantRegaloEntrega)
         );
         const fifo = ordenarBarriosFIFO(abiertos.map(c => ({
           id: c.id, barrioClave: grupoPorId!.get(c.id)!.clave, createdAt: c.createdAt,

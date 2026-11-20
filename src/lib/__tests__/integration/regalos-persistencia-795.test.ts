@@ -10,6 +10,8 @@ import { EstadoEntregaVO } from '@/modules/pedidos/domain/value-objects/EstadoEn
 import { EstadoPagoVO } from '@/modules/pedidos/domain/value-objects/EstadoPago'
 import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
 import { Money, UnitPrice } from '@/shared/domain'
+import { consultarPedidos } from '@/lib/pedidos-consulta.repository'
+import { leerFiltrosConsulta } from '@/lib/pedidos-consulta'
 
 describe('#795 · PostgreSQL conserva cantidades y autorización de regalo', () => {
   let adminId: string, clienteId: string, numero = 1_000_000
@@ -21,8 +23,8 @@ describe('#795 · PostgreSQL conserva cantidades y autorización de regalo', () 
     clienteId = (await db.cliente.create({ data: { nombre: 'Prueba persistencia regalos', telefono: randomUUID() } })).id
   })
   afterAll(disconnect)
-  function crear(conRegalo = true) {
-    return Pedido.create({ id: PedidoId.from(randomUUID()), numero: ++numero, clienteId,
+  function crear(conRegalo = true, destino = clienteId) {
+    return Pedido.create({ id: PedidoId.from(randomUUID()), numero: ++numero, clienteId: destino,
       canal: CanalVO.create('DOMICILIO'), origen: OrigenPedidoVO.create('PEDIDO'),
       estadoEntrega: EstadoEntregaVO.create('EN_RUTA'), estadoPago: EstadoPagoVO.create('PENDIENTE'),
       items: [new PedidoItem('PACA_AGUA', 60, UnitPrice.fromDecimal(2300), 'manual', 0,
@@ -69,5 +71,29 @@ describe('#795 · PostgreSQL conserva cantidades y autorización de regalo', () 
     expect(r?.items[0].cantRegaloPedido).toBe(0)
     expect(r?.items[0].regalo).toBeUndefined()
     expect(r?.total.toDecimal()).toBe(138000)
+  })
+  it('el barrio cuenta 63 físicas, luego 52, luego solo 2 regalos, hasta completar sin cambiar dinero', async () => {
+    const nombre = `Barrio regalos ${randomUUID()}`
+    const c = await db.cliente.create({ data: { nombre, telefono: randomUUID(), barrio: nombre } })
+    const original = await repo.save(crear(true, c.id))
+    const leer = async () => {
+      const filtros = leerFiltrosConsulta(new URLSearchParams({ all: 'true', agrupar: 'barrio', search: nombre }))
+      const r = await consultarPedidos(filtros, 'ADMIN')
+      expect(r.total).toBe(1)
+      expect(r.grupos).toHaveLength(1)
+      return r.grupos![0]
+    }
+    expect((await leer()).unidadesPendientes).toBe(63)
+    original.entregar([{ producto: 'PACA_AGUA', cantidad: 10, cantidadRegalo: 1 }])
+    await repo.update(original)
+    expect((await leer()).remanentes).toEqual({ PACA_AGUA: 52 })
+    original.entregar([{ producto: 'PACA_AGUA', cantidad: 50, cantidadRegalo: 0 }], { desdeOficina: true })
+    await repo.update(original)
+    expect((await leer()).unidadesPendientes).toBe(2)
+    original.entregar([{ producto: 'PACA_AGUA', cantidad: 0, cantidadRegalo: 2 }], { desdeOficina: true })
+    await repo.update(original)
+    expect((await leer()).unidadesPendientes).toBe(0)
+    const actual = await db.pedido.findUniqueOrThrow({ where: { id: original.id.get() } })
+    expect([Number(actual.total), Number(actual.totalPagado)]).toEqual([138000, 0])
   })
 })

@@ -285,6 +285,41 @@ Se añadió también el recorrido E2E del REPARTIDOR: foto sintética, GPS simul
 y entrega/cobro desde su pantalla. Pendiente de ejecución sobre el build final;
 ningún archivo se sube al Storage productivo durante la prueba local.
 
+## QA y refutación del candidato del 20-11
+
+PR de revisión: [#919](https://github.com/casasleonj/bambu/pull/919), borrador.
+El CI del main base `608478be` pasó:
+[44735206104](https://github.com/casasleonj/bambu/actions/runs/44735206104).
+
+La primera suite actualizada produjo **21 aprobadas y 1 fallida**, sin skips.
+El caso del repartidor en escritorio encontró dos botones durante el streaming de
+Next.js. Se reutiliza `appMain` de `e2e/fixtures.ts`, que documenta la copia temporal
+oculta fuera de main; no se elige `.first()`, no se fuerza el clic ni se cambia la
+UI. Repetición del repartidor en ambos proyectos: **2/2 aprobadas**, foto sintética,
+GPS simulado, 60+3 físicas, un pago/factura de 138000 y persistencia tras recarga.
+No presentar estos lotes como una nueva corrida 22/22.
+
+QA exploratorio Hub de `6c45fd7f`: 6/6 tareas automatizadas y enlaces 4/4, sin
+excepciones JS, con puente Dashboard/Cierre correcto. La **inspección visual**
+detectó un consumidor adicional del main reciente: el encabezado del barrio
+mostraba 60 pendientes mientras la tarjeta mostraba 63. Este hallazgo del mismo
+#795 impide considerar terminada la validación y obliga a repetir el QA final.
+
+Contraste de esa brecha: `remanentes-barrio.ts` declara «demanda física, nunca deuda
+monetaria» (#859); la consulta de candidatos solo leía cantidades comerciales y
+excluía pedidos cuyos pendientes fueran únicamente regalos. Se conservan barrio,
+FIFO, filtros, paginación, estados terminales y fechas programadas; se añaden al
+selector los componentes de regalo y se cuentan ambos remanentes. No cambia el
+layout ni los importes. No se sustituye el pedido histórico por una proyección.
+
+Pruebas: cinco unitarias de remanentes, incluyendo regalos pendientes/fracciones;
+y **14 PostgreSQL** de persistencia/agrupación, exit 0. El nuevo caso verifica
+63 → 52 → 2 → 0, manteniendo 138000 y cero pagado. La primera versión del fixture
+intentó entregar desde PENDIENTE por la vía del repartidor, y falló correctamente;
+se corrigió el fixture para usar la operación existente de oficina en las entregas
+posteriores, sin modificar las transiciones de negocio. Nueva compilación y QA
+con aserción del remanente agrupado: pendientes de completar.
+
 ## Preparación de liberación
 
 Consulta de metadatos de la base conectada, solo lectura (19-11): los cinco campos
