@@ -62,14 +62,13 @@ export function usePricingSnapshot(draft: DraftPedido): {
   ])
   const ready = Boolean(draft.clienteId || telefono)
   const [saved, setSaved] = useState<ScopedSnapshot | null>(null)
-  const [request, setRequest] = useState<{ key: string; loading: boolean } | null>(null)
+  const [finished, setFinished] = useState<{ key: string; nonce: number } | null>(null)
   const [nonce, setNonce] = useState(0)
   const reload = useCallback(() => setNonce((n) => n + 1), [])
 
   useEffect(() => {
     if (!ready) return
     const controller = new AbortController()
-    setRequest({ key, loading: true })
 
     const [clienteId, negocioId, canal, clienteNuevoTelefono] = JSON.parse(key) as [
       string | null, string | null, 'PUNTO' | 'DOMICILIO', string | null,
@@ -95,12 +94,12 @@ export function usePricingSnapshot(draft: DraftPedido): {
       // El resultado está validado campo por campo; no se fuerzan tipos.
       if (!controller.signal.aborted) {
         setSaved({ key, data: parsed.data })
+        setFinished({ key, nonce })
       }
     }).catch(() => {
       // Fail closed: ante error no se inventan precios. El preview puede
       // seguir funcionando y el commit conserva la autoridad del servidor.
-    }).finally(() => {
-      if (!controller.signal.aborted) setRequest({ key, loading: false })
+      if (!controller.signal.aborted) setFinished({ key, nonce })
     })
     return () => controller.abort()
   }, [key, nonce, ready])
@@ -128,7 +127,7 @@ export function usePricingSnapshot(draft: DraftPedido): {
   const data = ready && saved?.key === key ? saved.data : null
   return {
     data,
-    loading: ready && (request === null || request.key !== key || request.loading),
+    loading: ready && saved?.key !== key && !(finished?.key === key && finished.nonce === nonce),
     reload,
   }
 }
