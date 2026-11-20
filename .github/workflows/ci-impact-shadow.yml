@@ -4,6 +4,20 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
+    # Shadow instrumentation should not charge runner time to declarative-only PRs.
+    # This check is intentionally NOT required for branch protection.
+    paths:
+      - 'src/**'
+      - 'e2e/**'
+      - 'scripts/ci/**'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/ci-impact-shadow.yml'
+      - 'prisma/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'playwright.config.*'
+      - 'vitest.config.*'
 
 permissions:
   contents: read
