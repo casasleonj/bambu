@@ -21,7 +21,9 @@ Después del rebase: 300 pruebas / 28 archivos de los cruces, 47 pruebas focaliz
 (reductor/preview), 37 PostgreSQL de regalos y comisiones, y 6 PostgreSQL de
 asignación individual/en bloque pasaron, exit 0. Son lotes solapados y momentos
 distintos; no sumar como una única suite. Typecheck y ESLint del diff: exit 0.
-La suite amplia y el build/navegador del candidato actualizado se vuelven a validar.
+Sobre el candidato `6c45fd7f`, la suite amplia pasó **1735/1735 en 178 archivos**;
+la compilación Hub terminó exit 0. La suite de navegador actualizada está en curso,
+incluyendo la entrega/cobro real del repartidor; todavía no se declara aprobada.
 El reinicio del entorno eliminó los builds temporales; las capturas y resultados
 del 19-11 se conservan como evidencia histórica, no como prueba del nuevo main.
 
@@ -318,9 +320,11 @@ sin permiso. Ningún fallo del fixture se convierte en un skip para conseguir ve
 
 ## Falta para resolver #795
 
-1. PR contra main actualizado, CI completo y revisión. La base sigue `7636480e`
-   al último fetch; comparar las firmas de cualquier fallo nuevo con su CI verde
-   [44455893970](https://github.com/casasleonj/bambu/actions/runs/44455893970).
+1. PR contra main actualizado, CI completo y revisión. Base actual verificada:
+   `608478be2b22003b065dd6aac993d93bfb2e727e` (20-11). Comparar las firmas
+   de cualquier fallo con el CI de ese main; el resultado del main anterior
+   `7636480e` ([44455893970](https://github.com/casasleonj/bambu/actions/runs/44455893970))
+   queda como evidencia histórica y no sustituye esa comparación.
 2. Autorización específica del SQL productivo y comprobación de compatibilidad
    antes de mergear. No escribir pedidos, pagos ni cierres sintéticos en producción.
 3. Merge autorizado y verificación posterior del SHA real. Las pruebas locales
