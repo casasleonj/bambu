@@ -38,7 +38,7 @@ describe('#921 filtros, arrastres y franjas', () => {
       desde:'2026-11-20', hasta:'2026-11-20', desdeHora:'',hastaHora:'',all:false,
       fechaBase:'pedido' as const, registro:'activos' as const,
       canal:['DOMICILIO'],origen:[],estadoEntrega:['PENDIENTE'],estadoPago:[],
-      pago:'' as const,repartidorId:[],search:'',clienteId:'',foco:'' as const,
+      pago:'todos' as const,repartidorId:[],search:'',clienteId:'',foco:'' as const,
       conRecurrencia:false,agrupar:'' as const,grupoBarrio:'',resumen:false,page:1,pageSize:20,
     }
     const arrastre = filtrosArrastrados(base, '2026-11-20')
