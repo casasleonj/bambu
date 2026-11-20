@@ -110,6 +110,10 @@ export interface WorkspaceState {
   valueOrigins: Record<string, ValueOrigin>
   /** resultado del último preview del backend, o null si el draft cambió. */
   preview: PreviewPedidoResult | null
+  /** Última entrega del mismo destino; SOLO presentación durante recálculo. */
+  entregaVisual?: PreviewPedidoResult['entrega']
+  /** Identidad de selección, también invalida links pendientes al cambiar comprador/tienda. */
+  destinoRevision: number
   /** true mientras el preview está en vuelo. */
   previewPending: boolean
   /** códigos con precio manual muy bajo ya confirmado por el usuario (ALS §5). */
@@ -148,7 +152,7 @@ export type WorkspaceAction =
   | { type: 'SET_OBS'; obs: string }
   | { type: 'SET_PROGRAMACION'; fecha: string; hora: string }
   | { type: 'SET_DIRECCION'; direccion: string; barrio: string }
-  | { type: 'SET_UBICACION'; lat: number | null; lng: number | null }
+  | { type: 'SET_UBICACION'; lat: number | null; lng: number | null; destinoRevision?: number }
   /** flujo "Repetir" — aplica varios campos de una con su procedencia. */
   | { type: 'APPLY_PROPOSAL'; draft: Partial<DraftPedido>; origins: Record<string, ValueOrigin> }
   | { type: 'PREVIEW_PENDING'; revision: number }

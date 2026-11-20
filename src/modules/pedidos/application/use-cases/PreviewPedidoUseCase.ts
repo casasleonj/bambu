@@ -27,6 +27,7 @@ import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 import { calcularAlertasCliente } from '@/lib/alertas-detector'
 import { draftToPedidoBase, pedidoEntityToPedidoBase } from './pedido-to-pedido-base'
 import { resolverEntrega } from '../../domain/services/entrega-suficiencia.service'
+import type { PreviewLinkResolver } from '@/lib/geo/preview-coords-resolver'
 
 export class ClienteNotFoundError extends Error {
   constructor(id: string) { super(`CLIENTE_NOT_FOUND: ${id}`); this.name = 'ClienteNotFoundError' }
@@ -46,6 +47,8 @@ export interface PreviewPedidoDeps {
   getPrecioMinimos: () => Promise<Array<{ producto: string; cantMin: number; cantMax: number | null; precioMinimo: number | null }>>
   /** `linkUbicacion → coords` server-only (best-effort). Solo se llama si no hay coords almacenadas. */
   resolverCoordsDeLink: (link: string | null | undefined) => Promise<{ lat: number; lng: number } | null>
+  /** Optimización exclusiva de preview; sin scope usa el resolvedor fresco. */
+  resolverLinkPreview?: PreviewLinkResolver
   /**
    * #408: busca una venta igual (cliente, productos, total) registrada hace pocos segundos. Opcional para no
    * romper fixtures parciales; sin él, el preview simplemente no avisa.
@@ -265,9 +268,14 @@ export class PreviewPedidoUseCase {
     const efectivoLink = (negocio?.linkUbicacion ?? cliente.linkUbicacion) || null
     const hayCoordsAlmacenadas =
       (negocio?.lat != null && negocio?.lng != null) || (cliente.lat != null && cliente.lng != null)
+    const scope = input.actorId && (input.pedidoId || input.borradorId) && !esClienteNuevo
+      ? JSON.stringify([input.actorId, input.pedidoId ? 'edicion' : 'creacion', input.pedidoId ?? input.borradorId, clienteId, negocio?.id ?? null, input.negocioId ?? null])
+      : undefined
     const coordsDeLink =
       canal === 'DOMICILIO' && !hayCoordsAlmacenadas && efectivoLink
-        ? await this.deps.resolverCoordsDeLink(efectivoLink)
+        ? await (this.deps.resolverLinkPreview
+          ? this.deps.resolverLinkPreview(efectivoLink, scope)
+          : this.deps.resolverCoordsDeLink(efectivoLink))
         : null
 
     // Ubicación propia del pedido (destino puntual). Creación: la del input.

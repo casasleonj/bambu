@@ -6,7 +6,7 @@ import type {
   WorkspacePhase,
   WorkspaceState,
 } from './types'
-import { isPreviewable, previewRequestKey } from './preview-request'
+import { compradorDestinoKey, entregaDraftKey, isPreviewable, previewRequestKey } from './preview-request'
 
 /**
  * Reducer del **estado efímero de la experiencia** del PedidosWorkspace
@@ -32,6 +32,7 @@ export function initWorkspace(draft?: Partial<DraftPedido>, pedidoId?: string): 
   return {
     phase: isPreviewable(merged) ? 'DRAFTING' : (merged.clienteId || merged.clienteNuevo) ? 'CONTEXT_READY' : 'EMPTY',
     previewRevision: 0,
+    destinoRevision: 0,
     previewPedidoId: pedidoId,
     draft: merged,
     valueOrigins: {},
@@ -62,9 +63,12 @@ function hasItems(draft: DraftPedido): boolean {
  * (salvo estados terminales o de commit en curso).
  */
 function afterDraftChange(state: WorkspaceState, draft: DraftPedido): WorkspaceState {
-  if (previewRequestKey(state.draft, state.previewPedidoId) === previewRequestKey(draft, state.previewPedidoId)) return { ...state, draft }
+  const mismoDestino = entregaDraftKey(state.draft) === entregaDraftKey(draft)
+  const destinoRevision = state.destinoRevision + Number(compradorDestinoKey(state.draft) !== compradorDestinoKey(draft))
+  if (previewRequestKey(state.draft, state.previewPedidoId) === previewRequestKey(draft, state.previewPedidoId)) return { ...state, draft, destinoRevision }
+  const entregaVisual = mismoDestino && isPreviewable(draft) ? (state.preview?.entrega ?? state.entregaVisual) : undefined
   if (state.phase === 'COMMITTING' || state.phase === 'COMMITTED') {
-    return { ...state, draft, previewRevision: state.previewRevision + 1, preview: null, previewPending: false, sinConexion: false, reviewMotivo: '' }
+    return { ...state, draft, destinoRevision, entregaVisual: undefined, previewRevision: state.previewRevision + 1, preview: null, previewPending: false, sinConexion: false, reviewMotivo: '' }
   }
   let phase: WorkspacePhase
   if (!draft.clienteId && !draft.clienteNuevo) phase = 'EMPTY'
@@ -76,7 +80,7 @@ function afterDraftChange(state: WorkspaceState, draft: DraftPedido): WorkspaceS
   const conservaOffline = state.sinConexion && !state.previewPedidoId && phase === 'DRAFTING' &&
     previewRequestKey({ ...state.draft, pagos: [] }) === previewRequestKey({ ...draft, pagos: [] })
   // un cambio en el draft invalida también el motivo de revisión capturado.
-  return { ...state, phase, draft, previewRevision: state.previewRevision + 1, preview: null, previewPending: false, sinConexion: conservaOffline, reviewMotivo: '', error: null }
+  return { ...state, phase, draft, destinoRevision, entregaVisual, previewRevision: state.previewRevision + 1, preview: null, previewPending: false, sinConexion: conservaOffline, reviewMotivo: '', error: null }
 }
 
 function acceptsPreview(state: WorkspaceState, revision: number): boolean {
@@ -190,6 +194,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         barrioEntrega: action.barrio,
       })
     case 'SET_UBICACION':
+      if (action.destinoRevision !== undefined && action.destinoRevision !== state.destinoRevision) return state
       return afterDraftChange(state, {
         ...state.draft,
         entregaLat: action.lat,
@@ -220,12 +225,13 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         if (!sincronizado && total > 0) {
           return {
             ...afterDraftChange({ ...state, sinConexion: false }, { ...state.draft, pagos: [{ metodo: metodoCompleto, monto: total }] }),
+            entregaVisual: action.preview.entrega,
             previewPending: false,
           }
         }
       }
       const nextPhase: WorkspacePhase = action.preview.requiresAuthorization ? 'REVIEW_REQUIRED' : 'PREVIEW_READY'
-      return { ...state, phase: nextPhase, previewPending: false, preview: action.preview, error: null, sinConexion: false }
+      return { ...state, phase: nextPhase, previewPending: false, preview: action.preview, entregaVisual: action.preview.entrega, error: null, sinConexion: false }
     }
     case 'PREVIEW_ERROR':
       if (!acceptsPreview(state, action.revision)) return state
@@ -235,6 +241,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         ...state,
         phase: 'DRAFTING',
         preview: null,
+        entregaVisual: undefined,
         reviewMotivo: '',
         previewPending: false,
         sinConexion: action.kind === 'NETWORK_ERROR',
@@ -257,13 +264,13 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     case 'COMMIT_SUCCESS':
       return { ...state, phase: 'COMMITTED' }
     case 'COMMIT_CONFLICT':
-      return { ...state, phase: 'DRAFTING', previewRevision: state.previewRevision + 1, preview: null, previewPending: false, sinConexion: false, reviewMotivo: '', error: { kind: 'CONFLICT_ERROR', message: action.message } }
+      return { ...state, entregaVisual: undefined, phase: 'DRAFTING', previewRevision: state.previewRevision + 1, preview: null, previewPending: false, sinConexion: false, reviewMotivo: '', error: { kind: 'CONFLICT_ERROR', message: action.message } }
     case 'COMMIT_ERROR':
       return { ...state, phase: state.sinConexion || !state.preview ? 'DRAFTING' : 'PREVIEW_READY',
         previewRevision: !state.preview && !state.sinConexion ? state.previewRevision + 1 : state.previewRevision,
         error: { kind: 'VALIDATION_ERROR', message: action.message } }
     case 'RESET':
-      return { ...initWorkspace(action.draft, state.previewPedidoId), previewRevision: state.previewRevision + 1 }
+      return { ...initWorkspace(action.draft, state.previewPedidoId), destinoRevision: state.destinoRevision + 1, previewRevision: state.previewRevision + 1 }
     default:
       return state
   }
