@@ -77,3 +77,23 @@ describe('ordenarGrupos', () => {
     expect(o.map((g) => g.etiqueta)).toEqual(['Centro', 'Villa Nueva', 'Sin barrio'])
   })
 })
+
+describe("#913 — identidad de venta anónima y orden de grupos no territoriales", () => {
+  it("solo Consumidor Final canónico con origen de venta en punto/libre es anónima", async () => {
+    const { esVentaAnonima } = await import("../grupo-barrio");
+    expect(esVentaAnonima({ clienteId: "CONSUMIDOR_FINAL", origen: "VENTA_RAPIDA" })).toBe(true);
+    expect(esVentaAnonima({ clienteId: "CONSUMIDOR_FINAL", origen: "VENTA_LIBRE" })).toBe(true);
+    // un pedido a domicilio del Consumidor Final necesita entrega: no se excluye
+    expect(esVentaAnonima({ clienteId: "CONSUMIDOR_FINAL", origen: "PEDIDO" })).toBe(false);
+    // venta en punto con cliente registrado: territorial, sin importar el nombre ni el canal
+    expect(esVentaAnonima({ clienteId: "cli-1", origen: "VENTA_RAPIDA" })).toBe(false);
+    expect(esVentaAnonima({ clienteId: null, origen: "VENTA_RAPIDA" })).toBe(false);
+    expect(esVentaAnonima({ clienteId: "CONSUMIDOR_FINAL" })).toBe(false);
+  });
+  it("las ventas anónimas van después de «Sin barrio», que va después de los barrios", async () => {
+    const { ordenarGrupos } = await import("../grupo-barrio");
+    const g = (clave: string, total: number) => ({ clave, etiqueta: clave, total });
+    expect(ordenarGrupos([g("venta-anonima", 50), g("sin-barrio", 30), g("b:a", 1), g("b:b", 9)]).map((x) => x.clave))
+      .toEqual(["b:b", "b:a", "sin-barrio", "venta-anonima"]);
+  });
+});
