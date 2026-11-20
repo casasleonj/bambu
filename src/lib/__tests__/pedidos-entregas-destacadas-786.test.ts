@@ -119,25 +119,25 @@ describe("#786 — vista complementaria de pedidos", () => {
 
 describe("#911 — reducción comercial y verificación de la entrega física", () => {
   const rango = {
-    desde: new Date("2026-11-19T05:00:00Z"),
-    hasta: new Date("2026-11-20T05:00:00Z"),
+    desde: new Date("2026-09-19T05:00:00Z"),
+    hasta: new Date("2026-09-20T05:00:00Z"),
   };
-  const fechaEntrega = new Date("2026-11-19T15:55:50.077Z");
+  const fechaEntrega = new Date("2026-09-19T16:00:00Z");
   const entregaVerificada: EntregaConsulta = {
     id: "auditoria-911",
     pedidoId: "prueba-786",
     fecha: fechaEntrega,
     repartidorId: null,
-    cantidades: [{ producto: "PACA_AGUA", cantidad: 13 }],
+    cantidades: [{ producto: "PACA_AGUA", cantidad: 7 }],
     fuente: "AUDITORIA",
     precisionDia: false,
   };
   const p = {
     ...crearPedido(),
     origen: "PEDIDO" as const,
-    fecha: new Date("2026-11-19T14:24:38.753Z"),
+    fecha: new Date("2026-09-19T12:00:00Z"),
     entregadoAt: fechaEntrega,
-    items: [{ producto: "PACA_AGUA", cantPedido: 13, cantEntrega: 13 }],
+    items: [{ producto: "PACA_AGUA", cantPedido: 7, cantEntrega: 7 }],
   };
   const reduccion = (resueltoAt: Date | null) => [
     { pedidoId: p.id, resueltoAt },
@@ -149,8 +149,8 @@ describe("#911 — reducción comercial y verificación de la entrega física", 
   });
 
   it("regresión: reducción anterior a la primera entrega verificada no duplica una entrega completa del día", async () => {
-    // Secuencia real reproducida con datos sintéticos: 10 → 15 → 12 → 13; se entregan 13.
-    const tx = transaccion([p], false, reduccion(new Date("2026-11-19T15:54:20.445Z")));
+    // Caso enteramente sintético: 5 → 9 → 6 → 7; se entregan 7.
+    const tx = transaccion([p], false, reduccion(new Date("2026-09-19T15:00:00Z")));
     const result = await listarEntregasDestacadas(tx, {}, rango);
 
     expect(result).toEqual({ destacadas: [], destacadasTotal: 0, rangoAmplio: false });
@@ -161,20 +161,20 @@ describe("#911 — reducción comercial y verificación de la entrega física", 
   });
 
   it("reducción previa + pedido de ayer entregado completo hoy conserva su registro y fecha", async () => {
-    const anterior = { ...p, fecha: new Date("2026-11-18T15:00:00Z") };
+    const anterior = { ...p, fecha: new Date("2026-09-18T15:00:00Z") };
     const result = await listarEntregasDestacadas(
-      transaccion([anterior], false, reduccion(new Date("2026-11-19T14:00:00Z"))),
+      transaccion([anterior], false, reduccion(new Date("2026-09-19T14:00:00Z"))),
       {}, rango,
     );
     expect(result.destacadasTotal).toBe(1);
     expect(result.destacadas[0].estadoAlCorte).toBe("PRIMERA_ENTREGA");
-    expect(result.destacadas[0].fechaCompletado).toBe("2026-11-19");
-    expect(result.destacadas[0].cantidadesDelRango).toEqual([{ producto: "PACA_AGUA", cantidad: 13 }]);
+    expect(result.destacadas[0].fechaCompletado).toBe("2026-09-19");
+    expect(result.destacadas[0].cantidadesDelRango).toEqual([{ producto: "PACA_AGUA", cantidad: 7 }]);
   });
 
   const fechasInciertas: Array<[string, Date | null]> = [
-    ["posterior a entrega del mismo día", new Date("2026-11-19T16:00:00Z")],
-    ["posterior al corte", new Date("2026-11-20T12:00:00Z")],
+    ["posterior a entrega del mismo día", new Date("2026-09-19T17:00:00Z")],
+    ["posterior al corte", new Date("2026-09-20T12:00:00Z")],
     ["sin fecha verificable", null],
     ["exactamente simultánea a la entrega", fechaEntrega],
   ];
@@ -189,11 +189,11 @@ describe("#911 — reducción comercial y verificación de la entrega física", 
 
   it("una reducción entre la primera entrega parcial y la segunda no inventa una finalización", async () => {
     leerMock.mockResolvedValue([
-      { ...entregaVerificada, id: "parte-1", fecha: new Date("2026-11-19T15:50:00Z"), cantidades: [{ producto: "PACA_AGUA", cantidad: 4 }] },
-      { ...entregaVerificada, id: "parte-2", cantidades: [{ producto: "PACA_AGUA", cantidad: 9 }] },
+      { ...entregaVerificada, id: "parte-1", fecha: new Date("2026-09-19T14:30:00Z"), cantidades: [{ producto: "PACA_AGUA", cantidad: 2 }] },
+      { ...entregaVerificada, id: "parte-2", cantidades: [{ producto: "PACA_AGUA", cantidad: 5 }] },
     ]);
     const result = await listarEntregasDestacadas(
-      transaccion([p], false, reduccion(new Date("2026-11-19T15:54:00Z"))),
+      transaccion([p], false, reduccion(new Date("2026-09-19T15:00:00Z"))),
       {}, rango,
     );
     expect(result.destacadas[0].estadoAlCorte).toBe("POR_CONCILIAR");
@@ -207,22 +207,22 @@ describe("#911 — reducción comercial y verificación de la entrega física", 
   it.each(evidenciasInciertas)("no oculta la alerta con %s aunque la reducción fuera anterior", async (_caso, hecho) => {
     leerMock.mockResolvedValue([hecho]);
     const result = await listarEntregasDestacadas(
-      transaccion([p], false, reduccion(new Date("2026-11-19T14:00:00Z"))),
+      transaccion([p], false, reduccion(new Date("2026-09-19T14:00:00Z"))),
       {}, rango,
     );
     expect(result.destacadas[0].estadoAlCorte).toBe("POR_CONCILIAR");
   });
 
   it("una reducción anterior no tapa discrepancia de producto/cantidad ni ajuste posterior", async () => {
-    leerMock.mockResolvedValue([{ ...entregaVerificada, cantidades: [{ producto: "PACA_AGUA", cantidad: 12 }] }]);
-    const tx = transaccion([p], false, reduccion(new Date("2026-11-19T14:00:00Z")));
+    leerMock.mockResolvedValue([{ ...entregaVerificada, cantidades: [{ producto: "PACA_AGUA", cantidad: 6 }] }]);
+    const tx = transaccion([p], false, reduccion(new Date("2026-09-19T14:00:00Z")));
     const parcial = await listarEntregasDestacadas(tx, {}, rango);
     expect(parcial.destacadasTotal).toBe(1);
     expect(parcial.destacadas[0].estadoAlCorte).toBe("PARCIAL");
 
     leerMock.mockResolvedValue([entregaVerificada]);
     const posterior = await listarEntregasDestacadas(
-      transaccion([p], true, reduccion(new Date("2026-11-19T14:00:00Z"))),
+      transaccion([p], true, reduccion(new Date("2026-09-19T14:00:00Z"))),
       {}, rango,
     );
     expect(posterior.destacadas[0].estadoAlCorte).toBe("POR_CONCILIAR");
