@@ -322,8 +322,19 @@ async function leerConsultaPedidos(
         f.hasta === f.desde && !f.desdeHora && !f.hastaHora && !f.all;
       const actividadIntegrada = !!fArrastre && diaOperativo &&
         base === "pedido" && f.foco === "";
-      let whereLista: Prisma.PedidoWhereInput = fArrastre
-        ? { OR: [where, whereConsultaPedidos(fArrastre, coincidencias)] }
+      // #927: no adelantar a «Hoy» pedidos antiguos reprogramados para
+      // mañana o después. Los pedidos creados hoy conservan su consulta normal.
+      const anteriores: Prisma.PedidoWhereInput | null = fArrastre
+        ? whereConsultaPedidos(fArrastre, coincidencias) : null;
+      const anterioresExigibles: Prisma.PedidoWhereInput | null = anteriores &&
+        actividadIntegrada
+        ? { AND: [anteriores, { OR: [
+          { fechaEntrega: null },
+          { fechaEntrega: { lt: rango.hasta } },
+        ] }] }
+        : anteriores;
+      let whereLista: Prisma.PedidoWhereInput = anterioresExigibles
+        ? { OR: [where, anterioresExigibles] }
         : where;
       if (actividadIntegrada) {
         // Priorizar hechos físicos auditables: entregadoAt por sí solo no basta.
