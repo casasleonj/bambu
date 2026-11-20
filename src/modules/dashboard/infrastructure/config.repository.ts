@@ -8,6 +8,8 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '@/shared/infrastructure'
 
 export interface CierreData {
+  fecha?: Date
+  necesitaValidacion?: boolean
   stockFinAgua: number | null
   stockFinHielo: number | null
 }
@@ -51,9 +53,9 @@ export class PrismaConfigRepository implements ConfigRepository {
 
   async getCierreBefore(endExclusive: Date): Promise<CierreData | null> {
     const cierre = await this.db.cierreDia.findFirst({
-      where: { fecha: { lt: endExclusive } },
+      where: { fecha: { lt: endExclusive }, necesitaValidacion: false },
       orderBy: { fecha: 'desc' },
-      select: { stockFinAgua: true, stockFinHielo: true },
+      select: { fecha: true, necesitaValidacion: true, stockFinAgua: true, stockFinHielo: true },
     })
     return cierre ?? null
   }
