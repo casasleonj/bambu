@@ -61,7 +61,7 @@ describe("#841 — no repetir el pedido pendiente en las entregas", () => {
     const visibles = r.pedidos.map((p) => p.id);
     expect(r.actividadIntegrada).toBe(true);
     expect(r.arrastrados).toBeUndefined();
-    expect(r.destacadas).toBeUndefined();
+    expect(r.destacadas).toEqual([]);
     expect(r.total).toBe(3);
     expect(new Set(visibles)).toEqual(new Set([parcial.id, completo.id, nada.id]));
     expect(visibles).toHaveLength(3);
@@ -76,7 +76,7 @@ describe("#841 — no repetir el pedido pendiente en las entregas", () => {
     expect(r.pedidos.map((p) => p.id)).toEqual([parcial.id]);
     expect(r.total).toBe(1);
     expect(r.arrastrados).toBeUndefined();
-    expect(r.destacadas).toBeUndefined();
+    expect(r.destacadas).toEqual([]);
     expect(r.pedidos[0].entregaEnPeriodo?.unidades).toBe(1);
   });
 
@@ -93,7 +93,7 @@ describe("#841 — no repetir el pedido pendiente en las entregas", () => {
     expect(new Set(r.pedidos.map((p) => p.id))).toEqual(new Set([...antiguos, parcial.id]));
     expect(r.pedidos.find((p) => p.id === parcial.id)?.entregaEnPeriodo?.unidades).toBe(1);
     expect(r.arrastrados).toBeUndefined();
-    expect(r.destacadas).toBeUndefined();
+    expect(r.destacadas).toEqual([]);
   });
 
   it("un pedido anterior completado hoy también entra en una única fila", async () => {
@@ -103,7 +103,7 @@ describe("#841 — no repetir el pedido pendiente en las entregas", () => {
     expect(r.pedidos.map((p) => p.id)).toEqual([completo.id]);
     expect(r.pedidos[0].entregaEnPeriodo?.unidades).toBe(3);
     expect(r.arrastrados).toBeUndefined();
-    expect(r.destacadas).toBeUndefined();
+    expect(r.destacadas).toEqual([]);
   });
 
   it("un rango que empieza ayer no trata el pedido de ayer como arrastrado", async () => {
