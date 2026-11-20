@@ -157,6 +157,19 @@ describe("#927 — etiquetas de actividad en la misma fila", () => {
     expect(screen.queryByTestId("operacion-parcial-completo")).toBeNull();
     expect(screen.getAllByTestId("operacion-row-completo")).toHaveLength(1);
   });
+
+  it("evidencia histórica incompleta nunca se etiqueta Entregado hoy", () => {
+    montar([{
+      ...fila("incierto", 1100),
+      fecha: "2026-10-28T15:00:00Z",
+      estadoEntrega: "ENTREGADO",
+      diaAnterior: true,
+      actividadOperativa: true,
+      entregaEnPeriodo: { unidades: null, porConciliar: true },
+    }]);
+    expect(screen.getByTestId("operacion-entrega-hoy-incierto")).toHaveTextContent("Entrega por conciliar");
+    expect(screen.getByTestId("operacion-cantidades-incierto")).toHaveTextContent("Hoy: por conciliar");
+  });
 });
 
 describe("GrupoBarrioEncabezado", () => {
