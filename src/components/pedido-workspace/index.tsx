@@ -663,6 +663,12 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
         type: 'COMMIT_ERROR',
         message: 'No se pudo confirmar el guardado. Al reintentar se usa este mismo pedido: no se duplica.',
       })
+      // #925: ante un rechazo del commit (incluido 409 por cambio de precios),
+      // volver a consultar las reglas del comprador. Solo se hace cuando el
+      // guardado falla, no cada vez que se escribe una cantidad. Si el precio
+      // cambió, el efecto de divergencia renovará también el preview.
+      // Se conserva el borrador y el offlineId para no duplicar pedidos.
+      if (!modoEdicion) pricingSnapshot.reload()
     } else if (guardado === true) {
       dispatch({ type: 'COMMIT_SUCCESS' })
     }
