@@ -519,23 +519,29 @@ async function leerConsultaPedidos(
           .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
           .map(p => p.id);
       }
-      // #836 F2b: «Para hoy» ordena por tiempo restante hasta la hora acordada (Ya toca → Normales → Más tarde).
-      // Solo si algún pedido del conjunto tiene hora; si no, la consulta es la de siempre.
-      if (!ordenPagina && f.foco === "paraHoy" && !f.grupoBarrio) {
-        const conHora = await tx.pedido.findFirst({ where: { AND: [where, { entregaNoAntesDe: { not: null } }] }, select: { id: true } });
-        if (conHora) {
-          const candidatos = await tx.pedido.findMany({
-            where,
-            select: { id: true, fecha: true, numero: true, fechaEntrega: true, estadoEntrega: true, entregaNoAntesDe: true },
-          });
-          const base = [...candidatos].sort((a, b) =>
-            arrastre
-              ? (a.fecha.getTime() - b.fecha.getTime()) || (a.numero - b.numero) || (a.id < b.id ? -1 : 1)
-              : (b.fecha.getTime() - a.fecha.getTime()) || (b.numero - a.numero) || (a.id < b.id ? -1 : 1));
-          ordenPagina = ordenarPorFranja(base, new Date(), (c) => c)
-            .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
-            .map((c) => c.id);
-        }
+      // #921 + #836: «Para hoy» conserva las franjas como prioridad primaria;
+      // dentro de cada franja aplica pago confirmado y FIFO, sobre TODO el conjunto.
+      // No modificar la vista agrupada por barrio ni las consultas de arrastre.
+      if (!ordenPagina && f.foco === "paraHoy" && !f.grupoBarrio && !f.agrupar && !arrastre) {
+        const candidatos = await tx.pedido.findMany({
+          where: whereLista,
+          select: {
+            id: true, createdAt: true, total: true, totalPagado: true, saldo: true,
+            estadoEntrega: true, fechaEntrega: true, entregaNoAntesDe: true,
+            items: { select: { cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true } },
+            pagos: { where: { confirmacion: "CONFIRMADO" }, select: { monto: true } },
+          },
+        });
+        const ahora = new Date();
+        const priorizados = ordenarPrioridadPedidos(candidatos.map(p => ({
+          ...p,
+          total: Number(p.total), totalPagado: Number(p.totalPagado),
+          saldo: Number(p.saldo),
+          confirmado: p.pagos.reduce((n, pago) => n + Number(pago.monto), 0),
+        })), ahora);
+        ordenPagina = ordenarPorFranja(priorizados, ahora, p => p)
+          .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
+          .map(p => p.id);
       }
       const fin: Prisma.PedidoWhereInput = { AND: [where, validoFinanciero] };
       const [total, rowsSinOrden, repartidores, sumas, parciales] = await Promise.all([
