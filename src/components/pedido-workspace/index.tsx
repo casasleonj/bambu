@@ -471,21 +471,19 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
     : null
   // No se pisa en silencio: con otra ubicación ya guardada hay que elegir; mientras se revisa, se espera.
   const faltaElegirUbicacion = guardarUbic && (ubicacionDestino.estado === 'cargando' || (hayOtraUbicacion(ubicacionDestino, puntoPedido) && ubicEleccion.reemplazar === null))
-  // B-20/#925: la cola offline requiere conocer el importe mostrado. Sin
-  // un precio local verificable no se puede confirmar un total a ciegas.
+  // B-20/#925: si existe un estimado offline, transmitirlo para reconciliar
+  // con el precio real al sincronizar; sin estimado se conserva la cola B-20,
+  // cuyo aviso advierte que el precio aún debe validarse.
   const totalEstimado = sinConexion && !calc
     ? (totalLocal ?? estimarTotalOffline(state.draft.items, state.draft.canal, tabla, configs))
     : null
   const commitEnabled = !precioDesactualizado && canCommit(state, accionCommit)
     && (state.phase === 'PREVIEW_READY' || (sinConexion && state.phase === 'DRAFTING'))
-    && (!sinConexion || totalEstimado !== null)
     && !faltaCompradorParaDespues
     && !compradorSinResolver
     && (!ventaRepetida || otraVentaConfirmada)
     && !faltaElegirUbicacion
-  const blockedReason = sinConexion && totalEstimado === null
-    ? 'Sin conexión y sin tabla de precios vigente: no se puede confirmar el importe del pedido.'
-    : precioDesactualizado
+  const blockedReason = precioDesactualizado
     ? 'Los precios cambiaron. Espera la actualización antes de registrar el pedido.'
     : compradorSinResolver
     ? 'No se ha podido cargar el comprador. Reintenta o vuelve a seleccionarlo.'
