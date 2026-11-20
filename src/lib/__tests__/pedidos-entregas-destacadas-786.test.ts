@@ -172,12 +172,13 @@ describe("#911 — reducción comercial y verificación de la entrega física", 
     expect(result.destacadas[0].cantidadesDelRango).toEqual([{ producto: "PACA_AGUA", cantidad: 13 }]);
   });
 
-  it.each([
+  const fechasInciertas: Array<[string, Date | null]> = [
     ["posterior a entrega del mismo día", new Date("2026-11-19T16:00:00Z")],
     ["posterior al corte", new Date("2026-11-20T12:00:00Z")],
     ["sin fecha verificable", null],
     ["exactamente simultánea a la entrega", fechaEntrega],
-  ])("mantiene Por conciliar cuando la reducción es %s", async (_caso, fechaReduccion) => {
+  ];
+  it.each(fechasInciertas)("mantiene Por conciliar cuando la reducción es %s", async (_caso, fechaReduccion) => {
     const result = await listarEntregasDestacadas(
       transaccion([p], false, reduccion(fechaReduccion)), {}, rango,
     );
@@ -198,11 +199,12 @@ describe("#911 — reducción comercial y verificación de la entrega física", 
     expect(result.destacadas[0].estadoAlCorte).toBe("POR_CONCILIAR");
   });
 
-  it.each([
-    ["legado sin desglose", { ...entregaVerificada, fuente: "HISTORICO" as const, cantidades: null, incompleto: true }],
+  const evidenciasInciertas: Array<[string, EntregaConsulta]> = [
+    ["legado sin desglose", { ...entregaVerificada, fuente: "HISTORICO", cantidades: null, incompleto: true }],
     ["precisión de día", { ...entregaVerificada, precisionDia: true }],
     ["evidencia marcada incompleta", { ...entregaVerificada, incompleto: true }],
-  ])("no oculta la alerta con %s aunque la reducción fuera anterior", async (_caso, hecho) => {
+  ];
+  it.each(evidenciasInciertas)("no oculta la alerta con %s aunque la reducción fuera anterior", async (_caso, hecho) => {
     leerMock.mockResolvedValue([hecho]);
     const result = await listarEntregasDestacadas(
       transaccion([p], false, reduccion(new Date("2026-11-19T14:00:00Z"))),
