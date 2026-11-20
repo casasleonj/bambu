@@ -300,8 +300,17 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
       preciosLocales.reduce((sum, i) => sum + Math.round(i.subtotal * 100), 0) / 100,
     [preciosLocales],
   )
-  const precioDesactualizado = totalLocal !== null && calc !== undefined &&
-    Math.round(totalLocal * 100) !== Math.round(calc.total * 100)
+  const precioDesactualizado = preciosLocales !== null && calc !== undefined && (
+    Math.round((totalLocal ?? 0) * 100) !== Math.round(calc.total * 100) ||
+    preciosLocales.length !== calc.items.length ||
+    preciosLocales.some((linea) => {
+      const remoto = calc.items.find((r) => r.producto === linea.producto)
+      return !remoto ||
+        remoto.cantidad !== linea.cantidad ||
+        Math.round(remoto.precioUnitario * 1_000_000) !== Math.round(linea.precio * 1_000_000) ||
+        remoto.precioOrigen !== linea.origen
+    })
+  )
   const ultimaInvalidacionPrecio = useRef<string | null>(null)
   const pricingSnapshotData = pricingSnapshot.data
   const reloadPricing = pricingSnapshot.reload
