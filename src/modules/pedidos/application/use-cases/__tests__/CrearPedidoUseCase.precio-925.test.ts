@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CrearPedidoUseCase } from '../CrearPedidoUseCase'
+import type { CrearPedidoInput } from '@/modules/pedidos/application/dto'
 
 vi.mock('@/lib/factura-empresa', () => ({
   getFacturaEmpresaSnapshot: vi.fn().mockResolvedValue({}),
@@ -47,15 +48,23 @@ describe('#925 · confirmar precio visible dentro de la transacción', () => {
       {} as unknown as Args[7],
     )
 
-    await expect(sut.execute({
-      clienteId: 'c1', canal: 'PUNTO', origen: 'PEDIDO',
-      items: [{ producto: 'PACA_AGUA', cantidad: 7 }],
-      precioEsperado: 19600,
-      createdById: 'u1', createdByRole: 'ADMIN',
-    })).rejects.toThrow('PRECIO_CAMBIO_CONFIRMACION')
+    // Caso A: cambió el total. Caso B: el total coincide, pero la
+    // cotización por SKU no; también debe rechazarlo antes de cobrar.
+    const casos: Array<Pick<CrearPedidoInput, 'precioEsperado' | 'preciosEsperados'>> = [
+      { precioEsperado: 19600 },
+      { precioEsperado: 17500, preciosEsperados: [{ producto: 'PACA_AGUA', precio: 2800, origen: 'volumen' }] },
+    ]
+    for (const cotizacion of casos) {
+      await expect(sut.execute({
+        clienteId: 'c1', canal: 'PUNTO', origen: 'PEDIDO',
+        items: [{ producto: 'PACA_AGUA', cantidad: 7 }],
+        ...cotizacion,
+        createdById: 'u1', createdByRole: 'ADMIN',
+      })).rejects.toThrow('PRECIO_CAMBIO_CONFIRMACION')
+    }
 
     expect(txManager.executeWithLock).toHaveBeenCalledWith('SECUENCIA', 'pedido', expect.any(Function))
-    expect(pricingPort.resolverPrecios).toHaveBeenCalledTimes(1)
+    expect(pricingPort.resolverPrecios).toHaveBeenCalledTimes(casos.length)
     expect(clienteRepo.getSaldoFavor).not.toHaveBeenCalled()
     expect(pedidoRepo.create).not.toHaveBeenCalled()
     expect(facturaRepo.create).not.toHaveBeenCalled()
