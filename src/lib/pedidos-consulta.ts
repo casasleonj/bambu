@@ -161,7 +161,7 @@ function lista(
 function leerGrupoBarrio(p: URLSearchParams): string {
   const v = p.get("grupoBarrio") || "";
   if (!v) return "";
-  if (v.length > 120 || !/^(sin-barrio|[bt]:[^\u0000-\u001f]+)$/.test(v))
+  if (v.length > 120 || !/^(sin-barrio|venta-anonima|[bt]:[^\u0000-\u001f]+)$/.test(v))
     throw new FiltroPedidosError("Revisa el filtro «grupoBarrio».");
   return v;
 }
