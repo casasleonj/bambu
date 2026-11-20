@@ -63,6 +63,11 @@ describe("#915 — arrastres y entregas anteriores dentro del barrio (Postgres r
     const cCentro = await cliente("Cli Centro", bCentro), cVilla = await cliente("Cli Villa", bVilla), cSolo = await cliente("Cli Solo", bSolo);
     ids.hoyCentro = await pedido(cCentro, new Date());
     ids.arrCentro = await pedido(cCentro, en(antes(1), "09:00:00"));
+    ids.programadoFuturo = await pedido(cCentro, en(antes(1), "07:00:00"));
+    await testPrisma.pedido.update({
+      where: { id: ids.programadoFuturo },
+      data: { fechaEntrega: new Date(Date.now() + 3 * 86400000) },
+    });
     // Villa: 6 arrastres (más que el tope histórico de 5), uno de ellos parcial con entrega hoy.
     for (const [d, h] of [[6, "07:00:00"], [5, "07:00:00"], [4, "07:00:00"], [4, "15:00:00"], [3, "07:00:00"], [2, "07:00:00"]] as const)
       villaIds.push(await pedido(cVilla, en(antes(d), h), d === 2 ? { entregadas: 1, eventoHoy: true } : {}));
@@ -83,6 +88,7 @@ describe("#915 — arrastres y entregas anteriores dentro del barrio (Postgres r
     expect(r.actividadIntegrada).toBe(true);
     expect(r.destacadas ?? []).toHaveLength(0);
     expect(r.pedidos.find(p => p.id === ids.entregadoCentro)?.entregaEnPeriodo?.unidades).toBe(3);
+    expect(lista).not.toContain(ids.programadoFuturo);
     const marca = Object.fromEntries(r.pedidos.map((p) => [p.id, p.diaAnterior === true]));
     expect(marca[ids.hoyCentro]).toBe(false);
     expect(marca[ids.arrCentro]).toBe(true);
