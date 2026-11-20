@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useReducer, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { generateUUID } from '@/lib/uuid'
 import { cantidadesRegaloValidas } from '@/shared/domain/cantidades-regalo'
 import { PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
@@ -36,6 +36,8 @@ import { workspaceReducer, initWorkspace, canCommit, EMPTY_DRAFT } from './works
 import { usePreview } from './use-preview'
 import { estimarTotalOffline } from './estimar-total'
 import { useItemPricing } from './use-item-pricing'
+import { usePricingSnapshot } from './use-pricing-snapshot'
+import { resolverPreciosPedido } from '@/modules/pedidos/domain/services/pricing-algorithm.service'
 import { useClienteContext } from './use-cliente-context'
 import { usePedidoPropuesta } from './use-pedido-propuesta'
 import type { Propuesta } from './build-propuestas'
@@ -233,6 +235,7 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
   const [ubicGuardar, setUbicGuardar] = useState<{ key: string; guardar: boolean; reemplazar: boolean | null }>({ key: '', guardar: false, reemplazar: null })
 
   const { tabla, configs, loading: pricingLoading, precioBaseFor } = useItemPricing()
+  const pricingSnapshot = usePricingSnapshot(state.draft)
   const { fiadoStatus, patron, patronLoading, loadPatron } = useClienteContext(state.draft.clienteId)
   const propuesta = usePedidoPropuesta()
   // P0-3 (#357): excepción de crédito del cliente seleccionado (solo clientes reales).
@@ -269,6 +272,38 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
   } = useClienteSearch(searchTerm, clientes)
 
   const calc = state.preview?.calculation
+  // #925: el precio se calcula en memoria usando EXACTAMENTE el algoritmo
+  // compartido con el backend. La revisión del servidor sigue habilitando
+  // (o bloqueando) el registro del pedido, sin esperar para mostrar el total.
+  const preciosLocales = useMemo(() => {
+    if (!pricingSnapshot.data) return null
+    return resolverPreciosPedido({
+      items: state.draft.items.map((i) => ({
+        codigo: i.producto,
+        cantidad: i.cantidad,
+        precioManual: i.precioManual,
+      })),
+      canal: state.draft.canal,
+      clienteOverrides: pricingSnapshot.data.pricing.clienteOverrides,
+      tiersByCode: pricingSnapshot.data.pricing.tiersByCode,
+      productosByCode: pricingSnapshot.data.pricing.productosByCode,
+    })
+  }, [pricingSnapshot.data, state.draft.items, state.draft.canal])
+  const totalLocal = useMemo(() =>
+    preciosLocales === null ? null :
+      preciosLocales.reduce((sum, i) => sum + Math.round(i.subtotal * 100), 0) / 100,
+    [preciosLocales],
+  )
+  const precioDesactualizado = totalLocal !== null && calc !== undefined &&
+    Math.round(totalLocal * 100) !== Math.round(calc.total * 100)
+  const ultimaInvalidacionPrecio = useRef<string | null>(null)
+  useEffect(() => {
+    if (!precioDesactualizado || !pricingSnapshot.data) return
+    const key = `${state.previewRevision}:${pricingSnapshot.data.version}`
+    if (ultimaInvalidacionPrecio.current === key) return
+    ultimaInvalidacionPrecio.current = key
+    pricingSnapshot.reload()
+  }, [precioDesactualizado, pricingSnapshot.data, pricingSnapshot.reload, state.previewRevision])
 
   const cantOf = useCallback(
     (codigo: ProductoCodigo) => state.draft.items.find((i) => i.producto === codigo)?.cantidad ?? 0,
@@ -281,20 +316,21 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
       const codigo = PRODUCTO_INFO[prodId].codigo as ProductoCodigo
       const draftItem = state.draft.items.find((i) => i.producto === codigo)
       const previewItem = calc?.items.find((c) => c.producto === codigo)
+      const localItem = preciosLocales?.find((c) => c.producto === codigo)
       const precioBase = precioBaseFor(codigo, state.draft.canal)
       return {
         prodId,
         cantidad: draftItem?.cantidad ?? 0,
         cantidadRegalo: draftItem?.cantidadRegalo,
-        precio: previewItem?.precioUnitario ?? draftItem?.precioManual ?? precioBase,
+        precio: localItem?.precio ?? previewItem?.precioUnitario ?? draftItem?.precioManual ?? 0,
         precioBase,
         precioManual: draftItem?.precioManual,
-        precioOrigen: previewItem?.precioOrigen,
+        precioOrigen: localItem?.origen ?? previewItem?.precioOrigen,
         tiers: tabla[codigo] ?? [],
         precioBajoConfirmado: Boolean(state.precioBajoConfirmado[codigo]),
       }
     })
-  }, [state.draft.canal, state.draft.items, state.precioBajoConfirmado, calc, configs, tabla, precioBaseFor])
+  }, [state.draft.canal, state.draft.items, state.precioBajoConfirmado, calc, preciosLocales, configs, tabla, precioBaseFor])
 
   const setCantidad = useCallback((prodId: string, cantidad: number) => {
     const codigo = PRODUCTO_INFO[prodId].codigo as ProductoCodigo
@@ -306,13 +342,14 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
       .filter((i) => i.cantidad > 0)
       .map((i) => {
         const previewItem = calc?.items.find((c) => c.producto === i.producto)
+        const localItem = preciosLocales?.find((c) => c.producto === i.producto)
         return {
           prodId: CODIGO_TO_PRODID[i.producto] ?? i.producto,
           cantidad: i.cantidad,
-          precio: previewItem?.precioUnitario ?? 0,
+          precio: localItem?.precio ?? previewItem?.precioUnitario ?? 0,
         }
       }),
-    [state.draft.items, calc],
+    [state.draft.items, calc, preciosLocales],
   )
 
   const handleSelectCliente = (c: Cliente, negocio?: NegocioPreseleccionado | null) => {
@@ -432,7 +469,7 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
     : null
   // No se pisa en silencio: con otra ubicación ya guardada hay que elegir; mientras se revisa, se espera.
   const faltaElegirUbicacion = guardarUbic && (ubicacionDestino.estado === 'cargando' || (hayOtraUbicacion(ubicacionDestino, puntoPedido) && ubicEleccion.reemplazar === null))
-  const commitEnabled = canCommit(state, accionCommit)
+  const commitEnabled = !precioDesactualizado && canCommit(state, accionCommit)
     && (state.phase === 'PREVIEW_READY' || (sinConexion && state.phase === 'DRAFTING'))
     && !faltaCompradorParaDespues
     && !compradorSinResolver
@@ -440,9 +477,11 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
     && !faltaElegirUbicacion
   // B-20: sin preview del servidor, el cobro "completo" usa un total estimado con la tabla ya cargada.
   const totalEstimado = sinConexion && !calc
-    ? estimarTotalOffline(state.draft.items, state.draft.canal, tabla, configs)
+    ? (totalLocal ?? estimarTotalOffline(state.draft.items, state.draft.canal, tabla, configs))
     : null
-  const blockedReason = compradorSinResolver
+  const blockedReason = precioDesactualizado
+    ? 'Los precios cambiaron. Espera la actualización antes de registrar el pedido.'
+    : compradorSinResolver
     ? 'No se ha podido cargar el comprador. Reintenta o vuelve a seleccionarlo.'
     : faltaCompradorParaDespues
     ? 'Para entregar después hay que identificar al comprador.'
@@ -534,6 +573,7 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
       // creación normal: derivado de si hay cliente real.
       origen: modoEdicion ? state.draft.origen : origenCreacion,
       pedidoOrigenId: state.draft.pedidoOrigenId,
+      precioEsperado: calc?.total,
       items: state.draft.items
         .filter((i) => i.cantidad > 0 || (i.cantidadRegalo ?? 0) > 0)
         .map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual, cantidadRegalo: i.cantidadRegalo })),
@@ -760,7 +800,7 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
           onCantidadRegaloChange={(prodId, value) => dispatch({ type: 'SET_ITEM_REGALO',
             producto: PRODUCTO_INFO[prodId].codigo as ProductoCodigo, cantidad: Number(value),
           })}
-          preciosLoading={state.previewPending || pricingLoading}
+          preciosLoading={!pricingSnapshot.data && !calc && (pricingSnapshot.loading || pricingLoading)}
           onIncrement={(prodId) => setCantidad(prodId, cantOf(PRODUCTO_INFO[prodId].codigo as ProductoCodigo) + 1)}
           onDecrement={(prodId) => setCantidad(prodId, cantOf(PRODUCTO_INFO[prodId].codigo as ProductoCodigo) - 1)}
           onCantidadChange={(prodId, value) => {
@@ -782,7 +822,7 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
       <section data-testid="workspace-calculo">
         <PedidoPricingSummary
           lineas={pricingLineas}
-          total={calc?.total ?? 0}
+          total={totalLocal ?? calc?.total ?? 0}
           totalPagado={calc?.totalPagado ?? 0}
           saldoPendiente={calc?.saldoProyectado ?? 0}
         />
@@ -796,14 +836,14 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
           conserva los pagos existentes; el cobro posterior va por pagar-fiado. ── */}
       {!modoEdicion && (
         <WorkspaceDinero
-          total={calc?.total ?? totalEstimado}
-          totalEstimado={!calc && totalEstimado != null}
+          total={totalLocal ?? calc?.total ?? totalEstimado}
+          totalEstimado={!calc && (totalLocal !== null || totalEstimado != null)}
           saldoProyectado={calc?.saldoProyectado ?? null}
           pagos={state.draft.pagos}
           pagoCompleto={state.draft.pagoCompleto ?? null}
           esAnonima={state.draft.clienteId === 'CONSUMIDOR_FINAL' && !state.draft.clienteNuevo}
           disabled={state.phase === 'COMMITTING' || state.phase === 'COMMITTED'}
-          onPagarCompleto={(metodo) => dispatch({ type: 'PAGAR_COMPLETO', metodo, total: totalEstimado ?? undefined })}
+          onPagarCompleto={(metodo) => dispatch({ type: 'PAGAR_COMPLETO', metodo, total: totalLocal ?? totalEstimado ?? undefined })}
           onSetPagos={(pagos) => dispatch({ type: 'SET_PAGOS', pagos })}
           recibido={recibidoEfectivo}
           onRecibidoChange={setRecibidoEfectivo}
@@ -897,7 +937,7 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
       {/* ── Zona: Commit (adaptativo) ── */}
       <PedidoCommitBar
         phase={state.phase}
-        total={calc?.total ?? null}
+        total={totalLocal ?? calc?.total ?? null}
         previewPending={state.previewPending}
         canCommit={commitEnabled}
         blockedReason={blockedReason}
