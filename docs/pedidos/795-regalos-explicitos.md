@@ -317,8 +317,20 @@ y **14 PostgreSQL** de persistencia/agrupación, exit 0. El nuevo caso verifica
 63 → 52 → 2 → 0, manteniendo 138000 y cero pagado. La primera versión del fixture
 intentó entregar desde PENDIENTE por la vía del repartidor, y falló correctamente;
 se corrigió el fixture para usar la operación existente de oficina en las entregas
-posteriores, sin modificar las transiciones de negocio. Nueva compilación y QA
-con aserción del remanente agrupado: pendientes de completar.
+posteriores, sin modificar las transiciones de negocio. La nueva compilación y TypeScript pasaron. Candidato `fb4dfd7b`:
+**22/22 Playwright Hub**, **18/18 interfaz anterior**, sin skips. QA exploratorio:
+Hub 6/6, anterior 4/4; enlaces reales 4/4 en cada modo; 0 excepciones JS. Todos
+los recorridos conciliaron unidades/ventas/cobros con Dashboard y Cierre, y el
+resumen agrupado quedó en 52 después de 10+1. Encabezado real inspeccionado en
+escritorio/móvil; el guion expresa `agrupar=barrio` al buscar porque main desactiva
+la agrupación por defecto en búsquedas. Regresión adicional: **494/494 unitarias,
+49 archivos**. ESLint de cambios finales: exit 0.
+
+Evidencia de QA: [.qa/pr-919.md](../../.qa/pr-919.md). El preview de la rama está
+READY para el mismo commit y GET /login responde 200; no se presume aislada su
+base ni se escriben operaciones sintéticas allí. Consulta de columnas productivas
+repetida el 20-11: los cinco campos siguen ausentes. No se ejecutó DDL/DML ni se
+cambió configuración o permisos de Vercel/Supabase.
 
 ## Preparación de liberación
 
