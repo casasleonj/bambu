@@ -37,7 +37,7 @@ import { usePreview } from './use-preview'
 import { estimarTotalOffline } from './estimar-total'
 import { useItemPricing } from './use-item-pricing'
 import { usePricingSnapshot } from './use-pricing-snapshot'
-import { resolverPreciosPedido } from '@/modules/pedidos/domain/services/pricing-algorithm.service'
+import { resolverPreciosPedido, resolverPrecioUnitario } from '@/modules/pedidos/domain/services/pricing-algorithm.service'
 import { useClienteContext } from './use-cliente-context'
 import { usePedidoPropuesta } from './use-pedido-propuesta'
 import type { Propuesta } from './build-propuestas'
@@ -319,7 +319,15 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
       const draftItem = state.draft.items.find((i) => i.producto === codigo)
       const previewItem = calc?.items.find((c) => c.producto === codigo)
       const localItem = preciosLocales?.find((c) => c.producto === codigo)
-      const precioBase = precioBaseFor(codigo, state.draft.canal)
+      // El precio de referencia (placeholder/tachado) también corresponde
+      // al tramo ACTUAL, nunca al primero de la lista de volumen.
+      const precioBase = pricingSnapshot.data
+        ? resolverPrecioUnitario(
+            codigo, draftItem?.cantidad ?? 0, state.draft.canal, null, undefined,
+            pricingSnapshot.data.pricing.tiersByCode[codigo] ?? [],
+            pricingSnapshot.data.pricing.productosByCode[codigo],
+          ).precio
+        : precioBaseFor(codigo, state.draft.canal)
       return {
         prodId,
         cantidad: draftItem?.cantidad ?? 0,
@@ -332,7 +340,7 @@ export function PedidosWorkspace({ clientes, puedeAutorizarRegalos = false, inte
         precioBajoConfirmado: Boolean(state.precioBajoConfirmado[codigo]),
       }
     })
-  }, [state.draft.canal, state.draft.items, state.precioBajoConfirmado, calc, preciosLocales, configs, tabla, precioBaseFor])
+  }, [state.draft.canal, state.draft.items, state.precioBajoConfirmado, calc, preciosLocales, pricingSnapshot.data, configs, tabla, precioBaseFor])
 
   const setCantidad = useCallback((prodId: string, cantidad: number) => {
     const codigo = PRODUCTO_INFO[prodId].codigo as ProductoCodigo
