@@ -24,10 +24,14 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {}
     if (rol) where.rol = rol
-    if (activo === null) {
+    // #863: ampliar solo bajo opt-in explícito. Los selectores operativos
+    // que omiten activo o piden true conservan el contrato anterior.
+    if (activo === null || activo === 'true') {
       where.activo = true
-    } else {
-      where.activo = activo === 'true'
+    } else if (activo === 'false') {
+      where.activo = false
+    } else if (activo !== 'all') {
+      return apiError('Filtro activo inválido. Usa true, false o all.', 400)
     }
     if (usaMoto !== null) {
       where.usaMoto = usaMoto === 'true'
@@ -43,6 +47,7 @@ export async function GET(request: NextRequest) {
     const puedeVerDeudas = userRole === ROLES.ADMIN || userRole === ROLES.CONTADOR || userRole === ROLES.ASISTENTE
     return apiSuccess({
       trabajadores: puedeVerDeudas ? await conDeudaPendiente(trabajadores) : trabajadores,
+      ...(activo === 'all' ? { incluyeDesactivados: true } : {}),
     })
   } catch (_error) {
     return apiError('Error cargando trabajadores')

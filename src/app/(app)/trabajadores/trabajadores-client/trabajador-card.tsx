@@ -42,6 +42,7 @@ export function TrabajadorCard({
             <Badge variant="secondary">
               {tipoPagoLabels[trabajador.tipoPago] || trabajador.tipoPago}
             </Badge>
+            {!trabajador.activo && <Badge variant="outline" className="border border-gray-300 text-gray-600 dark:border-zinc-600 dark:text-zinc-300">Desactivado</Badge>}
             {typeof trabajador.deudaPendiente === 'number' && trabajador.deudaPendiente > 0 && (
               onVerDeuda ? (
                 <button
@@ -149,7 +150,7 @@ export function TrabajadorCard({
         </div>
       </div>
 
-      {!soloLectura && (
+      {!soloLectura && trabajador.activo && (
         <div className="mt-6 flex items-center gap-3">
           <button
             onClick={() => onEdit(trabajador)}
