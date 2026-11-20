@@ -23,6 +23,7 @@ import { ordenarBarriosFIFO } from "./barrios/fifo-barrio";
 import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
 import { ordenarPorFranja } from "./pedidos-franja";
+import { ordenarPrioridadPedidos } from "./pedidos-prioridad-921";
 import { listarEntregasDestacadas } from "./pedidos-entregas-destacadas";
 import { PedidoMapper } from "@/modules/pedidos/infrastructure/mappers/PedidoMapper";
 import { PedidoDTOMapper } from "@/modules/pedidos/application/dto/PedidoDTOMapper";
@@ -495,6 +496,28 @@ async function leerConsultaPedidos(
             .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
             .map((c) => c.id);
         }
+      }
+      // #921: prioridad operativa sobre el conjunto filtrado COMPLETO, antes de skip/take.
+      // No toca barrio/Recorrido, ni focos con ordenamiento propio, ni consultas de arrastre.
+      if (!ordenPagina && !f.agrupar && !f.grupoBarrio && !f.foco && !arrastre) {
+        const candidatos = await tx.pedido.findMany({
+          where: whereLista,
+          select: {
+            id: true, createdAt: true, total: true, totalPagado: true, saldo: true,
+            estadoEntrega: true, fechaEntrega: true, entregaNoAntesDe: true,
+            items: { select: { cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true } },
+            pagos: { where: { confirmacion: "CONFIRMADO" }, select: { monto: true } },
+          },
+        });
+        ordenPagina = ordenarPrioridadPedidos(candidatos.map(p => ({
+          ...p,
+          total: Number(p.total),
+          totalPagado: Number(p.totalPagado),
+          saldo: Number(p.saldo),
+          confirmado: p.pagos.reduce((n, pago) => n + Number(pago.monto), 0),
+        })), new Date())
+          .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
+          .map(p => p.id);
       }
       // #836 F2b: «Para hoy» ordena por tiempo restante hasta la hora acordada (Ya toca → Normales → Más tarde).
       // Solo si algún pedido del conjunto tiene hora; si no, la consulta es la de siempre.
