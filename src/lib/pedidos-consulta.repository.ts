@@ -238,7 +238,9 @@ export async function consultarPedidos(
     const integrado = await leerConsultaPedidos(f, role, client, false, fa);
     // #841: una entrega parcial de un pedido que ya se ve como fila de esta página no se repite como tarjeta.
     const visibles = new Set(integrado.pedidos.map((p) => p.id));
-    const destacadas = integrado.destacadas?.filter((d) => !visibles.has(d.pedidoId));
+    const destacadas = integrado.actividadIntegrada
+      ? []
+      : integrado.destacadas?.filter((d) => !visibles.has(d.pedidoId));
     const quitadas = (integrado.destacadas?.length ?? 0) - (destacadas?.length ?? 0);
     return {
       ...integrado,
@@ -314,9 +316,44 @@ async function leerConsultaPedidos(
       const and = where.AND as Prisma.PedidoWhereInput[];
       // #915: universo de la lista = rango de hoy ∪ pendientes de días anteriores. El resumen del día
       // (importes, cobros, conteos) sigue usando solo `where`, para no mezclar días.
-      let whereLista: Prisma.PedidoWhereInput = fArrastre
-        ? { OR: [where, whereConsultaPedidos(fArrastre, coincidencias)] }
+      // #927: «Hoy» es una actividad operativa; no proyectar el estado actual
+      // sobre fechas históricas sin reconstruir los eventos al corte.
+      const diaOperativo = f.desde === todayStringBogota() &&
+        f.hasta === f.desde && !f.desdeHora && !f.hastaHora && !f.all;
+      const actividadIntegrada = !!fArrastre && diaOperativo &&
+        base === "pedido" && f.foco === "";
+      // #927: no adelantar a «Hoy» pedidos antiguos reprogramados para
+      // mañana o después. Los pedidos creados hoy conservan su consulta normal.
+      const anteriores: Prisma.PedidoWhereInput | null = fArrastre
+        ? whereConsultaPedidos(fArrastre, coincidencias) : null;
+      const anterioresExigibles: Prisma.PedidoWhereInput | null = anteriores &&
+        actividadIntegrada
+        ? { AND: [anteriores, { OR: [
+          { fechaEntrega: null },
+          { fechaEntrega: { lt: rango.hasta } },
+        ] }] }
+        : anteriores;
+      let whereLista: Prisma.PedidoWhereInput = anterioresExigibles
+        ? { OR: [where, anterioresExigibles] }
         : where;
+      if (actividadIntegrada) {
+        // La evidencia histórica incierta se muestra «Por conciliar», jamás
+        // como entrega física confirmada ni como movimiento contable nuevo.
+        const hechosHoy = await leerEntregasConsulta(tx, { rango });
+        const idsEntregados = [...new Set(hechosHoy.map((e) => e.pedidoId))];
+        if (idsEntregados.length) {
+          const sinFechaPedido = whereConsultaPedidos({ ...f, all: true }, coincidencias);
+          whereLista = {
+            OR: [
+              whereLista,
+              { AND: [
+                sinFechaPedido,
+                { fecha: { lt: rango.desde }, id: { in: idsEntregados } },
+              ] },
+            ],
+          };
+        }
+      }
       let catalogoBarrios: CatalogoBarrios | null = null;
       let cobros: CobrosPeriodo | null = null,
         entregas: EntregaConsulta[] | null = null;
@@ -374,33 +411,34 @@ async function leerConsultaPedidos(
         and.push({ id: { in: [...ids] } });
       } else if (f.repartidorId.length) {
         const candidatos = await tx.pedido.findMany({
-          where,
+          where: whereLista,
           select: { id: true },
         });
         entregas = await leerEntregasConsulta(tx, {
           ids: candidatos.map((p) => p.id),
         });
-        and.push({
-          id: {
-            in: [
-              ...new Set(
-                entregas
-                  .filter(
-                    (e) =>
-                      !!e.repartidorId &&
-                      f.repartidorId.includes(e.repartidorId),
-                  )
-                  .map((e) => e.pedidoId),
-              ),
-            ],
-          },
-        });
+        const idsRepartidor = [...new Set(entregas
+          .filter((e) => !!e.repartidorId && f.repartidorId.includes(e.repartidorId))
+          .map((e) => e.pedidoId))];
+        const filtroRepartidor: Prisma.PedidoWhereInput = { id: { in: idsRepartidor } };
+        and.push(filtroRepartidor);
+        if (fArrastre) whereLista = { AND: [whereLista, filtroRepartidor] };
       }
       // #656: exigir deuda antes de contar/paginar; el resumen usa todo el conjunto.
       const soloFiados = f.pago === "fiado" || f.foco === "esperandoPago";
-      const exigiblesConjunto = f.resumen || soloFiados
+      // El resumen comercial sigue siendo del período de pedido, nunca de la unión.
+      const exigiblesResumen = f.resumen
         ? await leerExigibles(tx, { AND: [where, validoFinanciero] }) : null;
-      if (soloFiados) and.push({ id: { in: [...exigiblesConjunto!].filter(([, monto]) => monto > 0).map(([id]) => id) } });
+      const exigiblesConjunto = soloFiados || (fArrastre && f.resumen)
+        ? await leerExigibles(tx, { AND: [whereLista, validoFinanciero] })
+        : exigiblesResumen;
+      if (soloFiados) {
+        const filtroFiado: Prisma.PedidoWhereInput = {
+          id: { in: [...exigiblesConjunto!].filter(([, monto]) => monto > 0).map(([id]) => id) },
+        };
+        and.push(filtroFiado);
+        if (fArrastre) whereLista = { AND: [whereLista, filtroFiado] };
+      }
       // #836 F3: agrupar por barrio efectivo sobre TODO el conjunto filtrado (no sobre la página).
       // Lee solo las columnas necesarias para clasificar; la página real se trae después.
       let grupos: GrupoBarrioConsulta[] | undefined;
@@ -790,7 +828,24 @@ async function leerConsultaPedidos(
           zonaCli: direccion.direccion ?? "",
           barrioCli: direccion.barrio ?? "",
           ...(grupoPorId?.get(raw.id) ? { grupoBarrio: grupoPorId.get(raw.id) } : {}),
-          ...(fArrastre && raw.fecha < rango.desde ? { diaAnterior: true } : {}),
+          ...((fArrastre || diaOperativo) && raw.fecha < rango.desde ? { diaAnterior: true, diaReferenciaConsulta: f.desde } : {}),
+          ...(diaOperativo ? { actividadOperativa: true } : {}),
+          ...(diaOperativo && hechos.some((e) =>
+            e.fecha >= rango.desde && e.fecha < rango.hasta
+          ) ? {
+            entregaEnPeriodo: {
+              porConciliar: hechos.some((e) =>
+                e.fecha >= rango.desde && e.fecha < rango.hasta &&
+                (e.fuente === "HISTORICO" || e.incompleto || !e.cantidades)
+              ),
+              unidades: hechos.some((e) =>
+                e.fecha >= rango.desde && e.fecha < rango.hasta &&
+                (e.fuente === "HISTORICO" || e.incompleto || !e.cantidades)
+              ) ? null : hechos
+                .filter((e) => e.fecha >= rango.desde && e.fecha < rango.hasta)
+                .reduce((n, e) => n + (e.cantidades ?? []).reduce((subtotal, l) => subtotal + l.cantidad, 0), 0),
+            },
+          } : {}),
           // #836 F2: tramos del negocio para avisar «cierra ese día»; solo si tiene horario configurado.
           ...(raw.negocio?.horarios?.length ? { negocioHorarios: raw.negocio.horarios } : {}),
           rutaNombre:
@@ -846,8 +901,8 @@ async function leerConsultaPedidos(
       const importe = dec(sumas?._sum.total),
         pagado = dec(sumas?._sum.totalPagado),
         saldo = dec(sumas?._sum.saldo),
-        fiado = [...(exigiblesConjunto?.values() ?? [])].reduce((s, monto) => s + centavos(monto), 0) / 100;
-      const consultaDestacadas = !arrastre && base === "pedido" && !f.all && !esFocoCompromiso(f.foco)
+        fiado = [...(exigiblesResumen?.values() ?? [])].reduce((s, monto) => s + centavos(monto), 0) / 100;
+      const consultaDestacadas = !actividadIntegrada && !arrastre && base === "pedido" && !f.all && !esFocoCompromiso(f.foco)
         ? await listarEntregasDestacadas(tx, whereConsultaPedidos({ ...f, fechaBase: "entrega", foco: f.foco === "entregaParcial" ? "" : f.foco }), rango, f.repartidorId, f.foco === "entregaParcial")
         : null;
       // #915: con la vista agrupada, cada entrega de un pedido anterior se ubica en el grupo de su barrio efectivo
@@ -890,6 +945,7 @@ async function leerConsultaPedidos(
           destacadasTotal: consultaDestacadas.destacadasTotal,
           destacadasRangoAmplio: consultaDestacadas.rangoAmplio,
         } : {}),
+        ...(actividadIntegrada ? { actividadIntegrada: true } : {}),
         resumen: f.resumen
           ? {
               importe,
@@ -903,7 +959,7 @@ async function leerConsultaPedidos(
               entregasPorConciliar,
               importesPorConciliar:
                 centavos(importe) !== centavos(pagado) + centavos(saldo),
-              exigiblesPorConciliar: parciales.filter(p => importesEntregaPedido({ ...p, exigible: exigiblesConjunto?.get(p.id) ?? 0 }).porConciliar).length,
+              exigiblesPorConciliar: parciales.filter(p => importesEntregaPedido({ ...p, exigible: exigiblesResumen?.get(p.id) ?? 0 }).porConciliar).length,
               cobros: cobros
                 ? {
                     medios: cobros.medios,

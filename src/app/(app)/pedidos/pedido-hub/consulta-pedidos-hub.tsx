@@ -198,7 +198,7 @@ export function ConsultaPedidosHub(props: Props) {
             : filtrosLeidos?.resumen
               ? "Pedidos de la consulta"
               : integrado
-                ? "Pedidos de hoy y pendientes de días anteriores"
+                ? "Pedidos de hoy y anteriores"
                 : "Pedidos de hoy"}
         </h2>
         <p className="mt-1 text-xs text-slate-500">
@@ -242,9 +242,9 @@ export function ConsultaPedidosHub(props: Props) {
       : "en el período";
   const entregasAplican = !!datos && !!filtrosLeidos && baseEfectiva(filtrosLeidos) === "pedido" && !filtrosLeidos.all;
   // Sin filas que agrupar, las entregas anteriores se muestran como antes (no deben desaparecer).
-  const integradoConFilas = integrado && !!datos && datos.pedidos.length > 0;
+  const integradoConFilas = integrado && !datos?.actividadIntegrada && !!datos && datos.pedidos.length > 0;
   const entregasNode =
-    entregasAplican && !integradoConFilas && datos && filtrosLeidos ? (
+    entregasAplican && !datos?.actividadIntegrada && !integradoConFilas && datos && filtrosLeidos ? (
       <EntregasDestacadas
         entregas={datos.destacadas ?? []}
         total={datos.destacadasTotal ?? 0}

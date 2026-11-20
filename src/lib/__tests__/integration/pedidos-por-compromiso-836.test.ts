@@ -87,8 +87,15 @@ describe("#836 F1 — consulta por fecha prometida (Postgres real)", () => {
     expect(r.destacadas).toBeUndefined();
   });
 
-  it("la consulta sin foco sigue igual: por fecha de pedido, el creado hace 3 días no aparece en «hoy»", async () => {
+  it("#927: la lista operativa sin foco integra pendientes anteriores, pero no adelanta futuros", async () => {
     const r = await consultarPedidos(leerFiltrosConsulta(new URLSearchParams("pageSize=100&agrupar=")), "ADMIN");
-    expect(r.pedidos.map((p) => p.id)).not.toContain(ids.hoyCreadoAntes);
+    const visibles = r.pedidos.map((p) => p.id);
+    expect(r.actividadIntegrada).toBe(true);
+    expect(visibles).toEqual(expect.arrayContaining([ids.hoyCreadoAntes, ids.hoyNoche, ids.ayerAbierto, ids.sinFecha]));
+    expect(visibles).not.toContain(ids.manana);
+    expect(visibles).not.toContain(ids.enTresDias);
+    expect(visibles).not.toContain(ids.ayerEntregado);
+    expect(visibles).not.toContain(ids.hoyAnulado);
+    expect(new Set(visibles).size).toBe(visibles.length);
   });
 });

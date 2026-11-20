@@ -60,6 +60,8 @@ export interface ResultadoConsultaPedidos {
   arrastradosTotal?: number;
   /** #915: en la vista agrupada los pendientes/parciales de días anteriores ya vienen DENTRO de `pedidos`. */
   arrastradosIntegrados?: boolean;
+  /** #927: la lista integra pendientes previos y eventos físicos de hoy; no suma ventas históricas. */
+  actividadIntegrada?: boolean;
   /** La lectura de arrastrados falló; la lista principal sigue siendo válida. */
   arrastradosError?: boolean;
 }
@@ -457,13 +459,13 @@ export function arrastreIntegrado(
   f: FiltrosConsultaPedidos,
   hoy = getTodayString(),
 ): boolean {
-  return (
-    f.agrupar === "barrio" &&
-    !f.repartidorId.length &&
-    f.pago !== "fiado" &&
-    f.foco !== "esperandoPago" &&
-    !!filtrosArrastrados(f, hoy)
-  );
+  // #927: solo la consulta operativa de Hoy amplía la integración a FIFO
+  // y a todos sus filtros; otras consultas conservan el contrato #915.
+  if (!filtrosArrastrados(f, hoy)) return false;
+  if (f.desde === hoy && f.hasta === hoy &&
+      !f.desdeHora && !f.hastaHora && f.foco === "") return true;
+  return f.agrupar === "barrio" && !f.repartidorId.length &&
+    f.pago !== "fiado" && f.foco !== "esperandoPago";
 }
 
 export function filtrosArrastrados(

@@ -51,6 +51,12 @@ export interface Pedido {
   grupoBarrio?: { clave: string; etiqueta: string }
   /** #915: pedido de un día anterior al de la consulta, integrado a la lista agrupada (tag «Día anterior»). */
   diaAnterior?: boolean
+  /** Día de corte para antigüedad, no necesariamente el reloj de hoy. */
+  diaReferenciaConsulta?: string
+  /** #927: consulta operativa del día con pedidos actuales y anteriores (solo presentación). */
+  actividadOperativa?: boolean
+  /** Hechos físicos del día consultado; null = existe hecho sin desglose verificable. */
+  entregaEnPeriodo?: { unidades: number | null; porConciliar?: boolean }
   /** #836 F2: horario semanal del negocio (solo si está configurado), para avisar «cierra ese día». */
   negocioHorarios?: Array<{ diaSemana: number; desde: string; hasta: string }>
   /** Ubicación propia del pedido (destino de la entrega); `lat`/`lng` son las efectivas. */

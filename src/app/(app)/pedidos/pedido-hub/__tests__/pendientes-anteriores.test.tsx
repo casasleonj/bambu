@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { PendientesAnteriores } from "../pendientes-anteriores";
-import { diasDeArrastre, etiquetaArrastre } from "../arrastrados";
+import { diasDeArrastre, etiquetaArrastre, etiquetaAntiguedadPedido } from "../arrastrados";
 import type { AccionesConsulta } from "../operacion-consulta";
 import type { Pedido } from "../../pedidos-client/types";
 
@@ -51,7 +51,13 @@ const props = (over: Partial<Parameters<typeof PendientesAnteriores>[0]> = {}) =
   ...over,
 });
 
-describe("#797 — antigüedad del pedido arrastrado", () => {
+describe("#797 / #927 — antigüedad del pedido en Bogotá", () => {
+  it("etiquetas cortas distinguen ayer, anteayer, otros días y el mismo día", () => {
+    expect(etiquetaAntiguedadPedido("2026-11-16T02:17:00Z", "2026-11-16")).toBe("De ayer");
+    expect(etiquetaAntiguedadPedido("2026-11-14T15:00:00Z", "2026-11-16")).toBe("De anteayer");
+    expect(etiquetaAntiguedadPedido("2026-11-09T15:00:00Z", "2026-11-16")).toBe("De hace 7 días");
+    expect(etiquetaAntiguedadPedido("2026-11-16T10:00:00Z", "2026-11-16")).toBeNull();
+  });
   it("cuenta días calendario de Bogotá y nunca es negativo", () => {
     expect(diasDeArrastre("2026-11-15T22:40:00Z", HOY)).toBe(1);
     expect(diasDeArrastre("2026-11-14T15:00:00Z", HOY)).toBe(2);

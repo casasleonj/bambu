@@ -126,6 +126,52 @@ describe("#836 F3 — lista agrupada por barrio", () => {
   });
 });
 
+describe("#927 — etiquetas de actividad en la misma fila", () => {
+  it("parcial de ayer con entrega hoy combina tres etiquetas y cantidades", () => {
+    const parcial = {
+      ...fila("anterior", 1084),
+      fecha: "2026-10-28T15:00:00Z",
+      diaAnterior: true,
+      actividadOperativa: true,
+      entregaEnPeriodo: { unidades: 2 },
+    };
+    montar([parcial]);
+    expect(screen.getByTestId("operacion-dia-anterior-anterior")).toHaveTextContent("De ayer");
+    expect(screen.getByTestId("operacion-parcial-anterior")).toHaveTextContent("Parcial");
+    expect(screen.getByTestId("operacion-entrega-hoy-anterior")).toHaveTextContent("Entrega hoy");
+    expect(screen.getByTestId("operacion-cantidades-anterior")).toHaveTextContent("Pedidas: 5 · Entregadas: 3 · Pendientes: 2 · Hoy: 2");
+  });
+
+  it("pedido antiguo completado hoy se rotula una vez, sin parcial", () => {
+    const completo = {
+      ...fila("completo", 1095),
+      fecha: "2026-10-28T15:00:00Z",
+      estadoEntrega: "ENTREGADO",
+      items: base.items.map((i) => ({ ...i, cantEntrega: i.cantPedido })),
+      diaAnterior: true,
+      actividadOperativa: true,
+      entregaEnPeriodo: { unidades: 2 },
+    };
+    montar([completo]);
+    expect(screen.getByTestId("operacion-entrega-hoy-completo")).toHaveTextContent("Entregado hoy");
+    expect(screen.queryByTestId("operacion-parcial-completo")).toBeNull();
+    expect(screen.getAllByTestId("operacion-row-completo")).toHaveLength(1);
+  });
+
+  it("evidencia histórica incompleta nunca se etiqueta Entregado hoy", () => {
+    montar([{
+      ...fila("incierto", 1100),
+      fecha: "2026-10-28T15:00:00Z",
+      estadoEntrega: "ENTREGADO",
+      diaAnterior: true,
+      actividadOperativa: true,
+      entregaEnPeriodo: { unidades: null, porConciliar: true },
+    }]);
+    expect(screen.getByTestId("operacion-entrega-hoy-incierto")).toHaveTextContent("Entrega por conciliar");
+    expect(screen.getByTestId("operacion-cantidades-incierto")).toHaveTextContent("Hoy: por conciliar");
+  });
+});
+
 describe("GrupoBarrioEncabezado", () => {
   it("singular y plural", () => {
     const { rerender } = render(<GrupoBarrioEncabezado grupo={{ clave: "x", etiqueta: "X", total: 1 }} enPagina={1} soloEste={false} />);
@@ -239,9 +285,9 @@ describe("#915 — arrastres y entregas anteriores dentro del grupo de su barrio
     entregasAnteriores: { entregas: [entrega("e1", 501, CENTRO), entrega("e2", 502, SOLO)], primeraPagina: true, hasta: "2026-10-29", periodo: "hoy" as const, onVerTodas: vi.fn(), ...extra },
   });
 
-  it("el pedido de un día anterior lleva su tag «Día anterior» y el de hoy no", () => {
-    montar([{ ...fila("a", 1, CENTRO), diaAnterior: true }, fila("b", 2, CENTRO)]);
-    expect(screen.getByTestId("operacion-dia-anterior-a")).toHaveTextContent("Día anterior");
+  it("el pedido de ayer muestra «De ayer» y el de hoy no", () => {
+    montar([{ ...fila("a", 1, CENTRO), diaAnterior: true, fecha: "2026-10-28T15:00:00Z", createdAt: "2026-10-28T15:00:00Z" }, fila("b", 2, CENTRO)]);
+    expect(screen.getByTestId("operacion-dia-anterior-a")).toHaveTextContent("De ayer");
     expect(screen.queryByTestId("operacion-dia-anterior-b")).toBeNull();
   });
 
