@@ -285,9 +285,9 @@ describe("#915 — arrastres y entregas anteriores dentro del grupo de su barrio
     entregasAnteriores: { entregas: [entrega("e1", 501, CENTRO), entrega("e2", 502, SOLO)], primeraPagina: true, hasta: "2026-10-29", periodo: "hoy" as const, onVerTodas: vi.fn(), ...extra },
   });
 
-  it("el pedido de un día anterior lleva su tag «Día anterior» y el de hoy no", () => {
-    montar([{ ...fila("a", 1, CENTRO), diaAnterior: true }, fila("b", 2, CENTRO)]);
-    expect(screen.getByTestId("operacion-dia-anterior-a")).toHaveTextContent("Día anterior");
+  it("el pedido de ayer muestra «De ayer» y el de hoy no", () => {
+    montar([{ ...fila("a", 1, CENTRO), diaAnterior: true, fecha: "2026-10-28T15:00:00Z", createdAt: "2026-10-28T15:00:00Z" }, fila("b", 2, CENTRO)]);
+    expect(screen.getByTestId("operacion-dia-anterior-a")).toHaveTextContent("De ayer");
     expect(screen.queryByTestId("operacion-dia-anterior-b")).toBeNull();
   });
 
