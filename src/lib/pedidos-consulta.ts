@@ -459,9 +459,13 @@ export function arrastreIntegrado(
   f: FiltrosConsultaPedidos,
   hoy = getTodayString(),
 ): boolean {
-  // #927: la integración es del universo de consulta, no del modo visual.
-  // Filtros de repartidor, pago y foco se aplican igualmente en el repositorio.
-  return !!filtrosArrastrados(f, hoy);
+  // #927: solo la consulta operativa de Hoy amplía la integración a FIFO
+  // y a todos sus filtros; otras consultas conservan el contrato #915.
+  if (!filtrosArrastrados(f, hoy)) return false;
+  if (f.desde === hoy && f.hasta === hoy &&
+      !f.desdeHora && !f.hastaHora && f.foco === "") return true;
+  return f.agrupar === "barrio" && !f.repartidorId.length &&
+    f.pago !== "fiado" && f.foco !== "esperandoPago";
 }
 
 export function filtrosArrastrados(
