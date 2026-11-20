@@ -78,6 +78,21 @@ test('combinaciones de eventos y estado no autorizan un candidato parcial', () =
           assert.equal(revisarGate(c, verde).ok, planCI(c).e2e_run === 'true')
         }
 })
+test('regresión nocturna exige lint, integración y E2E completo', () => {
+  const full = { event: 'workflow_call', draft: 'false', required: 'true', diffOk: 'false', nightlyFull: 'true' }
+  assert.equal(revisarGate(full, { ...verde, lint: 'success' }).ok, true)
+  for (const lint of ['failure', 'skipped', 'cancelled', '', undefined]) {
+    assert.equal(revisarGate(full, { ...verde, lint }).ok, false)
+  }
+  assert.equal(revisarGate({ ...full, required: 'false' }, { ...saltado, lint: 'success' }).ok, false)
+  assert.equal(revisarGate(full, { ...verde, lint: 'success', integrationOk: 'false' }).ok, false)
+})
+test('CI de código no puede reportar integración fallida como verde', () => {
+  const ready = { ...pr, action: 'ready_for_review', draft: 'false', fastDraft: 'false' }
+  assert.equal(revisarGate(ready, { ...verde, integration: 'success', integrationOk: 'false' }).ok, false)
+  assert.equal(revisarGate(ready, { ...verde, integration: 'failure', integrationOk: 'true' }).ok, false)
+})
+
 test('CLI real publica outputs y no concede verde a borrador diferido', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ci-policy-'))
   try {
