@@ -1,5 +1,5 @@
-// @tests #797: los pendientes de días anteriores se ven en «Hoy» sin duplicar
-// pedidos ni mezclarse con los creados hoy; al entregarlos salen de la sección.
+// @tests #927: pendientes y entregas antiguas se ven en Hoy en la misma
+// lista, sin duplicación ni alterar la fecha real de creación.
 import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import {
@@ -46,25 +46,18 @@ test.describe("#797 — Pendientes de días anteriores en Hoy", () => {
     ["escritorio", { width: 1280, height: 850 }],
     ["móvil", { width: 390, height: 844 }],
   ] as const) {
-    test(nombre + ": ADMIN ve el pendiente de ayer con su fecha original, aparte de los de hoy", async ({ page }) => {
+    test(nombre + ": ADMIN ve ayer y hoy en la misma lista, con fecha original", async ({ page }) => {
       await page.setViewportSize(viewport);
       const ayer = await pedido(ayerBogota(), "17:40:00", "Ayer797");
       const deHoy = await pedido(hoyBogota(), "00:05:00", "Hoy797");
       await loginAs(page, "admin");
       await goto(page, "/pedidos");
       const app = appMain(page);
-      const seccion = app.getByTestId("pendientes-anteriores");
-      await expect(seccion).toBeVisible();
-      await expect(seccion).toContainText("Pendientes de días anteriores (1)");
-      await expect(seccion).toContainText("No cuentan como pedidos creados hoy");
-      // Fecha original y antigüedad, sin tocar la fecha del pedido.
-      await expect(seccion.getByTestId("operacion-arrastre-" + ayer.p.id)).toContainText("hace 1 día");
-      await expect(seccion.getByTestId("operacion-row-" + ayer.p.id)).toBeVisible();
-      // El de hoy NO está en la sección y sí en la lista principal.
-      await expect(seccion.getByTestId("operacion-row-" + deHoy.p.id)).toHaveCount(0);
+      await expect(app.getByTestId("pendientes-anteriores")).toHaveCount(0);
+      await expect(app.getByTestId("operacion-row-" + ayer.p.id)).toBeVisible();
       await expect(app.getByTestId("operacion-row-" + deHoy.p.id)).toBeVisible();
-      // El título de la lista principal aparece una sola vez (QA: se duplicó al mover el encabezado).
-      await expect(app.getByRole("heading", { name: "Pedidos de hoy", level: 2 })).toHaveCount(1);
+      await expect(app.getByTestId("operacion-dia-anterior-" + ayer.p.id)).toContainText("De ayer");
+      await expect(app.getByRole("heading", { name: "Pedidos de hoy y anteriores con actividad hoy", level: 2 })).toHaveCount(1);
       // Una sola fila por pedido en toda la pantalla: no se duplica.
       await expect(app.getByTestId("operacion-row-" + ayer.p.id)).toHaveCount(1);
       // La fecha del pedido sigue siendo la de ayer.
@@ -75,21 +68,33 @@ test.describe("#797 — Pendientes de días anteriores en Hoy", () => {
       )).toBe(true);
     });
 
-    test(nombre + ": tras entregarlo desaparece de pendientes y no queda duplicado", async ({ page }) => {
+    test(nombre + ": tras entregarlo hoy conserva una única fila como entregado", async ({ page }) => {
       await page.setViewportSize(viewport);
       const ayer = await pedido(ayerBogota(), "21:17:00", "Entrega797");
       await loginAs(page, "admin");
       await goto(page, "/pedidos");
-      const seccion = appMain(page).getByTestId("pendientes-anteriores");
-      await expect(seccion).toContainText("Pendientes de días anteriores (1)");
-      // Se entrega fuera de la pantalla (como lo haría el flujo existente) y se recarga.
+      await expect(appMain(page).getByTestId("operacion-row-" + ayer.p.id)).toBeVisible();
+      // Registrar un hecho físico, no interpretar entregadoAt como prueba suficiente.
+      const fecha = new Date();
       await db.pedido.update({
         where: { id: ayer.p.id },
-        data: { estadoEntrega: "ENTREGADO", estado: "ENTREGADO", entregadoAt: new Date() },
+        data: { estadoEntrega: "ENTREGADO", estado: "ENTREGADO", entregadoAt: fecha,
+          items: { updateMany: { where: {}, data: { cantEntrega: 3 } } } },
+      });
+      await db.historial.create({
+        data: { entidad: "Pedido", registroId: ayer.p.id, accion: "UPDATE", fecha,
+          datos: JSON.stringify({ accion: "ENTREGA_OFICINA", consultaEntrega: {
+            version: 1, precisionFecha: "INSTANTE", fecha: fecha.toISOString(),
+            repartidorId: null, cantidades: [{ producto: "PACA_AGUA", cantidad: 3 }],
+          } }),
+        },
       });
       await page.reload();
+      const fila = appMain(page).getByTestId("operacion-row-" + ayer.p.id);
+      await expect(fila).toBeVisible();
+      await expect(appMain(page).getByTestId("operacion-entrega-hoy-" + ayer.p.id)).toContainText("Entregado hoy");
+      await expect(fila).toHaveCount(1);
       await expect(appMain(page).getByTestId("pendientes-anteriores")).toHaveCount(0);
-      await expect(appMain(page).getByTestId("operacion-row-" + ayer.p.id)).toHaveCount(0);
     });
   }
 
@@ -114,7 +119,7 @@ test.describe("#797 — Pendientes de días anteriores en Hoy", () => {
     const ayer = await pedido(ayerBogota(), "17:40:00", "Contador797");
     await loginAs(page, "contador");
     await goto(page, "/pedidos");
-    const fila = appMain(page).getByTestId("pendientes-anteriores").getByTestId("operacion-row-" + ayer.p.id);
+    const fila = appMain(page).getByTestId("operacion-row-" + ayer.p.id);
     await expect(fila).toBeVisible();
     await expect(fila.getByRole("button", { name: "Registrar entrega" })).toHaveCount(0);
   });
