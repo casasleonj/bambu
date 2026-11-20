@@ -84,8 +84,12 @@ export function DashboardClient({
   userRole?: string | null
 }) {
   const [lecturaLocal, setData] = useState<DashboardData | null>(null)
+  const [periodo, setPeriodo] = useState<'hoy' | 'ayer' | 'siete' | 'personalizado'>('hoy')
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
+  const [rangoSeleccionado, setRangoSeleccionado] = useState<{ from: string; to: string } | null>(null)
   // Una nueva respuesta SSR también puede traer una base más reciente.
-  const data = !lecturaLocal
+  const data = rangoSeleccionado ? lecturaLocal : !lecturaLocal
     ? initialData
     : initialData &&
         Date.parse(initialData.consultadoAt ?? '') >
@@ -130,11 +134,15 @@ export function DashboardClient({
     setRefreshError(null)
     const timer = setTimeout(() => controller.abort(), 15000)
     try {
-      const res = await fetch('/api/dashboard', {
+      const params = rangoSeleccionado ? `?from=${encodeURIComponent(rangoSeleccionado.from)}&to=${encodeURIComponent(rangoSeleccionado.to)}` : ''
+      const res = await fetch(`/api/dashboard${params}`, {
         cache: 'no-store',
         signal: controller.signal,
       })
-      if (!res.ok) throw new Error('No se pudo actualizar')
+      if (!res.ok) {
+        if (res.status === 409) throw new Error('Histórico pendiente de conciliación')
+        throw new Error('No se pudo actualizar')
+      }
       const resultado = await res.json()
       if (
         !resultado.success ||
@@ -165,7 +173,7 @@ export function DashboardClient({
       clearTimeout(timer)
       if (seq === solicitud.current.seq) setRefreshing(false)
     }
-  }, [])
+  }, [rangoSeleccionado])
   const programarActualizacionBase = useCallback(() => {
     if (!vivo.current) return
     if (temporizadorBase.current) clearTimeout(temporizadorBase.current)
@@ -184,6 +192,40 @@ export function DashboardClient({
     window.addEventListener('storage', cambio)
     return () => window.removeEventListener('storage', cambio)
   }, [programarActualizacionBase])
+  const hoyBogota = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+  const elegirPeriodo = (tipo: 'hoy' | 'ayer' | 'siete' | 'personalizado') => {
+    setPeriodo(tipo)
+    if (tipo === 'personalizado') return
+    const hoy = hoyBogota()
+    const inicio = new Date(`${hoy}T00:00:00-05:00`)
+    const dia = (offset: number) => new Date(+inicio + offset * 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    const siguiente = tipo === 'hoy' ? null : tipo === 'ayer' ? { from: dia(-1), to: dia(-1) } : { from: dia(-6), to: hoy }
+    solicitud.current.controller?.abort()
+    solicitud.current.seq++
+    setData(null)
+    setRefreshError(null)
+    setRangoSeleccionado(siguiente)
+  }
+  const selectorFechas = (
+    <div className="flex flex-wrap items-center gap-2 text-sm" aria-label="Filtro global de fecha del dashboard">
+      <label htmlFor="dashboard-periodo" className="font-medium text-gray-700">Período</label>
+      <select id="dashboard-periodo" className="min-h-11 rounded-lg border bg-white px-2" value={periodo} onChange={e => elegirPeriodo(e.target.value as 'hoy' | 'ayer' | 'siete' | 'personalizado')}>
+        <option value="hoy">Hoy</option><option value="ayer">Ayer</option><option value="siete">Últimos 7 días</option><option value="personalizado">Personalizado</option>
+      </select>
+      {periodo === 'personalizado' && <>
+        <input aria-label="Desde" type="date" className="min-h-11 rounded-lg border px-2" value={desde} onChange={e => setDesde(e.target.value)} />
+        <input aria-label="Hasta" type="date" className="min-h-11 rounded-lg border px-2" value={hasta} onChange={e => setHasta(e.target.value)} />
+        <button type="button" className="min-h-11 rounded-lg border px-3" disabled={!desde || !hasta || hasta < desde} onClick={() => {
+          solicitud.current.controller?.abort()
+          solicitud.current.seq++
+          setData(null)
+          setRefreshError(null)
+          setRangoSeleccionado({ from: desde, to: hasta })
+        }}>Aplicar</button>
+      </>}
+      <span className="text-xs text-gray-500">{rangoSeleccionado ? `${rangoSeleccionado.from} a ${rangoSeleccionado.to}` : `Hoy · ${hoyBogota()}`}</span>
+    </div>
+  )
   const botonActualizar = (
     <button
       onClick={actualizar}
@@ -212,6 +254,7 @@ export function DashboardClient({
       <div className="space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+          {selectorFechas}
           {botonActualizar}
         </header>
         <div
@@ -304,7 +347,7 @@ export function DashboardClient({
           <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
           <p className="text-gray-500 capitalize">{fechaHoy}</p>
         </div>
-        {botonActualizar}
+        <div className="flex flex-wrap items-center gap-2">{selectorFechas}{botonActualizar}</div>
       </div>
 
       {offline && (
@@ -346,7 +389,7 @@ export function DashboardClient({
           </p>
         </div>
 
-        <EntregasHoyCard />
+        <EntregasHoyCard rango={rangoSeleccionado} />
 
         <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-green-500">
           <p className="flex items-center justify-between gap-2 text-sm text-gray-500">
