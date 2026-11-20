@@ -10,6 +10,7 @@ export interface PedidoPrioridad extends PedidoConHora {
   total: number
   totalPagado: number
   saldo: number
+  confirmado: number
   items: ReadonlyArray<{ cantPedido: number; cantEntrega: number; cantRegaloPedido: number; cantRegaloEntrega: number }>
 }
 
@@ -24,9 +25,9 @@ export function ordenarPrioridadPedidos<T extends PedidoPrioridad>(pedidos: read
     if (clasificarFranja(p, ahora).franja === 'ya_toca') return 0
     // Programado para otro día: no adelantar por pago.
     if (p.fechaEntrega && new Date(p.fechaEntrega).getTime() > ahora.getTime() &&
-        clasificarFranja(p, ahora).minutosFaltantes === null) return 3
-    if (p.total > 0 && p.saldo <= 0 && p.totalPagado >= p.total) return 1
-    if (p.totalPagado > 0 && p.saldo > 0) return 2
+        clasificarFranja(p, ahora).minutosFaltantes === null) return 3.5
+    if (p.total > 0 && p.saldo <= 0 && p.confirmado >= p.total) return 1
+    if (p.confirmado > 0 && p.saldo > 0) return 2
     return 3
   }
   return [...pedidos].sort((a, b) => nivel(a) - nivel(b) ||
