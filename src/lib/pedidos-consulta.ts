@@ -58,6 +58,8 @@ export interface ResultadoConsultaPedidos {
    */
   arrastrados?: Pedido[];
   arrastradosTotal?: number;
+  /** #915: en la vista agrupada los pendientes/parciales de días anteriores ya vienen DENTRO de `pedidos`. */
+  arrastradosIntegrados?: boolean;
   /** La lectura de arrastrados falló; la lista principal sigue siendo válida. */
   arrastradosError?: boolean;
 }
@@ -446,6 +448,24 @@ function diaAnterior(dia: string): string {
  * activos. Conserva búsqueda, canal, origen, cliente y pago; ignora horas, que
  * delimitan el día consultado, no los días previos.
  */
+/**
+ * #915: con la vista agrupada por barrio, los pendientes y parciales de días anteriores se leen en la MISMA
+ * consulta que los de hoy (un solo universo, una sola agrupación y paginación) en vez de como sección aparte.
+ * No aplica con filtros que se resuelven por ids ajenos al rango (repartidor, fiados, esperando pago).
+ */
+export function arrastreIntegrado(
+  f: FiltrosConsultaPedidos,
+  hoy = getTodayString(),
+): boolean {
+  return (
+    f.agrupar === "barrio" &&
+    !f.repartidorId.length &&
+    f.pago !== "fiado" &&
+    f.foco !== "esperandoPago" &&
+    !!filtrosArrastrados(f, hoy)
+  );
+}
+
 export function filtrosArrastrados(
   f: FiltrosConsultaPedidos,
   hoy = getTodayString(),
