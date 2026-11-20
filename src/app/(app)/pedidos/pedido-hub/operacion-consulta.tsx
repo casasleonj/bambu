@@ -219,7 +219,7 @@ export function OperacionConsulta({
                     data-testid={`operacion-dia-anterior-${p.id}`}
                     className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"
                   >
-                    {etiquetaAntiguedadPedido(p.fecha, hoyBogota)}
+                    {etiquetaAntiguedadPedido(p.fecha, p.diaReferenciaConsulta ?? hoyBogota)}
                   </span>
                 )}
                 {parcial && (
