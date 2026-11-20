@@ -40,6 +40,13 @@ describe('WorkspaceEntrega — zona adaptativa (F-ENTREGA-i)', () => {
     expect(screen.queryByTestId('workspace-entrega-direccion')).not.toBeInTheDocument()
   })
 
+  it('durante cambios de cantidad muestra destino estable sin aviso de cambio ni autorización ficticia', () => {
+    render(<WorkspaceEntrega {...common} entrega={null} entregaAnterior={base()} previewPending />)
+    expect(screen.getByTestId('workspace-entrega-suficiente')).toHaveTextContent('Cra 1 # 2-3 · Centro')
+    expect(screen.queryByText(/Destino anterior|por verificar/i)).not.toBeInTheDocument()
+    expect(screen.getByTestId('workspace-entrega')).not.toHaveAttribute('data-estado', 'SUFICIENTE')
+  })
+
   it('COMPLEMENTARIA → "puede continuar" + qué falta (no error) + inputs tras «Agregar información»', () => {
     render(<WorkspaceEntrega {...common} entrega={base({
       estado: 'SUFICIENTE_COMPLEMENTARIA_FALTANTE', via: 'GEO', direccion: null, barrio: 'Centro',
