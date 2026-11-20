@@ -22,6 +22,7 @@ export interface CrearPedidoInput {
   items: PedidoItemInput[]
   /** #925: cotización que vio el operador (solo la creación de este pedido). */
   precioEsperado?: number
+  preciosEsperados?: Array<{ producto: ProductCode; precio: number; origen: 'manual' | 'cliente' | 'volumen' | 'base' }>
   pagos?: PagoData[]
   obs?: string
   fechaEntrega?: Date
