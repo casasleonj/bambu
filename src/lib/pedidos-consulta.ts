@@ -457,13 +457,9 @@ export function arrastreIntegrado(
   f: FiltrosConsultaPedidos,
   hoy = getTodayString(),
 ): boolean {
-  return (
-    f.agrupar === "barrio" &&
-    !f.repartidorId.length &&
-    f.pago !== "fiado" &&
-    f.foco !== "esperandoPago" &&
-    !!filtrosArrastrados(f, hoy)
-  );
+  // #927: la integración es del universo de consulta, no del modo visual.
+  // Filtros de repartidor, pago y foco se aplican igualmente en el repositorio.
+  return !!filtrosArrastrados(f, hoy);
 }
 
 export function filtrosArrastrados(
