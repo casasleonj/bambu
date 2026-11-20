@@ -84,6 +84,8 @@ export interface PedidoUnifiedData {
   canal: 'PUNTO' | 'DOMICILIO'
   items: Array<{ producto: string; cantidad: number; precioManual?: number; cantidadRegalo?: number }>
   preciosManuales: Record<string, number>
+  /** #925: precio visible que el backend debe conciliar antes de crear. */
+  precioEsperado?: number
   pagos: Array<{ metodo: string; monto: number }>
   obs?: string
   /** #836 F2b: programación opcional al crear (ISO del día prometido y HH:MM acordada). */
