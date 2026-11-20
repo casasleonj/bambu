@@ -29,7 +29,7 @@ const fetchRoute = async (url: string, init?: { body?: string }) => {
     const body = JSON.parse(init?.body ?? '{}') as { clienteId?: string; canal: string }
     return { ok: true, json: async () => ({
       success: true, clienteId: body.clienteId, negocioId: null,
-      canal: body.canal, version: 'rules-v1', pricing,
+      canal: body.canal, version: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', pricing,
     }) }
   }
   if (url === '/api/precios/tabla') return { ok: true, json: async () => ({ success: true, tabla }) }
@@ -87,7 +87,7 @@ describe('#925 · precio local del workspace', () => {
         const body = JSON.parse(init?.body ?? '{}') as { clienteId: string; canal: string }
         return { ok: true, json: async () => ({
           success: true, clienteId: body.clienteId, negocioId: null,
-          canal: body.canal, version: 'special-v1',
+          canal: body.canal, version: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
           pricing: { ...pricing, clienteOverrides: { PACA_AGUA: 2400 } },
         }) }
       }
