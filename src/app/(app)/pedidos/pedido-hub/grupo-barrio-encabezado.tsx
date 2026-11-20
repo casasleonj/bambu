@@ -23,11 +23,11 @@ export function GrupoBarrioEncabezado({
       className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-stone-200/70 px-3 py-1.5 text-sm font-bold text-stone-800"
     >
       <span>
-        📍 {grupo.etiqueta}
+        {grupo.clave === "venta-anonima" ? "🧾" : "📍"} {grupo.etiqueta}
         <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-stone-700" data-testid={`grupo-barrio-total-${grupo.clave}`}>
           {grupo.total} {grupo.total === 1 ? "pedido" : "pedidos"}
         </span>
-        {grupo.unidadesPendientes !== undefined && (
+        {grupo.unidadesPendientes !== undefined && grupo.clave !== "venta-anonima" && (
           <span className="ml-2 text-xs font-semibold text-stone-700">
             · Por entregar: {grupo.unidadesPendientes}
             {Object.entries(grupo.remanentes ?? {}).filter(([, n]) => n > 0).map(([producto, cantidad]) => (

@@ -20,6 +20,7 @@ import { CompromisoChip, CierreNegocioChip, HoraAcordadaChip } from "./compromis
 import { importesEntregaPedido } from "@/lib/valor-entregado-pedido";
 import type { GrupoBarrioConsulta } from "@/lib/pedidos-consulta";
 import styles from "./operacion-consulta.module.css";
+import { esVentaAnonima } from "@/lib/barrios/grupo-barrio";
 
 export interface AccionesConsulta {
   userRole: string | null;
@@ -201,13 +202,16 @@ export function OperacionConsulta({
                 <CompromisoChip id={p.id} pedido={p} hoyBogota={hoyBogota} />
                 <HoraAcordadaChip id={p.id} pedido={p} />
                 <CierreNegocioChip id={p.id} pedido={p} />
-                <p
-                  className={`${styles.meta} truncate`}
-                  data-testid={`operacion-barrio-${p.id}`}
-                  title={p.barrioCli || undefined}
-                >
-                  📍 {p.barrioCli?.trim() || "Sin barrio"}
-                </p>
+                {/* #913: la venta anónima en punto no tiene barrio: no se rotula «Sin barrio». */}
+                {!esVentaAnonima(p) && (
+                  <p
+                    className={`${styles.meta} truncate`}
+                    data-testid={`operacion-barrio-${p.id}`}
+                    title={p.barrioCli || undefined}
+                  >
+                    📍 {p.barrioCli?.trim() || "Sin barrio"}
+                  </p>
+                )}
                 <span
                   className={`${styles.canal} ${p.canal === "PUNTO" ? "bg-amber-100 text-amber-900" : "bg-violet-100 text-violet-800"}`}
                 >

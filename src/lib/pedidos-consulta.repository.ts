@@ -9,7 +9,10 @@ import { getAnonymousClientDisplayName } from "./cliente-canonical";
 import { pickCoords } from "./geo/pedido-coords";
 import { pickDireccionTexto } from "./geo/pedido-direccion";
 import {
+  CLAVE_VENTA_ANONIMA,
+  ETIQUETA_VENTA_ANONIMA,
   construirCatalogoBarrios,
+  esVentaAnonima,
   ordenarGrupos,
   resolverGrupoBarrio,
   type GrupoBarrio,
@@ -217,6 +220,9 @@ const dec = (v: unknown) => centavos(v) / 100;
  * #797: añade los pendientes de días anteriores como lectura aparte; su fallo
  * no invalida la lista principal.
  */
+/** #913: sin demanda FIFO, «Sin barrio» va tras los barrios y las ventas anónimas al final de todo. */
+const colaNoTerritorial = (clave: string) => (clave === CLAVE_VENTA_ANONIMA ? 2 : clave === "sin-barrio" ? 1 : 0);
+
 export async function consultarPedidos(
   f: FiltrosConsultaPedidos,
   role: string | null,
@@ -379,7 +385,7 @@ async function leerConsultaPedidos(
           tx.pedido.findMany({
             where,
             select: {
-              id: true, fecha: true, createdAt: true, numero: true, estadoEntrega: true, fechaEntrega: true, direccionEntrega: true, barrioEntrega: true,
+              id: true, clienteId: true, origen: true, fecha: true, createdAt: true, numero: true, estadoEntrega: true, fechaEntrega: true, direccionEntrega: true, barrioEntrega: true,
               items: { select: { producto: true, cantPedido: true, cantEntrega: true } },
               cliente: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
               negocio: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
@@ -393,10 +399,13 @@ async function leerConsultaPedidos(
         const porGrupo = new Map<string, { g: GrupoBarrio; items: typeof candidatos }>();
         grupoPorId = new Map();
         for (const c of candidatos) {
-          const g = resolverGrupoBarrio(
-            { overrideDireccion: c.direccionEntrega, overrideBarrio: c.barrioEntrega, cliente: c.cliente, negocio: c.negocio },
-            catalogo,
-          );
+          // #913: la venta anónima en punto no es de ningún barrio: grupo propio, fuera del FIFO.
+          const g: GrupoBarrio = esVentaAnonima(c)
+            ? { clave: CLAVE_VENTA_ANONIMA, etiqueta: ETIQUETA_VENTA_ANONIMA }
+            : resolverGrupoBarrio(
+                { overrideDireccion: c.direccionEntrega, overrideBarrio: c.barrioEntrega, cliente: c.cliente, negocio: c.negocio },
+                catalogo,
+              );
           grupoPorId.set(c.id, g);
           const e = porGrupo.get(g.clave) ?? { g, items: [] };
           e.items.push(c);
@@ -405,6 +414,7 @@ async function leerConsultaPedidos(
         // #859: el FIFO usa únicamente demanda física abierta y exigible.
         const ahora = new Date();
         const abiertos = candidatos.filter(c =>
+          !esVentaAnonima(c) &&
           !["ENTREGADO", "CANCELADO", "ANULADO"].includes(c.estadoEntrega) &&
           (!c.fechaEntrega || c.fechaEntrega <= ahora) &&
           c.items.some(item => item.cantPedido > item.cantEntrega)
@@ -430,7 +440,7 @@ async function leerConsultaPedidos(
           .sort((a, b) =>
             (posicionesFIFO.get(a.clave) ?? Number.MAX_SAFE_INTEGER) -
             (posicionesFIFO.get(b.clave) ?? Number.MAX_SAFE_INTEGER) ||
-            (a.clave === 'sin-barrio' ? 1 : b.clave === 'sin-barrio' ? -1 : 0) ||
+            colaNoTerritorial(a.clave) - colaNoTerritorial(b.clave) ||
             a.etiqueta.localeCompare(b.etiqueta)
           );
         // El recorrido manual se aplica al conjunto completo antes de paginar.
