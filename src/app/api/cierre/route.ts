@@ -15,6 +15,7 @@ import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { whereEmbarquesPendientesCierreDia } from '@/lib/cierre-dia-embarques'
 import { CobrosSinConciliarError } from '@/lib/cobro-cartera'
 import { construirResumenCierre } from '@/lib/cierre-resumen'
+import { resumirFiadoDeDiaPasado } from '@/lib/fiado-al-corte-dia'
 import { calcularNetoCierre, calcularEfectivoEsperado } from '@/lib/cierre-totales'
 import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
 import { diasObligatoriosAntesDe, type DiaHueco } from '@/lib/cierre-huecos'
@@ -149,11 +150,14 @@ export async function GET(request: NextRequest) {
         // #834: correcciones de día real hechas después de este cierre; explican la diferencia y no se suman a nada.
         correccionesPosteriores: await leerCorreccionesPosterioresAlCierre(prisma, { fecha: startOfDay, createdAt: cierreExistente.createdAt }),
       }
+      // #796 fase 2: la cifra guardada no se recalcula ni se reescribe; solo se informa lo que sigue pendiente hoy.
+      const fiadoAlCorte = await resumirFiadoDeDiaPasado(prisma, fechaStr, { guardado: true })
       return apiSuccess({
         status: 'CERRADO',
         embarquesPendientes: [],
         cierre: {
           ...reporte,
+          ...(fiadoAlCorte ? { fiadoAlCorte } : {}),
           numPedidos: cierreExistente.numPedidos,
           totalVentas: Number(cierreExistente.totalVentas),
           cobrado: Number(cierreExistente.cobrado), fiado: Number(cierreExistente.fiado),
@@ -179,7 +183,10 @@ export async function GET(request: NextRequest) {
     const puede = await puedeConfirmarPagos(prisma, userId).catch(() => false)
     const quienes = puede ? [] : await listarConfirmadoresDePagos(prisma).catch(() => [] as string[])
     const confirmaPagos = { puede, nombre: quienes.length ? quienes.join(' o ') : null }
-    return apiSuccess({ ...resumen, cierre: { ...resumen.cierre, confirmaPagos } })
+    // #796 fase 2: en un día pasado sin cierre guardado, el fiado «al corte» (fin del día de Bogotá) no baja porque hoy se
+    // cobre. Se calcula fuera de la transacción del Cierre y nunca lanza: si falla, el Cierre sigue y la pantalla lo avisa.
+    const fiadoAlCorte = await resumirFiadoDeDiaPasado(prisma, fechaStr, { guardado: false })
+    return apiSuccess({ ...resumen, cierre: { ...resumen.cierre, confirmaPagos, ...(fiadoAlCorte ? { fiadoAlCorte } : {}) } })
   } catch (error) {
     if (error instanceof CobrosSinConciliarError) return apiError(error.message, 409, {
       code: error.code, cobrosPendientes: error.cobros.map(({ referencia, importe }) => ({ referencia, importe })),
