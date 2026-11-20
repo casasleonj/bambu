@@ -151,6 +151,17 @@ describe("#915 — arrastres y entregas anteriores dentro del barrio (Postgres r
     expect(r.destacadas ?? []).toHaveLength(0);
   });
 
+  it("el filtro Entregado por fecha de entrega conserva etiqueta y evidencia real", async () => {
+    const filtro = leerFiltrosConsulta(new URLSearchParams(
+      `desde=${HOY}&hasta=${HOY}&estadoEntrega=ENTREGADO&agrupar=&pageSize=100`
+    ), HOY);
+    const r = await consultarPedidos(filtro, "ADMIN");
+    const entregado = r.pedidos.find(p => p.id === ids.entregadoCentro);
+    expect(entregado?.diaAnterior).toBe(true);
+    expect(entregado?.entregaEnPeriodo?.unidades).toBe(3);
+    expect(r.pedidos.map(p => p.id)).toContain(ids.entregadoSolo);
+  });
+
   it("sin agrupar y con repartidor se preserva el mismo universo filtrable", async () => {
     const sin = await consultarPedidos(leerFiltrosConsulta(new URLSearchParams(`desde=${HOY}&hasta=${HOY}&agrupar=&pageSize=100`), HOY), "ADMIN");
     expect(sin.arrastradosIntegrados).toBe(true);
