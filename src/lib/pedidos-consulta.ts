@@ -60,6 +60,8 @@ export interface ResultadoConsultaPedidos {
   arrastradosTotal?: number;
   /** #915: en la vista agrupada los pendientes/parciales de días anteriores ya vienen DENTRO de `pedidos`. */
   arrastradosIntegrados?: boolean;
+  /** #927: la lista integra pendientes previos y eventos físicos de hoy; no suma ventas históricas. */
+  actividadIntegrada?: boolean;
   /** La lectura de arrastrados falló; la lista principal sigue siendo válida. */
   arrastradosError?: boolean;
 }
