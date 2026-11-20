@@ -265,9 +265,16 @@ export class PreviewPedidoUseCase {
     const efectivoLink = (negocio?.linkUbicacion ?? cliente.linkUbicacion) || null
     const hayCoordsAlmacenadas =
       (negocio?.lat != null && negocio?.lng != null) || (cliente.lat != null && cliente.lng != null)
+    // No consultar servicios externos si el destino efectivo ya tiene ubicación
+    // propia. En edición, conservar la ubicación persistida salvo override explícito.
+    const tocaUbicacionParaLink = esEdicion
+      ? input.entregaLat !== undefined || input.entregaLng !== undefined
+      : input.entregaLat != null || input.entregaLng != null
+    const coordsPropiasParaLink = tocaUbicacionParaLink
+      ? ubicacionEntregaValida(input.entregaLat, input.entregaLng)
+      : ubicacionEntregaValida(destinoExistente?.lat, destinoExistente?.lng)
     const coordsDeLink =
-      canal === 'DOMICILIO' && !hayCoordsAlmacenadas && efectivoLink &&
-      !ubicacionEntregaValida(input.entregaLat, input.entregaLng)
+      canal === 'DOMICILIO' && !hayCoordsAlmacenadas && efectivoLink && !coordsPropiasParaLink
         ? await this.deps.resolverCoordsDeLink(efectivoLink)
         : null
 
