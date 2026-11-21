@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resumirCargaCercania } from "../resumen-carga-cercania";
+import { clasificarGestionVial } from "@/lib/geo/seleccion-recorrido-vial";
 import type { Pedido } from "../types";
 
 function pedido(id: string, overrides: Partial<Pedido> = {}): Pedido {
@@ -72,6 +73,27 @@ describe("#930 resumen físico de pedidos seleccionados", () => {
       { producto: "BOTELLON", unidades: 2 },
       { producto: "PACA_AGUA", unidades: 7 },
     ]);
+  });
+
+  it("botellones antiguos: no compensa el subtipo sobreentregado con otro pendiente (#930 XMOD)", () => {
+    const c = pedido("legacy-subtipos", {
+      cBotellonFabPed: 2, cBotellonFabEnt: 3,
+      cBotellonDomPed: 3, cBotellonDomEnt: 0,
+    });
+    const resumen = resumirCargaCercania([c]);
+    const backend = clasificarGestionVial({
+      estadoEntrega: c.estadoEntrega,
+      canal: c.canal,
+      exigible: 0,
+      items: [],
+      legacyPendientes: [
+        { pedidas: c.cBotellonFabPed, entregadas: c.cBotellonFabEnt },
+        { pedidas: c.cBotellonDomPed, entregadas: c.cBotellonDomEnt },
+      ],
+    });
+    expect(resumen.unidades).toBe(3);
+    expect(resumen.porProducto).toEqual([{ producto: "BOTELLON", unidades: 3 }]);
+    expect(resumen.unidades).toBe(backend?.unidadesPendientes);
   });
 
   it("datos físicos faltantes o corruptos nunca se muestran como una carga exacta", () => {
