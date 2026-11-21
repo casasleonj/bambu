@@ -313,7 +313,7 @@ export function ConsultaPedidosHub(props: Props) {
           onClick={() => {
             const activar = !modoRecorrido;
             params.set({
-              recorrido: activar ? undefined : undefined,
+              recorrido: undefined,
               agrupar: 'barrio',
               page: '1',
             }, { history: 'push' });
