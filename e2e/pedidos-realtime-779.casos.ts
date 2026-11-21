@@ -1,5 +1,6 @@
 // @tests #779 — suscripciones estables con red normal/lenta y pestañas independientes.
 import { PrismaClient } from '@prisma/client'
+import type { Request } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { test, expect, applyCachedRoleAuth, skipBaseCaja, goto, appMain, resetTestDatabase } from './fixtures'
 
@@ -45,9 +46,49 @@ test.describe('Regresión #779: Pedidos y Fiados en móvil sin bucles', () => {
           if (m.type() === 'error' && /Maximum update depth|Minified React error #185/.test(m.text())) errors.push(m.text())
         })
         let consultas = 0
+        const enCurso = new Set<Request>()
+        let ultimoEvento = Date.now()
+        const eventos: Array<{ tipo: string; en: number }> = []
+        const esConsulta = (r: Request) => new URL(r.url()).pathname === '/api/pedidos/consulta'
+        const registrarEvento = (tipo: string) => {
+          ultimoEvento = Date.now()
+          eventos.push({ tipo, en: ultimoEvento })
+          if (eventos.length > 100) eventos.shift()
+        }
         page.on('request', r => {
-          if (new URL(r.url()).pathname === '/api/pedidos/consulta') consultas++
+          if (!esConsulta(r)) return
+          consultas++
+          enCurso.add(r)
+          registrarEvento('inicio')
         })
+        page.on('requestfinished', r => {
+          if (enCurso.delete(r)) registrarEvento('fin')
+        })
+        page.on('requestfailed', r => {
+          if (enCurso.delete(r)) registrarEvento('fallo')
+        })
+        const comprobarSinBucle = async (momento: string) => {
+          // Ver la fila no garantiza que terminó la hidratación tras recargar.
+          // Esperar quietud solo del endpoint bajo prueba (NO networkidle:
+          // SSE de Realtime mantiene otras conexiones abiertas legítimamente).
+          try {
+            await expect.poll(
+              () => enCurso.size === 0 && Date.now() - ultimoEvento >= 350,
+              { timeout: 8000, intervals: [100, 150, 250] },
+            ).toBe(true)
+          } catch (error) {
+            const traza = eventos.slice(-25).map(e => e.tipo + '@' + e.en).join(', ')
+            throw new Error(
+              momento + ': /api/pedidos/consulta no se estabilizó; ' +
+              'pendientes=' + enCurso.size + ', solicitudes=' + consultas + ', eventos=' + traza,
+              { cause: error },
+            )
+          }
+          const antes = consultas
+          await page.waitForTimeout(2000)
+          // No aumentar el umbral: el defecto #779 generaba ~15 llamadas/s.
+          expect(consultas - antes, momento + ': solicitudes nuevas tras estabilización').toBeLessThanOrEqual(1)
+        }
         // Entrada directa autenticada a Fiados; no esperar networkidle en
         // Dashboard, que mantiene una conexión SSE abierta legítimamente.
         await skipBaseCaja(page)
@@ -82,9 +123,7 @@ test.describe('Regresión #779: Pedidos y Fiados en móvil sin bucles', () => {
 
         // Sin interacción ni eventos nuevos, el número de solicitudes debe
         // estabilizarse. El bug emitía ~15 por segundo en este escenario.
-        const antes = consultas
-        await page.waitForTimeout(2000)
-        expect(consultas - antes).toBeLessThanOrEqual(1)
+        await comprobarSinBucle('sin interacción')
         etapa = 'perder y recuperar conexión'
         await context.setOffline(true)
         await expect(app.getByTestId('pedido-hub-offline')).toBeVisible()
@@ -95,9 +134,7 @@ test.describe('Regresión #779: Pedidos y Fiados en móvil sin bucles', () => {
         etapa = 'recargar la consulta'
         await page.reload()
         await expect(row).toBeVisible()
-        const trasRecargar = consultas
-        await page.waitForTimeout(2000)
-        expect(consultas - trasRecargar).toBeLessThanOrEqual(1)
+        await comprobarSinBucle('tras recarga')
         expect(errors).toEqual([])
       })
     }
