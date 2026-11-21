@@ -316,10 +316,11 @@ test.describe('Embarques — Tab Físico — Idempotencia (retry offline)', () =
 
   test('una referencia no puede identificarse con otro embarque ni con otra cantidad', async ({ page }) => {
     await loginAs(page, 'admin')
-    const t = await createTrabajador(page)
-    const trabajadorId = t.trabajador?.id || t.data?.id
-    const a = await createEmbarque(page, trabajadorId)
-    const b = await createEmbarque(page, trabajadorId)
+    // Solo se permite un embarque abierto por trabajador: usar dos repartidores.
+    const ta = await createTrabajador(page)
+    const tb = await createTrabajador(page)
+    const a = await createEmbarque(page, ta.trabajador?.id || ta.data?.id)
+    const b = await createEmbarque(page, tb.trabajador?.id || tb.data?.id)
     const aId = a.embarque?.id || a.data?.id
     const bId = b.embarque?.id || b.data?.id
     expect(aId).not.toBe(bId)
