@@ -69,6 +69,8 @@ interface PedidoHubProps {
   encabezadoLista?: ReactNode
   /** #841: entregas de pedidos anteriores; van después de los pendientes y antes de la lista. */
   entregasSlot?: ReactNode
+  /** #930: control único de modos en la consulta de Pedidos. */
+  modoRecorridoExterno?: boolean
 }
 
 function useViewport(): 'desktop' | 'mobile' {
@@ -84,7 +86,7 @@ function useViewport(): 'desktop' | 'mobile' {
 }
 
 export function PedidoHub({
-  pedidos, counts, loading, refetching = false, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch, consulta, onPeekMovilChange, arrastrados, encabezadoLista, entregasSlot,
+  pedidos, counts, loading, refetching = false, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch, consulta, onPeekMovilChange, arrastrados, encabezadoLista, entregasSlot, modoRecorridoExterno,
 }: PedidoHubProps) {
   const isOnline = useOnlineStatus()
   const viewport = useViewport()
@@ -188,7 +190,7 @@ export function PedidoHub({
       {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-12 rounded-lg bg-gray-100" />)}
     </div>
   ) : (
-    <OperacionList pedidos={pedidosFiltrados} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={peek.open} consulta={consulta} />
+    <OperacionList pedidos={pedidosFiltrados} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={peek.open} consulta={consulta} modoRecorridoExterno={modoRecorridoExterno} />
   )
 
   const listaCompleta = (
@@ -207,6 +209,7 @@ export function PedidoHub({
             onOpen={peek.open}
             onVerTodos={arrastrados.onVerTodos}
             onReintentar={arrastrados.onReintentar}
+            modoRecorridoExterno={modoRecorridoExterno}
           />
         </div>
       )}
