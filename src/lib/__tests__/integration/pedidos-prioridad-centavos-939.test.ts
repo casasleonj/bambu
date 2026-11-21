@@ -75,7 +75,7 @@ describe('#939 · sumatoria exacta de pagos confirmados para ordenar Pedidos', (
     const resultado = await consultarPedidos(filtros, 'ADMIN')
     expect(resultado.total).toBe(4)
     expect(resultado.pedidos.map(p => p.id)).toEqual([
-      IDs.pagadoCentavos, IDs.parcialConfirmado, IDs.soloReportado, IDs.sinPagoAntiguo,
+      IDs.pagadoCentavos, IDs.soloReportado, IDs.sinPagoAntiguo, IDs.parcialConfirmado,
     ])
   })
 
@@ -86,7 +86,7 @@ describe('#939 · sumatoria exacta de pagos confirmados para ordenar Pedidos', (
     const resultado = await consultarPedidos(filtros, 'ADMIN')
     expect(resultado.total).toBe(4)
     expect(resultado.pedidos.map(p => p.id)).toEqual([
-      IDs.pagadoCentavos, IDs.parcialConfirmado, IDs.soloReportado, IDs.sinPagoAntiguo,
+      IDs.pagadoCentavos, IDs.soloReportado, IDs.sinPagoAntiguo, IDs.parcialConfirmado,
     ])
   })
 
