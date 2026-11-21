@@ -122,8 +122,11 @@ export function PedidoDetalle({
   const vinculados = pedido.pedidosVinculados ?? []
   const casos = pedido.casosAbiertos ?? []
   const totalRelacionado = (pedido.recurrencia ? 1 : 0) + (n2 ? 1 : 0) + vinculados.length + casos.length
-  const hayPorConfirmar = pedido.pagoReportadoPendiente || pedido.pagoDiscrepante
   const pedidoCerrado = pedido.estadoEntrega === 'ANULADO' || pedido.estadoEntrega === 'CANCELADO'
+  // #517: en un pedido anulado o cancelado el pago ya no se confirma, así que
+  // el aviso «por confirmar» tampoco debe ofrecerse. Mismo criterio que el
+  // badge de la lista de pagos (más abajo, `!pedidoCerrado`).
+  const hayPorConfirmar = (pedido.pagoReportadoPendiente || pedido.pagoDiscrepante) && !pedidoCerrado
 
   const boton = (a: AccionDetalle, full = false) => (
     <button
