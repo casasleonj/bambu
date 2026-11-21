@@ -13,10 +13,14 @@ import { signOut } from 'next-auth/react'
  * Las dependencias son inyectables para probar éxito/fallo sin un navegador.
  */
 export async function cerrarSesionConservandoOrigen(
-  finalizarSesion: () => Promise<{ ok: boolean }> = () => signOut({ redirect: false }),
+  finalizarSesion: () => Promise<{ url: string | null }> = () => signOut({ redirect: false }),
   navegar: (ruta: string) => void = ruta => window.location.replace(ruta),
 ): Promise<void> {
   const resultado = await finalizarSesion()
-  if (!resultado?.ok) throw new Error('No se pudo completar el cierre de sesión')
+  // next-auth@5.0.0-beta.31 SignOutResponse solo contiene `url`.
+  // No existe `ok`: validar ese campo haría fallar hasta un logout correcto.
+  if (typeof resultado?.url !== 'string' || !resultado.url) {
+    throw new Error('No se pudo completar el cierre de sesión')
+  }
   navegar('/login')
 }
