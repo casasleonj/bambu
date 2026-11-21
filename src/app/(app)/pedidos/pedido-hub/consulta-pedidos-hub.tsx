@@ -114,6 +114,7 @@ export function ConsultaPedidosHub(props: Props) {
   // #788: rango que había antes de pulsar «Ver todos los períodos» (solo se honra
   // mientras la búsqueda sea la misma que lo originó).
   const [cercaniaActivo, setCercaniaActivo] = useState(false);
+  const [modoRecorrido, setModoRecorrido] = useState(() => params.getAll('recorrido').length > 0);
   const [filtrosPrevios, setFiltrosPrevios] =
     useState<FiltrosConsultaPedidos | null>(null);
   const estadoBusqueda = derivarEstadoBusqueda({
@@ -306,17 +307,36 @@ export function ConsultaPedidosHub(props: Props) {
           </button>
         )}
       </div>
-      <div className="flex items-center gap-2" data-testid="pedidos-cercania-modo">
+      <div className="flex flex-wrap items-center gap-2" data-testid="pedidos-modos">
+        <button type="button" aria-pressed={modoRecorrido} data-testid="recorrido-toggle"
+          className={`min-h-11 rounded-lg border px-3 text-sm font-semibold ${modoRecorrido ? "border-blue-700 bg-blue-700 text-white" : "border-stone-300 bg-white text-slate-800"}`}
+          onClick={() => {
+            const activar = !modoRecorrido;
+            params.set({
+              recorrido: activar ? undefined : undefined,
+              agrupar: 'barrio',
+              page: '1',
+            }, { history: 'push' });
+            setModoRecorrido(activar);
+            setCercaniaActivo(false);
+          }}>
+          Recorrido
+        </button>
         <button type="button" aria-pressed={cercaniaActivo} data-testid="cercania-toggle"
           className={`min-h-11 rounded-lg border px-3 text-sm font-semibold ${cercaniaActivo ? "border-blue-700 bg-blue-700 text-white" : "border-stone-300 bg-white text-slate-800"}`}
           onClick={() => {
-            if (!cercaniaActivo) params.set({ recorrido: undefined }, { history: "push" });
+            if (!cercaniaActivo) {
+              params.set({ recorrido: undefined }, { history: "push" });
+              setModoRecorrido(false);
+            }
             setCercaniaActivo(valor => !valor);
           }}>
           📍 Cercanía
         </button>
         <span className="text-xs text-slate-600">
-          {cercaniaActivo ? "Selecciona los pedidos; calcular requiere el GPS de este dispositivo." : "Lista General por defecto"}
+          {cercaniaActivo ? "Selecciona pedidos; el GPS se obtiene al calcular."
+            : modoRecorrido ? "Orden manual de barrios"
+            : "Lista General por defecto"}
         </span>
       </div>
       <FiltrosConsulta
@@ -520,6 +540,7 @@ export function ConsultaPedidosHub(props: Props) {
                 onRetry={refresh}
                 onRefetch={refresh}
                 onPeekMovilChange={props.onPeekMovilChange}
+                modoRecorridoExterno={modoRecorrido}
                 arrastrados={arrastrados}
                 encabezadoLista={encabezado}
                 entregasSlot={entregasNode}
