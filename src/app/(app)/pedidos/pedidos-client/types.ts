@@ -1,3 +1,5 @@
+import type { RiesgoOperativo } from "@/lib/pedidos-riesgo-operativo"
+
 export interface PedidoItem {
   producto: string
   cantPedido: number
@@ -53,6 +55,8 @@ export interface Pedido {
   diaAnterior?: boolean
   /** Día de corte para antigüedad, no necesariamente el reloj de hoy. */
   diaReferenciaConsulta?: string
+  /** #929: riesgo evaluado por el servidor para la lista, los banners y el filtro. */
+  riesgoOperativo?: RiesgoOperativo | null
   /** #927: consulta operativa del día con pedidos actuales y anteriores (solo presentación). */
   actividadOperativa?: boolean
   /** Hechos físicos del día consultado; null = existe hecho sin desglose verificable. */
