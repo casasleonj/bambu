@@ -95,7 +95,7 @@ const MovimientoSchema = z.object({
   destino: z.enum(CUSTODIAS).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   authorization: z.string().optional(),
-  offlineId: z.string().optional(),
+  offlineId: z.string().trim().min(1).optional(),
 })
 
 /**
