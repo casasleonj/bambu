@@ -22,7 +22,7 @@ async function crear(
   const estadoPago = totalPagado >= 1500.90 ? 'ANTICIPADO' : totalPagado > 0 ? 'PARCIAL' : 'PENDIENTE'
   const pedido = await testPrisma.pedido.create({
     data: {
-      clienteId, createdById: admin.id, fecha,
+      clienteId, createdById: admin.id, fecha, fechaEntrega: fecha,
       createdAt: new Date(Date.now() - antiguedadHoras * 3600000),
       estadoEntrega: 'PENDIENTE', estadoPago,
       canal: 'DOMICILIO', total: 1500.90,
@@ -71,6 +71,17 @@ describe('#939 · sumatoria exacta de pagos confirmados para ordenar Pedidos', (
   it('suma centavos DECIMAL por pedido sin degradar prioridad de pago completo', async () => {
     const filtros = leerFiltrosConsulta(new URLSearchParams(
       `desde=${HOY}&hasta=${HOY}&clienteId=${clienteId}&agrupar=&pageSize=25`,
+    ), HOY)
+    const resultado = await consultarPedidos(filtros, 'ADMIN')
+    expect(resultado.total).toBe(4)
+    expect(resultado.pedidos.map(p => p.id)).toEqual([
+      IDs.pagadoCentavos, IDs.parcialConfirmado, IDs.soloReportado, IDs.sinPagoAntiguo,
+    ])
+  })
+
+  it('el foco Para hoy usa la misma suma exacta, sin adelantar pagos reportados', async () => {
+    const filtros = leerFiltrosConsulta(new URLSearchParams(
+      `desde=${HOY}&hasta=${HOY}&clienteId=${clienteId}&agrupar=&foco=paraHoy&pageSize=25`,
     ), HOY)
     const resultado = await consultarPedidos(filtros, 'ADMIN')
     expect(resultado.total).toBe(4)
