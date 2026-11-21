@@ -1384,6 +1384,70 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     const reemplazo = (await eventos()).find((h) => h.datos.includes('"REEMPLAZADA"'))
     expect(reemplazo?.datos).toContain('8.7479')
   })
+
+  test('#930: selección en dos páginas, GPS del dispositivo y una única consulta vial', async ({ browser }) => {
+    test.setTimeout(150_000)
+    const page = await sharedLoginAs(browser, 'admin')
+    const nombre = `Cercania930 ${Date.now()}`
+    const { cliente } = await createCliente(page, { nombre, barrio: 'Centro' })
+    for (let i = 0; i < 2; i++) {
+      const creado = await apiPost(page, '/api/pedidos', {
+        clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO',
+        items: [{ producto: 'PACA_AGUA', cantidad: 5 }],
+        offlineId: `cercania-930-${Date.now()}-${i}`,
+      })
+      expect(creado.ok(), `Pedido de prueba ${i + 1} no se creó`).toBe(true)
+    }
+    await page.setViewportSize({ width: 1280, height: 850 })
+    await page.context().grantPermissions(['geolocation'], { origin: BASE })
+    await page.context().setGeolocation({ latitude: 10.03, longitude: -73.23 })
+    let consultasViales = 0
+    await page.route('**/api/pedidos/recorrido-vial', async route => {
+      consultasViales++
+      const req = route.request().postDataJSON() as {
+        pedidoIds: string[]; origen: { lat: number; lng: number }
+      }
+      expect(req.origen).toEqual({ lat: 10.03, lng: -73.23 })
+      expect(req.pedidoIds).toHaveLength(2)
+      await route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          success: true, ordenPedidoIds: [...req.pedidoIds].reverse(),
+          totalParadas: 2, proveedor: 'HEIGIT_VROOM',
+        }),
+      })
+    })
+    await page.goto(`${BASE}/pedidos?all=true&search=${encodeURIComponent(nombre)}&pageSize=1`)
+    const app = appMain(page)
+    await expect(app.getByTestId('cercania-toggle')).toBeVisible()
+    await app.getByTestId('cercania-toggle').click()
+    const candidatos = app.locator('input[data-testid^="cercania-check-"]:not(:checked):not(:disabled)')
+    await expect(candidatos.first()).toBeVisible({ timeout: 20_000 })
+    await candidatos.first().check()
+    await expect(app.getByTestId('pedidos-cercania')).toContainText('Seleccionados (1)')
+    expect(consultasViales).toBe(0)
+    await app.getByRole('button', { name: 'Siguiente' }).click()
+    await expect(candidatos.first()).toBeVisible({ timeout: 20_000 })
+    await candidatos.first().check()
+    await expect(app.getByTestId('pedidos-cercania')).toContainText('Seleccionados (2)')
+    await expect(app.locator('[data-testid^="cercania-seleccionado-"]')).toHaveCount(2)
+    expect(consultasViales).toBe(0)
+
+    await app.getByTestId('cercania-calcular').click()
+    await expect(app.getByTestId('pedidos-cercania')).toContainText('Orden sugerido', { timeout: 20_000 })
+    expect(consultasViales).toBe(1)
+    await expect(app.getByLabel('Parada 1')).toBeVisible()
+    await expect(app.getByLabel('Parada 2')).toBeVisible()
+
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(app.getByTestId('pedidos-cercania')).toBeVisible()
+    await expect(app.getByTestId('cercania-calcular')).toBeVisible()
+    expect(consultasViales).toBe(1)
+    await app.getByTestId('cercania-toggle').click()
+    await expect(app.getByTestId('pedidos-cercania')).toHaveCount(0)
+    expect(consultasViales).toBe(1)
+  })
+
 })
 
 test.describe('flag OFF: la UI de tabs sigue funcionando', () => {
