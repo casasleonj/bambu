@@ -230,7 +230,7 @@ const dec = (v: unknown) => centavos(v) / 100;
 /** #913: sin demanda FIFO, «Sin barrio» va tras los barrios y las ventas anónimas al final de todo. */
 const colaNoTerritorial = (clave: string) => (clave === CLAVE_VENTA_ANONIMA ? 2 : clave === "sin-barrio" ? 1 : 0);
 
-export async function consultarPedidos(
+async function consultarPedidosSinAviso(
   f: FiltrosConsultaPedidos,
   role: string | null,
   client = prisma,
@@ -308,6 +308,110 @@ export async function consultarPedidos(
   } catch (error) {
     logger.warn({ err: error }, "No se pudieron leer los pendientes de días anteriores");
     return { ...resultado, arrastradosError: true };
+  }
+}
+
+
+/**
+ * #932: enriquecer los Pedidos con datos de OTROS cobros pendientes del cliente.
+ * La lectura financiera es opcional y tiene su propia transacción consistente:
+ * un error de esa lectura nunca aborta la lista principal de Pedidos.
+ */
+export async function consultarPedidos(
+  f: FiltrosConsultaPedidos,
+  role: string | null,
+  client = prisma,
+): Promise<ResultadoConsultaPedidos> {
+  const resultado = await consultarPedidosSinAviso(f, role, client)
+  const visibles = [...resultado.pedidos, ...(resultado.arrastrados ?? [])]
+  const clientes = [...new Set(visibles.map(p => p.clienteId))]
+    .filter(id => !isConsumidorFinalCanonical(id))
+  if (!visibles.length || !clientes.length) return resultado
+
+  try {
+    const avisos = await client.$transaction(async (tx) => {
+      // Primero leer solamente IDs; los productos/negocios se consultan
+      // después de establecer la deuda exigible positiva, sin límite temporal.
+      const candidatos = await tx.pedido.findMany({
+        where: {
+          clienteId: { in: clientes },
+          estadoEntrega: { notIn: ["ANULADO", "CANCELADO"] },
+          saldo: { gt: 0 },
+        },
+        select: { id: true, clienteId: true },
+      })
+      const montos = new Map<string, number>()
+      const lote = 500
+      for (let i = 0; i < candidatos.length; i += lote) {
+        const ids = candidatos.slice(i, i + lote).map(p => p.id)
+        const exigibles = await leerExigibles(tx, { id: { in: ids } })
+        for (const [id, monto] of exigibles) montos.set(id, monto)
+      }
+      const conDeuda = candidatos.filter(p => (montos.get(p.id) ?? 0) > 0)
+      const deudas = []
+      for (let i = 0; i < conDeuda.length; i += lote) {
+        const detalles = await tx.pedido.findMany({
+          where: { id: { in: conDeuda.slice(i, i + lote).map(p => p.id) } },
+          select: {
+            id: true, numero: true, clienteId: true,
+            negocio: { select: { nombre: true } },
+            items: { select: { producto: true, cantEntrega: true, cantRegaloEntrega: true } },
+            cPacaAguaEnt: true, cPacaHieloEnt: true,
+            cBotellonFabEnt: true, cBotellonDomEnt: true,
+            cBolsaAguaEnt: true, cBolsaHieloEnt: true,
+            pagos: { where: { confirmacion: "REPORTADO" }, select: { id: true }, take: 1 },
+          },
+        })
+        for (const p of detalles) {
+          deudas.push({
+            id: p.id, numero: p.numero, clienteId: p.clienteId,
+            exigible: montos.get(p.id) ?? 0,
+            negocioNombre: p.negocio?.nombre ?? null,
+            pagoPorConfirmar: p.pagos.length > 0,
+            productos: p.items.length
+              ? p.items.map(item => ({
+                  producto: item.producto,
+                  cantidadEntregada: item.cantEntrega + (item.cantRegaloEntrega ?? 0),
+                }))
+              : [
+                  { producto: "PACA_AGUA", cantidadEntregada: p.cPacaAguaEnt },
+                  { producto: "PACA_HIELO", cantidadEntregada: p.cPacaHieloEnt },
+                  { producto: "BOTELLON", cantidadEntregada: p.cBotellonFabEnt + p.cBotellonDomEnt },
+                  { producto: "BOLSA_AGUA", cantidadEntregada: p.cBolsaAguaEnt },
+                  { producto: "BOLSA_HIELO", cantidadEntregada: p.cBolsaHieloEnt },
+                ],
+          })
+        }
+      }
+      return resumirFiadosAnteriores(
+        visibles.map(p => ({ id: p.id, clienteId: p.clienteId })),
+        deudas,
+      )
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      timeout: 15000,
+    })
+
+    const incluir = (pedidos: typeof resultado.pedidos) =>
+      pedidos.map(p => avisos.has(p.id)
+        ? { ...p, fiadosAnteriores: avisos.get(p.id) }
+        : p)
+    return {
+      ...resultado,
+      pedidos: incluir(resultado.pedidos),
+      ...(resultado.arrastrados ? { arrastrados: incluir(resultado.arrastrados) } : {}),
+    }
+  } catch (error) {
+    // Una consulta de badge que falle no invalida pedidos ni finge saldo cero.
+    logger.warn({ err: error }, "No fue posible verificar los cobros pendientes de clientes de Pedidos (#932)")
+    const sinVerificar = (pedidos: typeof resultado.pedidos) =>
+      pedidos.map(p => isConsumidorFinalCanonical(p.clienteId)
+        ? p : { ...p, fiadosConsultaError: true })
+    return {
+      ...resultado,
+      pedidos: sinVerificar(resultado.pedidos),
+      ...(resultado.arrastrados ? { arrastrados: sinVerificar(resultado.arrastrados) } : {}),
+    }
   }
 }
 
@@ -671,54 +775,6 @@ async function leerConsultaPedidos(
       let productos: ProductoConsulta[] = [],
         entregasPorConciliar = 0;
       const idsPagina = rows.map((p) => p.id);
-      // #932: deuda de pedidos anteriores del TITULAR, no saldo propio de la fila.
-      // Una lectura por lote sobre clientes de esta página, independiente del rango
-      // y filtros de Pedidos. `leerExigibles` es la misma proyección de Fiados.
-      const idsClientesPagina = [...new Set(rows.map(p => p.clienteId))]
-        .filter(id => !isConsumidorFinalCanonical(id));
-      const candidatosFiadosAnteriores = idsClientesPagina.length
-        ? await tx.pedido.findMany({
-            where: {
-              clienteId: { in: idsClientesPagina },
-              createdAt: { lte: new Date(Math.max(...rows.map(p => p.createdAt.getTime()))) },
-              estadoEntrega: { notIn: ["CANCELADO", "ANULADO"] },
-              saldo: { gt: 0 },
-            },
-            select: {
-              id: true, clienteId: true, createdAt: true,
-              negocio: { select: { nombre: true } },
-              items: { select: { producto: true, cantEntrega: true, cantRegaloEntrega: true } },
-              cPacaAguaEnt: true, cPacaHieloEnt: true,
-              cBotellonFabEnt: true, cBotellonDomEnt: true,
-              cBolsaAguaEnt: true, cBolsaHieloEnt: true,
-            },
-          })
-        : [];
-      const montosFiadosAnteriores = candidatosFiadosAnteriores.length
-        ? await leerExigibles(tx, { id: { in: candidatosFiadosAnteriores.map(p => p.id) } })
-        : new Map<string, number>();
-      const fiadosAnterioresPorPedido = resumirFiadosAnteriores(
-        rows.map(p => ({ id: p.id, clienteId: p.clienteId, createdAt: p.createdAt })),
-        candidatosFiadosAnteriores.map(p => ({
-          id: p.id, clienteId: p.clienteId, createdAt: p.createdAt,
-          exigible: montosFiadosAnteriores.get(p.id) ?? 0,
-          negocioNombre: p.negocio?.nombre ?? null,
-          // Cantidad realmente ENTREGADA en los pedidos con deuda, no unidades
-          // contablemente asignadas al saldo (abonos pueden ser por importe).
-          productos: p.items.length
-            ? p.items.map(i => ({
-                producto: i.producto,
-                cantidadEntregada: i.cantEntrega + (i.cantRegaloEntrega ?? 0),
-              }))
-            : [
-                { producto: "PACA_AGUA", cantidadEntregada: p.cPacaAguaEnt },
-                { producto: "PACA_HIELO", cantidadEntregada: p.cPacaHieloEnt },
-                { producto: "BOTELLON", cantidadEntregada: p.cBotellonFabEnt + p.cBotellonDomEnt },
-                { producto: "BOLSA_AGUA", cantidadEntregada: p.cBolsaAguaEnt },
-                { producto: "BOLSA_HIELO", cantidadEntregada: p.cBolsaHieloEnt },
-              ],
-        })),
-      );
       const exigiblesPagina = exigiblesConjunto ?? await leerExigibles(tx, { id: { in: idsPagina } });
       const hechosPagina = await leerEntregasConsulta(tx, { ids: idsPagina });
       if (f.resumen) {
@@ -890,9 +946,6 @@ async function leerConsultaPedidos(
           tipo: tipoDesdeCanal(raw.canal),
           saldo: dec(raw.saldo),
           exigible: exigiblesPagina.get(raw.id) ?? 0,
-          ...(fiadosAnterioresPorPedido.get(raw.id)
-            ? { fiadosAnteriores: fiadosAnterioresPorPedido.get(raw.id) }
-            : {}),
           nombreCli:
             getAnonymousClientDisplayName(raw.clienteId, "short") ??
             raw.cliente.nombre,
