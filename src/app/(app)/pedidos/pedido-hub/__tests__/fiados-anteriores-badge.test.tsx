@@ -39,7 +39,7 @@ describe('#932 badge de otros cobros pendientes del cliente', () => {
     expect(badge.textContent).toContain('Tienda B')
     expect(within(badge).getByRole("link", { name: "Ver fiados del cliente", hidden: true }))
       .toHaveAttribute("href", "/pedidos?tab=fiados&fiadosCliente=cliente-a")
-    expect(badge.textContent).toContain('no unidades individuales sin pagar')
+    expect(badge.textContent).toContain('no unidades individuales impagas')
     fireEvent.click(within(badge).getByText('Cobro pendiente'))
     expect(onOpen).not.toHaveBeenCalled()
     fireEvent.keyDown(within(badge).getByText('Cobro pendiente'), { key: 'Enter' })
