@@ -10,6 +10,7 @@ import { FocoStrip } from './foco-strip'
 import { RecurrentesDelDia } from './recurrentes-del-dia'
 import { OperacionList } from './operacion-list'
 import { PendientesAnteriores } from './pendientes-anteriores'
+import { CercaniaPedidos } from './cercania-pedidos'
 import { PeekPanel } from './peek-panel'
 import { PedidoCommandMenu } from './command-menu'
 import { deriveOperacion } from './derive-operacion'
@@ -71,6 +72,8 @@ interface PedidoHubProps {
   entregasSlot?: ReactNode
   /** #930: control único de modos en la consulta de Pedidos. */
   modoRecorridoExterno?: boolean
+  /** #930: sustituye solo el listado, conservando el peek y las acciones del Hub. */
+  cercaniaActivo?: boolean
 }
 
 function useViewport(): 'desktop' | 'mobile' {
@@ -86,7 +89,7 @@ function useViewport(): 'desktop' | 'mobile' {
 }
 
 export function PedidoHub({
-  pedidos, counts, loading, refetching = false, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch, consulta, onPeekMovilChange, arrastrados, encabezadoLista, entregasSlot, modoRecorridoExterno,
+  pedidos, counts, loading, refetching = false, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch, consulta, onPeekMovilChange, arrastrados, encabezadoLista, entregasSlot, modoRecorridoExterno, cercaniaActivo = false,
 }: PedidoHubProps) {
   const isOnline = useOnlineStatus()
   const viewport = useViewport()
@@ -183,7 +186,18 @@ export function PedidoHub({
   // Si hay un reintento en curso, manda "Actualizando…".
   const errorConDatos = Boolean(error) && pedidos.length > 0 && !mostrarActualizando
 
-  const listNode = errorSinDatos ? (
+  const listNode = cercaniaActivo && consulta ? (
+    <>
+      {errorSinDatos && <div role="alert" className="mb-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+        No se pudo cargar la lista de pedidos. La selección anterior puede mantenerse, pero necesita actualizarse.
+        {onRetry && <button type="button" className="ml-2 underline" onClick={onRetry}>Reintentar</button>}
+      </div>}
+      <CercaniaPedidos
+        activo pedidos={pedidosConArrastrados} viewport={viewport}
+        hoyBogota={hoyBogota} acciones={consulta} onAccion={onAccion} onOpen={peek.open}
+      />
+    </>
+  ) : errorSinDatos ? (
     <EmptyState title="No se pudieron cargar las operaciones" description={error ?? undefined} actionLabel={onRetry ? 'Reintentar' : undefined} onAction={onRetry} />
   ) : loading && pedidos.length === 0 ? (
     <div className="animate-pulse space-y-2" data-testid="pedido-hub-skeleton">
@@ -195,7 +209,7 @@ export function PedidoHub({
 
   const listaCompleta = (
     <>
-      {consulta && arrastrados && (
+      {!cercaniaActivo && consulta && arrastrados && (
         <div className="mb-3">
           <PendientesAnteriores
             pedidos={arrastrados.pedidos}
@@ -213,7 +227,7 @@ export function PedidoHub({
           />
         </div>
       )}
-      {entregasSlot && <div className="mb-3">{entregasSlot}</div>}
+      {!cercaniaActivo && entregasSlot && <div className="mb-3">{entregasSlot}</div>}
       {encabezadoLista}
       {listNode}
     </>
