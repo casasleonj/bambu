@@ -3,6 +3,8 @@ import { prisma } from "./prisma";
 import { logger } from "./logger";
 import { condicionPalabra, palabrasDeBusqueda } from "./clientes-repo";
 import { leerExigibles } from "./entregas-exigibles-db";
+import { isConsumidorFinalCanonical } from "./cliente-canonical";
+import { resumirFiadosAnteriores } from "./fiados-anteriores-pedido";
 import { importesEntregaPedido } from "./valor-entregado-pedido";
 import { canReadFacturas } from "./permissions";
 import { getAnonymousClientDisplayName } from "./cliente-canonical";
@@ -669,6 +671,54 @@ async function leerConsultaPedidos(
       let productos: ProductoConsulta[] = [],
         entregasPorConciliar = 0;
       const idsPagina = rows.map((p) => p.id);
+      // #932: deuda de pedidos anteriores del TITULAR, no saldo propio de la fila.
+      // Una lectura por lote sobre clientes de esta página, independiente del rango
+      // y filtros de Pedidos. `leerExigibles` es la misma proyección de Fiados.
+      const idsClientesPagina = [...new Set(rows.map(p => p.clienteId))]
+        .filter(id => !isConsumidorFinalCanonical(id));
+      const candidatosFiadosAnteriores = idsClientesPagina.length
+        ? await tx.pedido.findMany({
+            where: {
+              clienteId: { in: idsClientesPagina },
+              createdAt: { lte: new Date(Math.max(...rows.map(p => p.createdAt.getTime()))) },
+              estadoEntrega: { notIn: ["CANCELADO", "ANULADO"] },
+              saldo: { gt: 0 },
+            },
+            select: {
+              id: true, clienteId: true, createdAt: true,
+              negocio: { select: { nombre: true } },
+              items: { select: { producto: true, cantEntrega: true, cantRegaloEntrega: true } },
+              cPacaAguaEnt: true, cPacaHieloEnt: true,
+              cBotellonFabEnt: true, cBotellonDomEnt: true,
+              cBolsaAguaEnt: true, cBolsaHieloEnt: true,
+            },
+          })
+        : [];
+      const montosFiadosAnteriores = candidatosFiadosAnteriores.length
+        ? await leerExigibles(tx, { id: { in: candidatosFiadosAnteriores.map(p => p.id) } })
+        : new Map<string, number>();
+      const fiadosAnterioresPorPedido = resumirFiadosAnteriores(
+        rows.map(p => ({ id: p.id, clienteId: p.clienteId, createdAt: p.createdAt })),
+        candidatosFiadosAnteriores.map(p => ({
+          id: p.id, clienteId: p.clienteId, createdAt: p.createdAt,
+          exigible: montosFiadosAnteriores.get(p.id) ?? 0,
+          negocioNombre: p.negocio?.nombre ?? null,
+          // Cantidad realmente ENTREGADA en los pedidos con deuda, no unidades
+          // contablemente asignadas al saldo (abonos pueden ser por importe).
+          productos: p.items.length
+            ? p.items.map(i => ({
+                producto: i.producto,
+                cantidadEntregada: i.cantEntrega + (i.cantRegaloEntrega ?? 0),
+              }))
+            : [
+                { producto: "PACA_AGUA", cantidadEntregada: p.cPacaAguaEnt },
+                { producto: "PACA_HIELO", cantidadEntregada: p.cPacaHieloEnt },
+                { producto: "BOTELLON", cantidadEntregada: p.cBotellonFabEnt + p.cBotellonDomEnt },
+                { producto: "BOLSA_AGUA", cantidadEntregada: p.cBolsaAguaEnt },
+                { producto: "BOLSA_HIELO", cantidadEntregada: p.cBolsaHieloEnt },
+              ],
+        })),
+      );
       const exigiblesPagina = exigiblesConjunto ?? await leerExigibles(tx, { id: { in: idsPagina } });
       const hechosPagina = await leerEntregasConsulta(tx, { ids: idsPagina });
       if (f.resumen) {
@@ -840,6 +890,9 @@ async function leerConsultaPedidos(
           tipo: tipoDesdeCanal(raw.canal),
           saldo: dec(raw.saldo),
           exigible: exigiblesPagina.get(raw.id) ?? 0,
+          ...(fiadosAnterioresPorPedido.get(raw.id)
+            ? { fiadosAnteriores: fiadosAnterioresPorPedido.get(raw.id) }
+            : {}),
           nombreCli:
             getAnonymousClientDisplayName(raw.clienteId, "short") ??
             raw.cliente.nombre,
