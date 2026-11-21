@@ -51,7 +51,7 @@ export function clasificarGestionVial(p: PedidoParaGestionVial): GestionVial | n
 
 /** #959: el clasificador genérico conserva la gestión de COBRO, pero la
  * lista de Cercanía del reparto solo acepta paradas con carga pendiente. */
-export function esParadaDeEntregaCercania(gestion: GestionVial | null): boolean {
+export function esParadaDeEntregaCercania(gestion: GestionVial | null): gestion is GestionVial {
   return gestion !== null && gestion.unidadesPendientes > 0;
 }
 
