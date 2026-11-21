@@ -1,5 +1,7 @@
 /** #334: lista segura de specs E2E desde Playwright JSON. */
 import { readFileSync, statSync, appendFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { compareManifests } from './playwright-baseline.mjs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -42,25 +44,31 @@ function classify(test) {
 
 export function collectSpecs(report) {
   const out = []
-  function visit(suite, inheritedFile = '') {
+  function visit(suite, inheritedFile = '', titles = []) {
     const file = typeof suite.file === 'string' ? suite.file : inheritedFile
+    const path = suite.title ? [...titles, suite.title] : titles
     for (const spec of Array.isArray(suite.specs) ? suite.specs : []) {
       for (const test of Array.isArray(spec.tests) ? spec.tests : []) {
         // Nunca publicar el nombre del caso: puede contener datos dinámicos de fixtures.
         const key = [spec.file || file || 'spec desconocido',
           test.projectName || 'proyecto',
           'línea ' + (Number.isInteger(spec.line) ? spec.line : '?')].join(' › ')
-        out.push({ key, status: classify(test), attempts: Array.isArray(test.results) ? test.results.length : 0 })
+        // La identidad estable ignora la línea (puede cambiar al editar tests).
+        // Los títulos alimentan SOLO el hash; jamás se imprimen en el summary.
+        const id = createHash('sha256').update(JSON.stringify([
+          spec.file || file, path, spec.title || '', test.projectName || '',
+        ])).digest('hex')
+        out.push({ id, key, status: classify(test), attempts: Array.isArray(test.results) ? test.results.length : 0 })
       }
     }
-    for (const child of Array.isArray(suite.suites) ? suite.suites : []) visit(child, file)
+    for (const child of Array.isArray(suite.suites) ? suite.suites : []) visit(child, file, path)
   }
   for (const suite of report.suites) visit(suite)
   return out
 }
 
 /** La comparación solo se habilita si otra fuente certificó equivalencia de suites y entorno. */
-export function summarize(current, { label = 'E2E', baseline = null, comparable = false } = {}) {
+export function summarize(current, { label = 'E2E', baseline = null, comparable = false, comparisonReason = '' } = {}) {
   const lines = ['### Specs E2E · ' + cleanText(label, 70), '']
   if (!current.available) return [...lines, '**Resultados no disponibles** (' +
     cleanText(current.reason) + '). Esto NO significa cero fallos.', '',
@@ -86,13 +94,18 @@ export function summarize(current, { label = 'E2E', baseline = null, comparable 
       failures.length + '; consultar el artefacto completo._')
   } else if (all.length && !runnerErrors) lines.push('', 'Sin specs fallidos ni intermitentes en el JSON disponible.')
   if (runnerErrors) lines.push('', '**Atención:** Playwright registró errores fuera de casos individuales; consulta los logs/trazas.')
-  if (!baseline?.available || !comparable) {
+  const baselineErrors = baseline?.available && Array.isArray(baseline.report.errors)
+    ? baseline.report.errors.length : 0
+  if (!baseline?.available || !comparable || !all.length ||
+      !collectSpecs(baseline.report).length || runnerErrors || baselineErrors) {
     lines.push('', 'Comparación con main: **NO DISPONIBLE / NO COMPARABLE**. No se atribuyen regresiones sin baseline equivalente.')
+    if (comparisonReason) lines.push('_Motivo: ' + cleanText(comparisonReason, 180) + '._')
+    if (runnerErrors || baselineErrors) lines.push('_El runner tuvo errores de infraestructura; comparar sería inseguro._')
   } else {
-    const previous = new Map(collectSpecs(baseline.report).map(x => [x.key, x.status]))
-    const added = failures.filter(x => previous.has(x.key) &&
-      !['failed', 'flaky', 'unknown'].includes(previous.get(x.key)))
-    const absent = failures.filter(x => !previous.has(x.key))
+    const previous = new Map(collectSpecs(baseline.report).map(x => [x.id, x.status]))
+    const added = failures.filter(x => previous.has(x.id) &&
+      !['failed', 'flaky', 'unknown'].includes(previous.get(x.id)))
+    const absent = failures.filter(x => !previous.has(x.id))
     lines.push('', 'Comparación con main (equivalencia certificada): ' + added.length +
       ' candidatos nuevos; ' + absent.length + ' casos sin equivalente.')
     for (const x of added.slice(0, 20)) lines.push('- Posible regresión: ' + cleanText(x.key, 220))
@@ -101,13 +114,26 @@ export function summarize(current, { label = 'E2E', baseline = null, comparable 
   return lines.join('\n') + '\n'
 }
 
+function readManifest(path) {
+  try { return JSON.parse(readFileSync(path, 'utf8')) } catch { return null }
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const [reportPath, label = 'E2E'] = process.argv.slice(2)
+  const [reportPath, label = 'E2E', baselinePath, manifestPath, baselineManifestPath] = process.argv.slice(2)
   if (!reportPath) {
-    console.error('Uso: node scripts/ci/playwright-spec-summary.mjs <report.json> [etiqueta]')
+    console.error('Uso: node scripts/ci/playwright-spec-summary.mjs <report.json> [etiqueta] [baseline.json] [manifest.json] [baseline-manifest.json]')
     process.exitCode = 2
   } else {
-    const output = summarize(readReport(reportPath), { label })
+    const hasManifestPair = Boolean(manifestPath && baselineManifestPath)
+    const comparison = hasManifestPair
+      ? compareManifests(readManifest(manifestPath), readManifest(baselineManifestPath))
+      : { comparable: false, reason: 'manifiestos de compatibilidad no proporcionados' }
+    const output = summarize(readReport(reportPath), {
+      label,
+      baseline: baselinePath ? readReport(baselinePath) : null,
+      comparable: comparison.comparable,
+      comparisonReason: comparison.reason,
+    })
     if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, output)
     process.stdout.write(output)
   }
