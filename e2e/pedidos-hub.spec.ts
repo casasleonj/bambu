@@ -1423,12 +1423,14 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await app.getByTestId('cercania-toggle').click()
     const candidatos = app.locator('input[data-testid^="cercania-check-"]:not(:checked):not(:disabled)')
     await expect(candidatos.first()).toBeVisible({ timeout: 20_000 })
-    await candidatos.first().check()
+    // La tarjeta se mueve a Seleccionados inmediatamente; .check() esperaría un locator ya inexistente.
+    await candidatos.first().click()
     await expect(app.getByTestId('pedidos-cercania')).toContainText('Seleccionados (1)')
     expect(consultasViales).toBe(0)
     await app.getByRole('button', { name: 'Siguiente' }).click()
     await expect(candidatos.first()).toBeVisible({ timeout: 20_000 })
-    await candidatos.first().check()
+    // La tarjeta se mueve a Seleccionados inmediatamente; .check() esperaría un locator ya inexistente.
+    await candidatos.first().click()
     await expect(app.getByTestId('pedidos-cercania')).toContainText('Seleccionados (2)')
     await expect(app.locator('[data-testid^="cercania-seleccionado-"]')).toHaveCount(2)
     expect(consultasViales).toBe(0)
