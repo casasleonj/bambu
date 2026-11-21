@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import type { ResumenFiadosAnteriores } from '@/lib/fiados-anteriores-pedido'
@@ -23,6 +23,7 @@ export function FiadosAnterioresBadge({
 }) {
   const contenedor = useRef<HTMLDivElement>(null)
   const desplegable = useRef<HTMLDetailsElement>(null)
+  const [ocultoPorEscape, setOcultoPorEscape] = useState(false)
 
   useEffect(() => {
     const cerrarFuera = (evento: PointerEvent) => {
@@ -33,6 +34,7 @@ export function FiadosAnterioresBadge({
     const cerrarEscape = (evento: KeyboardEvent) => {
       if (evento.key === 'Escape' && desplegable.current?.open) {
         desplegable.current.open = false
+        setOcultoPorEscape(true)
         desplegable.current.querySelector('summary')?.focus()
       }
     }
@@ -60,7 +62,8 @@ export function FiadosAnterioresBadge({
       ref={contenedor}
       className="group relative my-1 block w-full max-w-full align-middle md:inline-block md:w-auto"
       data-testid={'fiados-anteriores-' + pedidoId}
-      onClick={(e) => e.stopPropagation()}
+      onClick={(e) => { setOcultoPorEscape(false); e.stopPropagation() }}
+      onPointerEnter={() => setOcultoPorEscape(false)}
       onKeyDown={(e) => e.stopPropagation()}
     >
       <details ref={desplegable} className="peer w-fit max-w-full">
@@ -73,7 +76,7 @@ export function FiadosAnterioresBadge({
         </summary>
       </details>
       <div
-        className="relative z-20 mt-2 hidden w-full max-w-full rounded-lg border border-amber-300 bg-white p-3 text-left text-xs font-normal text-stone-800 shadow-lg peer-open:block md:absolute md:left-0 md:top-full md:mt-1 md:w-72 md:max-w-[calc(100vw-2rem)] md:shadow-xl md:group-hover:block md:group-focus-within:block"
+        className={`relative z-20 mt-2 hidden w-full max-w-full rounded-lg border border-amber-300 bg-white p-3 text-left text-xs font-normal text-stone-800 shadow-lg peer-open:block md:absolute md:left-0 md:top-full md:mt-1 md:w-72 md:max-w-[calc(100vw-2rem)] md:shadow-xl md:group-hover:block md:group-focus-within:block ${ocultoPorEscape ? '!hidden' : ''}`}
         role="region"
         aria-label="Detalle de otros cobros pendientes"
       >
