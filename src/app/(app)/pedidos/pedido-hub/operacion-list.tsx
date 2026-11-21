@@ -70,7 +70,7 @@ function OperacionRowDesktop({
           )}
         </div>
         <div className="text-sm font-medium text-gray-800">{clienteLinea(pedido)}</div>
-        <FiadosAnterioresBadge resumen={pedido.fiadosAnteriores} pedidoId={pedido.id} clienteId={pedido.clienteId} />
+        <FiadosAnterioresBadge resumen={pedido.fiadosAnteriores} pedidoId={pedido.id} clienteId={pedido.clienteId} consultaError={pedido.fiadosConsultaError} />
       </td>
       <td className="px-3 py-2 align-top text-sm text-gray-600">
         {pedido.canal === 'DOMICILIO' && <span className="mr-1" title="Domicilio">🚚</span>}
@@ -123,7 +123,7 @@ function OperacionCardMobile({
         <div className="text-sm font-medium text-gray-800">{clienteLinea(pedido)}</div>
         <span className="text-xs text-gray-400">#{pedido.numero}</span>
       </div>
-      <FiadosAnterioresBadge resumen={pedido.fiadosAnteriores} pedidoId={pedido.id} clienteId={pedido.clienteId} />
+      <FiadosAnterioresBadge resumen={pedido.fiadosAnteriores} pedidoId={pedido.id} clienteId={pedido.clienteId} consultaError={pedido.fiadosConsultaError} />
       <div className="mt-0.5 text-xs text-gray-500">
         {pedido.canal === 'DOMICILIO' && <span className="mr-1">🚚</span>}
         {pedidoItemsResumen(pedido)}
