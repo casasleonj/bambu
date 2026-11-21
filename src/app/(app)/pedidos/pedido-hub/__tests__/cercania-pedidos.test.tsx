@@ -6,9 +6,10 @@ import { CercaniaPedidos } from "../cercania-pedidos";
 vi.mock("../operacion-consulta", () => ({
   OperacionConsulta: ({ pedidos, seleccion }: {
     pedidos: Pedido[];
-    seleccion: { marcado: boolean; onAlternar: (p: Pedido) => void };
+    seleccion: { marcado: boolean; onAlternar: (p: Pedido) => void; fueraDePaginaIds?: ReadonlySet<string> };
   }) => <div>{pedidos.map(p => <div key={p.id}>
     {seleccion.marcado && <span data-testid={`cercania-seleccionado-${p.id}`}>Seleccionado</span>}
+    {seleccion.fueraDePaginaIds?.has(p.id) && <span>Fuera del filtro o página actual</span>}
     <button type="button" data-testid={`cercania-check-${p.id}`}
       aria-pressed={seleccion.marcado}
       onClick={() => seleccion.onAlternar(p)}>{p.id}</button>
