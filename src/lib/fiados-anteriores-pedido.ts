@@ -36,7 +36,7 @@ export interface ResumenFiadosAnteriores {
   productos: Array<{ producto: string; cantidad: number }>
   negocios: string[]
   /** Identifica cada origen sin atribuir el importe a otro negocio. */
-  origenes: Array<{ numero: number; negocio: string | null; importe: number }>
+  origenes: Array<{ id: string; numero: number; negocio: string | null; importe: number }>
   pagoPorConfirmar: boolean
 }
 
@@ -92,7 +92,7 @@ export function resumirFiadosAnteriores(
       productos: [...productos].map(([producto, cantidad]) => ({ producto, cantidad }))
         .sort((a, b) => a.producto.localeCompare(b.producto)),
       negocios: [...negocios].sort((a, b) => a.localeCompare(b)),
-      origenes: ajenos.map(d => ({ numero: d.numero, negocio: d.negocioNombre,
+      origenes: ajenos.map(d => ({ id: d.id, numero: d.numero, negocio: d.negocioNombre,
         importe: aCentavos(d.exigible) / 100 }))
         .sort((a, b) => a.numero - b.numero),
       pagoPorConfirmar: ajenos.some(d => d.pagoPorConfirmar),
