@@ -6,6 +6,7 @@ import { getNextNumero } from '@/lib/sequence'
 import { revertirCreditoDelPedido } from '../services/saldo-favor-excedente.service'
 import { logAudit } from '@/lib/audit'
 import { registrarReversionPedido } from '@/lib/receivable-entry'
+import { restituirBonoPedidoAnulado } from '@/lib/bono-saldo-favor'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
 import type { IPedidoRepository } from '../../domain/repositories/IPedidoRepository'
 import type { IFacturaRepository } from '../../domain/repositories/IFacturaRepository'
@@ -23,7 +24,7 @@ export class AnularPedidoUseCase {
     private txManager: ITransactionManager,
   ) {}
 
-  async execute(input: AnularPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean; hijosAnulados: number; hijosIds: string[]; saldoFavorRevertido?: number; saldoFavorYaUsado?: number; saldoFavorCliente?: number }> {
+  async execute(input: AnularPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean; hijosAnulados: number; hijosIds: string[]; saldoFavorRevertido?: number; saldoFavorYaUsado?: number; saldoFavorCliente?: number; saldoFavorBonoRestituido?: number }> {
     // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:notaCredito`. La NC se
     // genera con getNextNumero(model:'notaCredito') MAX+1, por lo que exige
     // serialización global de la numeración. Resuelve la colisión histórica
@@ -57,9 +58,10 @@ export class AnularPedidoUseCase {
         }
       }
 
-      const { updated, revertido: revertidoRaiz, yaUsado: yaUsadoRaiz } = await this.aplicar(tx, pedido, 'ANULAR', input.motivo, input.offlineId, input.actorId)
+      const { updated, revertido: revertidoRaiz, yaUsado: yaUsadoRaiz, bonoRestituido: bonoRaiz } = await this.aplicar(tx, pedido, 'ANULAR', input.motivo, input.offlineId, input.actorId)
       let saldoFavorRevertido = revertidoRaiz
       let saldoFavorYaUsado = yaUsadoRaiz
+      let saldoFavorBonoRestituido = bonoRaiz
 
       // Decisión PO (#367): anular un pedido anula también sus pedidos hijos
       // (`pedidoOrigenId`: entrega parcial / nueva demanda), en cascada por todo
@@ -83,12 +85,13 @@ export class AnularPedidoUseCase {
           const r = await this.aplicar(tx, hijo, modo, input.motivo ? `${input.motivo} (cascada de #${pedido.numero})` : undefined, undefined, input.actorId)
           saldoFavorRevertido = (Math.round(saldoFavorRevertido * 100) + Math.round(r.revertido * 100)) / 100
           saldoFavorYaUsado = (Math.round(saldoFavorYaUsado * 100) + Math.round(r.yaUsado * 100)) / 100
+          saldoFavorBonoRestituido = (Math.round(saldoFavorBonoRestituido * 100) + Math.round(r.bonoRestituido * 100)) / 100
           hijosIds.push(hijoId)
         }
       }
 
       // Lo que el cliente tiene ahora, para que el aviso diga el saldo final sin otra consulta.
-      const saldoFavorCliente = saldoFavorRevertido > 0 || saldoFavorYaUsado > 0
+      const saldoFavorCliente = saldoFavorRevertido > 0 || saldoFavorYaUsado > 0 || saldoFavorBonoRestituido > 0
         ? Number((await tx.cliente.findUnique({ where: { id: pedido.clienteId }, select: { saldoFavor: true } }))?.saldoFavor ?? 0)
         : undefined
 
@@ -96,6 +99,7 @@ export class AnularPedidoUseCase {
         pedido: PedidoDTOMapper.toResumen(updated), hijosAnulados: hijosIds.length, hijosIds,
         ...(saldoFavorRevertido > 0 ? { saldoFavorRevertido } : {}),
         ...(saldoFavorYaUsado > 0 ? { saldoFavorYaUsado } : {}),
+        ...(saldoFavorBonoRestituido > 0 ? { saldoFavorBonoRestituido } : {}),
         ...(saldoFavorCliente !== undefined ? { saldoFavorCliente } : {}),
       }
     })
@@ -154,13 +158,15 @@ export class AnularPedidoUseCase {
       actorId: actorId ?? '',
     })
 
+    const bonoRestituido = await restituirBonoPedidoAnulado(tx, pedido.id.get(), pedido.clienteId)
+
     await logAudit({
       entidad: 'Pedido',
       registroId: pedido.id.get(),
       accion: 'UPDATE',
-      datos: { motivo, modo, notaCredito: tuvoPagos, reversion: montoRevertido, ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}), ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}) },
+      datos: { motivo, modo, notaCredito: tuvoPagos, reversion: montoRevertido, ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}), ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}), ...(bonoRestituido > 0 ? { saldoFavorBonoRestituido: bonoRestituido } : {}) },
     }, tx)
 
-    return { updated, revertido, yaUsado }
+    return { updated, revertido, yaUsado, bonoRestituido }
   }
 }
