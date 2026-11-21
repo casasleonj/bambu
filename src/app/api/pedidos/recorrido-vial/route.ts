@@ -102,9 +102,6 @@ export async function POST(request: NextRequest) {
           throw new RecorridoVialError('PARADAS_INVALIDAS', 'Un pedido dejó de estar disponible.')
         if (isConsumidorFinalCanonical(p.clienteId))
           throw new RecorridoVialError('PARADAS_INVALIDAS', 'Una venta anónima no representa una visita de cobro.')
-        // No apropiarse de la carga de otra ruta/repartidor al organizar desde oficina.
-        if (p.embarqueId)
-          throw new RecorridoVialError('PARADAS_INVALIDAS', 'Hay pedidos asignados a un embarque. Revisa su repartidor.')
         const gestion = clasificarGestionVial({
           estadoEntrega: p.estadoEntrega,
           canal: p.canal,
@@ -121,6 +118,10 @@ export async function POST(request: NextRequest) {
         })
         if (!gestion)
           throw new RecorridoVialError('PARADAS_INVALIDAS', 'La selección contiene pedidos sin gestión pendiente.')
+        // Un embarque histórico NO impide cobrar un pedido ya entregado.
+        // Solo impedimos reasignar una salida que aún transporta mercancía.
+        if (p.embarqueId && gestion.tipo !== 'COBRO')
+          throw new RecorridoVialError('PARADAS_INVALIDAS', 'Hay pedidos con carga asignada a un embarque. Revisa su repartidor.')
         // La fecha prometida de mañana se preserva, no se adelanta por GPS.
         if (p.fechaEntrega && diaEntregaBogota(new Date(p.fechaEntrega)) > diaEntregaBogota(ahora) &&
             gestion.tipo !== 'COBRO')
