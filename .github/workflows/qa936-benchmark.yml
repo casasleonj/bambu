@@ -1,0 +1,75 @@
+name: QA936 benchmark de prioridad FIFO (PostgreSQL aislado)
+
+on:
+  pull_request:
+    paths:
+      - scripts/bench-prioridad-936.ts
+      - .github/workflows/qa936-benchmark.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: PostgreSQL 250 / 1000 / 5000
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
+      DIRECT_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
+      QA936_EPHEMERAL_DB: "1"
+      NODE_ENV: test
+      TZ: America/Bogota
+
+    steps:
+      - name: Checkout commit a medir
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: PostgreSQL 17 local aislado
+        run: |
+          docker run -d --name postgres-qa936 \
+            -e POSTGRES_USER=bambu \
+            -e POSTGRES_PASSWORD=bambu_dev \
+            -e POSTGRES_DB=bambu \
+            -p 127.0.0.1:5432:5432 \
+            postgres:17.10-alpine
+          for i in $(seq 1 30); do
+            if docker exec postgres-qa936 pg_isready -U bambu -d bambu >/dev/null 2>&1; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+
+      - name: Dependencias y Prisma
+        run: |
+          npm install
+          npx prisma generate
+          npx prisma db push
+          bash scripts/aplicar-migraciones-sql-crudas.sh
+
+      - name: Medir consulta real sin tocar producción
+        run: npx tsx scripts/bench-prioridad-936.ts
+
+      - name: Publicar métricas como artefacto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa936-benchmark
+          path: artifacts/qa936-benchmark.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Resumen de métricas
+        if: success()
+        run: |
+          echo '## QA #936, consultas de Pedidos (DB efímera)' >> "$GITHUB_STEP_SUMMARY"
+          echo '15 muestras por tamaño con resumen ON y 25 filas solicitadas.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Métricas p50/p95 en milisegundos y memoria RSS del proceso.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No es un SLA ni una prueba de concurrencia entre páginas.' >> "$GITHUB_STEP_SUMMARY"
+          cat artifacts/qa936-benchmark.json >> "$GITHUB_STEP_SUMMARY"
