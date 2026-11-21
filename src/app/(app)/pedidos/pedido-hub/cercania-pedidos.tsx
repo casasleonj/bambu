@@ -187,7 +187,7 @@ export function CercaniaPedidos({ activo, pedidos, hoyBogota, acciones, onAccion
             fase === "calculado" ? "Volver a calcular" : `Calcular recorrido (${elegidos.length})`}
         </button>
         {fase === "desactualizado" && <p className="mt-2 text-sm text-amber-900" role="status">
-          La selección cambió; el orden anterior no es válido.</p>}
+          La selección cambió o se modificó un pedido; el orden anterior ya no es válido.</p>}
         {error && <p className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-900" role="alert">{error}</p>}
         {fase === "calculado" && <p className="mt-2 text-xs text-blue-900" role="status">
           ✓ Recorrido sugerido {proveedor === "HEIGIT_VROOM" ? "(HeiGIT / OpenStreetMap)" :
