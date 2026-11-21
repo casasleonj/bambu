@@ -23,7 +23,17 @@ import { todayStringBogota } from '@/lib/dates'
 import { cobroDelDiaSinEspejoActivo } from '@/lib/cobro-dia-sin-espejo-flag'
 import { EntregaOficinaError, ESTADO_HTTP_OFICINA } from '@/modules/pedidos/domain/services/entrega-oficina.errors'
 import { idResultadoFiado, huellaCobroFiado, prepararCobroFiado, leerResultadoFiado, errorCobroPedido } from '@/lib/fiados-cobro-server'
+import { BonoSaldoFavorError, consumirBonoDeSaldoFavor, idConsumoBonoAbono, OPERACION_CONSUMO_BONO } from '@/lib/bono-saldo-favor'
 import type { AplicacionFiado, ResultadoCobroFiado } from '@/lib/fiados-cobro'
+
+/** #772: un BONO sin respaldo o no aplicable nunca puede pagar deuda ni generar crédito.
+ * La excepción hace ROLLBACK del lock CARTERA, incluso si había cobros previos
+ * en la misma solicitud. No retornar una Response después de escrituras.
+ */
+class BonoSinDeudaError extends Error {
+  readonly code = 'BONO_SIN_DEUDA'
+  constructor() { super('El BONO excede la deuda aplicable. Reduce el BONO o ajusta los medios de pago.') }
+}
 
 /** #515: revisión y resultados originales, independientes de la fecha de Pedidos. */
 export async function GET(request: NextRequest) {
@@ -133,6 +143,17 @@ export async function POST(request: NextRequest) {
       // día, no cartera: no se le crea el `Abono` espejo. Solo con ambas banderas (sin camino de corrección por pago no se
       // omite nada) y sin recepción retroactiva de oficina (su día de caja puede no ser el de la entrega).
       const sinEspejo = Boolean(pedidoId) && !oficina && cobroDelDiaSinEspejoActivo()
+
+      // #772: BONO es saldo a favor ya recibido, no un nuevo pago.
+      // Consumirlo ANTES de escribir Pago/Abono evita acreditar dinero inexistente.
+      // updateMany es atómico: ninguna transacción puede gastar más de lo disponible.
+      const bonoSolicitadoCentavos = pagos.reduce(
+        (suma, pago) => suma + (pago.metodo === 'BONO' ? Math.round(pago.monto * 100) : 0), 0,
+      )
+      if (bonoSolicitadoCentavos > 0) {
+        await consumirBonoDeSaldoFavor(tx, clienteId, bonoSolicitadoCentavos / 100)
+      }
+
       const fondos = pagos.map(p => ({ ...p, restante: Math.round(p.monto * 100), aplicado: 0 }))
       const pagosAplicados: AplicacionFiado[] = []
       const culminados: Array<{ pedidoId: string; numero: number }> = []
@@ -162,9 +183,17 @@ export async function POST(request: NextRequest) {
               estado: Number(factura.saldo) <= 0 ? 'PAGADA' : Number(factura.montoPagado) > 0 ? 'PARCIAL' : 'EMITIDA' } })
             if (!sinEspejo) {
               const numero = await getNextNumero(tx, { model: 'abono', field: 'numero' })
-              await tx.abono.create({ data: { numero: `ABO-${numero.toString().padStart(5, '0')}`,
+              const abono = await tx.abono.create({ data: { numero: `ABO-${numero.toString().padStart(5, '0')}`,
                 facturaId: factura.id, clienteId, pedidoId: pedido.id, monto: montoAplicar,
                 metodoPago: fondo.metodo, origenCobro: 'ESPEJO_PAGO', pagoOrigenId: pago.id } })
+              if (fondo.metodo === 'BONO') {
+                await logAudit({
+                  id: idConsumoBonoAbono(abono.id), entidad: 'Abono', registroId: abono.id,
+                  accion: 'CREATE', usuarioId: auth.user?.id,
+                  datos: { operacion: OPERACION_CONSUMO_BONO, clienteId,
+                    monto: montoAplicar, metodo: 'BONO', pagoOrigenId: pago.id },
+                }, tx)
+              }
             }
           }
         }
@@ -174,6 +203,12 @@ export async function POST(request: NextRequest) {
           if (shouldFireCulminado(pedido.estadoEntrega ?? 'ENTREGADO', calcularEstadoPago(pedido.total, pagado / 100, pedido.estadoEntrega ?? 'ENTREGADO'))) culminados.push({ pedidoId: pedido.id, numero: pedido.numero })
         }
         if (fondos.every(f => f.restante <= 0)) break
+      }
+      // #772: si parte del BONO quedó sin aplicar (otro medio cubrió primero
+      // toda la deuda), no debe transformarse en crédito ni desaparecer.
+      // Lanzar, no retornar: revertir TODOS los pagos y el descuento de saldo.
+      if (fondos.some(f => f.metodo === 'BONO' && f.restante > 0)) {
+        throw new BonoSinDeudaError()
       }
       // D.6 se conserva: el sobrante se acredita a saldo a favor. #524: ese dinero SÍ entró a la caja
       // (en su medio de pago), así que se registra como ingreso propio, por medio, para que el cierre
@@ -217,6 +252,8 @@ export async function POST(request: NextRequest) {
     }
     return apiSuccess({ ...resultado, mensaje: resultado.deduped ? 'Pago ya registrado; se conserva el resultado original.' : 'Pago registrado.' })
   } catch (error) {
+    if (error instanceof BonoSinDeudaError) return apiError(error.message, 422, { code: error.code })
+    if (error instanceof BonoSaldoFavorError) return apiError(error.message, error.status, { code: error.code })
     if (error instanceof EntregaOficinaError) return apiError(error.message, ESTADO_HTTP_OFICINA[error.codigo], { code: error.codigo })
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') return apiError(
       'La referencia de cobro ya existe. Consulta su estado antes de continuar.', 409, { code: 'REFERENCIA_COBRO_DISTINTA' })
