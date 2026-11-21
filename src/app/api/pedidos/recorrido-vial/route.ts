@@ -7,6 +7,7 @@ import { apiError, apiSuccess } from '@/lib/api-response'
 import { prisma } from '@/lib/prisma'
 import { leerExigibles } from '@/lib/entregas-exigibles-db'
 import { pickCoords } from '@/lib/geo/pedido-coords'
+import { isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
 import { diaEntregaBogota } from '@/lib/pedidos-entregas-historial'
 import {
   coordenadaVialValida,
@@ -99,6 +100,8 @@ export async function POST(request: NextRequest) {
         const p = porId.get(id)
         if (!p)
           throw new RecorridoVialError('PARADAS_INVALIDAS', 'Un pedido dejó de estar disponible.')
+        if (isConsumidorFinalCanonical(p.clienteId))
+          throw new RecorridoVialError('PARADAS_INVALIDAS', 'Una venta anónima no representa una visita de cobro.')
         // No apropiarse de la carga de otra ruta/repartidor al organizar desde oficina.
         if (p.embarqueId)
           throw new RecorridoVialError('PARADAS_INVALIDAS', 'Hay pedidos asignados a un embarque. Revisa su repartidor.')
