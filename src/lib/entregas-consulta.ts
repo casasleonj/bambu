@@ -17,6 +17,16 @@ export interface EntregaConsulta {
   precisionDia?: boolean;
   incompleto?: boolean;
 }
+/** Una fuente HISTORICO no es incierta por sí sola: el mostrador puede aportar
+ * instante y cantidades fiables sin una segunda auditoría de entrega (#959).
+ * La falta de desglose, la imprecisión diaria o un hito incompleto sí obligan
+ * a mantener la advertencia. */
+export function requiereConciliacionEntrega(
+  hecho: Pick<EntregaConsulta, "cantidades" | "incompleto" | "precisionDia">,
+): boolean {
+  return hecho.incompleto === true || hecho.precisionDia === true || !hecho.cantidades?.length;
+}
+
 type Tx = Pick<
   Prisma.TransactionClient,
   "historial" | "embarqueMovimiento" | "pedido"

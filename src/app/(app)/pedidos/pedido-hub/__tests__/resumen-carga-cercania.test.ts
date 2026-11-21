@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resumirCargaCercania } from "../resumen-carga-cercania";
+import { esVisitaPendienteCercania, resumirCargaCercania } from "../resumen-carga-cercania";
 import { clasificarGestionVial } from "@/lib/geo/seleccion-recorrido-vial";
 import type { Pedido } from "../types";
 
@@ -109,5 +109,48 @@ describe("#930 resumen físico de pedidos seleccionados", () => {
     expect(resumirCargaCercania([])).toEqual({
       pedidos: 0, unidades: 0, porProducto: [], pedidosSinDesglose: 0,
     });
+  });
+});
+
+
+describe("#959 Cercanía requiere demanda física pendiente", () => {
+  it("excluye entrega completa incluso con fiado; no confunde deuda con mercancía", () => {
+    expect(esVisitaPendienteCercania(pedido("entregado-fiado", {
+      estadoEntrega: "ENTREGADO", exigible: 50000,
+      items: [linea("PACA_AGUA", 30, 30)],
+    }))).toBe(false);
+    expect(esVisitaPendienteCercania(pedido("completo-pero-estado-antiguo", {
+      estadoEntrega: "PENDIENTE", exigible: 7000,
+      items: [linea("PACA_AGUA", 3, 3)],
+    }))).toBe(false);
+  });
+
+  it("conserva parciales pagados y regalos pendientes, incluidas columnas legacy", () => {
+    expect(esVisitaPendienteCercania(pedido("pagado-parcial", {
+      estadoPago: "PAGADO", items: [linea("PACA_AGUA", 10, 7)],
+    }))).toBe(true);
+    expect(esVisitaPendienteCercania(pedido("regalo", {
+      items: [linea("PACA_AGUA", 10, 10, 2, 1)],
+    }))).toBe(true);
+    expect(esVisitaPendienteCercania(pedido("legacy", {
+      cBotellonDomPed: 4, cBotellonDomEnt: 2,
+    }))).toBe(true);
+  });
+
+  it("descarta punto, anulados y cancelados aunque tengan cantidades o saldo", () => {
+    const activo = { items: [linea("PACA_AGUA", 5, 0)], exigible: 3000 };
+    expect(esVisitaPendienteCercania(pedido("punto", {
+      ...activo, canal: "PUNTO",
+    }))).toBe(false);
+    expect(esVisitaPendienteCercania(pedido("anulado", {
+      ...activo, estadoEntrega: "ANULADO",
+    }))).toBe(false);
+    expect(esVisitaPendienteCercania(pedido("cancelado", {
+      ...activo, estadoEntrega: "CANCELADO",
+    }))).toBe(false);
+  });
+
+  it("un pendiente con desglose desconocido no se inventa como completado", () => {
+    expect(esVisitaPendienteCercania(pedido("sin-detalle"))).toBe(true);
   });
 });

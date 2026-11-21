@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bloqueadaPorEmbarque, clasificarGestionVial, type PedidoParaGestionVial } from '../seleccion-recorrido-vial'
+import { bloqueadaPorEmbarque, clasificarGestionVial, esParadaDeEntregaCercania, type PedidoParaGestionVial } from '../seleccion-recorrido-vial'
 
 const p = (v: Partial<PedidoParaGestionVial> = {}): PedidoParaGestionVial => ({
   estadoEntrega: 'PENDIENTE',
@@ -63,3 +63,30 @@ describe('#930 elegibilidad de parada en ruta vial', () => {
     expect(bloqueadaPorEmbarque(null, entregar!)).toBe(false)
   })
 })
+
+
+describe("#959 la ruta Cercanía excluye cobros puros sin alterar Cartera", () => {
+  it("no incluye el entregado con fiado como parada de reparto", () => {
+    const gestion = clasificarGestionVial(p({
+      estadoEntrega: "ENTREGADO", exigible: 7500,
+      items: [{ producto: "PACA_AGUA", cantPedido: 10, cantEntrega: 10 }],
+    }));
+    expect(gestion?.tipo).toBe("COBRO"); // conservar el clasificador genérico de #930
+    expect(esParadaDeEntregaCercania(gestion)).toBe(false);
+  });
+
+  it("incluye parciales con deuda o pagados cuando todavía falta producto", () => {
+    expect(esParadaDeEntregaCercania(clasificarGestionVial(p({
+      items: [{ producto: "PACA_AGUA", cantPedido: 10, cantEntrega: 5 }],
+      exigible: 10000,
+    })))).toBe(true);
+    expect(esParadaDeEntregaCercania(clasificarGestionVial(p()))).toBe(true);
+  });
+
+  it("descarta cobro puro de punto y ausencia de gestión", () => {
+    expect(esParadaDeEntregaCercania(clasificarGestionVial(p({
+      canal: "PUNTO", exigible: 2000,
+    })))).toBe(false);
+    expect(esParadaDeEntregaCercania(null)).toBe(false);
+  });
+});

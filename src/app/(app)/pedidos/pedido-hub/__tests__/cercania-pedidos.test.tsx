@@ -174,3 +174,58 @@ describe("#930 selección Cercanía en Pedidos", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 });
+
+
+describe("#959 Cercanía muestra únicamente mercancía por entregar", () => {
+  beforeEach(() => { autorizarGPS(); });
+
+  it("oculta entregados pagados o fiados, punto y pendientes sin remanente", () => {
+    const completa = { producto: "PACA_AGUA", cantPedido: 5, cantEntrega: 5, precio: 0, subtotal: 0 };
+    const parcial = { ...completa, cantEntrega: 3 };
+    render(vista([
+      { ...pedido("101"), estadoEntrega: "ENTREGADO", estadoPago: "PAGADO", items: [completa] },
+      { ...pedido("102"), estadoEntrega: "ENTREGADO", estadoPago: "PENDIENTE", exigible: 5000, items: [completa] },
+      { ...pedido("103"), canal: "PUNTO", items: [parcial] },
+      { ...pedido("104"), items: [completa] },
+      { ...pedido("105"), estadoEntrega: "PENDIENTE", items: [parcial] },
+    ]));
+    for (const id of ["101", "102", "103", "104"]) {
+      expect(screen.queryByTestId(`cercania-check-${id}`)).toBeNull();
+    }
+    expect(screen.getByTestId("cercania-check-105")).toBeTruthy();
+    expect(screen.getByText("Otros pedidos (1 visibles)")).toBeTruthy();
+  });
+
+  it("retira el seleccionado al completarse en otra pantalla, invalida ruta y no pide GPS otra vez", async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true, ordenPedidoIds: ["101"],
+        totalParadas: 1, proveedor: "HEIGIT_VROOM",
+      }),
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const base = { ...pedido("101"), items: [
+      { producto: "PACA_AGUA", cantPedido: 5, cantEntrega: 2, precio: 0, subtotal: 0 },
+    ] };
+    const { rerender } = render(vista([base]));
+    fireEvent.click(screen.getByTestId("cercania-check-101"));
+    fireEvent.click(screen.getByTestId("cercania-calcular"));
+    await waitFor(() => expect(screen.getByTestId("cercania-calcular")).toHaveTextContent("Volver a calcular"));
+
+    // Tras pasar por otra página, la selección permanece hasta que llega
+    // la fila actualizada. No se resucita al recibirse ya completada.
+    rerender(vista([]));
+    expect(screen.getByTestId("cercania-seleccionado-101")).toBeTruthy();
+    rerender(vista([{ ...base, estadoEntrega: "ENTREGADO", items: [
+      { ...base.items[0], cantEntrega: 5 },
+    ] }]));
+    await waitFor(() => {
+      expect(screen.queryByTestId("cercania-check-101")).toBeNull();
+      expect(screen.getByTestId("cercania-total-pedidos")).toHaveTextContent("0 pedidos");
+      expect(screen.getByTestId("cercania-calcular")).toBeDisabled();
+    });
+    expect(screen.getByText("Desactualizado")).toBeTruthy();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+});

@@ -21,7 +21,7 @@ import {
   optimizarRecorridoVial,
   ProveedorVialInvalidoError,
 } from '@/lib/geo/recorrido-vial-proveedor-server'
-import { bloqueadaPorEmbarque, clasificarGestionVial } from '@/lib/geo/seleccion-recorrido-vial'
+import { bloqueadaPorEmbarque, clasificarGestionVial, esParadaDeEntregaCercania } from '@/lib/geo/seleccion-recorrido-vial'
 
 export const runtime = 'nodejs'
 
@@ -106,6 +106,10 @@ export async function POST(request: NextRequest) {
           throw new RecorridoVialError('PARADAS_INVALIDAS', 'Un pedido dejó de estar disponible.')
         if (isConsumidorFinalCanonical(p.clienteId))
           throw new RecorridoVialError('PARADAS_INVALIDAS', 'Una venta anónima no representa una visita de cobro.')
+        // #959: Cercanía sirve a entregas pendientes; un fiado de entrega ya
+        // completada se cobra desde Cartera, no agrega otra parada de reparto.
+        if (p.estadoEntrega === 'ENTREGADO')
+          throw new RecorridoVialError('PARADAS_INVALIDAS', 'Hay pedidos con entrega ya completada. Actualiza la selección.')
         const gestion = clasificarGestionVial({
           estadoEntrega: p.estadoEntrega,
           canal: p.canal,
@@ -120,8 +124,8 @@ export async function POST(request: NextRequest) {
           ],
           exigible: exigibles.get(id) ?? 0,
         })
-        if (!gestion)
-          throw new RecorridoVialError('PARADAS_INVALIDAS', 'La selección contiene pedidos sin gestión pendiente.')
+        if (!esParadaDeEntregaCercania(gestion))
+          throw new RecorridoVialError('PARADAS_INVALIDAS', 'La selección contiene pedidos sin productos pendientes de entrega.')
         // Un embarque histórico NO impide cobrar un pedido ya entregado.
         // Solo impedimos reasignar una salida que aún transporta mercancía.
         if (bloqueadaPorEmbarque(p.embarqueId, gestion))

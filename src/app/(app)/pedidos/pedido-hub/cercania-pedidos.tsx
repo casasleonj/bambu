@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { OperacionConsulta, type AccionesConsulta } from "./operacion-consulta";
 import { OperacionList } from "./operacion-list";
-import { resumirCargaCercania } from "./resumen-carga-cercania";
+import { esVisitaPendienteCercania, resumirCargaCercania } from "./resumen-carga-cercania";
 import { getProductoIconConfig } from "@/lib/producto-iconos";
 import type { AccionKey, Pedido } from "./types";
 
@@ -64,8 +64,27 @@ export function CercaniaPedidos({ activo, pedidos, viewport, hoyBogota, acciones
     focoTrasMover.current = null;
   }, [elegidos]);
   const encontrados = new Map(pedidos.map(p => [p.id, p]));
-  const ids = new Set(elegidos.map(p => p.id));
-  const seleccionados = elegidos.map(p => encontrados.get(p.id) ?? p);
+  // No ofrecer completados ni visitas de cobro puro en Cercanía (#959).
+  // Fuera de la página conservamos la selección hasta obtener datos frescos.
+  const seleccionados = elegidos.map(p => encontrados.get(p.id) ?? p)
+    .filter(esVisitaPendienteCercania);
+  const ids = new Set(seleccionados.map(p => p.id));
+  useEffect(() => {
+    const actuales = new Map(pedidos.map(p => [p.id, p]));
+    const noElegibles = new Set(elegidos.filter(p => {
+      const actual = actuales.get(p.id);
+      return actual !== undefined && !esVisitaPendienteCercania(actual);
+    }).map(p => p.id));
+    if (!noElegibles.size) return;
+    // La entrega pudo completarse mientras se calculaba una ruta: nunca
+    // aplicar una respuesta obsoleta ni mantener una parada ya atendida.
+    envio.current += 1;
+    setElegidos(anterior => anterior.filter(p => !noElegibles.has(p.id)));
+    setOrden([]);
+    setProveedor("");
+    setFase("desactualizado");
+    setError(null);
+  }, [pedidos, elegidos]);
   const carga = resumirCargaCercania(seleccionados);
   // Los cambios físicos, financieros o de ubicación invalidan una sugerencia ya calculada.
   // No se optimiza de nuevo sin acción explícita del usuario (#930).
@@ -92,14 +111,15 @@ export function CercaniaPedidos({ activo, pedidos, viewport, hoyBogota, acciones
     : seleccionados;
   const vistos = new Set<string>();
   const restantes = pedidos.filter(p => {
-    if (vistos.has(p.id) || ids.has(p.id)) return false;
+    if (vistos.has(p.id) || ids.has(p.id) || !esVisitaPendienteCercania(p)) return false;
     vistos.add(p.id);
     return true;
   });
 
   function alternar(p: Pedido) {
     if (ocupada.current) return;
-    if (!ids.has(p.id) && elegidos.length >= 25) {
+    if (!ids.has(p.id) && !esVisitaPendienteCercania(p)) return;
+    if (!ids.has(p.id) && seleccionados.length >= 25) {
       setError("Puedes seleccionar hasta 25 pedidos por cálculo; ninguno será omitido.");
       return;
     }
@@ -114,10 +134,10 @@ export function CercaniaPedidos({ activo, pedidos, viewport, hoyBogota, acciones
   }
 
   async function calcular() {
-    if (!activo || ocupada.current || !elegidos.length) return;
+    if (!activo || ocupada.current || !seleccionados.length) return;
     ocupada.current = true;
     const version = ++envio.current;
-    const pedidoIds = elegidos.map(p => p.id);
+    const pedidoIds = seleccionados.map(p => p.id);
     setError(null);
     setFase("gps");
     try {
@@ -209,12 +229,12 @@ export function CercaniaPedidos({ activo, pedidos, viewport, hoyBogota, acciones
           Marca uno o varios pedidos de la lista inferior.
         </p>}
         <p className="mt-3 text-xs text-blue-900">📍 Origen: GPS actual de este dispositivo, obtenido al calcular.</p>
-        <button type="button" data-testid="cercania-calcular" disabled={espera || !elegidos.length}
+        <button type="button" data-testid="cercania-calcular" disabled={espera || !seleccionados.length}
           onClick={() => void calcular()}
           className="mt-2 min-h-11 w-full rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 sm:w-auto">
           {fase === "gps" ? "Obteniendo GPS…" : fase === "calculando" ? "Calculando…" :
             fase === "desactualizado" ? "Actualizar recorrido" :
-            fase === "calculado" ? "Volver a calcular" : `Calcular recorrido (${elegidos.length})`}
+            fase === "calculado" ? "Volver a calcular" : `Calcular recorrido (${seleccionados.length})`}
         </button>
         {fase === "desactualizado" && <p className="mt-2 text-sm text-amber-900" role="status">
           La selección cambió o se modificó un pedido; el orden anterior ya no es válido.</p>}

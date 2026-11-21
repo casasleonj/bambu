@@ -46,6 +46,16 @@ function cantidadesPendientes(p: Pedido): Record<string, number> | null {
   }
 }
 
+/** Cercanía organiza reparto físico, NO pedidos entregados que solo deben dinero.
+ * Si el desglose es desconocido, conservar la fila para revisión en vez de
+ * inventar una entrega completa. El servidor valida de nuevo al calcular. */
+export function esVisitaPendienteCercania(p: Pedido): boolean {
+  if (p.canal !== "DOMICILIO" ||
+      ["ENTREGADO", "CANCELADO", "ANULADO"].includes(p.estadoEntrega)) return false;
+  const pendientes = cantidadesPendientes(p);
+  return pendientes === null || Object.values(pendientes).some(cantidad => cantidad > 0);
+}
+
 export function resumirCargaCercania(seleccionados: readonly Pedido[]): ResumenCargaCercania {
   const totales: Record<string, number> = Object.create(null) as Record<string, number>;
   let pedidosSinDesglose = 0;

@@ -49,6 +49,12 @@ export function clasificarGestionVial(p: PedidoParaGestionVial): GestionVial | n
   }
 }
 
+/** #959: el clasificador genérico conserva la gestión de COBRO, pero la
+ * lista de Cercanía del reparto solo acepta paradas con carga pendiente. */
+export function esParadaDeEntregaCercania(gestion: GestionVial | null): boolean {
+  return gestion !== null && gestion.unidadesPendientes > 0;
+}
+
 /** Un embarque histórico no impide cobrar, pero sí protege una carga en otra salida. */
 export function bloqueadaPorEmbarque(embarqueId: string | null | undefined, gestion: GestionVial): boolean {
   return !!embarqueId && gestion.tipo !== 'COBRO'
