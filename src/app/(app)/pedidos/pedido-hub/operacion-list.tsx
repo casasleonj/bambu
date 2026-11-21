@@ -13,6 +13,7 @@ import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import { CLAVE_VENTA_ANONIMA } from '@/lib/barrios/grupo-barrio'
 import { useAhora } from '@/hooks/use-ahora'
 import { ordenarPorFranja, type Franja } from '@/lib/pedidos-franja'
+import { FiadosAnterioresBadge } from './fiados-anteriores-badge'
 
 const money = (n: number) => new Intl.NumberFormat('es-CO').format(Number(n) || 0)
 
@@ -69,6 +70,7 @@ function OperacionRowDesktop({
           )}
         </div>
         <div className="text-sm font-medium text-gray-800">{clienteLinea(pedido)}</div>
+        <FiadosAnterioresBadge resumen={pedido.fiadosAnteriores} pedidoId={pedido.id} />
       </td>
       <td className="px-3 py-2 align-top text-sm text-gray-600">
         {pedido.canal === 'DOMICILIO' && <span className="mr-1" title="Domicilio">🚚</span>}
@@ -121,6 +123,7 @@ function OperacionCardMobile({
         <div className="text-sm font-medium text-gray-800">{clienteLinea(pedido)}</div>
         <span className="text-xs text-gray-400">#{pedido.numero}</span>
       </div>
+      <FiadosAnterioresBadge resumen={pedido.fiadosAnteriores} pedidoId={pedido.id} />
       <div className="mt-0.5 text-xs text-gray-500">
         {pedido.canal === 'DOMICILIO' && <span className="mr-1">🚚</span>}
         {pedidoItemsResumen(pedido)}
