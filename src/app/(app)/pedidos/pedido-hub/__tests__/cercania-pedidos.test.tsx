@@ -228,4 +228,50 @@ describe("#959 Cercanía muestra únicamente mercancía por entregar", () => {
     expect(screen.getByText("Desactualizado")).toBeTruthy();
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
+
+  it("no resucita una entrega completada al cambiar otra vez de filtro", async () => {
+    const base = { ...pedido("111"), items: [{
+      producto: "PACA_AGUA", cantPedido: 5, cantEntrega: 2,
+      precio: 0, subtotal: 0,
+    }] };
+    const { rerender } = render(vista([base]));
+    fireEvent.click(screen.getByTestId("cercania-check-111"));
+    expect(screen.getByTestId("cercania-seleccionado-111")).toBeTruthy();
+
+    rerender(vista([{ ...base, estadoEntrega: "ENTREGADO",
+      items: [{ ...base.items[0], cantEntrega: 5 }] }]));
+    expect(screen.queryByTestId("cercania-seleccionado-111")).toBeNull();
+
+    // Fue visto como ENTREGADO. No puede volver al seleccionar otra página
+    // aunque el caché conservado en la selección haya sido anterior.
+    rerender(vista([]));
+    expect(screen.queryByTestId("cercania-seleccionado-111")).toBeNull();
+    expect(screen.getByTestId("cercania-total-pedidos")).toHaveTextContent("0 pedidos");
+  });
+
+  it("descarta la respuesta vial si la dirección cambia mientras está calculando", async () => {
+    let resolver: ((value: unknown) => void) | undefined;
+    const fetcher = vi.fn().mockImplementation(() =>
+      new Promise(resolve => { resolver = resolve; }));
+    vi.stubGlobal("fetch", fetcher);
+    const base = { ...pedido("112"), entregaLat: 10.03, entregaLng: -73.23,
+      items: [{ producto: "PACA_AGUA", cantPedido: 5, cantEntrega: 2,
+        precio: 0, subtotal: 0 }] };
+    const { rerender } = render(vista([base]));
+    fireEvent.click(screen.getByTestId("cercania-check-112"));
+    fireEvent.click(screen.getByTestId("cercania-calcular"));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+
+    rerender(vista([{ ...base, entregaLng: -73.231 }]));
+    expect(screen.getByText("Desactualizado")).toBeTruthy();
+    resolver?.({ ok: true, json: async () => ({
+      success: true, ordenPedidoIds: ["112"],
+      proveedor: "HEIGIT_VROOM", totalParadas: 1,
+    }) });
+    await waitFor(() =>
+      expect(screen.getByTestId("cercania-calcular"))
+        .toHaveTextContent("Actualizar recorrido"));
+    expect(screen.queryByText(/Recorrido sugerido/)).toBeNull();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
 });
