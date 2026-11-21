@@ -4,7 +4,7 @@
  * fallo de aplicación en verde ni bloquea el CI por no tener artefacto).
  */
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -38,7 +38,13 @@ export function compareManifests(a, b) {
   if (!a || !b) return { comparable: false, reason: 'falta manifiesto del PR o de main' }
   const props = ['schema', 'jobKey', 'playwright', 'nodeMajor', 'runnerOS', 'imageOS',
     'v2', 'workers', 'configHash', 'fixtureHash']
-  const mismatch = props.filter(k => !a[k] || !b[k] ? a[k] !== b[k] : a[k] !== b[k])
+  const required = ['schema', 'jobKey', 'playwright', 'nodeMajor', 'runnerOS',
+    'imageOS', 'configHash', 'fixtureHash']
+  if (required.some(k => a[k] === undefined || a[k] === null || a[k] === '' ||
+      b[k] === undefined || b[k] === null || b[k] === '')) {
+    return { comparable: false, reason: 'faltan datos requeridos para certificar la compatibilidad' }
+  }
+  const mismatch = props.filter(k => a[k] !== b[k])
   return mismatch.length
     ? { comparable: false, reason: 'entornos/configuraciones diferentes (' + mismatch.join(', ') + ')' }
     : { comparable: true, reason: 'mismo job, versión y configuración de test' }
@@ -56,10 +62,6 @@ export function pickRun(runs, sha) {
 export function pickArtifact(items, name) {
   return (Array.isArray(items) ? items : [])
     .find(x => x?.name === name && x.expired === false && Number.isInteger(x.id)) || null
-}
-
-function safelyReadJson(path) {
-  try { return JSON.parse(readFileSync(path, 'utf8')) } catch { return null }
 }
 
 async function readJson(apiBase, suffix, token) {
