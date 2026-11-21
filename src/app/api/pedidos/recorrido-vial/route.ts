@@ -126,8 +126,8 @@ export async function POST(request: NextRequest) {
         })
         if (!esParadaDeEntregaCercania(gestion))
           throw new RecorridoVialError('PARADAS_INVALIDAS', 'La selección contiene pedidos sin productos pendientes de entrega.')
-        // Un embarque histórico NO impide cobrar un pedido ya entregado.
-        // Solo impedimos reasignar una salida que aún transporta mercancía.
+        // Cercanía solo acepta entregas físicas; no reasignar mercancía
+        // ya vinculada a un embarque de otra salida.
         if (bloqueadaPorEmbarque(p.embarqueId, gestion))
           throw new RecorridoVialError('PARADAS_INVALIDAS', 'Hay pedidos con carga asignada a un embarque. Revisa su repartidor.')
         // La fecha prometida de mañana se preserva, no se adelanta por GPS.
