@@ -50,7 +50,7 @@ test.describe("#836 F1 — fecha prometida", () => {
 
       await goto(page, "/pedidos?foco=paraHoy&pageSize=100");
       await expect(page.locator(compromiso(hoy.id))).toHaveText(/Para hoy/);
-      await expect(page.locator(compromiso(ayer.id))).toHaveText(/Arrastrado · previsto/);
+      await expect(page.locator(compromiso(ayer.id))).toHaveText(/Fecha prevista superada/);
       await expect(page.locator(fila(futuro.id))).toHaveCount(0);
       await expect(page.locator(fila(entregado.id))).toHaveCount(0);
 
