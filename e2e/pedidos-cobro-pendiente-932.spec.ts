@@ -43,7 +43,7 @@ test.describe('#932 Cobro pendiente en General de Pedidos', () => {
       })
 
       await loginAs(page, 'admin')
-      await goto(page, '/pedidos?all=true&pageSize=100')
+      await goto(page, '/pedidos?all=true&pageSize=100&search=' + encodeURIComponent(cliente.nombre))
       const app = appMain(page)
       const badge = app.getByTestId('fiados-anteriores-' + pedidoPagado.id)
       await expect(badge).toBeVisible({ timeout: 20_000 })

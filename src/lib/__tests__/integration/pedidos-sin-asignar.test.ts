@@ -330,6 +330,10 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
         canal: 'DOMICILIO',
         offlineId: uniqueId('sin-riesgo-tiempo'),
         fecha: new Date(),
+        // El reloj de Vitest está congelado al mediodía. PostgreSQL usa su reloj
+        // real para @default(now()); sin este valor crea un pedido aparentemente
+        // antiguo y dispara una alerta falsa. Mismo instante lógico para ambos.
+        createdAt: new Date(),
         embarqueId: null,
         estadoEntrega: 'PENDIENTE',
         estadoPago: 'ANTICIPADO',
