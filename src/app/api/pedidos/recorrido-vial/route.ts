@@ -19,7 +19,7 @@ import {
   configuracionGoogleRuta,
   optimizarRecorridoGoogle,
 } from '@/lib/geo/google-route-optimization-server'
-import { clasificarGestionVial } from '@/lib/geo/seleccion-recorrido-vial'
+import { bloqueadaPorEmbarque, clasificarGestionVial } from '@/lib/geo/seleccion-recorrido-vial'
 
 export const runtime = 'nodejs'
 
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
           throw new RecorridoVialError('PARADAS_INVALIDAS', 'La selección contiene pedidos sin gestión pendiente.')
         // Un embarque histórico NO impide cobrar un pedido ya entregado.
         // Solo impedimos reasignar una salida que aún transporta mercancía.
-        if (p.embarqueId && gestion.tipo !== 'COBRO')
+        if (bloqueadaPorEmbarque(p.embarqueId, gestion))
           throw new RecorridoVialError('PARADAS_INVALIDAS', 'Hay pedidos con carga asignada a un embarque. Revisa su repartidor.')
         // La fecha prometida de mañana se preserva, no se adelanta por GPS.
         if (p.fechaEntrega && diaEntregaBogota(new Date(p.fechaEntrega)) > diaEntregaBogota(ahora) &&
