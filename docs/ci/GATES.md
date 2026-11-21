@@ -106,3 +106,13 @@ que alguien con permisos de escritura fusione sin esperar checks si el
 repositorio no exige el `CI gate (resumen)`. Configurar required check y
 restricción de push/promoción es una acción de administración separada;
 **no se debe declarar hecha ni usar este piloto para sustituirla**.
+
+
+## 2026-11-21 · CI progresivo, PR de activación (fase condicionada)
+
+- **HECHO comprobado:** la lectura de `branches/main` indica `protected:false` y la API de protección devuelve 403 para esta integración. Las reglas efectivas de aprobación y checks requeridos no pueden verificarse/configurarse por aquí. Por tanto **no fusionar el PR de activación** hasta habilitar y comprobar protección real de `main`, con `CI gate (resumen)` requerido. El gate que falla en un borrador NO protege por sí solo un repositorio sin branch protection.
+- **DECISIÓN de diseño:** borrador apto (#896: diff normal A/M/D, restringido a `src/` o `docs/`, legible, no vacío) ejecuta TypeScript, unitarias, lint e integración; difiere 8 shards y E2E Hub. El `CI gate (resumen)` reporta failure intencional «pendiente de certificación» para impedir falso verde.
+- **Certificación:** `ready_for_review` lanza el workflow completo con la misma política de clasificación #778; el E2E exigible y Hub deben aprobarse junto a calidad e integración. PR abierto directamente listo, nuevos commits, reabiertos, `push` a `main`, dispatch y regresión nocturna mantienen su cobertura.
+- **Excepciones conservadoras:** cambios en tests, CI, infraestructura, Prisma, dependencias, renames/symlinks/modos, diff incierto o rutas fuera del allowlist corren full **también en borrador**. En esos casos salir de borrador puede repetir full (siguiente optimización requeriría reutilización verificable del candidato exacto, todavía no implementada).
+- **Rollout:** el workflow propone `BAMBU_CI_896_DRAFT_PILOT` activo por defecto; valor exacto `false` deshabilita el diferimiento como interruptor de emergencia, pero deja el evento de certificación (podría repetir CI completo). No activar ni mergear esta versión hasta protección, pruebas adversariales y QA de Actions con PR draft→ready, sincronizaciones y `main` actualizado. `CI impact shadow` no repite cálculo por transición sin cambios.
+- **Control de aceptación:** confirmar CI gate requerido en GitHub, run de borrador con E2E deliberadamente saltados y gate NO verde, run tras `ready_for_review` con E2E exigibles en verde, y que un nuevo commit invalida la certificación anterior. Registrar mediciones reales de ahorro. No equiparar pruebas de política locales con pruebas reales del pipeline. No modificar flags ni pruebas del producto.
