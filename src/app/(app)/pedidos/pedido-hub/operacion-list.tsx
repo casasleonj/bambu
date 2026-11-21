@@ -364,7 +364,7 @@ export function OperacionList({
     )
   }
 
-  if (consulta) return <OperacionConsulta pedidos={pedidos} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre}/>
+  if (consulta) return <OperacionConsulta pedidos={pedidos} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre} seleccion={seleccion}/>
 
   const ctxFor = (id: string): Omit<DeriveContext, 'hoyBogota'> => contextByPedido?.[id] ?? {}
 
