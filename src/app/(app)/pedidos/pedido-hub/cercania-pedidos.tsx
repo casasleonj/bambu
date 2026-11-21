@@ -58,7 +58,6 @@ export function CercaniaPedidos({ activo, pedidos, hoyBogota, acciones, onAccion
     vistos.add(p.id);
     return true;
   });
-  const seleccion = (marcado: boolean) => ({ marcado, onAlternar: alternar });
 
   function alternar(p: Pedido) {
     if (ocupada.current) return;
@@ -140,7 +139,8 @@ export function CercaniaPedidos({ activo, pedidos, hoyBogota, acciones, onAccion
           <OperacionConsulta pedidos={ordenados} viewport="mobile" hoyBogota={hoyBogota}
             onAccion={onAccion} onOpen={onOpen} acciones={acciones}
             seleccion={{
-              ...seleccion(true),
+              marcado: true,
+              onAlternar: alternar,
               ordenIds: fase === "calculado" ? orden : undefined,
               fueraDePaginaIds: new Set(seleccionados.filter(p => !encontrados.has(p.id)).map(p => p.id)),
             }}
@@ -167,7 +167,7 @@ export function CercaniaPedidos({ activo, pedidos, hoyBogota, acciones, onAccion
         <p className="mt-1 text-xs text-slate-500">Puedes seguir buscando y filtrando; los seleccionados permanecen arriba.</p>
         {restantes.length ? <OperacionConsulta pedidos={restantes} viewport="mobile"
           hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={acciones}
-          seleccion={seleccion(false)} /> :
+          seleccion={{ marcado: false, onAlternar: alternar }} /> :
           <p className="py-4 text-sm text-slate-500">No hay más pedidos con estos filtros.</p>}
       </div>
     </section>
