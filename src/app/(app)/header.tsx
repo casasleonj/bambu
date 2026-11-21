@@ -3,7 +3,8 @@
 import { PushOptInBell } from '@/components/push-opt-in-bell'
 import { usePushOptInContext } from '@/components/push-opt-in-provider'
 import { useState, useRef } from 'react'
-import { useSession, signOut } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
+import { cerrarSesionConservandoOrigen } from '@/lib/logout-origin'
 import Link from 'next/link'
 
 import { purgeSWCache } from '@/lib/purge-sw-cache'
@@ -195,7 +196,7 @@ export function Header({ fechaLarga, fechaCorta }: HeaderProps) {
                     await revokeSessionOnLogout()
                     await unsubscribePushOnLogout()
                     await purgeSWCache()
-                    signOut({ redirectTo: '/login' })
+                    await cerrarSesionConservandoOrigen()
                   }}
                   className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
                 >
