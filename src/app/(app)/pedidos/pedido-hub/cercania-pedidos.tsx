@@ -7,6 +7,7 @@ type Fase = "listo" | "gps" | "calculando" | "calculado" | "desactualizado" | "e
 interface Props {
   activo: boolean;
   pedidos: Pedido[];
+  viewport: "desktop" | "mobile";
   hoyBogota: string;
   acciones: AccionesConsulta;
   onAccion: (p: Pedido, k: AccionKey) => void;
@@ -29,21 +30,12 @@ function ubicacionActual(): Promise<GeolocationPosition> {
 }
 
 /** Consulta visual, nunca despacha ni cambia el estado de los pedidos. */
-export function CercaniaPedidos({ activo, pedidos, hoyBogota, acciones, onAccion, onOpen }: Props) {
+export function CercaniaPedidos({ activo, pedidos, viewport, hoyBogota, acciones, onAccion, onOpen }: Props) {
   const [elegidos, setElegidos] = useState<Pedido[]>([]);
   const [orden, setOrden] = useState<string[]>([]);
   const [fase, setFase] = useState<Fase>("listo");
   const [error, setError] = useState<string | null>(null);
   const [proveedor, setProveedor] = useState("");
-  const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const media = window.matchMedia("(max-width: 1023px)");
-    const actualizar = () => setViewport(media.matches ? "mobile" : "desktop");
-    actualizar();
-    media.addEventListener("change", actualizar);
-    return () => media.removeEventListener("change", actualizar);
-  }, []);
   const envio = useRef(0);
   const ocupada = useRef(false);
   const focoTrasMover = useRef<string | null>(null);
