@@ -67,6 +67,7 @@ export function OperacionConsulta({
   onOpen,
   acciones,
   arrastre = false,
+  seleccion,
 }: {
   /** #797: muestra la fecha original y la antigüedad de cada pedido arrastrado. */
   arrastre?: boolean;
@@ -76,6 +77,8 @@ export function OperacionConsulta({
   onAccion: (p: Pedido, k: AccionKey) => void;
   onOpen: (p: Pedido) => void;
   acciones: AccionesConsulta;
+  /** #930: controles de selección solo en el modo Cercanía. */
+  seleccion?: { marcado: boolean; onAlternar: (pedido: Pedido) => void };
 }) {
   return (
     <div
@@ -198,6 +201,16 @@ export function OperacionConsulta({
             }}
           >
             <div className={styles.cliente}>
+              {seleccion && (
+                <label className="inline-flex shrink-0 items-center gap-1 rounded px-1 py-1 text-xs text-blue-800" onClick={event => event.stopPropagation()}>
+                  <input type="checkbox" className="h-5 w-5 accent-blue-700" checked={seleccion.marcado}
+                    data-testid={`cercania-check-${p.id}`}
+                    aria-label={`${seleccion.marcado ? "Quitar" : "Seleccionar"} pedido #${p.numero}`}
+                    onChange={() => seleccion.onAlternar(p)}
+                    disabled={!!p._pendingSync || ["CANCELADO", "ANULADO"].includes(p.estadoEntrega)}
+                  />
+                </label>
+              )}
               <div>
                 <strong className={styles.nombre}>
                   {p.negocioId ? "🏪" : "👤"} {nombre}
