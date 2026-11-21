@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { OperacionConsulta, type AccionesConsulta } from "./operacion-consulta";
 import type { AccionKey, Pedido } from "./types";
 
@@ -37,6 +37,15 @@ export function CercaniaPedidos({ activo, pedidos, hoyBogota, acciones, onAccion
   const [proveedor, setProveedor] = useState("");
   const envio = useRef(0);
   const ocupada = useRef(false);
+  const focoTrasMover = useRef<string | null>(null);
+  useEffect(() => {
+    const id = focoTrasMover.current;
+    if (!id) return;
+    const controles = document.querySelectorAll<HTMLInputElement>('input[data-testid^="cercania-check-"]');
+    const control = Array.from(controles).find(el => el.getAttribute("data-testid") === `cercania-check-${id}`);
+    control?.focus({ preventScroll: true });
+    focoTrasMover.current = null;
+  }, [elegidos]);
   const encontrados = new Map(pedidos.map(p => [p.id, p]));
   const ids = new Set(elegidos.map(p => p.id));
   const seleccionados = elegidos.map(p => encontrados.get(p.id) ?? p);
@@ -58,6 +67,7 @@ export function CercaniaPedidos({ activo, pedidos, hoyBogota, acciones, onAccion
       return;
     }
     envio.current += 1;
+    focoTrasMover.current = p.id;
     setElegidos(anterior => anterior.some(x => x.id === p.id)
       ? anterior.filter(x => x.id !== p.id) : [...anterior, p]);
     setOrden([]);
@@ -127,16 +137,14 @@ export function CercaniaPedidos({ activo, pedidos, hoyBogota, acciones, onAccion
             "Los pedidos elegidos suben aquí; su orden inicial no es un recorrido optimizado."}
         </p>
         {ordenados.length ? <div className="mt-3 rounded-lg bg-white p-2 sm:p-3">
-          {ordenados.map((p, i) => (
-            <div key={p.id} className="relative" data-testid={`cercania-seleccionado-${p.id}`}>
-              {fase === "calculado" && <span className="absolute right-1 top-3 z-10 rounded bg-blue-700 px-2 py-1 text-xs font-bold text-white" aria-label={`Parada ${i+1}`}>{i+1}</span>}
-              <OperacionConsulta pedidos={[p]} viewport="mobile" hoyBogota={hoyBogota} onAccion={onAccion}
-                onOpen={onOpen} acciones={acciones} seleccion={seleccion(true)} />
-              {!encontrados.has(p.id) && <p className="pb-2 text-xs text-amber-800">
-                Fuera del filtro o página actual; el servidor verificará su vigencia.
-              </p>}
-            </div>
-          ))}
+          <OperacionConsulta pedidos={ordenados} viewport="mobile" hoyBogota={hoyBogota}
+            onAccion={onAccion} onOpen={onOpen} acciones={acciones}
+            seleccion={{
+              ...seleccion(true),
+              ordenIds: fase === "calculado" ? orden : undefined,
+              fueraDePaginaIds: new Set(seleccionados.filter(p => !encontrados.has(p.id)).map(p => p.id)),
+            }}
+          />
         </div> : <p className="mt-3 rounded-lg border border-dashed border-blue-300 p-3 text-sm">
           Marca uno o varios pedidos de la lista inferior.
         </p>}
