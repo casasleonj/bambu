@@ -63,3 +63,37 @@ Las coordenadas son **ficticias**. Se responden solo IDs en orden sugerido y avi
 - https://developers.google.com/maps/documentation/route-optimization/usage-and-billing
 - https://developers.google.com/identity/protocols/oauth2/service-account
 - https://developers.google.com/maps/billing-and-pricing/manage-costs
+
+
+## Prueba gratuita con HeiGIT / VROOM · 21 de noviembre de 2026
+
+**PROPUESTA EN EVALUACIÓN, NO CAMBIO DE DECISIÓN DE PROVEEDOR:** se implementa el adaptador compatible con el mismo `ordenPedidoIds` del PR #934 para comparar HeiGIT vs Google sin alterar la lista de Pedidos ni requerir mapa. El PO respondió «Ok» a la propuesta de **probar primero** la alternativa gratuita sin sustituir silenciosamente Google.
+
+### Hechos comprobados en fuentes oficiales
+- Endpoint vigente: `POST https://api.heigit.org/vroom/v0`; el antiguo `api.openrouteservice.org/optimization` quedó deprecado/retirado en 2026.
+- VROOM requiere vehículos y `jobs`. Las coordenadas son **`[lng,lat]`**, no `[lat,lng]`. Al omitir `vehicles[].end`, termina en la última visita elegida.
+- `routes[].steps` aporta tareas `type=job`, identificadas por su ID numérico. `unassigned` y `summary.unassigned` permiten detectar si faltó una visita.
+- La API HeiGIT utiliza clave mediante header `Authorization`. El plan Standard permite uso comercial sujeto a sus términos, licencia de resultados y atribución a HeiGIT/OpenStreetMap. **La cuota exacta** y el tratamiento de datos deben verificarse en `https://account.heigit.org/info/plans` y en la cuenta concreta.
+- La optimización se basa en tiempos de carretera sobre OpenStreetMap; **no ofrece promesa de tráfico en tiempo real ni perfil homologado para la motocarga de tres ruedas**.
+
+Fuentes:
+- https://playground.heigit.org/
+- https://github.com/VROOM-Project/vroom/blob/master/docs/API.md
+- https://heigit.org/changes-in-the-openrouteservice-universe/
+- https://ask.openrouteservice.org/t/free-plan-in-an-app-with-a-paid-tier-license-cc-by-sa-4-0-personal-data-and-attribution-questions/8079
+- https://account.heigit.org/info/plans
+
+### Contrato / seguridad
+- `RECORRIDO_VIAL_PROVIDER=heigit` elige HeiGIT; `google` mantiene el adaptador original. No hay fallback automático entre proveedores. Si HeiGIT no responde o llega al límite, la app deja el modo de ruta indisponible, **nunca dispara una consulta facturable de Google por sorpresa**.
+- En ambos casos, `POST /api/pedidos/recorrido-vial` conserva contratos de autorización, elegibilidad, identidad y pedidos completos. La respuesta sigue siendo `ordenPedidoIds[]` y `proveedor`.
+- HeiGIT recibe solo coordenadas anónimas y **IDs numéricos efímeros** (`1..N`); la correspondencia con pedidos reales no sale del servidor. **Una coordenada puede seguir siendo dato personal según contexto**, por lo que revisar términos y privacidad antes de habilitar.
+- Variables apagadas por defecto: `HEIGIT_VROOM_ENABLED=false`, `HEIGIT_VROOM_QUOTA_CONFIRMED=false`. Configurar `HEIGIT_VROOM_API_KEY` únicamente en secretos del servidor. La confirmación de cuota debe corresponder a límites externos verificados, no al simple booleano de la app.
+- No se envían nombres, UUID, direcciones textuales, teléfonos ni pedidos con importes a HeiGIT; tampoco se solicita geometría, polilínea, navegación ni mapa.
+- Sin temporizadores de reintento: 403/429/500 devuelven error de proveedor. La optimización nunca muta pagos, ventas, inventario ni embarques.
+
+### Qué es prueba y qué falta
+- **Pruebas agregadas al repositorio:** constructor de solicitud, orden por pasos, IDs repetidos/omitidos, `unassigned`, geometría ausente, cabecera API mockeada, bandera apagada y error por cuota. **No equivalen a ejecución aprobada**.
+- **No se ha hecho llamada a HeiGIT real:** sin clave y registro de cuota no hay prueba vial medida. Los datos de ejemplo en tests son sintéticos, no clientes reales.
+- **No se ha unido al botón Cercanía ni a las listas paginadas**: UI necesita su aprobación y QA.
+- Para converger, realizar prueba piloto con puntos públicos/anonimizados verificando circulación real en Agustín Codazzi (sentidos, giros, cierres, acceso motocarga), comparar orden y tiempos frente a Google y recorrido operativo; no inventar una mejora porcentual sin datos.
+- Resultado esperado en UI: una secuencia de visitas de reparto/cobro, sin mapa, igual bajo ambos proveedores.
