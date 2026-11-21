@@ -1354,8 +1354,23 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
         await expect(page.getByTestId('workspace-commit')).toBeDisabled() // no se guarda sin elegir
         await page.getByTestId(`guardar-ubicacion-${elegir}`).click()
       }
-      await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
-      await page.getByTestId('workspace-commit').click()
+      // #936/#733: en CI el cache de la ventana antirreplicación puede seguir activo
+      // incluso después de que #408 restaure Config a 0. Tras la primera entrega,
+      // estas operaciones para el mismo cliente/producto son candidatas legítimas a
+      // "venta repetida". Confirmar explícitamente en vez de desactivar la protección.
+      const commit = page.getByTestId('workspace-commit')
+      const advertenciaRepetida = page.getByTestId('venta-repetida')
+      await expect.poll(async () => {
+        if (await advertenciaRepetida.isVisible()) return 'duplicado'
+        if (await commit.isEnabled()) return 'habilitado'
+        return 'calculando'
+      }, { timeout: 15000 }).not.toBe('calculando')
+      if (await advertenciaRepetida.isVisible()) {
+        await expect(advertenciaRepetida).toContainText('Parece una venta repetida')
+        await page.getByTestId('venta-repetida-confirmar').check()
+      }
+      await expect(commit).toBeEnabled({ timeout: 10000 })
+      await commit.click()
       await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
       await page.mouse.move(5, 5) // Sonner se pausa con el cursor encima: así el aviso se va solo
     }
