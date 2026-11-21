@@ -1,35 +1,14 @@
 /**
- * Dos reglas relacionadas de "pedido operacionalmente en riesgo por falta
- * de gestión", ambas viven aquí para que el dashboard, el badge de
- * Pedidos y el filtro de la API nunca muestren números distintos entre sí:
- *
- * 1. `whereAtrasadosSinAsignar` / `countPedidosAtrasadosSinAsignar` —
- *    pendiente, sin embarque, de un día ANTERIOR a hoy (Bogotá).
- * 2. `findPedidosHoyEnRiesgoIds` / `countPedidosHoyEnRiesgo` — pedidos que
- *    llevan demasiado tiempo sin resolverse. Dos sub-reglas, unidas con OR
- *    (cualquiera de las dos marca "en riesgo"):
- *    a) PENDIENTE sin embarque **de HOY**, cuya ruta ya tuvo 3+ embarques
- *       CERRADO hoy (o, sin ruta resoluble, si CUALQUIER ruta ya tuvo 3+ —
- *       ver comentario en la función). Acotado a hoy porque los días
- *       anteriores ya los cubre `whereAtrasadosSinAsignar`.
- *    b) PENDIENTE sin embarque de HOY, O **EN_RUTA sin entregar de
- *       CUALQUIER DÍA**, cuyo tiempo hábil transcurrido desde `pedido.fecha`
- *       (contando solo horas de trabajo, ver `src/lib/business-hours.ts`)
- *       supera `UMBRAL_HORAS_HABILES_RIESGO`. Esto cubre "se creó a las 6am
- *       y a las 4:40pm sigue sin gestionar" sin importar cuántos embarques
- *       haya habido — y, para EN_RUTA, cubre pedidos ya asignados que
- *       quedaron atascados en la calle sin entregar SIN IMPORTAR CUÁNTOS
- *       DÍAS lleven así, porque no hay ninguna otra regla que los cubra
- *       (`whereAtrasadosSinAsignar` exige `embarqueId=null`, que un EN_RUTA
- *       nunca cumple).
- *
- * Ver plan en docs/superpowers/... (o AGENTS.md) para el contexto completo.
+ * #929: una sola fuente de riesgo operativo para banner, filtro y tarjetas.
+ * El conteo "atrasados sin asignar" sigue siendo distinto: pendientes de días
+ * previos, aunque aún no hayan alcanzado el umbral de minutos hábiles.
  */
 import { prisma } from '@/lib/prisma'
 import { startOfDayBogota, endOfDayBogota, subDaysBogota } from '@/lib/dates'
 import { pickRutaId } from '@/lib/pedido-ruta'
 import { minutosHabilesTranscurridos, type Turno } from '@/lib/business-hours'
 import { getConfigs, getConfigNumber } from '@/lib/config'
+import { elegibleRiesgoOperativo, evaluarRiesgoPorTiempo, riesgoPorEmbarques, type RiesgoOperativo } from '@/lib/pedidos-riesgo-operativo'
 import type { Prisma } from '@prisma/client'
 
 export function whereAtrasadosSinAsignar(): Prisma.PedidoWhereInput {
@@ -64,13 +43,13 @@ const DEFAULT_TURNOS: Turno[] = [
 const DEFAULT_UMBRAL_HORAS_HABILES_RIESGO = 2
 
 function esHHMM(v: string | undefined): v is string {
-  return !!v && /^\d{2}:\d{2}$/.test(v)
+  return !!v && /^([01]\d|2[0-3]):[0-5]\d$/.test(v)
 }
 
 /** Lee turnos de trabajo + umbral de horas hábiles desde Config, con
  *  defaults sensatos si no están configurados (ver claves en
  *  configuracion-client.tsx, sección "Parámetros de Operación"). */
-async function getTurnosYUmbralRiesgo(): Promise<{ turnos: Turno[]; umbralHoras: number }> {
+export async function getTurnosYUmbralRiesgo(): Promise<{ turnos: Turno[]; umbralHoras: number }> {
   const cfg = await getConfigs([
     'HORARIO_MANANA_INICIO',
     'HORARIO_MANANA_FIN',
@@ -78,97 +57,79 @@ async function getTurnosYUmbralRiesgo(): Promise<{ turnos: Turno[]; umbralHoras:
     'HORARIO_TARDE_FIN',
   ])
   const turnos: Turno[] = []
-  if (esHHMM(cfg.HORARIO_MANANA_INICIO) && esHHMM(cfg.HORARIO_MANANA_FIN)) {
+  if (esHHMM(cfg.HORARIO_MANANA_INICIO) && esHHMM(cfg.HORARIO_MANANA_FIN) && cfg.HORARIO_MANANA_INICIO < cfg.HORARIO_MANANA_FIN) {
     turnos.push({ inicio: cfg.HORARIO_MANANA_INICIO, fin: cfg.HORARIO_MANANA_FIN })
   }
-  if (esHHMM(cfg.HORARIO_TARDE_INICIO) && esHHMM(cfg.HORARIO_TARDE_FIN)) {
+  if (esHHMM(cfg.HORARIO_TARDE_INICIO) && esHHMM(cfg.HORARIO_TARDE_FIN) && cfg.HORARIO_TARDE_INICIO < cfg.HORARIO_TARDE_FIN) {
     turnos.push({ inicio: cfg.HORARIO_TARDE_INICIO, fin: cfg.HORARIO_TARDE_FIN })
   }
   const umbralHoras = await getConfigNumber('UMBRAL_HORAS_HABILES_RIESGO', DEFAULT_UMBRAL_HORAS_HABILES_RIESGO)
-  return { turnos: turnos.length > 0 ? turnos : DEFAULT_TURNOS, umbralHoras }
+  return { turnos: turnos.length > 0 ? turnos : DEFAULT_TURNOS, umbralHoras: Number.isFinite(umbralHoras) && umbralHoras > 0 ? umbralHoras : DEFAULT_UMBRAL_HORAS_HABILES_RIESGO }
 }
 
 /**
- * Pedidos en riesgo de quedar sin gestionar (PENDIENTE sin asignar de hoy, o
- * EN_RUTA atascado de cualquier día). Dos sub-reglas independientes unidas
- * con OR — ver comentario de cabecera del archivo.
- *
- * IMPORTANTE (cerrado — antes era un gap) — un pedido asignado a un
- * embarque y luego marcado NO_ENTREGADO al cerrar ese embarque NO vuelve a
- * PENDIENTE (queda en estadoEntrega=NO_ENTREGADO, ver
- * procesar-pedido.service.ts). Ambas sub-reglas de esta función y
- * `whereAtrasadosSinAsignar` ahora tratan NO_ENTREGADO igual que PENDIENTE
- * (mismo `embarqueId: null`), así que un pedido "atrapado" sin reasignar sí
- * se detecta — de HOY vía la sub-regla (a), de días anteriores vía
- * `whereAtrasadosSinAsignar`. La sub-regla (b) cubre además EN_RUTA
- * atascado, sin límite de días — confirmado necesario en producción: se
- * encontraron pedidos EN_RUTA de hasta ~2 meses de antigüedad, invisibles
- * para cualquier otra regla (ver hallazgo en sesión del 2026-08-15).
- *
- * IMPORTANTE — `Cliente.rutaId` no tiene flujo de escritura en la UI (solo
- * `Negocio.rutaId` es editable), así que la mayoría de pedidos de domicilio
- * no tendrán ruta resoluble vía `pickRutaId`. Para esos, la sub-regla (a) en
- * vez de quedar invisible (punto ciego), usa un fallback más grueso: en
- * riesgo si CUALQUIER ruta ya tuvo `UMBRAL_EMBARQUES_RIESGO`+ embarques
- * cerrados hoy. Es una decisión consciente de más recall a costa de
- * precisión. La sub-regla (b) no depende de ruta, así que no tiene este gap.
+ * El mapa incluye motivos por tiempo de cualquier fecha operativa y el motivo
+ * vigente de 3 embarques cerrados para pendientes del día. El tiempo se toma
+ * desde createdAt, no desde Pedido.fecha, que puede ser una fecha operativa.
+ * Se consultan candidatos por lotes: nunca hay polling ni N+1 por tarjeta.
  */
-export async function findPedidosHoyEnRiesgoIds(): Promise<string[]> {
+export async function findPedidosEnRiesgo(): Promise<Map<string, RiesgoOperativo>> {
   const desde = startOfDayBogota()
   const hasta = endOfDayBogota()
   const ahora = new Date()
 
+  const camposRiesgo = {
+    id: true, fecha: true, createdAt: true, fechaEntrega: true,
+    estadoEntrega: true, embarqueId: true,
+    items: { select: { cantEntrega: true, cantRegaloEntrega: true } },
+    cPacaAguaEnt: true, cPacaHieloEnt: true, cBotellonFabEnt: true,
+    cBotellonDomEnt: true, cBolsaAguaEnt: true, cBolsaHieloEnt: true,
+  } as const
+
   const [candidatosPendientes, candidatosEnRuta, { turnos, umbralHoras }] = await Promise.all([
     prisma.pedido.findMany({
       where: {
-        // FIX: mismo motivo que whereAtrasadosSinAsignar — un NO_ENTREGADO
-        // de HOY sin reasignar es tan "sin gestionar" como un PENDIENTE sin
-        // asignar de hoy, y whereAtrasadosSinAsignar solo cubre días
-        // anteriores (fecha < hoy).
         estadoEntrega: { in: ['PENDIENTE', 'NO_ENTREGADO'] },
         embarqueId: null,
-        fecha: { gte: desde, lte: hasta },
+        // Los anteriores deben seguir acumulando horas. Futuro no es pendiente hoy.
+        fecha: { lte: hasta },
       },
       select: {
-        id: true,
-        fecha: true,
+        ...camposRiesgo,
         cliente: { select: { rutaId: true } },
         negocio: { select: { rutaId: true } },
       },
     }),
-    // Sin acotar a "hoy" a propósito (ver comentario de la función):
-    // un EN_RUTA atascado sigue siendo una señal válida sin importar cuántos
-    // días lleve. `subDaysBogota(365)` es solo un guard defensivo contra un
-    // full scan si la tabla crece mucho — EN_RUTA es un estado transitorio
-    // en operación normal, así que en la práctica esto no filtra casos reales.
     prisma.pedido.findMany({
       where: {
         estadoEntrega: 'EN_RUTA',
+        // Guard defensivo existente para el estado transitorio EN_RUTA.
         fecha: { gte: subDaysBogota(365) },
       },
-      select: { id: true, fecha: true },
+      select: camposRiesgo,
     }),
     getTurnosYUmbralRiesgo(),
   ])
 
-  const umbralMinutos = umbralHoras * 60
-  const enRiesgoPorTiempo = new Set<string>()
+  const riesgos = new Map<string, RiesgoOperativo>()
   for (const p of [...candidatosPendientes, ...candidatosEnRuta]) {
-    if (minutosHabilesTranscurridos(p.fecha, ahora, turnos) >= umbralMinutos) {
-      enRiesgoPorTiempo.add(p.id)
-    }
+    const riesgo = evaluarRiesgoPorTiempo(p, ahora, turnos, umbralHoras)
+    if (riesgo) riesgos.set(p.id, riesgo)
   }
 
-  const enRiesgoPorEmbarques = new Set<string>()
-  if (candidatosPendientes.length > 0) {
-    const conRuta = candidatosPendientes.map((c) => ({
-      id: c.id,
-      rutaId: pickRutaId({ cliente: c.cliente, negocio: c.negocio }),
+  // Esta segunda regla NO se calcula para pendientes de ayer: sus ciclos de
+  // embarque fueron distintos. La regla temporal anterior sí cruza días.
+  const pendientesHoy = candidatosPendientes.filter(p =>
+    p.fecha >= desde && p.fecha <= hasta && elegibleRiesgoOperativo(p, ahora)
+  )
+  if (pendientesHoy.length) {
+    const conRuta = pendientesHoy.map(p => ({
+      pedido: p,
+      rutaId: pickRutaId({ cliente: p.cliente, negocio: p.negocio }),
     }))
-    const rutaIds = [...new Set(conRuta.map((c) => c.rutaId).filter((r): r is string => r !== null))]
-
+    const rutaIds = [...new Set(conRuta.map(c => c.rutaId).filter((id): id is string => id !== null))]
     const [porRuta, globalCerrados] = await Promise.all([
-      rutaIds.length > 0
+      rutaIds.length
         ? prisma.embarque.groupBy({
             by: ['rutaId'],
             where: { rutaId: { in: rutaIds }, fecha: { gte: desde, lte: hasta }, estado: 'CERRADO' },
@@ -177,15 +138,21 @@ export async function findPedidosHoyEnRiesgoIds(): Promise<string[]> {
         : Promise.resolve([]),
       prisma.embarque.count({ where: { fecha: { gte: desde, lte: hasta }, estado: 'CERRADO' } }),
     ])
-
-    const cerradosPorRuta = new Map(porRuta.map((r) => [r.rutaId as string, r._count._all]))
+    const cerradosPorRuta = new Map(porRuta.map(r => [r.rutaId as string, r._count._all]))
     for (const c of conRuta) {
       const cerrados = c.rutaId !== null ? (cerradosPorRuta.get(c.rutaId) ?? 0) : globalCerrados
-      if (cerrados >= UMBRAL_EMBARQUES_RIESGO) enRiesgoPorEmbarques.add(c.id)
+      if (cerrados >= UMBRAL_EMBARQUES_RIESGO && !riesgos.has(c.pedido.id)) {
+        riesgos.set(c.pedido.id, riesgoPorEmbarques(c.pedido))
+      }
     }
   }
 
-  return [...new Set([...enRiesgoPorTiempo, ...enRiesgoPorEmbarques])]
+  return riesgos
+}
+
+/** Nombre legacy conservado para consumidores; ahora incluye pendientes anteriores. */
+export async function findPedidosHoyEnRiesgoIds(): Promise<string[]> {
+  return [...(await findPedidosEnRiesgo()).keys()]
 }
 
 export async function countPedidosHoyEnRiesgo(): Promise<number> {
