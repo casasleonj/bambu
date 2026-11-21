@@ -36,12 +36,13 @@ export function FiadosAnterioresBadge({
   ].filter(Boolean).join('\n')
 
   return (
-    <details
+    <span
       className="group relative my-1 inline-block max-w-full align-middle"
       data-testid={`fiados-anteriores-${pedidoId}`}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
     >
+      <details className="peer">
       <summary
         className="inline-flex max-w-full cursor-pointer list-none items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 [&::-webkit-details-marker]:hidden"
         title={titulo}
@@ -50,8 +51,9 @@ export function FiadosAnterioresBadge({
         <span aria-hidden="true">💰</span>
         <span>Fiados anteriores</span>
       </summary>
-      <div
-        className="absolute left-0 top-full z-50 mt-1 hidden w-64 max-w-[calc(100vw-2rem)] rounded-lg border border-amber-300 bg-white p-3 text-left text-xs font-normal text-stone-800 shadow-xl group-hover:block group-focus-within:block group-open:block"
+      </details>
+      <span
+        className="absolute left-0 top-full z-50 mt-1 hidden w-64 max-w-[calc(100vw-2rem)] rounded-lg border border-amber-300 bg-white p-3 text-left text-xs font-normal text-stone-800 shadow-xl group-hover:block group-focus-within:block peer-open:block"
         role="note"
       >
         <p className="font-semibold">Cobro de pedidos anteriores</p>
@@ -78,7 +80,7 @@ export function FiadosAnterioresBadge({
           Las cantidades indican productos entregados en pedidos con deuda,
           no unidades individuales sin pagar.
         </p>
-      </div>
-    </details>
+      </span>
+    </span>
   )
 }
