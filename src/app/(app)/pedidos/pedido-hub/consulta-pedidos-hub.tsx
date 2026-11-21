@@ -15,7 +15,6 @@ import {
   type ResultadoConsultaPedidos,
 } from "@/lib/pedidos-consulta";
 import { PedidoHub, type PedidoHubCounts } from "./index";
-import { CercaniaPedidos } from "./cercania-pedidos";
 import { FiltrosConsulta } from "./filtros-consulta";
 import { EntregasDestacadas } from "./entregas-destacadas";
 import { ResumenConsulta } from "./resumen-consulta";
@@ -276,6 +275,51 @@ export function ConsultaPedidosHub(props: Props) {
         onVerTodas={() => aplicar({ ...filtrosLeidos, fechaBase: "entrega", resumen: true, page: 1 })}
       />
     ) : null;
+  const hubNode = (
+              <PedidoHub
+                pedidos={filas}
+                counts={props.counts}
+                loading={!hayDatos && pendiente}
+                refetching={hayDatos && pendiente}
+                error={error}
+                userRole={props.userRole}
+                onAccion={props.onAccion}
+                onNuevaOperacion={props.onNuevaOperacion}
+                onRetry={refresh}
+                onRefetch={refresh}
+                onPeekMovilChange={props.onPeekMovilChange}
+                modoRecorridoExterno={modoRecorrido}
+                cercaniaActivo={cercaniaActivo}
+                arrastrados={arrastrados}
+                encabezadoLista={encabezado}
+                entregasSlot={entregasNode}
+                consulta={{
+                  userRole: props.userRole,
+                  gestionDirecta: props.gestion.activa && !gestionDesconocida,
+                  volver: `/pedidos${paramKey ? "?" + paramKey : ""}`,
+                  onVerPedido: props.onVerPedido,
+                  onVerFactura: props.onVerFactura,
+                  onCorregirPendiente: props.onCorregirPendiente,
+                  onDescartarPendiente: props.onDescartarPendiente,
+                  grupos: datos?.grupos,
+                  entregasAnteriores: integradoConFilas && entregasAplican && datos && filtrosLeidos
+                    ? {
+                        entregas: datos.destacadas ?? [],
+                        primeraPagina: datos.page <= 1,
+                        hasta: filtrosLeidos.hasta,
+                        periodo: periodoEntregas,
+                        onVerTodas: () => aplicar({ ...filtrosLeidos, fechaBase: "entrega", resumen: true, page: 1 }),
+                      }
+                    : undefined,
+                  grupoActivo: filtrosLeidos?.grupoBarrio || undefined,
+                  franjas: filtrosLeidos?.foco === "paraHoy",
+                  vacioCompromiso: rotulosCompromiso(filtrosLeidos?.foco) ?? undefined,
+                  onGrupoBarrio: filtrosLeidos
+                    ? (clave) => aplicar({ ...filtrosLeidos, grupoBarrio: clave ?? "", page: 1 })
+                    : undefined,
+                }}
+              />
+  );
   return (
     <div
       className="space-y-3 rounded-xl bg-[#f6f0e5] p-3 lg:p-4"
@@ -413,22 +457,7 @@ export function ConsultaPedidosHub(props: Props) {
           )}
           <section className="rounded-xl border border-stone-200 bg-white p-4">
             {cercaniaActivo ? (
-              <CercaniaPedidos
-                activo={cercaniaActivo}
-                pedidos={[...filas, ...(arrastrados?.pedidos ?? [])]}
-                hoyBogota={getTodayString()}
-                acciones={{
-                  userRole: props.userRole,
-                  gestionDirecta: props.gestion.activa && !gestionDesconocida,
-                  volver: `/pedidos${paramKey ? "?" + paramKey : ""}`,
-                  onVerPedido: props.onVerPedido,
-                  onVerFactura: props.onVerFactura,
-                  onCorregirPendiente: props.onCorregirPendiente,
-                  onDescartarPendiente: props.onDescartarPendiente,
-                }}
-                onAccion={props.onAccion}
-                onOpen={pedido => props.onVerPedido(pedido.id)}
-              />
+              hubNode
             ) : (
               <>
             {!muestraHub && encabezado}
@@ -541,48 +570,7 @@ export function ConsultaPedidosHub(props: Props) {
                 </button>
               </div>
             ) : (
-              <PedidoHub
-                pedidos={filas}
-                counts={props.counts}
-                loading={!hayDatos && pendiente}
-                refetching={hayDatos && pendiente}
-                error={error}
-                userRole={props.userRole}
-                onAccion={props.onAccion}
-                onNuevaOperacion={props.onNuevaOperacion}
-                onRetry={refresh}
-                onRefetch={refresh}
-                onPeekMovilChange={props.onPeekMovilChange}
-                modoRecorridoExterno={modoRecorrido}
-                arrastrados={arrastrados}
-                encabezadoLista={encabezado}
-                entregasSlot={entregasNode}
-                consulta={{
-                  userRole: props.userRole,
-                  gestionDirecta: props.gestion.activa && !gestionDesconocida,
-                  volver: `/pedidos${paramKey ? "?" + paramKey : ""}`,
-                  onVerPedido: props.onVerPedido,
-                  onVerFactura: props.onVerFactura,
-                  onCorregirPendiente: props.onCorregirPendiente,
-                  onDescartarPendiente: props.onDescartarPendiente,
-                  grupos: datos?.grupos,
-                  entregasAnteriores: integradoConFilas && entregasAplican && datos && filtrosLeidos
-                    ? {
-                        entregas: datos.destacadas ?? [],
-                        primeraPagina: datos.page <= 1,
-                        hasta: filtrosLeidos.hasta,
-                        periodo: periodoEntregas,
-                        onVerTodas: () => aplicar({ ...filtrosLeidos, fechaBase: "entrega", resumen: true, page: 1 }),
-                      }
-                    : undefined,
-                  grupoActivo: filtrosLeidos?.grupoBarrio || undefined,
-                  franjas: filtrosLeidos?.foco === "paraHoy",
-                  vacioCompromiso: rotulosCompromiso(filtrosLeidos?.foco) ?? undefined,
-                  onGrupoBarrio: filtrosLeidos
-                    ? (clave) => aplicar({ ...filtrosLeidos, grupoBarrio: clave ?? "", page: 1 })
-                    : undefined,
-                }}
-              />
+              {hubNode}
             )}
               </>
             )}
