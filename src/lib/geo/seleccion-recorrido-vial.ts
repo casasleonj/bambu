@@ -48,3 +48,8 @@ export function clasificarGestionVial(p: PedidoParaGestionVial): GestionVial | n
     fiadoExigible: tieneCobro ? p.exigible : 0,
   }
 }
+
+/** Un embarque histórico no impide cobrar, pero sí protege una carga en otra salida. */
+export function bloqueadaPorEmbarque(embarqueId: string | null | undefined, gestion: GestionVial): boolean {
+  return !!embarqueId && gestion.tipo !== 'COBRO'
+}
