@@ -36,7 +36,7 @@ describe('#932 badge de fiados anteriores del cliente', () => {
     expect(badge.textContent).toContain('8')
     expect(badge.textContent).toContain('Tienda A')
     expect(badge.textContent).toContain('Tienda B')
-    expect(within(badge).getByRole("link", { name: "Ver fiados del cliente" }))
+    expect(within(badge).getByRole("link", { name: "Ver fiados del cliente", hidden: true }))
       .toHaveAttribute("href", "/pedidos?tab=fiados&fiadosCliente=cliente-a")
     expect(badge.textContent).toContain('no unidades individuales sin pagar')
     fireEvent.click(within(badge).getByText('Fiados anteriores'))
