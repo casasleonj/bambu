@@ -6,7 +6,7 @@ describe('#812: cerrar sesión sin cambiar de origen', () => {
     const acciones: string[] = []
     const finalizar = vi.fn(async () => {
       acciones.push('signOut')
-      return { ok: true }
+      return { url: 'http://0.0.0.0:3001/login' }
     })
     const navegar = vi.fn((ruta: string) => {
       acciones.push('navegar:' + ruta)
@@ -18,10 +18,10 @@ describe('#812: cerrar sesión sin cambiar de origen', () => {
     expect(navegar).toHaveBeenCalledExactlyOnceWith('/login')
   })
 
-  it('no redirige a login si la API de revocación devuelve error', async () => {
+  it('no redirige a login si Auth.js no devuelve URL de salida', async () => {
     const navegar = vi.fn()
     await expect(
-      cerrarSesionConservandoOrigen(async () => ({ ok: false }), navegar),
+      cerrarSesionConservandoOrigen(async () => ({ url: null }), navegar),
     ).rejects.toThrow('No se pudo completar el cierre de sesión')
     expect(navegar).not.toHaveBeenCalled()
   })
