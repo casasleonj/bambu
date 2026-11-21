@@ -125,7 +125,7 @@ export function LoginForm() {
       )}
 
       {!errorMessage && showDevHint && process.env.NODE_ENV === 'development' && (
-        <div id="login-dev-hint" className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-500 text-sm" role="status">
+        <div id="login-dev-hint" className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm" role="status">
           Modo desarrollo — usa las credenciales del seed.
         </div>
       )}
