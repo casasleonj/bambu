@@ -10,8 +10,10 @@ import { dayInBogota, startOfDayInBogota } from '@/lib/date-helpers'
  *   la contabilidad (regla del PO, 2026-11-03).
  * - Un día omitido (sin operación) se puede cerrar después, aunque ya haya un cierre posterior.
  *
- * Operación = cualquier registro con fecha dentro del día de Bogotá: pedidos, pagos capturados,
- * gastos, embarques, producción, descuentos al repartidor, notas crédito o facturas.
+ * Operación = hecho del día de Bogotá que requiere conciliación: ventas, pagos capturados
+ * no regularizados, abonos independientes/no clasificados (no espejos de Pago), ingresos y
+ * devoluciones de crédito, ajustes de abonos, comisiones pagadas, nómina pagada fuera de
+ * gastos de caja y movimientos operativos. Se cuentan HECHOS, no dobleces Pago+Abono.
  */
 
 const DIA_MS = 86_400_000
@@ -31,7 +33,29 @@ async function contarOperacionesPorDia(tx: Prisma.TransactionClient, desde: Date
     SELECT to_char(t.d AT TIME ZONE 'America/Bogota', 'YYYY-MM-DD') AS dia, count(*)::int AS n
     FROM (
       SELECT "fecha" AS d FROM "Pedido" WHERE "fecha" >= ${desde} AND "fecha" < ${hasta}
-      UNION ALL SELECT "createdAt" FROM "Pago" WHERE "createdAt" >= ${desde} AND "createdAt" < ${hasta}
+      UNION ALL SELECT "createdAt" FROM "Pago" WHERE "createdAt" >= ${desde} AND "createdAt" < ${hasta} AND "regularizacionId" IS NULL
+      -- Solo el espejo probado (mismo Pago/pedido/medio/monto) es duplicado.
+      -- Si la etiqueta de espejo carece de identidad válida, obligar a conciliarlo.
+      UNION ALL SELECT a."fecha" FROM "Abono" a
+        WHERE a."fecha" >= ${desde} AND a."fecha" < ${hasta}
+          AND NOT (
+            a."origenCobro" IS NOT DISTINCT FROM 'ESPEJO_PAGO'
+            AND EXISTS (
+              SELECT 1 FROM "Pago" pg
+              JOIN "Factura" fa ON fa.id = a."facturaId"
+              WHERE pg.id = a."pagoOrigenId"
+                AND pg."pedidoId" = COALESCE(a."pedidoId", fa."pedidoId")
+                AND pg.metodo::text = a."metodoPago"
+                AND pg.monto = a.monto
+            )
+          )
+      UNION ALL SELECT "createdAt" FROM "CorreccionAbono" WHERE "createdAt" >= ${desde} AND "createdAt" < ${hasta}
+      UNION ALL SELECT "createdAt" FROM "IngresoSaldoFavor" WHERE "createdAt" >= ${desde} AND "createdAt" < ${hasta}
+      UNION ALL SELECT "createdAt" FROM "DevolucionSaldoFavor" WHERE "createdAt" >= ${desde} AND "createdAt" < ${hasta}
+      -- fecha = trabajo liquidado; createdAt = desembolso que corresponde a caja.
+      UNION ALL SELECT "createdAt" FROM "PagoComisionRepartidor" WHERE "createdAt" >= ${desde} AND "createdAt" < ${hasta}
+      -- La nómina en efectivo dentro de caja ya existe como Gasto (#641).
+      UNION ALL SELECT "fechaPago" FROM "Nomina" WHERE "estado" = 'PAGADA' AND "fechaPago" >= ${desde} AND "fechaPago" < ${hasta} AND ("metodoPago" IS DISTINCT FROM 'EFECTIVO' OR "pagoFueraDeCaja" = true)
       UNION ALL SELECT "fecha" FROM "Gasto" WHERE "fecha" >= ${desde} AND "fecha" < ${hasta}
       UNION ALL SELECT "fecha" FROM "Embarque" WHERE "fecha" >= ${desde} AND "fecha" < ${hasta}
       UNION ALL SELECT "fecha" FROM "Produccion" WHERE "fecha" >= ${desde} AND "fecha" < ${hasta}
