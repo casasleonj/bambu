@@ -6,7 +6,7 @@
 import { prisma } from '@/lib/prisma'
 import { startOfDayBogota, endOfDayBogota, subDaysBogota } from '@/lib/dates'
 import { pickRutaId } from '@/lib/pedido-ruta'
-import { minutosHabilesTranscurridos, type Turno } from '@/lib/business-hours'
+import type { Turno } from '@/lib/business-hours'
 import { getConfigs, getConfigNumber } from '@/lib/config'
 import { elegibleRiesgoOperativo, evaluarRiesgoPorTiempo, riesgoPorEmbarques, type RiesgoOperativo } from '@/lib/pedidos-riesgo-operativo'
 import type { Prisma } from '@prisma/client'
