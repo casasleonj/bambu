@@ -207,7 +207,13 @@ export function OperacionConsulta({
                     data-testid={`cercania-check-${p.id}`}
                     aria-label={`${seleccion.marcado ? "Quitar" : "Seleccionar"} pedido #${p.numero}`}
                     onChange={() => seleccion.onAlternar(p)}
-                    disabled={!!p._pendingSync || ["CANCELADO", "ANULADO"].includes(p.estadoEntrega)}
+                    disabled={
+                      !!p._pendingSync || !!p.embarqueId && p.estadoEntrega !== "ENTREGADO" ||
+                      ["CANCELADO", "ANULADO"].includes(p.estadoEntrega) ||
+                      esVentaAnonima(p) ||
+                      !(p.canal === "DOMICILIO" && p.estadoEntrega !== "ENTREGADO") &&
+                        !((p.exigible ?? p.saldo) > 0)
+                    }
                   />
                 </label>
               )}
