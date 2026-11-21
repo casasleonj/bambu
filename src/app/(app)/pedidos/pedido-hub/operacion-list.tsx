@@ -288,10 +288,11 @@ export function OperacionList({
     return (
       <div data-testid="pedidos-agrupados-barrio">
         <div className="my-2 flex flex-wrap items-center gap-2 text-xs">
-          <button type="button" aria-label="Volver al orden FIFO" aria-pressed={!modoRecorrido} onClick={() => { setModoRecorrido(false); aplicarRecorrido([]) }}
-            className={`rounded-md border px-3 py-1.5 ${!modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>FIFO</button>
-          <button type="button" aria-pressed={modoRecorrido} onClick={() => setModoRecorrido(true)}
-            className={`rounded-md border px-3 py-1.5 ${modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>Recorrido</button>
+          <button type="button" aria-pressed={modoRecorrido}
+            onClick={() => { if (modoRecorrido) { setModoRecorrido(false); aplicarRecorrido([]) } else setModoRecorrido(true) }}
+            className={`rounded-md border px-3 py-1.5 ${modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>
+            Recorrido
+          </button>
           {modoRecorrido && (
             <>
               <label htmlFor="recorrido-barrio" className="font-medium text-stone-700">Priorizar barrio</label>
