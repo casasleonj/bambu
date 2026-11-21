@@ -24,6 +24,13 @@ import styles from "./operacion-consulta.module.css";
 import { esVentaAnonima } from "@/lib/barrios/grupo-barrio";
 import { textoRiesgoOperativo } from "@/lib/pedidos-riesgo-operativo";
 
+export interface SeleccionConsulta {
+  marcado: boolean;
+  onAlternar: (pedido: Pedido) => void;
+  ordenIds?: readonly string[];
+  fueraDePaginaIds?: ReadonlySet<string>;
+}
+
 export interface AccionesConsulta {
   userRole: string | null;
   gestionDirecta: boolean;
@@ -78,12 +85,7 @@ export function OperacionConsulta({
   onOpen: (p: Pedido) => void;
   acciones: AccionesConsulta;
   /** #930: controles de selección solo en el modo Cercanía. */
-  seleccion?: {
-    marcado: boolean;
-    onAlternar: (pedido: Pedido) => void;
-    ordenIds?: readonly string[];
-    fueraDePaginaIds?: ReadonlySet<string>;
-  };
+  seleccion?: SeleccionConsulta;
 }) {
   return (
     <div
