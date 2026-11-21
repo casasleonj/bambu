@@ -4,7 +4,7 @@ import { EmptyState } from '@/components/empty-state'
 import { pedidoItemsResumen } from '../pedido-items'
 import { deriveOperacion, origenLabel, embarqueLinea } from './derive-operacion'
 import type { AccionKey, DeriveContext, Pedido } from './types'
-import { OperacionConsulta,type AccionesConsulta } from './operacion-consulta'
+import { OperacionConsulta, type AccionesConsulta, type SeleccionConsulta } from './operacion-consulta'
 import { useEffect, useRef, useState } from 'react'
 import { GrupoBarrioEncabezado } from './grupo-barrio-encabezado'
 import { EntregasDestacadas } from './entregas-destacadas'
@@ -29,6 +29,8 @@ interface OperacionListProps {
   arrastre?: boolean
   /** Control unificado de modos desde la consulta global de Pedidos. */
   modoRecorridoExterno?: boolean
+  /** #930: las mismas casillas de Pedidos en vista agrupada o por franjas. */
+  seleccion?: SeleccionConsulta
 }
 
 function clienteLinea(p: Pedido): string {
@@ -166,8 +168,8 @@ const TONO_FRANJA: Record<Franja, string> = {
  * «Más tarde hoy» arranca plegado pero muestra cuántos hay y se despliega con un toque.
  */
 function ListaPorFranja({
-  pedidos, viewport, hoyBogota, onAccion, onOpen, consulta, arrastre,
-}: { pedidos: Pedido[]; viewport: 'desktop' | 'mobile'; hoyBogota: string; onAccion: (p: Pedido, k: AccionKey) => void; onOpen: (p: Pedido) => void; consulta: AccionesConsulta; arrastre?: boolean }) {
+  pedidos, viewport, hoyBogota, onAccion, onOpen, consulta, arrastre, seleccion,
+}: { pedidos: Pedido[]; viewport: 'desktop' | 'mobile'; hoyBogota: string; onAccion: (p: Pedido, k: AccionKey) => void; onOpen: (p: Pedido) => void; consulta: AccionesConsulta; arrastre?: boolean; seleccion?: SeleccionConsulta }) {
   const ahora = useAhora()
   const [tardeAbierto, setTardeAbierto] = useState(false)
   const ordenados = ordenarPorFranja(pedidos, ahora, (p) => p)
@@ -195,7 +197,7 @@ function ListaPorFranja({
               )}
             </div>
             {!plegado && (
-              <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre} />
+              <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre} seleccion={seleccion} />
             )}
           </section>
         )
@@ -205,7 +207,7 @@ function ListaPorFranja({
 }
 
 export function OperacionList({
-  pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen, consulta, arrastre, modoRecorridoExterno,
+  pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen, consulta, arrastre, modoRecorridoExterno, seleccion,
 }: OperacionListProps) {
   // #859: recorrido manual temporal de la vista, sin alterar FIFO del servidor.
   const [modoRecorridoLocal, setModoRecorrido] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('recorrido'))
@@ -236,7 +238,7 @@ export function OperacionList({
   }
 
   if (consulta?.franjas && !pedidos.some((p) => p.grupoBarrio) && pedidos.some((p) => p.entregaNoAntesDe)) {
-    return <ListaPorFranja pedidos={pedidos} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} consulta={consulta} arrastre={arrastre} />
+    return <ListaPorFranja pedidos={pedidos} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} consulta={consulta} arrastre={arrastre} seleccion={seleccion} />
   }
 
   if (consulta && pedidos.some((p) => p.grupoBarrio)) {
@@ -339,7 +341,7 @@ export function OperacionList({
                 </div>
               )}
               {b.filas.length > 0 && (
-                <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre}/>
+                <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre} seleccion={seleccion}/>
               )}
               {consulta.entregasAnteriores && entregasPorClave.has(b.clave) && bloquesVisibles.findIndex(x => x.clave === b.clave) === i && (
                 <div className="mt-2" data-testid={`entregas-anteriores-${b.clave}`}>
