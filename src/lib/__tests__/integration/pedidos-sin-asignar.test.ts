@@ -308,6 +308,7 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
         canal: 'DOMICILIO',
         offlineId: uniqueId('riesgo-tiempo'),
         fecha: hace10min,
+        createdAt: hace10min,
         embarqueId: null,
         estadoEntrega: 'PENDIENTE',
         estadoPago: 'ANTICIPADO',
@@ -357,6 +358,7 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
         canal: 'DOMICILIO',
         offlineId: uniqueId('riesgo-en-ruta'),
         fecha: hace10min,
+        createdAt: hace10min,
         embarqueId: embarque.id,
         estadoEntrega: 'EN_RUTA',
         estadoPago: 'ANTICIPADO',
@@ -391,6 +393,7 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
         canal: 'DOMICILIO',
         offlineId: uniqueId('riesgo-en-ruta-viejo'),
         fecha: hace5dias,
+        createdAt: hace5dias,
         embarqueId: embarque.id,
         estadoEntrega: 'EN_RUTA',
         // total=0/totalPagado=0 (default) → "totalPagado >= total" es
@@ -417,6 +420,7 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
         canal: 'DOMICILIO',
         offlineId: uniqueId('entregado-no-riesgo'),
         fecha: hace10min,
+        createdAt: hace10min,
         embarqueId: null,
         estadoEntrega: 'ENTREGADO',
         // total=0/totalPagado=0 (default) → proyecta PAGADO con ENTREGADO
