@@ -300,6 +300,70 @@ test.describe('Embarques — Tab Físico — Idempotencia (retry offline)', () =
     expect(matching.length).toBe(1)
   })
 
+  test('rechaza custodias ajenas al catálogo canónico sin insertar movimientos', async ({ page }) => {
+    const { embarqueId } = await setup(page, 'admin', { sinCarga: true })
+    for (const custodia of ['OTRA_BODEGA', '', 'vehiculo', 'VEHICULO ', 45]) {
+      const response = await apiPost(page, `/api/embarques/${embarqueId}/movimientos`, {
+        tipo: 'CUSTODY_TRANSFER', producto: 'PACA_AGUA', cantidad: 3,
+        origen: custodia, destino: 'VEHICULO',
+      })
+      expect(response.status(), `custodia inválida: ${String(custodia)}`).toBe(400)
+    }
+
+    const lista = await (await apiGet(page, `/api/embarques/${embarqueId}/movimientos`)).json()
+    expect(lista.movimientos.filter((m: { tipo: string }) => m.tipo === 'CUSTODY_TRANSFER')).toHaveLength(0)
+  })
+
+  test('una referencia no puede identificarse con otro embarque ni con otra cantidad', async ({ page }) => {
+    await loginAs(page, 'admin')
+    const t = await createTrabajador(page)
+    const trabajadorId = t.trabajador?.id || t.data?.id
+    const a = await createEmbarque(page, trabajadorId)
+    const b = await createEmbarque(page, trabajadorId)
+    const aId = a.embarque?.id || a.data?.id
+    const bId = b.embarque?.id || b.data?.id
+    expect(aId).not.toBe(bId)
+    const offlineId = `e2e-custodia-${Date.now()}`
+    const body = { tipo: 'CUSTODY_TRANSFER', producto: 'PACA_AGUA', cantidad: 3,
+      origen: 'ALMACEN', destino: 'VEHICULO', metadata: { motivo: 'auditoria', nivel: 2 },
+      offlineId }
+
+    expect((await apiPost(page, `/api/embarques/${aId}/movimientos`, body)).status()).toBe(201)
+    const referenciaCruzada = await apiPost(page, `/api/embarques/${bId}/movimientos`, body)
+    expect(referenciaCruzada.status()).toBe(409)
+    const mensaje = JSON.stringify(await referenciaCruzada.json())
+    expect(mensaje).toContain('REFERENCIA_MOVIMIENTO_DISTINTA')
+    expect(mensaje).not.toContain(aId)
+
+    const cantidadDistinta = await apiPost(page, `/api/embarques/${aId}/movimientos`, { ...body, cantidad: 4 })
+    expect(cantidadDistinta.status()).toBe(409)
+
+    const mismoMovimiento = await apiPost(page, `/api/embarques/${aId}/movimientos`, {
+      ...body, metadata: { nivel: 2, motivo: 'auditoria' },
+    })
+    expect(mismoMovimiento.ok()).toBe(true)
+    expect((await mismoMovimiento.json()).deduped).toBe(true)
+
+    const rowsA = await (await apiGet(page, `/api/embarques/${aId}/movimientos`)).json()
+    const rowsB = await (await apiGet(page, `/api/embarques/${bId}/movimientos`)).json()
+    expect(rowsA.movimientos.filter((m: { offlineId: string | null }) => m.offlineId === offlineId)).toHaveLength(1)
+    expect(rowsB.movimientos.filter((m: { offlineId: string | null }) => m.offlineId === offlineId)).toHaveLength(0)
+  })
+
+  test('dos solicitudes simultáneas con igual referencia insertan un único movimiento', async ({ page }) => {
+    const { embarqueId } = await setup(page, 'admin', { sinCarga: true })
+    const offlineId = `e2e-carrera-${Date.now()}`
+    const body = { tipo: 'DESCARTE', producto: 'PACA_AGUA', cantidad: 2, offlineId }
+    const [primero, segundo] = await Promise.all([
+      apiPost(page, `/api/embarques/${embarqueId}/movimientos`, body),
+      apiPost(page, `/api/embarques/${embarqueId}/movimientos`, body),
+    ])
+    expect([primero.status(), segundo.status()].sort()).toEqual([200, 201])
+
+    const lista = await (await apiGet(page, `/api/embarques/${embarqueId}/movimientos`)).json()
+    expect(lista.movimientos.filter((m: { offlineId: string | null }) => m.offlineId === offlineId)).toHaveLength(1)
+  })
+
   test('POST /botellones con el mismo offlineId dos veces no duplica', async ({ page }) => {
     await loginAs(page, 'admin')
     const t = await createTrabajador(page)
