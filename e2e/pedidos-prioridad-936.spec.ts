@@ -58,7 +58,7 @@ test.describe('#936 · orden FIFO y paginación reales en Hub V2', () => {
     ['escritorio', { width: 1280, height: 850 }],
     ['móvil', { width: 390, height: 844 }],
   ] as const) {
-    test(dispositivo + ': prioridad, FIFO, pago reportado y tres páginas sin duplicación', async ({ page }) => {
+    test(dispositivo + ': prioridad, FIFO, pago reportado y tres páginas sin duplicación', async ({ page }, info) => {
       await page.setViewportSize(viewport)
       const { cliente, pedidos } = await preparar()
       await loginAs(page, 'admin')
@@ -77,6 +77,14 @@ test.describe('#936 · orden FIFO y paginación reales en Hub V2', () => {
         ))
         vistos.push(...identificadores)
         await expect(app.getByTestId('pedidos-agrupados-barrio')).toHaveCount(0)
+        if (pagina === 1 || pagina === 3) {
+          // Evidencia visual reproducible; la captura contiene solo clientes
+          // sintéticos sembrados por la suite de CI, nunca datos de producción.
+          await info.attach(`qa936-${dispositivo}-pagina-${pagina}`, {
+            body: await page.screenshot({ fullPage: true }),
+            contentType: 'image/png',
+          })
+        }
       }
       expect(vistos).toEqual(esperado)
       expect(new Set(vistos).size).toBe(7)
