@@ -16,7 +16,7 @@ const p = (extra: Partial<Pedido> = {}): Pedido => ({
   precioBolsaAgua: 0, precioBolsaHielo: 0,
   total: 9000, totalPagado: 9000, saldo: 0, fecha: '2026-11-20T16:00:00Z',
   fiadosAnteriores: { total: 27000, propio: 0, totalCliente: 27000, pedidos: 2, pagoPorConfirmar: false,
-    origenes: [{ numero: 150, negocio: 'Tienda A', importe: 20000 }, { numero: 151, negocio: 'Tienda B', importe: 7000 }],
+    origenes: [{ id: 'd150', numero: 150, negocio: 'Tienda A', importe: 20000 }, { id: 'd151', numero: 151, negocio: 'Tienda B', importe: 7000 }],
     productos: [{ producto: 'PACA_AGUA', cantidad: 8 }, { producto: 'PACA_HIELO', cantidad: 1 }],
     negocios: ['Tienda A', 'Tienda B'] },
   ...extra,
@@ -50,7 +50,7 @@ describe('#932 badge de otros cobros pendientes del cliente', () => {
     render(<OperacionList pedidos={[p({ fiadosAnteriores: {
       total: 15000, propio: 5000, totalCliente: 20000, pedidos: 1,
       productos: [{ producto: 'PACA_AGUA', cantidad: 5 }],
-      negocios: ['Tienda B'], origenes: [{ numero: 150, negocio: 'Tienda B', importe: 15000 }],
+      negocios: ['Tienda B'], origenes: [{ id: 'd150', numero: 150, negocio: 'Tienda B', importe: 15000 }],
       pagoPorConfirmar: true,
     } })]} viewport="mobile" hoyBogota="2026-11-20"
       onOpen={vi.fn()} onAccion={vi.fn()} consulta={consulta} />)
