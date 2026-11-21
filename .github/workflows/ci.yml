@@ -790,6 +790,7 @@ jobs:
           e2e/pedidos-entregas-historicas-763.spec.ts
           e2e/pedidos-pendientes-anteriores-797.spec.ts
           e2e/pedidos-alerta-riesgo-929.spec.ts
+          e2e/pedidos-cobro-pendiente-932.spec.ts
 
       - name: Fetch exact main baseline for Hub (#334)
         if: always() && github.event_name == 'pull_request'
