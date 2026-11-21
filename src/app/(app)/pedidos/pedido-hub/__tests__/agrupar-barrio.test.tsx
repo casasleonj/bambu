@@ -278,6 +278,7 @@ describe("#915 — arrastres y entregas anteriores dentro del grupo de su barrio
     pedidoId, numero, nombre: `Cliente ${numero}`, fechaPedido: "2026-10-28", estadoAlCorte: "PRIMERA_ENTREGA" as const,
     cantidadesDelRango: [{ producto: "PACA_AGUA", cantidad: 4 }], cantidadesAlCorte: [{ producto: "PACA_AGUA", cantidad: 4 }],
     fechaCompletado: "2026-10-29", hitos: [{ fecha: "2026-10-29", cantidades: [{ producto: "PACA_AGUA", cantidad: 4 }], completado: true, porConciliar: false }],
+    entregas: [{ instante: "2026-10-29T15:00:00.000Z", fecha: "2026-10-29", horaVerificable: true, cantidades: [{ producto: "PACA_AGUA", cantidad: 4 }], completa: true, porConciliar: false }],
     pedidoAnterior: true, grupoBarrio: g,
   });
   const SOLO = { clave: "b:solo", etiqueta: "Barrio Solo" };

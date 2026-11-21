@@ -55,6 +55,35 @@ describe("#763 — clasificación histórica de entregas", () => {
     expect(r?.cantidadesDelRango[0].cantidad).toBe(6);
     expect(r?.hitos).toHaveLength(1);
     expect(r?.hitos[0].cantidades[0].cantidad).toBe(6);
+    // #852: el hito sigue agrupado por día, pero cada entrega se conserva por separado.
+    expect(r?.entregas).toHaveLength(2);
+  });
+  it("#852: dos entregas el mismo día quedan como dos momentos con su hora; solo la última completa", () => {
+    const r = proyectarEntregaHistorial(pedido, [
+      evento("b", "2026-11-09T19:15:00Z", 3), evento("a", "2026-11-09T14:40:00Z", 3),
+    ], lunes);
+    expect(r?.entregas.map((m) => [m.instante, m.fecha, m.completa, m.horaVerificable])).toEqual([
+      ["2026-11-09T14:40:00.000Z", "2026-11-09", false, true],
+      ["2026-11-09T19:15:00.000Z", "2026-11-09", true, true],
+    ]);
+    expect(r?.entregas.map((m) => m.cantidades[0].cantidad)).toEqual([3, 3]);
+  });
+  it("#852: 11 p. m. en Colombia (04:00 UTC del día siguiente) conserva el día de Bogotá", () => {
+    const r = proyectarEntregaHistorial(pedido, [
+      evento("a", "2026-11-09T14:00:00Z", 3), evento("b", "2026-11-10T04:30:00Z", 3),
+    ], lunes);
+    expect(r?.entregas.map((m) => m.fecha)).toEqual(["2026-11-09", "2026-11-09"]);
+  });
+  it("#852: hecho con precisión de día marca la hora como no verificable", () => {
+    const r = proyectarEntregaHistorial(pedido, [
+      { ...evento("a", "2026-11-09T17:00:00Z", 3), precisionDia: true }, evento("b", "2026-11-09T20:00:00Z", 3),
+    ], lunes);
+    expect(r?.entregas.map((m) => m.horaVerificable)).toEqual([false, true]);
+  });
+  it("#852: histórico dudoso no marca ninguna entrega como completa", () => {
+    const r = proyectarEntregaHistorial({ ...pedido, ajustePosterior: true }, [eLunes, evento("2", "2026-11-09T20:00:00Z", 3)], lunes);
+    expect(r?.estadoAlCorte).toBe("POR_CONCILIAR");
+    expect(r?.entregas.every((m) => !m.completa)).toBe(true);
   });
   it("E19: tres fechas, la completitud se reconoce solo en el último hecho", () => {
     const r = proyectarEntregaHistorial(pedido, [

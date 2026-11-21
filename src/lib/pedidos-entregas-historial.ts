@@ -31,6 +31,19 @@ export interface HitoEntrega {
   completado: boolean;
   porConciliar: boolean;
 }
+/** #852: un momento físico de entrega (un evento), sin agrupar por día. */
+export interface MomentoEntrega {
+  /** Instante UTC (ISO). La hora solo es mostrable si `horaVerificable`. */
+  instante: string;
+  /** Día calendario Bogotá (YYYY-MM-DD). */
+  fecha: string;
+  /** false cuando el hecho solo tiene precisión de día. */
+  horaVerificable: boolean;
+  cantidades: CantidadEntrega[];
+  /** Evento tras el cual el pedido quedó completo (nunca si el histórico es dudoso). */
+  completa: boolean;
+  porConciliar: boolean;
+}
 export interface EntregaDestacada {
   pedidoId: string;
   numero: number;
@@ -41,6 +54,8 @@ export interface EntregaDestacada {
   cantidadesAlCorte: CantidadEntrega[];
   fechaCompletado: string | null;
   hitos: HitoEntrega[];
+  /** #852: un elemento por evento, en orden cronológico; `hitos` sigue agrupado por día. */
+  entregas: MomentoEntrega[];
   pedidoAnterior: boolean;
   /** #915: barrio efectivo del pedido (solo con la vista agrupada). */
   grupoBarrio?: { clave: string; etiqueta: string };
@@ -104,6 +119,7 @@ export function proyectarEntregaHistorial(
   const cantidadAlCorte = new Map<string, number>();
   const acumulado = new Map<string, number>();
   const agrupados = new Map<string, HitoEntrega>();
+  const momentos: MomentoEntrega[] = [];
   let fechaCompletado: string | null = null;
   let eventoPrevioACompletar = false;
   let eventosPrevios = 0;
@@ -124,10 +140,20 @@ export function proyectarEntregaHistorial(
     hito.porConciliar ||= !!e.incompleto || !e.cantidades;
     agrupados.set(dia, hito);
     agregar(acumulado, cantidad);
+    const momento: MomentoEntrega = {
+      instante: e.fecha.toISOString(),
+      fecha: dia,
+      horaVerificable: !e.precisionDia,
+      cantidades: lineas(new Map(cantidad.map((l) => [l.producto, l.cantidad]))),
+      completa: false,
+      porConciliar: !!e.incompleto || !e.cantidades,
+    };
+    momentos.push(momento);
     if (!fechaCompletado && !imposible && !desconocido && comparar(acumulado, pedidas)) {
       fechaCompletado = dia;
       eventoPrevioACompletar = eventosPrevios > 0;
       hito.completado = true;
+      momento.completa = true;
     }
     eventosPrevios += 1;
   }
@@ -136,6 +162,7 @@ export function proyectarEntregaHistorial(
   if (dudoso) {
     fechaCompletado = null;
     for (const h of agrupados.values()) h.completado = false;
+    for (const m of momentos) m.completa = false;
   }
   const completoAlCorte = !dudoso && comparar(cantidadAlCorte, pedidas);
   const anterior = diaEntregaBogota(pedido.fecha) < diaEntregaBogota(rango.desde);
@@ -155,6 +182,7 @@ export function proyectarEntregaHistorial(
     cantidadesAlCorte: lineas(cantidadAlCorte),
     fechaCompletado,
     hitos: [...agrupados.values()].sort((a, b) => a.fecha.localeCompare(b.fecha)),
+    entregas: momentos,
     pedidoAnterior: anterior,
   };
 }

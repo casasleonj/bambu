@@ -6,6 +6,7 @@ import type {
   CantidadEntrega,
   EntregaDestacada,
   EstadoEntregaAlCorte,
+  MomentoEntrega,
 } from "@/lib/pedidos-entregas-historial";
 
 const etiquetas: Record<EstadoEntregaAlCorte, string> = {
@@ -42,21 +43,30 @@ function cantidades(xs: CantidadEntrega[]) {
     return String(x.cantidad) + " " + nombre;
   }).join(" · ");
 }
-function Hito({
-  hito,
+const hora = (instante: string) =>
+  new Intl.DateTimeFormat("es-CO", {
+    timeZone: "America/Bogota", hour: "numeric", minute: "2-digit", hour12: true,
+  }).format(new Date(instante));
+/** #852: un momento por entrega física, con hora de Colombia cuando es verificable. */
+function Momento({
+  momento,
   ocultarCompletado = false,
 }: {
-  hito: EntregaDestacada["hitos"][number];
+  momento: MomentoEntrega;
   /** #847: el estado «✓ Completado» ya está en la cabecera de la tarjeta. */
   ocultarCompletado?: boolean;
 }) {
   return (
     <li className="flex flex-wrap items-start gap-x-2 gap-y-0.5 text-xs text-stone-700">
-      <time className="font-semibold" dateTime={hito.fecha}>{fecha(hito.fecha)}</time>
+      <time className="font-semibold" dateTime={momento.instante}>
+        {fecha(momento.fecha)} · {momento.horaVerificable ? hora(momento.instante) : "hora no registrada"}
+      </time>
       <span aria-hidden="true">·</span>
-      <span>{cantidades(hito.cantidades)}</span>
-      {hito.completado && !ocultarCompletado && <span className="font-semibold text-emerald-800">✓ Completado</span>}
-      {hito.porConciliar && <span className="font-semibold text-amber-800">Por conciliar</span>}
+      <span>{cantidades(momento.cantidades)}</span>
+      {momento.completa
+        ? !ocultarCompletado && <span className="font-semibold text-emerald-800">✓ Completado</span>
+        : !momento.porConciliar && <span className="font-semibold text-amber-800">Parcial</span>}
+      {momento.porConciliar && <span className="font-semibold text-amber-800">Por conciliar</span>}
     </li>
   );
 }
@@ -159,8 +169,8 @@ export function EntregasDestacadas({
             // en la cabecera y no se repite en la fila ni en el pie.
             const completadoEnCabecera =
               e.estadoAlCorte === "PRIMERA_ENTREGA" &&
-              e.hitos.length === 1 &&
-              e.fechaCompletado === e.hitos[0].fecha;
+              e.entregas.length === 1 &&
+              e.fechaCompletado === e.entregas[0].fecha;
             return (
               <article
                 key={e.pedidoId}
@@ -188,19 +198,21 @@ export function EntregasDestacadas({
                   Pedido del {fecha(e.fechaPedido)} · acumulado al corte: {cantidades(e.cantidadesAlCorte)}
                 </p>
                 <div className="border-t border-stone-200 pt-2">
-                  <p className="mb-1 text-xs font-semibold text-stone-700">Fechas de entrega</p>
+                  <p className="mb-1 text-xs font-semibold text-stone-700">
+                    Momentos de entrega{e.entregas.length > 1 ? " (" + e.entregas.length + " entregas)" : ""}
+                  </p>
                   <ol className="space-y-1">
-                    {e.hitos.slice(0, 2).map((h) => (
-                      <Hito key={h.fecha} hito={h} ocultarCompletado={completadoEnCabecera} />
+                    {e.entregas.slice(0, 2).map((m, i) => (
+                      <Momento key={m.instante + i} momento={m} ocultarCompletado={completadoEnCabecera} />
                     ))}
                   </ol>
-                  {e.hitos.length > 2 && (
+                  {e.entregas.length > 2 && (
                     <details className="mt-1 text-xs text-blue-800">
                       <summary className="min-h-8 cursor-pointer py-1 font-semibold">
-                        Ver las {e.hitos.length} fechas de entrega
+                        Ver las {e.entregas.length} entregas
                       </summary>
                       <ol className="space-y-1 pl-2">
-                        {e.hitos.slice(2).map((h) => <Hito key={h.fecha} hito={h} />)}
+                        {e.entregas.slice(2).map((m, i) => <Momento key={m.instante + (i + 2)} momento={m} />)}
                       </ol>
                     </details>
                   )}
