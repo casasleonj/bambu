@@ -1,4 +1,5 @@
 import type { RiesgoOperativo } from "@/lib/pedidos-riesgo-operativo"
+import type { ResumenFiadosAnteriores } from "@/lib/fiados-anteriores-pedido"
 
 export interface PedidoItem {
   producto: string
@@ -105,6 +106,10 @@ export interface Pedido {
   total: number
   exigible?: number
   saldo: number
+  /** #932: deuda exigible actual de OTROS pedidos del mismo titular. */
+  fiadosAnteriores?: ResumenFiadosAnteriores
+  /** La lectura auxiliar falló: no equivale a ausencia de deuda. */
+  fiadosConsultaError?: boolean
   fecha: string
   horaPreferida?: string | null
   obs?: string | null
