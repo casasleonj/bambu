@@ -207,7 +207,7 @@ export function OperacionConsulta({
                   Pedido #{p.numero} ·{" "}
                   {p.negocioId ? `Negocio de ${p.nombreCli}` : "Persona"}
                 </p>
-                <FiadosAnterioresBadge resumen={p.fiadosAnteriores} pedidoId={p.id} clienteId={p.clienteId} />
+                <FiadosAnterioresBadge resumen={p.fiadosAnteriores} pedidoId={p.id} clienteId={p.clienteId} consultaError={p.fiadosConsultaError} />
                 {arrastre && (
                   <p
                     className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"
