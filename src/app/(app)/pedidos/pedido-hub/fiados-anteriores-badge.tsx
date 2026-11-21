@@ -95,7 +95,7 @@ export function FiadosAnterioresBadge({
         <p className="mt-2 font-semibold">Pedidos de origen</p>
         <ul className="mt-1 space-y-1">
           {resumen.origenes.map(origen => (
-            <li key={origen.numero} className="break-words">
+            <li key={origen.id} className="break-words">
               Pedido #{origen.numero}
               {origen.negocio ? ' · ' + origen.negocio : ''}
               {' · ' + formatCurrency(origen.importe)}
