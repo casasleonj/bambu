@@ -24,9 +24,12 @@ describe("#959 aviso de conciliación por calidad del hecho y no por su origen",
     expect(requiereConciliacionEntrega(hito({ cantidades: [] }))).toBe(true);
   });
 
-  it("incompleto aunque tenga cantidades y fecha imprecisa mantienen advertencia", () => {
-    expect(requiereConciliacionEntrega(hito({ incompleto: true }))).toBe(true);
-    expect(requiereConciliacionEntrega(hito({ precisionDia: true }))).toBe(true);
+  it("día conocido con cantidades no equivale a entrega incompleta (#516)", () => {
+    expect(requiereConciliacionEntrega(hito({ precisionDia: true }))).toBe(false);
+    // Filtro parcial por hora: limitarRango retira cantidades cuya hora se ignora.
+    expect(requiereConciliacionEntrega(hito({ precisionDia: true, cantidades: null }))).toBe(true);
+    expect(requiereConciliacionEntrega(hito({ precisionDia: true, cantidades: [] }))).toBe(true);
+    expect(requiereConciliacionEntrega(hito({ precisionDia: true, incompleto: true }))).toBe(true);
   });
 
   it("la clasificación de un hecho preciso no depende de su cobro", () => {
