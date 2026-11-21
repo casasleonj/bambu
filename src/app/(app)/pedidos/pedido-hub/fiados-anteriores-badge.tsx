@@ -36,7 +36,7 @@ export function FiadosAnterioresBadge({
   ].filter(Boolean).join('\n')
 
   return (
-    <span
+    <div
       className="group relative my-1 inline-block max-w-full align-middle"
       data-testid={`fiados-anteriores-${pedidoId}`}
       onClick={(e) => e.stopPropagation()}
@@ -52,7 +52,7 @@ export function FiadosAnterioresBadge({
         <span>Fiados anteriores</span>
       </summary>
       </details>
-      <span
+      <div
         className="absolute left-0 top-full z-50 mt-1 hidden w-64 max-w-[calc(100vw-2rem)] rounded-lg border border-amber-300 bg-white p-3 text-left text-xs font-normal text-stone-800 shadow-xl group-hover:block group-focus-within:block peer-open:block"
         role="note"
       >
@@ -80,7 +80,7 @@ export function FiadosAnterioresBadge({
           Las cantidades indican productos entregados en pedidos con deuda,
           no unidades individuales sin pagar.
         </p>
-      </span>
-    </span>
+      </div>
+    </div>
   )
 }
