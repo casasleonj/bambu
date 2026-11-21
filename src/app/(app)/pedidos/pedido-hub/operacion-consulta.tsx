@@ -22,6 +22,7 @@ import type { GrupoBarrioConsulta } from "@/lib/pedidos-consulta";
 import type { EntregaDestacada } from "@/lib/pedidos-entregas-historial";
 import styles from "./operacion-consulta.module.css";
 import { esVentaAnonima } from "@/lib/barrios/grupo-barrio";
+import { textoRiesgoOperativo } from "@/lib/pedidos-riesgo-operativo";
 
 export interface AccionesConsulta {
   userRole: string | null;
@@ -241,6 +242,15 @@ export function OperacionConsulta({
                 <CompromisoChip id={p.id} pedido={p} hoyBogota={hoyBogota} />
                 <HoraAcordadaChip id={p.id} pedido={p} />
                 <CierreNegocioChip id={p.id} pedido={p} />
+                {p.riesgoOperativo && (
+                  <p
+                    data-testid={`operacion-riesgo-${p.id}`}
+                    className="mt-1 inline-block rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-800"
+                    title="Alerta operativa calculada con horario de trabajo y configuración del servidor."
+                  >
+                    ⚠️ {textoRiesgoOperativo(p.riesgoOperativo)}
+                  </p>
+                )}
                 {/* #913: la venta anónima en punto no tiene barrio: no se rotula «Sin barrio». */}
                 {!esVentaAnonima(p) && (
                   <p
