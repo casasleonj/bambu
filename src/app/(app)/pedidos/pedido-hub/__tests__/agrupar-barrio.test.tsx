@@ -207,13 +207,13 @@ describe("filtro «Agrupar por barrio»", () => {
 });
 
 describe("#909 — Recorrido ↔ FIFO", () => {
-  it("«FIFO» apaga el modo Recorrido aunque no haya prioridades en la URL", () => {
+  it("el mismo botón Recorrido apaga el modo y vuelve al orden General sin controles extra", () => {
     montar([fila("a", 1, CENTRO), fila("b", 2, VILLA)]);
     const recorrido = screen.getByRole("button", { name: "Recorrido" });
     fireEvent.click(recorrido);
     expect(recorrido).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("recorrido-barrio-select")).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText("Volver al orden FIFO"));
+    fireEvent.click(recorrido);
     expect(recorrido).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByTestId("recorrido-barrio-select")).toBeNull();
     expect(screen.queryByLabelText("Subir Centro")).toBeNull();

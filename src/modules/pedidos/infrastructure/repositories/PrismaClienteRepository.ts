@@ -191,15 +191,32 @@ export class PrismaClienteRepository implements IClienteRepository {
     const client = tx || prisma
     // FIX Fase 2 §3.4: aplicar saldo a favor. Devuelve el monto aplicado.
     // Si el saldo es menor al monto, aplica solo lo disponible.
-    const current = await this.getSaldoFavor(id, tx)
-    const aplicar = Math.min(monto, current)
-    if (aplicar > 0) {
-      await client.cliente.update({
-        where: { id },
-        data: { saldoFavor: { decrement: aplicar } },
+    //
+    // #561: el decremento es CONDICIONADO (`saldoFavor: { gte: monto }`), no un
+    // `decrement` a secas. Antes se leía el saldo y se descontaba después: dos
+    // pedidos del mismo cliente creados a la vez en transacciones distintas leían
+    // el mismo saldo y lo descontaban dos veces, dejándolo negativo (crédito
+    // inventado). El lock de crear pedido es por SECUENCIA, no por cliente, así
+    // que no serializaba estas dos operaciones.
+    // Mismo contrato que `devolver-saldo-favor.ts` y `revertirCreditoDelPedido`.
+    for (let intento = 0; intento < 3; intento++) {
+      const current = await this.getSaldoFavor(id, tx)
+      const aplicar = Math.min(monto, current)
+      if (aplicar <= 0) return 0
+
+      // Comparación en centavos: el saldo es Decimal(10,2) y `Number` puede
+      // arrastrar error de coma flotante al comparar con `gte`.
+      const aplicarCentavos = Math.round(aplicar * 100)
+      const aplicarDecimal = aplicarCentavos / 100
+      const r = await client.cliente.updateMany({
+        where: { id, saldoFavor: { gte: aplicarDecimal } },
+        data: { saldoFavor: { decrement: aplicarDecimal } },
       })
+      // count === 0: el saldo cambió entre la lectura y la escritura. Reintenta
+      // con el valor fresco en vez de descontar sobre una lectura obsoleta.
+      if (r.count > 0) return aplicarDecimal
     }
-    return aplicar
+    return 0
   }
 
   async findNegocioById(id: string, tx?: TransactionClient): Promise<NegocioBasico | null> {

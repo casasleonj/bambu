@@ -80,6 +80,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Vitest no usa el resolutor Next de sentinelas. Solo aplica a tests.
+      'server-only': path.resolve(__dirname, './src/test/server-only-stub.ts'),
     },
   },
   server: {
