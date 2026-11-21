@@ -30,7 +30,7 @@ async function crear(
       canal: opciones.canal ?? 'DOMICILIO',
       estado: opciones.entregado ? 'ENTREGADO' : 'PENDIENTE',
       estadoEntrega: opciones.entregado ? 'ENTREGADO' : 'PENDIENTE',
-      estadoPago: pagado ? 'PAGADO' : 'PENDIENTE',
+      estadoPago: pagado ? (opciones.entregado ? 'PAGADO' : 'ANTICIPADO') : 'PENDIENTE',
       total: 1000, totalPagado: pagado ? 1000 : 0, saldo: pagado ? 0 : 1000,
       items: { create: { producto: 'PACA_AGUA', cantPedido: 1, cantEntrega: entrega, precio: 1000, subtotal: 1000 } },
     },
