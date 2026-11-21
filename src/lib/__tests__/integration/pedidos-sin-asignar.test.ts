@@ -324,12 +324,16 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
 
   it('PENDIENTE recién creado (< umbral) NO entra en riesgo', async () => {
     const cliente = await crearClienteTest('Test Cliente Sin Riesgo Tiempo')
+    // El test usa Date simulado a mediodía; Postgres DEFAULT now() usa hora real.
+    // Fijar createdAt al mismo instante evita un falso atraso según hora de CI.
+    const ahora = new Date()
     const p = await testPrisma.pedido.create({
       data: {
         clienteId: cliente.id,
         canal: 'DOMICILIO',
         offlineId: uniqueId('sin-riesgo-tiempo'),
-        fecha: new Date(),
+        fecha: ahora,
+        createdAt: ahora,
         embarqueId: null,
         estadoEntrega: 'PENDIENTE',
         estadoPago: 'ANTICIPADO',
