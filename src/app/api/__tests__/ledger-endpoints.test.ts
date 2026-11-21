@@ -75,16 +75,23 @@ describe('endpoints del ledger/plan maestro', () => {
     expect(getBody).toMatch(/sourceEvent: \{ select/)
   })
 
-  it('POST /api/embarques/[id]/movimientos deduplica por offlineId antes de crear (ADR-IDEMPOTENCIA-001)', () => {
+  it('POST /api/embarques/[id]/movimientos compara la referencia antes de crear (ADR-IDEMPOTENCIA-001)', () => {
     const s = read('src/app/api/embarques/[id]/movimientos/route.ts')
     const postStart = s.indexOf('const MovimientoSchema')
     const postBody = s.slice(postStart)
-    const findIdx = postBody.indexOf('embarqueMovimiento.findUnique')
+    const resolverIdx = s.indexOf('async function recuperarMovimientoIdempotente')
+    const findIdx = s.indexOf('embarqueMovimiento.findUnique', resolverIdx)
+    const validarIdx = postBody.indexOf('await recuperarMovimientoIdempotente')
     const createIdx = postBody.indexOf('embarqueMovimiento.create')
-    expect(findIdx).toBeGreaterThan(-1)
-    expect(createIdx).toBeGreaterThan(-1)
-    expect(findIdx).toBeLessThan(createIdx)
-    expect(postBody).toMatch(/deduped: true/)
+    expect(resolverIdx).toBeGreaterThan(-1)
+    expect(findIdx).toBeGreaterThan(resolverIdx)
+    expect(validarIdx).toBeGreaterThan(-1)
+    expect(createIdx).toBeGreaterThan(validarIdx)
+    // No basta encontrar offlineId: el replay debe pertenecer al mismo
+    // embarque y a la misma operación. El error no revela el registro ajeno.
+    expect(s).toMatch(/esElMismoMovimiento/)
+    expect(s).toMatch(/REFERENCIA_MOVIMIENTO_DISTINTA/)
+    expect(s).toMatch(/deduped: true/)
   })
 
   it('POST /api/embarques/[id]/botellones deduplica por offlineId antes de crear (ADR-IDEMPOTENCIA-001)', () => {
