@@ -7,9 +7,9 @@ on:
   pull_request:
     branches:
       - main
-    # Salir de draft no cambia el código: reutilizar los checks del mismo SHA.
-    # Nuevos commits (synchronize), apertura y reapertura siguen ejecutando CI.
-    # Certificar al terminar el borrador; no ejecutar antes el E2E de PRs aptos.
+    # Con CI progresivo: no repetir E2E en cada commit apto de borrador;
+    # al salir del draft certificamos la suite completa del candidato actual.
+    # Apertura, actualización y reapertura también conservan su validación.
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_call:
     inputs:
