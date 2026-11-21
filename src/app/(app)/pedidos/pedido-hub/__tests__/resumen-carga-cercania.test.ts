@@ -153,4 +153,21 @@ describe("#959 Cercanía requiere demanda física pendiente", () => {
   it("un pendiente con desglose desconocido no se inventa como completado", () => {
     expect(esVisitaPendienteCercania(pedido("sin-detalle"))).toBe(true);
   });
+
+  it("excluye salida de mañana y embarque asignado; permite entrega pasada pendiente", () => {
+    const pendiente = { items: [linea("PACA_AGUA", 5, 1)] };
+    expect(esVisitaPendienteCercania(pedido("manana", {
+      ...pendiente, fechaEntrega: "2026-11-22T16:00:00.000Z",
+    }), "2026-11-21")).toBe(false);
+    expect(esVisitaPendienteCercania(pedido("embarcado", {
+      ...pendiente, embarqueId: "embarque-sintetico",
+    }), "2026-11-21")).toBe(false);
+    expect(esVisitaPendienteCercania(pedido("ayer", {
+      ...pendiente, fechaEntrega: "2026-11-20T16:00:00.000Z",
+    }), "2026-11-21")).toBe(true);
+    expect(esVisitaPendienteCercania(pedido("hoy", {
+      ...pendiente, fechaEntrega: "2026-11-21T16:00:00.000Z",
+    }), "2026-11-21")).toBe(true);
+  });
+
 });
