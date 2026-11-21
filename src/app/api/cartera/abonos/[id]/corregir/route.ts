@@ -8,9 +8,11 @@ import { getNextNumero } from '@/lib/sequence'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
-import { aplicarReversionMonetaria } from '@/lib/correccion-monetaria'
+import { calcularEstadoPago } from '@/lib/pedido-utils'
+import { registrarReceivableEntry } from '@/lib/receivable-entry'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { prisma } from '@/lib/prisma'
+import { verificarConsumoBonoAbono } from '@/lib/bono-saldo-favor'
 
 /**
  * POST /api/cartera/abonos/[id]/corregir — ADR-CORRECCION-MONETARIA-001.
@@ -43,10 +45,10 @@ export async function POST(
     }
     const { tipo, montoRevertido, motivo, correccionOfflineId } = parsed.data
 
-    // Lectura fuera del lock solo para conocer las claves de los locks (cliente y pedido).
+    // Lectura fuera del lock solo para conocer el clienteId (clave del lock).
     const abonoPre = await prisma.abono.findUnique({
       where: { id: abonoId },
-      select: { clienteId: true, pedidoId: true, factura: { select: { pedidoId: true } } },
+      select: { clienteId: true },
     })
     if (!abonoPre) return apiError('Abono no encontrado', 404)
 
@@ -63,16 +65,10 @@ export async function POST(
         }
       }
 
-      // #796 (auditoría F5): esta ruta reescribe `totalPagado/saldo` del pedido, igual que los cobros y entregas.
-      // Toma también el lock de PEDIDO, en el mismo orden que `pagar-fiado` (CARTERA y luego PEDIDO), para no
-      // pisar ni ser pisada por un flujo que solo bloquea el pedido. Se adquiere antes de leer el pedido.
-      const pedidoParaLock = abonoPre.pedidoId ?? abonoPre.factura?.pedidoId
-      if (pedidoParaLock) await acquireAdvisoryLockTx(tx, 'PEDIDO', pedidoParaLock)
-
       const abono = await tx.abono.findUnique({
         where: { id: abonoId },
         include: {
-          factura: { include: { pedido: { select: { id: true, total: true, totalPagado: true, saldo: true, estadoEntrega: true, estado: true, estadoPago: true } } } },
+          factura: { include: { pedido: { select: { id: true, total: true, totalPagado: true, estadoEntrega: true, estado: true } } } },
           correcciones: { select: { montoRevertido: true } },
         },
       })
@@ -101,6 +97,12 @@ export async function POST(
 
       if (revertir <= 0) throw new Error('MONTO_INVALIDO')
       if (yaRevertido + revertir > montoAbono + 1e-6) throw new Error('EXCEDE_ABONO')
+
+      // #772: la corrección de un BONO real devuelve crédito ya consumido.
+      // Un Abono BONO legado sin marcador NO prueba que alguna vez descontó
+      // saldo a favor: devolverle crédito fabricaría un saldo inexistente.
+      const creditoBonoRestituible =
+        (await verificarConsumoBonoAbono(tx, abono)) ? revertir : 0
 
       // Número COR-NNNNN — serializado por SECUENCIA:correccionAbono para no
       // colisionar entre correcciones de clientes distintos (MAX+1).
@@ -136,18 +138,60 @@ export async function POST(
         },
       })
 
-      // Factura + Pedido + ReceivableEntry REVERSION: un solo cálculo compartido con la corrección de un pago (ADR-002).
-      const { efecto, pedidoActualizado, facturaActualizada } = await aplicarReversionMonetaria(tx, {
-        pedido: pedido
-          ? { id: pedido.id, total: pedido.total, totalPagado: pedido.totalPagado, saldo: pedido.saldo, estadoEntrega: pedido.estadoEntrega, estadoPago: pedido.estadoPago }
-          : null,
-        factura: factura
-          ? { id: factura.id, total: factura.total, montoPagado: factura.montoPagado, saldo: factura.saldo, estado: factura.estado }
-          : null,
-        clienteId: abono.clienteId,
-        revertir,
-        correccionOfflineId: correccionOfflineId || null,
-      })
+      // Recalcular Factura: la reversión devuelve saldo y quita monto pagado.
+      let facturaActualizada = null
+      if (factura) {
+        const nuevoMontoPagado = Math.max(0, Number(factura.montoPagado) - revertir)
+        // clamp a >= 0 (paridad con `calcularSaldo` del resto del código).
+        const nuevoSaldoFactura = Math.max(0, Number(factura.total) - nuevoMontoPagado)
+        const nuevoEstadoFactura =
+          nuevoSaldoFactura <= 0 ? 'PAGADA' : nuevoMontoPagado > 0 ? 'PARCIAL' : 'EMITIDA'
+        facturaActualizada = await tx.factura.update({
+          where: { id: factura.id },
+          data: { montoPagado: nuevoMontoPagado, saldo: nuevoSaldoFactura, estado: nuevoEstadoFactura },
+        })
+      }
+
+      // Recalcular Pedido.
+      let pedidoActualizado = null
+      if (pedido) {
+        const nuevoTotalPagado = Math.max(0, Number(pedido.totalPagado) - revertir)
+        const nuevoSaldoPedido = Math.max(0, Number(pedido.total) - nuevoTotalPagado)
+        const nuevoEstadoPago = calcularEstadoPago(
+          Number(pedido.total),
+          nuevoTotalPagado,
+          pedido.estadoEntrega,
+        )
+        pedidoActualizado = await tx.pedido.update({
+          where: { id: pedido.id },
+          data: {
+            totalPagado: nuevoTotalPagado,
+            saldo: nuevoSaldoPedido,
+            estadoPago: nuevoEstadoPago,
+          },
+        })
+
+        // Proyección de auditoría (ADR-MONETARIO-001 §12), en la MISMA tx.
+        await registrarReceivableEntry(tx, {
+          pedidoId: pedido.id,
+          facturaId: factura?.id ?? null,
+          clienteId: abono.clienteId,
+          tipo: 'REVERSION',
+          monto: revertir,
+          saldoResultante: nuevoSaldoPedido,
+          totalPagadoResultante: nuevoTotalPagado,
+          offlineId: correccionOfflineId || null,
+        })
+      }
+
+      if (creditoBonoRestituible > 0) {
+        // Misma transacción que la reversión de Factura/Pedido y el historial.
+        // Reintentos deduplicados retornan antes de esta línea.
+        await tx.cliente.update({
+          where: { id: abono.clienteId },
+          data: { saldoFavor: { increment: creditoBonoRestituible } },
+        })
+      }
 
       await logAudit(
         {
@@ -159,11 +203,9 @@ export async function POST(
             correccionNumero: correccion.numero,
             tipo,
             montoRevertido: revertir,
+            creditoBonoRestituido: creditoBonoRestituible,
             motivo,
             responsibilityCaseId,
-            // Condición 3 del PO: valores anteriores y posteriores de lo que cambió.
-            antes: { pedido: efecto.pedido?.antes ?? null, factura: efecto.factura?.antes ?? null },
-            despues: { pedido: efecto.pedido?.despues ?? null, factura: efecto.factura?.despues ?? null },
           },
           usuarioId: userId,
         },
@@ -197,6 +239,7 @@ export async function POST(
     if (msg === 'PEDIDO_ANULADO') {
       return apiError('El pedido/factura está anulado: la reversión va por el flujo de anulación', 409)
     }
+    if (msg === 'BONO_AUDITORIA_INVALIDA') return apiError('La procedencia del BONO requiere conciliación; no se modificó el abono.', 409, { code: 'BONO_AUDITORIA_INVALIDA' })
     if (msg === 'MONTO_INVALIDO') return apiError('El monto a revertir debe ser mayor a 0', 400)
     if (msg === 'EXCEDE_ABONO') return apiError('El monto a revertir excede el saldo no revertido del abono', 400)
     if (msg === 'OFFLINE_ID_REUSADO') {
