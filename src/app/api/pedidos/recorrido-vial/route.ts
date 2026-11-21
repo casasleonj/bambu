@@ -14,11 +14,13 @@ import {
   RecorridoVialError,
   type ParadaVial,
 } from '@/lib/geo/google-route-optimization'
+import { GoogleRutaNoDisponibleError } from '@/lib/geo/google-route-optimization-server'
+import { HeiGitRutaNoDisponibleError } from '@/lib/geo/heigit-vroom-server'
 import {
-  GoogleRutaNoDisponibleError,
-  configuracionGoogleRuta,
-  optimizarRecorridoGoogle,
-} from '@/lib/geo/google-route-optimization-server'
+  comprobarProveedorRecorridoVial,
+  optimizarRecorridoVial,
+  ProveedorVialInvalidoError,
+} from '@/lib/geo/recorrido-vial-proveedor-server'
 import { bloqueadaPorEmbarque, clasificarGestionVial } from '@/lib/geo/seleccion-recorrido-vial'
 
 export const runtime = 'nodejs'
@@ -45,9 +47,11 @@ export async function POST(request: NextRequest) {
   const permitido = await requirePermission('view:pedidos', session)
   if (permitido instanceof Response) return permitido
 
-  // Claves, habilitación y cuota confirmadas antes de cualquier consulta pagada.
-  try { configuracionGoogleRuta() } catch (e) {
-    if (e instanceof GoogleRutaNoDisponibleError)
+  // Habilitación y cuota del proveedor elegido. No probar Google si HeiGIT falla.
+  try { comprobarProveedorRecorridoVial() } catch (e) {
+    if (e instanceof GoogleRutaNoDisponibleError ||
+        e instanceof HeiGitRutaNoDisponibleError ||
+        e instanceof ProveedorVialInvalidoError)
       return apiError('La optimización vial aún no está habilitada o configurada.', 503)
     return apiError('No se pudo preparar el servicio vial.', 503)
   }
@@ -139,7 +143,7 @@ export async function POST(request: NextRequest) {
       return { paradas: ordenadas, advertenciasHora: horas }
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 15_000 })
 
-    const resultado = await optimizarRecorridoGoogle({ origen, paradas, salida: ahora })
+    const resultado = await optimizarRecorridoVial({ origen, paradas, salida: ahora })
     const response = apiSuccess({
       ...resultado,
       calculadoAt: ahora.toISOString(),
@@ -155,7 +159,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof RecorridoVialError)
       return apiError(error.message, error.codigo === 'COORDENADAS_INVALIDAS' ? 422 : 409)
-    if (error instanceof GoogleRutaNoDisponibleError)
+    if (error instanceof GoogleRutaNoDisponibleError ||
+        error instanceof HeiGitRutaNoDisponibleError ||
+        error instanceof ProveedorVialInvalidoError)
       return apiError('No fue posible calcular el recorrido vial. Puedes seguir usando la lista General.', 503)
     // Nunca loguear origen GPS, direcciones, órdenes ni credenciales.
     return apiError('No se pudo preparar el recorrido; revisa la selección.', 503)
