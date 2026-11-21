@@ -96,7 +96,7 @@ describe('CompromisoChip (#836 F1)', () => {
   const chip = (fechaEntrega: string | null, estadoEntrega = 'PENDIENTE') => etiquetaCompromiso({ fechaEntrega, estadoEntrega }, HOY)
   it('hoy / arrastrado / programado; nada si no hay compromiso abierto', () => {
     expect(chip('2026-11-17T20:00:00.000Z')).toMatchObject({ clase: 'hoy', texto: 'Para hoy' })
-    expect(chip('2026-11-16T15:00:00.000Z')?.texto).toMatch(/^Arrastrado · previsto/)
+    expect(chip('2026-11-16T15:00:00.000Z')?.texto).toMatch(/^Fecha prevista superada ·/)
     expect(chip('2026-11-19T15:00:00.000Z')?.texto).toMatch(/^Programado ·/)
     expect(chip(null)).toBeNull()
     expect(chip('2026-11-16T15:00:00.000Z', 'ENTREGADO')).toBeNull()

@@ -1999,16 +1999,13 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
             </InfoBanner>
           </div>
         )}
-        {/* Pedidos pendientes de HOY sin asignar (por 3+ embarques cerrados de
-            su ruta, o por horas hábiles transcurridas) + pedidos EN_RUTA
-            atascados sin entregar de CUALQUIER día — ver
-            findPedidosHoyEnRiesgoIds en pedidos-sin-asignar.ts. */}
+        {/* #929: riesgo transversal: tiempo hábil también para anteriores,
+            reasignaciones, EN_RUTA y 3 embarques sin asignar. */}
         {activeTab === 'hoy' && enRiesgoCount > 0 && (
           <div data-testid="banner-hoy-en-riesgo">
             <InfoBanner type="tip" className="mb-4">
               <span>
-                🟠 {enRiesgoCount} pedido{enRiesgoCount === 1 ? '' : 's'} lleva
-                {enRiesgoCount === 1 ? '' : 'n'} demasiado tiempo sin gestionar — riesgo de olvido o de quedar sin entregar.{' '}
+                🟠 {enRiesgoCount} pedido{enRiesgoCount === 1 ? '' : 's'} requiere{enRiesgoCount === 1 ? '' : 'n'} revisión por demora, asignación o reparto.{' '}
                 {/* <a> a propósito (AGENTS.md #27): navegar con <Link> a la misma ruta no avisa a useShallowSearchParams */}
                 {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
                 <a

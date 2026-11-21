@@ -24,7 +24,7 @@ export function etiquetaCompromiso(
   if (!p.fechaEntrega) return null;
   const clase = clasificarCompromiso({ fechaEntrega: p.fechaEntrega, estadoEntrega: p.estadoEntrega }, hoyBogota);
   if (clase === "hoy") return { clase, texto: "Para hoy" };
-  if (clase === "arrastrado") return { clase, texto: `Arrastrado · previsto ${dia(p.fechaEntrega)}` };
+  if (clase === "arrastrado") return { clase, texto: `Fecha prevista superada · ${dia(p.fechaEntrega)}` };
   if (clase === "programado") return { clase, texto: `Programado · ${dia(p.fechaEntrega)}` };
   return null;
 }
