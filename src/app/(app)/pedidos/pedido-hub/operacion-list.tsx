@@ -27,6 +27,8 @@ interface OperacionListProps {
   consulta?: AccionesConsulta
   /** #797: lista de pendientes de días anteriores (solo en la consulta). */
   arrastre?: boolean
+  /** Control unificado de modos desde la consulta global de Pedidos. */
+  modoRecorridoExterno?: boolean
 }
 
 function clienteLinea(p: Pedido): string {
@@ -203,10 +205,11 @@ function ListaPorFranja({
 }
 
 export function OperacionList({
-  pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen, consulta, arrastre,
+  pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen, consulta, arrastre, modoRecorridoExterno,
 }: OperacionListProps) {
   // #859: recorrido manual temporal de la vista, sin alterar FIFO del servidor.
-  const [modoRecorrido, setModoRecorrido] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('recorrido'))
+  const [modoRecorridoLocal, setModoRecorrido] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('recorrido'))
+  const modoRecorrido = modoRecorridoExterno ?? modoRecorridoLocal
   const [barrioSeleccionado, setBarrioSeleccionado] = useState("")
   // #913: el Recorrido cambia la URL SIN navegación de servidor (antes cada clic repetía la consulta
   // completa de la página en el servidor y solo después pedía los datos: dos viajes en serie).
@@ -288,11 +291,13 @@ export function OperacionList({
     return (
       <div data-testid="pedidos-agrupados-barrio">
         <div className="my-2 flex flex-wrap items-center gap-2 text-xs">
+          {modoRecorridoExterno === undefined && (
           <button type="button" aria-pressed={modoRecorrido}
             onClick={() => { if (modoRecorrido) { setModoRecorrido(false); aplicarRecorrido([]) } else setModoRecorrido(true) }}
             className={`rounded-md border px-3 py-1.5 ${modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>
             Recorrido
           </button>
+          )}
           {modoRecorrido && (
             <>
               <label htmlFor="recorrido-barrio" className="font-medium text-stone-700">Priorizar barrio</label>
