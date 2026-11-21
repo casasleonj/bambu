@@ -35,6 +35,15 @@ export function CercaniaPedidos({ activo, pedidos, hoyBogota, acciones, onAccion
   const [fase, setFase] = useState<Fase>("listo");
   const [error, setError] = useState<string | null>(null);
   const [proveedor, setProveedor] = useState("");
+  const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia("(max-width: 1023px)");
+    const actualizar = () => setViewport(media.matches ? "mobile" : "desktop");
+    actualizar();
+    media.addEventListener("change", actualizar);
+    return () => media.removeEventListener("change", actualizar);
+  }, []);
   const envio = useRef(0);
   const ocupada = useRef(false);
   const focoTrasMover = useRef<string | null>(null);
@@ -49,6 +58,26 @@ export function CercaniaPedidos({ activo, pedidos, hoyBogota, acciones, onAccion
   const encontrados = new Map(pedidos.map(p => [p.id, p]));
   const ids = new Set(elegidos.map(p => p.id));
   const seleccionados = elegidos.map(p => encontrados.get(p.id) ?? p);
+  // Los cambios físicos, financieros o de ubicación invalidan una sugerencia ya calculada.
+  // No se optimiza de nuevo sin acción explícita del usuario (#930).
+  const firmaGestion = JSON.stringify(seleccionados.map(p => [
+    p.id, p.canal, p.estadoEntrega, p.estadoPago, p.embarqueId,
+    p.entregaLat, p.entregaLng, p.lat, p.lng, p.saldo, p.exigible,
+    p.fechaEntrega, p.entregaNoAntesDe, p.items?.map(i => [
+      i.producto, i.cantPedido, i.cantEntrega, i.cantRegaloPedido, i.cantRegaloEntrega,
+    ]),
+    p.cPacaAguaEnt, p.cPacaHieloEnt, p.cBotellonFabEnt, p.cBotellonDomEnt,
+    p.cBolsaAguaEnt, p.cBolsaHieloEnt,
+  ]));
+  const firmaAnterior = useRef<string | null>(null);
+  useEffect(() => {
+    const cambio = firmaAnterior.current !== null && firmaAnterior.current !== firmaGestion;
+    firmaAnterior.current = firmaGestion;
+    if (cambio && fase === "calculado") {
+      setOrden([]);
+      setFase("desactualizado");
+    }
+  }, [firmaGestion, fase]);
   const ordenados = fase === "calculado"
     ? [...seleccionados].sort((a, b) => orden.indexOf(a.id) - orden.indexOf(b.id))
     : seleccionados;
@@ -127,6 +156,7 @@ export function CercaniaPedidos({ activo, pedidos, hoyBogota, acciones, onAccion
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 sm:p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-bold text-blue-900">Seleccionados ({seleccionados.length})</h2>
+          <span className="sr-only" aria-live="polite">{seleccionados.length} pedidos seleccionados</span>
           <span className="rounded-full bg-white px-2 py-1 text-xs text-blue-900" aria-live="polite">
             {fase === "calculado" ? "Orden sugerido" : fase === "desactualizado" ? "Desactualizado" : "Sin calcular"}
           </span>
@@ -136,7 +166,7 @@ export function CercaniaPedidos({ activo, pedidos, hoyBogota, acciones, onAccion
             "Los pedidos elegidos suben aquí; su orden inicial no es un recorrido optimizado."}
         </p>
         {ordenados.length ? <div className="mt-3 rounded-lg bg-white p-2 sm:p-3">
-          <OperacionConsulta pedidos={ordenados} viewport="mobile" hoyBogota={hoyBogota}
+          <OperacionConsulta pedidos={ordenados} viewport={viewport} hoyBogota={hoyBogota}
             onAccion={onAccion} onOpen={onOpen} acciones={acciones}
             seleccion={{
               marcado: true,
@@ -160,12 +190,15 @@ export function CercaniaPedidos({ activo, pedidos, hoyBogota, acciones, onAccion
           La selección cambió; el orden anterior no es válido.</p>}
         {error && <p className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-900" role="alert">{error}</p>}
         {fase === "calculado" && <p className="mt-2 text-xs text-blue-900" role="status">
-          ✓ Recorrido sugerido {proveedor ? `(${proveedor})` : ""}. No crea embarques.</p>}
+          ✓ Recorrido sugerido {proveedor === "HEIGIT_VROOM" ? "(HeiGIT / OpenStreetMap)" :
+            proveedor === "GOOGLE_ROUTE_OPTIMIZATION" ? "(Google)" : ""}. No crea embarques.
+          {proveedor === "HEIGIT_VROOM" && <span> · Datos © <a href="https://www.openstreetmap.org/copyright"
+            target="_blank" rel="noopener noreferrer" className="underline">Colaboradores de OpenStreetMap</a></span>}</p>}
       </div>
       <div className="rounded-xl border border-stone-200 bg-white p-3 sm:p-4">
         <h2 className="font-bold text-slate-800">Otros pedidos ({restantes.length} visibles)</h2>
         <p className="mt-1 text-xs text-slate-500">Puedes seguir buscando y filtrando; los seleccionados permanecen arriba.</p>
-        {restantes.length ? <OperacionConsulta pedidos={restantes} viewport="mobile"
+        {restantes.length ? <OperacionConsulta pedidos={restantes} viewport={viewport}
           hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={acciones}
           seleccion={{ marcado: false, onAlternar: alternar }} /> :
           <p className="py-4 text-sm text-slate-500">No hay más pedidos con estos filtros.</p>}
