@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import { esCreditoAplicado } from '@/lib/cobro-naturaleza'
 
 export class CobrosSinConciliarError extends Error {
   readonly code = 'COBROS_PENDIENTES_CONCILIACION'
@@ -170,8 +171,12 @@ export async function resumirAbonosDelDia(
   for (const a of cobros) {
     const clase = clasificarCobroCartera(a)
     if (clase === 'INDEPENDIENTE') {
-      independientes += Math.round(Number(a.monto) * 100)
-      reversiones += Math.round(Number(a.reversion) * 100)
+      // #745: un Abono en BONO aplica crédito anterior. Es histórico/informativo,
+      // no un segundo ingreso ni una devolución de dinero si se corrige.
+      if (!esCreditoAplicado(a.metodoPago)) {
+        independientes += Math.round(Number(a.monto) * 100)
+        reversiones += Math.round(Number(a.reversion) * 100)
+      }
       abonosDetalle.push({
         abonoId: a.id, numero: a.numero, cliente: a.clienteNombre ?? 'Sin cliente', factura: a.facturaNumero ?? null,
         pedidoId: a.pedidoId ?? null, pedidoNumero: a.pedidoNumero ?? null, metodo: a.metodoPago,
@@ -200,7 +205,10 @@ export async function resumirAbonosDelDia(
       a.pagoFecha >= desde &&
       a.pagoFecha < hasta
     ) {
-      reversiones += Math.round(Number(a.reversion) * 100)
+      // El espejo de un Pago BONO no revirtió dinero nuevo: solo crédito aplicado.
+      if (!esCreditoAplicado(a.pagoMetodo ?? '')) {
+        reversiones += Math.round(Number(a.reversion) * 100)
+      }
       if (Number(a.reversion) > 0) abonosConCorreccion.push(a.id)
       if (a.pagoMetodo === 'EFECTIVO') {
         reversionesEfectivo += Math.round(Number(a.reversion) * 100)
@@ -227,31 +235,6 @@ export async function resumirAbonosDelDia(
     })
   }
   const correcciones = await leerCorreccionesDeAbonos(tx, abonosConCorreccion)
-  // ADR-002: correcciones ancladas a un PAGO sin abono. Restan de la caja del día del pago, igual que la de un espejo,
-  // y solo en efectivo si el pago fue en efectivo. (Un pago con abono se corrige por su abono; nunca por las dos vías.)
-  const porPago = await tx.$queryRaw<Array<FilaCorreccion & { metodo: string }>>(Prisma.sql`
-    SELECT c.numero, c.tipo, c."montoRevertido", c.motivo, c."createdAt", 'Pago '||g.metodo::text AS "abonoNumero",
-      p.id AS "pedidoId", p.numero AS "pedidoNumero", cl.nombre AS cliente,
-      u.nombre AS "autorizadoNombre", u.username AS "autorizadoUsuario", g.metodo::text AS metodo
-    FROM "CorreccionAbono" c
-    JOIN "Pago" g ON g.id = c."pagoId"
-    JOIN "Pedido" p ON p.id = g."pedidoId"
-    LEFT JOIN "Cliente" cl ON cl.id = p."clienteId"
-    LEFT JOIN "User" u ON u.id = c."autorizadoPorId"
-    WHERE g."createdAt" >= ${desde} AND g."createdAt" < ${hasta}
-      AND g."regularizacionId" IS NULL
-      AND p."estadoEntrega" NOT IN ('ANULADO', 'CANCELADO')
-    ORDER BY c."createdAt", c.numero`)
-  for (const f of porPago) {
-    const centavos = Math.round(Number(f.montoRevertido) * 100)
-    reversiones += centavos
-    if (f.metodo === 'EFECTIVO') reversionesEfectivo += centavos
-    correcciones.push({
-      numero: f.numero, abonoNumero: f.abonoNumero, tipo: f.tipo, monto: Number(f.montoRevertido), motivo: f.motivo,
-      autorizadoPor: (f.autorizadoNombre?.trim() || f.autorizadoUsuario) ?? 'Sin dato',
-      cliente: f.cliente ?? 'Sin cliente', pedidoId: f.pedidoId, pedidoNumero: f.pedidoNumero, fecha: f.createdAt.toISOString(),
-    })
-  }
   // #560: devolver el saldo a favor al cliente es una salida de dinero del día de su registro (una sola vez,
   // sin reabrir cierres anteriores). Resta como ajuste de cobros; solo la devolución en EFECTIVO sale de la caja.
   const devoluciones = await tx.devolucionSaldoFavor.findMany({

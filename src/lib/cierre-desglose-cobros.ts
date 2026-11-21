@@ -1,5 +1,7 @@
 // #631 — Desglose del dinero cobrado en el día por origen y medio, lista de a quién se fió y detalle de los pagos
-// digitales por confirmar. Funciones puras: el cierre las alimenta con lo que ya lee (no cambia ninguna cifra de dinero).
+// digitales por confirmar. BONO es crédito aplicado, no dinero nuevo (#745).
+
+import { esCreditoAplicado } from '@/lib/cobro-naturaleza'
 
 const aCentavos = (v: unknown): number => Math.round(Number(v ?? 0) * 100)
 const deCentavos = (c: number): number => c / 100
@@ -19,7 +21,7 @@ export interface ParteDesglose {
   efectivo: number
   digital: number
   total: number
-  /** Solo los medios digitales con valor (Nequi, transferencia, Daviplata, bono). */
+  /** Solo dinero nuevo digital (Nequi, transferencia, Daviplata). BONO no entra aquí. */
   porMetodo: Record<string, number>
 }
 
@@ -70,6 +72,8 @@ export function desglosarCobros(
   let aproxCentavos = 0
   const aproxPedidos = new Set<number>()
   for (const p of pagos) {
+    // #745: consumir saldo a favor no supone recibir dinero por vía digital.
+    if (esCreditoAplicado(p.metodo)) continue
     if (p.clasificacion) {
       sumar(hoy, p.metodo, p.clasificacion.ventaDiaCentavos)
       sumar(anteriores, p.metodo, p.clasificacion.carteraCentavos)

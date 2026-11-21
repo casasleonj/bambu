@@ -6,12 +6,11 @@ import { comisionesDelCierre } from '@/lib/comision-pagada'
 import { resumirAbonosDelDia } from '@/lib/cobro-cartera'
 import { resumirVentasCierre } from '@/lib/cierre-totales'
 import { logger } from '@/lib/logger'
-import { unidadesEntregadasDelDia, unidadesFisicasEntregadas } from '@/lib/unidades-entregadas-dia'
+import { unidadesEntregadasDelDia } from '@/lib/unidades-entregadas-dia'
 import { resolverStockInicial } from '@/lib/stock-inicial'
 import { PAGO_DE_PEDIDO_VIGENTE } from '@/lib/pago-confirmacion'
 import { desglosarCobros, detallarPorConfirmar, listarFiadosDelDia, listarGastosDelDia } from '@/lib/cierre-desglose-cobros'
 import { leerExigibles } from '@/lib/entregas-exigibles-db'
-import { clasificarCobrosDePedidos } from '@/lib/cobro-clasificacion-db'
 import { valorEntregadoPedidoCentavos, importesEntregaPedido } from '@/lib/valor-entregado-pedido'
 
 type PagoMetodoMonto = { metodo: MetodoPago; monto: unknown }
@@ -159,7 +158,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
           pedido: { estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
         },
         // #631: la fecha del pedido separa «ventas de hoy» de «fiados de días anteriores cobrados hoy».
-        select: { id: true, pedidoId: true, metodo: true, monto: true, pedido: { select: { fecha: true, numero: true } } },
+        select: { metodo: true, monto: true, pedido: { select: { fecha: true } } },
       }),
       // #631: detalle de los REPORTADO de días anteriores (los más recientes; el total sigue siendo el agregado).
       prisma.pago.findMany({
@@ -209,13 +208,12 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
     const unidades = await unidadesEntregadasDelDia(prisma, { desde: startOfDay, hasta: endOfDay }).catch((err) => {
       unidadesError = true
       logger.error({ err, fechaStr }, 'cierre: no se pudo repartir las unidades por día de entrega')
-      const acumulados = pedidos.map(unidadesFisicasEntregadas)
       return {
-        agua: acumulados.reduce((t, p) => t + p.agua, 0),
-        hielo: acumulados.reduce((t, p) => t + p.hielo, 0),
-        botellon: acumulados.reduce((t, p) => t + p.botellon, 0),
-        bolsaAgua: acumulados.reduce((t, p) => t + p.bolsaAgua, 0),
-        bolsaHielo: acumulados.reduce((t, p) => t + p.bolsaHielo, 0),
+        agua: pedidos.reduce((t, p) => t + p.cPacaAguaEnt, 0),
+        hielo: pedidos.reduce((t, p) => t + p.cPacaHieloEnt, 0),
+        botellon: pedidos.reduce((t, p) => t + p.cBotellonFabEnt + p.cBotellonDomEnt, 0),
+        bolsaAgua: pedidos.reduce((t, p) => t + p.cBolsaAguaEnt, 0),
+        bolsaHielo: pedidos.reduce((t, p) => t + p.cBolsaHieloEnt, 0),
         aproximados: [],
       }
     })
@@ -229,15 +227,17 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
     // #513: el Abono espejo de pagar-fiado ya está en `cobroVentasHoy` (su Pago); no se cuenta dos veces.
     const abonos = await resumirAbonosDelDia(prisma, startOfDay, endOfDay)
     const cobroCartera = abonos.total
-    const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
-    // #601: lo que entró en la caja física (efectivo) y lo que llegó por medios digitales.
+    // #745: BONO aplica crédito previamente recibido; permanece en `bono` para auditoría,
+    // pero nunca se vuelve a sumar a dinero recibido ni al neto del cierre.
+    const cobroVentasHoy = efectivo + transferencia + nequi + daviplata
+    // #601/#745: caja física y medios bancarios reciben dinero nuevo; BONO no es digital.
     const cobroCarteraEfectivo = abonos.totalEfectivo
     const cobroEfectivoHoy = efectivo + cobroCarteraEfectivo
     const cobroDigitalHoy = (cobroVentasHoy - efectivo) + (cobroCartera - cobroCarteraEfectivo)
 
     // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6: desglose INFORMATIVO de pagos aún
-    // REPORTADO cobrados HOY. NO altera netoCaja — el cierre suma todos los
-    // pagos por método como siempre.
+    // REPORTADO capturados HOY (incluye BONO informativo). No altera netoCaja:
+    // esta magnitud excluye expresamente la aplicación de crédito.
     const porConfirmar = {
       ...buildPorConfirmar(pagosReportadosHoyRaw, reportadosDiasPreviosAgg),
       // #631: detalle para listar pedido, cliente, factura y fecha de cada pago.
@@ -245,16 +245,8 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
       detalleDiasPrevios: detallarPorConfirmar(reportadosDiasPreviosRaw),
     }
     // #631: de dónde viene lo cobrado (origen × medio) y a quién se fió; no cambia ninguna cifra, solo la explica.
-    // #796: venta del día vs. cartera por la fecha de ENTREGA (no la de creación del pedido).
-    const clasificados = await clasificarCobrosDePedidos(prisma, pagosCapturadosHoy.map((pg) => pg.pedidoId))
     const desgloseCobros = desglosarCobros(
-      pagosCapturadosHoy.map((pg) => {
-        const c = clasificados.porCobro.get(pg.id)
-        return {
-          metodo: pg.metodo, monto: pg.monto, pedidoFecha: pg.pedido.fecha, pedidoNumero: pg.pedido.numero,
-          ...(c ? { clasificacion: { ventaDiaCentavos: c.ventaDiaCentavos, carteraCentavos: c.carteraCentavos, aproximado: c.aproximado } } : {}),
-        }
-      }),
+      pagosCapturadosHoy.map((pg) => ({ metodo: pg.metodo, monto: pg.monto, pedidoFecha: pg.pedido.fecha })),
       startOfDay, endOfDay, abonos, cobroVentasHoy + cobroCartera,
     )
     const fiadosDelDia = listarFiadosDelDia(pedidos.map(p => ({ ...p, exigible: exigibles.get(p.id) ?? 0 })))
@@ -458,8 +450,6 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
           pagadoRepartidores: comisionesAuto.pagadoRepartidores,
           pagadoRepartidoresOtrosMedios: comisionesAuto.pagadoRepartidoresOtrosMedios,
           total: comisionesAuto.total,
-          pagosCaja: comisionesAuto.pagosCaja,
-          pagosSinFechaVerificada: comisionesAuto.pagosSinFechaVerificada,
           repartidores: comisionesAuto.repartidores.map((r) => ({
             trabajadorId: r.trabajadorId, nombre: r.nombre, total: r.total, pagado: r.pagado, pendiente: r.pendiente,
             entregasAgua: r.entregasAgua, entregasHielo: r.entregasHielo, entregasBotellon: r.entregasBotellon,
