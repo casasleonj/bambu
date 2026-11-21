@@ -7,10 +7,12 @@ vi.mock("../operacion-consulta", () => ({
   OperacionConsulta: ({ pedidos, seleccion }: {
     pedidos: Pedido[];
     seleccion: { marcado: boolean; onAlternar: (p: Pedido) => void };
-  }) => <div>{pedidos.map(p => <button type="button" key={p.id}
-    data-testid={`cercania-check-${p.id}`}
-    aria-pressed={seleccion.marcado}
-    onClick={() => seleccion.onAlternar(p)}>{p.id}</button>)}</div>,
+  }) => <div>{pedidos.map(p => <div key={p.id}>
+    {seleccion.marcado && <span data-testid={`cercania-seleccionado-${p.id}`}>Seleccionado</span>}
+    <button type="button" data-testid={`cercania-check-${p.id}`}
+      aria-pressed={seleccion.marcado}
+      onClick={() => seleccion.onAlternar(p)}>{p.id}</button>
+  </div>)}</div>,
 }));
 
 function pedido(id: string): Pedido {
