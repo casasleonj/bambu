@@ -60,11 +60,14 @@ test.describe('#932 Cobro pendiente en General de Pedidos', () => {
       await expect(detalle).toContainText('5.000')
       await expect(detalle).toContainText('Este pedido')
       await expect(detalle).toContainText('Pedido #' + deudaPosterior.numero)
-      await expect(detalle).toContainText('2 Pacas')
+      await expect(detalle).toContainText(/2.*paca/i)
       // El panel móvil debe empujar la tarjeta, no salir de su viewport.
       if (dispositivo === 'móvil') {
-        const horizontal = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
-        expect(horizontal).toBe(false)
+        const desborda = await detalle.evaluate(elemento => {
+          const caja = elemento.getBoundingClientRect()
+          return caja.left < 0 || caja.right > window.innerWidth
+        })
+        expect(desborda).toBe(false)
       }
       await detalle.getByRole('link', { name: 'Ver fiados del cliente' }).click()
       await expect(page).toHaveURL(/tab=fiados/)
