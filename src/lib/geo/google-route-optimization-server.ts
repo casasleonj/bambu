@@ -32,13 +32,7 @@ interface ConfiguracionGoogleRuta {
 }
 
 /** Solo las variables que requiere este servicio, sin exigir NODE_ENV en tests. */
-interface VariablesGoogleRuta {
-  GOOGLE_ROUTE_OPTIMIZATION_ENABLED?: string
-  GOOGLE_ROUTE_OPTIMIZATION_QUOTA_CONFIRMED?: string
-  GOOGLE_ROUTE_OPTIMIZATION_PROJECT_ID?: string
-  GOOGLE_ROUTE_OPTIMIZATION_CLIENT_EMAIL?: string
-  GOOGLE_ROUTE_OPTIMIZATION_PRIVATE_KEY?: string
-}
+type VariablesGoogleRuta = Record<string, string | undefined>
 
 /** No permitir gasto por accidente: flag, cuota CONFIRMADA en Google Cloud y credenciales. */
 export function configuracionGoogleRuta(
