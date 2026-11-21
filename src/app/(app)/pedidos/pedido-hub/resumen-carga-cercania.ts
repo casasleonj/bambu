@@ -7,7 +7,6 @@
  * remanentesPorProducto, que respeta regalos y entregas parciales.
  */
 import { remanentesPorProducto } from "@/lib/barrios/remanentes-barrio";
-import { itemsConsulta } from "./consulta-datos";
 import type { Pedido } from "./types";
 
 export interface ResumenCargaCercania {
@@ -26,18 +25,21 @@ function cantidadesPendientes(p: Pedido): Record<string, number> | null {
   try {
     if (p.items?.length) return remanentesPorProducto(p.items);
 
-    // Pedidos anteriores sin líneas modernas usan las mismas columnas legacy
-    // que ya presenta PedidoHub; nunca sumar las columnas legacy junto con items.
-    const legacy = itemsConsulta(p);
-    if (!legacy.length) return null;
-    const resultado: Record<string, number> = Object.create(null) as Record<string, number>;
-    for (const item of legacy) {
-      if (!Number.isSafeInteger(item.pedidas) || !Number.isSafeInteger(item.entregadas) ||
-        item.pedidas < 0 || item.entregadas < 0) return null;
-      const faltan = Math.max(0, item.pedidas - item.entregadas);
-      if (faltan > 0) resultado[item.producto] = (resultado[item.producto] ?? 0) + faltan;
-    }
-    return resultado;
+    // Compatibilidad física con clasificarGestionVial() del backend #930:
+    // restar CADA subproducto legacy antes de agregar por tipo. En especial,
+    // no compensar un botellón FAB sobreentregado con otro DOM pendiente.
+    const legacy = [
+      { producto: "PACA_AGUA", cantPedido: p.cPacaAguaPed, cantEntrega: p.cPacaAguaEnt },
+      { producto: "PACA_HIELO", cantPedido: p.cPacaHieloPed, cantEntrega: p.cPacaHieloEnt },
+      { producto: "BOTELLON", cantPedido: p.cBotellonFabPed, cantEntrega: p.cBotellonFabEnt },
+      { producto: "BOTELLON", cantPedido: p.cBotellonDomPed, cantEntrega: p.cBotellonDomEnt },
+      { producto: "BOLSA_AGUA", cantPedido: p.cBolsaAguaPed, cantEntrega: p.cBolsaAguaEnt },
+      { producto: "BOLSA_HIELO", cantPedido: p.cBolsaHieloPed, cantEntrega: p.cBolsaHieloEnt },
+    ];
+    if (legacy.some(i => !Number.isSafeInteger(i.cantPedido) ||
+      !Number.isSafeInteger(i.cantEntrega) || i.cantPedido < 0 || i.cantEntrega < 0)) return null;
+    if (!legacy.some(i => i.cantPedido > 0 || i.cantEntrega > 0)) return null;
+    return remanentesPorProducto(legacy);
   } catch {
     // Datos físicos incompletos o inconciliables: nunca inventar carga.
     return null;
