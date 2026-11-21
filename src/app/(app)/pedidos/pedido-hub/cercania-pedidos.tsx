@@ -53,12 +53,10 @@ export function CercaniaPedidos({ activo, pedidos, viewport, hoyBogota, acciones
   const [error, setError] = useState<string | null>(null);
   const [proveedor, setProveedor] = useState("");
   const [firmaSolicitud, setFirmaSolicitud] = useState<string | null>(null);
+  const [ultimaPagina, setUltimaPagina] = useState(pedidos);
   const envio = useRef(0);
   const ocupada = useRef(false);
   const focoTrasMover = useRef<string | null>(null);
-  // Recordar los pedidos que ya se vieron completados, incluso si después
-  // desaparecen de la página por un filtro. No se muta estado en efectos.
-  const descartados = useRef<Set<string>>(new Set());
   const firmaActual = useRef<string>("");
   useEffect(() => {
     const id = focoTrasMover.current;
@@ -69,20 +67,23 @@ export function CercaniaPedidos({ activo, pedidos, viewport, hoyBogota, acciones
     focoTrasMover.current = null;
   }, [elegidos]);
   const encontrados = new Map(pedidos.map(p => [p.id, p]));
-  // Nunca resucitar una entrega completada al cambiar a otra página.
-  // Los datos seleccionados fuera de página son una instantánea, no hechos
-  // validados: el servidor los vuelve a comprobar al calcular (#959).
-  const noElegibles = new Set(elegidos.filter(p => {
-    const actual = encontrados.get(p.id);
-    return actual !== undefined && !esVisitaPendienteCercania(actual);
-  }).map(p => p.id));
+  // React permite ajustar estado frente a nuevos props durante render si se
+  // protege por identidad de la nueva página. No utilizar setState en effect.
+  // Así la selección inválida se elimina DE VERDAD y no resucita al paginar.
+  if (ultimaPagina !== pedidos) {
+    setUltimaPagina(pedidos);
+    const invalidados = new Set(elegidos.filter(p => {
+      const actual = encontrados.get(p.id);
+      return actual !== undefined && !esVisitaPendienteCercania(actual);
+    }).map(p => p.id));
+    if (invalidados.size)
+      setElegidos(anterior => anterior.filter(p => !invalidados.has(p.id)));
+  }
+  // Fuera de página se conserva una instantánea hasta obtener datos frescos.
+  // La API valida otra vez su estado físico al calcular.
   const seleccionados = elegidos.map(p => encontrados.get(p.id) ?? p)
-    .filter(p => !noElegibles.has(p.id) && !descartados.current.has(p.id))
     .filter(esVisitaPendienteCercania);
   const ids = new Set(seleccionados.map(p => p.id));
-  useEffect(() => {
-    for (const id of noElegibles) descartados.current.add(id);
-  }, [pedidos, elegidos]);
   const carga = resumirCargaCercania(seleccionados);
   // Los cambios físicos, financieros o de ubicación invalidan una sugerencia ya calculada.
   // No se optimiza de nuevo sin acción explícita del usuario (#930).
@@ -123,7 +124,6 @@ export function CercaniaPedidos({ activo, pedidos, viewport, hoyBogota, acciones
     envio.current += 1;
     focoTrasMover.current = p.id;
     const estabaMarcado = ids.has(p.id);
-    if (!estabaMarcado) descartados.current.delete(p.id);
     setElegidos(anterior => estabaMarcado
       ? anterior.filter(x => x.id !== p.id)
       : [...anterior.filter(x => x.id !== p.id), p]);
