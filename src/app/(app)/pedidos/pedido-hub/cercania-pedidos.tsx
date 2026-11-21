@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { OperacionConsulta, type AccionesConsulta } from "./operacion-consulta";
+import { OperacionList } from "./operacion-list";
 import type { AccionKey, Pedido } from "./types";
 
 type Fase = "listo" | "gps" | "calculando" | "calculado" | "desactualizado" | "error";
@@ -190,8 +191,9 @@ export function CercaniaPedidos({ activo, pedidos, viewport, hoyBogota, acciones
       <div className="rounded-xl border border-stone-200 bg-white p-3 sm:p-4">
         <h2 className="font-bold text-slate-800">Otros pedidos ({restantes.length} visibles)</h2>
         <p className="mt-1 text-xs text-slate-500">Puedes seguir buscando y filtrando; los seleccionados permanecen arriba.</p>
-        {restantes.length ? <OperacionConsulta pedidos={restantes} viewport={viewport}
-          hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={acciones}
+        {restantes.length ? <OperacionList pedidos={restantes} viewport={viewport}
+          hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} consulta={acciones}
+          modoRecorridoExterno={false}
           seleccion={{ marcado: false, onAlternar: alternar }} /> :
           <p className="py-4 text-sm text-slate-500">No hay más pedidos con estos filtros.</p>}
       </div>
