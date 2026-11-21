@@ -142,6 +142,9 @@ jobs:
         # no pueden ser opcionales. Si fallan, el job falla y con él el gate.
         run: node --test scripts/ci/__tests__/clasificar-cambios.node.test.mjs scripts/ci/__tests__/politica-ci.node.test.mjs
 
+      - name: Validate Playwright JSON report parser (#334)
+        run: node --test scripts/ci/playwright-spec-summary.test.mjs
+
       - name: Classify diff (declarative vs. requires E2E)
         id: classify
         run: |
@@ -532,7 +535,24 @@ jobs:
           npx playwright install-deps chromium
 
       - name: Run Playwright tests (shard ${{ matrix.shard }})
-        run: npx playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=list,html
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: playwright-results/resultado.json
+        run: |
+          mkdir -p playwright-results
+          npx playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=list,html,json
+
+      - name: Publish E2E specs to job summary (#334)
+        if: always()
+        run: node scripts/ci/playwright-spec-summary.mjs playwright-results/resultado.json "shard ${{ matrix.shard }}/${{ strategy.job-total }}"
+
+      - name: Upload structured E2E results (#334)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-${{ matrix.shard }}
+          path: playwright-results/resultado.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Dump Postgres/Redis container logs and resource usage
         # Investigación de capacidad de CI (continuación de Known Issue #25):
@@ -733,8 +753,10 @@ jobs:
         # suite en viewport mobile además duplicaría el tiempo sin aportar
         # señal de soak. Cuando el flag esté ON en `e2e` (F10b) estos specs
         # se reintegran a la matriz general y este job se elimina.
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: playwright-results/resultado.json
         run: >
-          npx playwright test --reporter=html --project=chromium
+          npx playwright test --reporter=html,json --project=chromium
           e2e/pedidos-hub.spec.ts
           e2e/regalos-explicitos-795.spec.ts
           e2e/pedidos-hub-recurrentes.spec.ts
@@ -745,6 +767,19 @@ jobs:
           e2e/pedidos-entregas-historicas-763.spec.ts
           e2e/pedidos-pendientes-anteriores-797.spec.ts
           e2e/pedidos-alerta-riesgo-929.spec.ts
+
+      - name: Publish Hub specs to job summary (#334)
+        if: always()
+        run: node scripts/ci/playwright-spec-summary.mjs playwright-results/resultado.json "Hub V2 ON"
+
+      - name: Upload structured Hub results (#334)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-hub
+          path: playwright-results/resultado.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Dump Postgres/Redis container logs and resource usage
         if: always()
