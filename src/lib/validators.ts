@@ -1,6 +1,5 @@
-import { UnitPrice, MAX_UNIT_PRICE } from '@/shared/domain/unit-price'
-import { cantidadesRegaloValidas } from '@/shared/domain/cantidades-regalo'
 import { z } from "zod";
+import { fechaGastoValida } from '@/lib/fecha-gasto'
 import { validarPlanPago } from '@/lib/sueldos-fijos'
 import { importeFiadoSchema, metodoFiadoSchema, sumarCobroFiado } from './fiados-cobro'
 import { normalizarTelefono } from "./telefono";
@@ -58,21 +57,13 @@ export const itemsSinProductosDuplicados = (items: Array<{ producto: string }>, 
   }
 }
 
-export const PrecioUnitarioSchema = z.number().min(0).max(MAX_UNIT_PRICE).refine(value => {
-  try { UnitPrice.fromDecimal(value); return true } catch { return false }
-}, { message: 'El precio admite hasta 6 decimales.' })
-
 export const PedidoItemSchema = z.object({
   producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),
   cantidad: z.coerce.number().int().min(0),
-  cantidadRegalo: z.number().int().min(0).max(2147483647).optional(),
-  motivoRegalo: z.string().trim().min(1).max(500).optional(),
-  precioManual: PrecioUnitarioSchema.optional().refine(
+  precioManual: z.number().min(0).optional().refine(
     val => val === undefined || val > 0,
     { message: 'Precio manual debe ser mayor a 0' }
   ),
-}).refine(i => cantidadesRegaloValidas(i.cantidad, i.cantidadRegalo ?? 0), {
-  path: ['cantidadRegalo'], message: 'El regalo requiere unidades con precio y una cantidad física válida.',
 })
 
 // ====================
@@ -89,15 +80,7 @@ export const PedidoCreateSchema = z.object({
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional().default('DOMICILIO'),
   origen: OrigenPedidoSchema.optional().default('PEDIDO'),
   items: z.array(PedidoItemSchema).min(1, 'Agrega al menos un producto').superRefine(itemsSinProductosDuplicados),
-  preciosManuales: z.record(z.string(), PrecioUnitarioSchema).optional(),
-  // #925: importe visible al confirmar; el commit detecta cambios sin cobrar a otro precio.
-  precioEsperado: z.number().finite().min(0).optional(),
-  // #925: impedir diferencias por SKU que se compensen en el total.
-  preciosEsperados: z.array(z.object({
-    producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),
-    precio: PrecioUnitarioSchema,
-    origen: z.enum(['manual', 'cliente', 'volumen', 'base']),
-  })).min(1).optional(),
+  preciosManuales: z.record(z.string(), z.number().min(0, 'Precio manual no puede ser negativo')).optional(),
   pagos: z.array(
     z.object({
       metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
@@ -106,8 +89,6 @@ export const PedidoCreateSchema = z.object({
   ).optional(),
   obs: z.string().max(500).optional(),
   fechaEntrega: z.string().optional(),
-  /** #836 F2b: hora acordada HH:MM (Bogotá). Solo ordena/agrupa; requiere `fechaEntrega`. */
-  entregaNoAntesDe: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, 'La hora debe tener formato HH:MM').optional(),
   // Snapshot de dirección puntual del pedido (no toca Cliente/Negocio) —
   // ver CrearPedidoUseCase.
   direccionEntrega: z.string().max(200).optional(),
@@ -231,7 +212,6 @@ export const EntregaOficinaSchema = z.object({
   itemsEntregados: z.array(z.object({
     producto: z.string().min(1),
     cantidad: z.number().int().min(0),
-    cantidadRegalo: z.number().int().min(0).max(2147483647).optional(),
   })).min(1, 'Indica qué se entregó'),
   repartidorId: z.string().min(1).optional(),
   recibioDinero: z.enum(['REPARTIDOR', 'OFICINA']).optional(),
@@ -265,7 +245,6 @@ export const EntregaSchema = z.object({
   itemsEntregados: z.array(z.object({
     producto: z.string(),
     cantidad: z.number().int().min(0),
-    cantidadRegalo: z.number().int().min(0).max(2147483647).optional(),
   })).optional(),
   pagos: z.array(z.object({
     metodo: z.string(),
@@ -296,9 +275,6 @@ export const EntregaSchema = z.object({
   // Offline-first: dedup si la request se encola y se reintenta
   offlineId: z.string().optional(),
 }).superRefine((data, ctx) => {
-  if (data.itemsEntregados?.some(i => i.cantidadRegalo !== undefined) && !data.offlineId) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['offlineId'], message: 'Falta la clave de reintento de la entrega con regalos.' })
-  }
   // ADR-PAGO-EMBARQUE-CAPTURA-001 §4.1: un pago de misión DEBE declarar el
   // embarque de captura. Nunca `null` silencioso.
   const tieneCobro = (data.pagos ?? []).some((p) => p.monto > 0)
@@ -333,9 +309,7 @@ export const EntregaSchema = z.object({
 
 export const VentaLibreSchema = z.object({
   clienteId: z.string().min(1),
-  items: z.array(PedidoItemSchema.refine(i => !i.cantidadRegalo, {
-    message: 'Registra los regalos autorizados desde Pedidos; este flujo no concede regalos.', path: ['cantidadRegalo'],
-  })).min(1),
+  items: z.array(PedidoItemSchema).min(1),
   pagos: z.array(z.object({
     metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
     monto: z.coerce.number().min(0),
@@ -378,7 +352,7 @@ export const VentaLibreSchema = z.object({
   // 2026-09-06) — reemplazado por `origen` explícito.
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional(),
   origen: z.enum(['PEDIDO', 'VENTA_RAPIDA']).optional(),
-  preciosManuales: z.record(z.string(), PrecioUnitarioSchema).optional(),
+  preciosManuales: z.record(z.string(), z.number()).optional(),
   total: z.number().optional(),
   clienteNuevo: z.object({
     nombre: z.string().min(1).max(100).optional(),
@@ -663,7 +637,7 @@ export const GastoCreateSchema = z.object({
   monto: z.coerce.number().positive(),
   responsable: z.string().max(100).optional(),
   notas: z.string().max(500).optional(),
-  fecha: z.string().optional(),
+  fecha: z.string().refine(fechaGastoValida, 'Fecha inválida: use YYYY-MM-DD o ISO con zona horaria').optional(),
   embarqueId: z.string().optional(),
 });
 
@@ -933,12 +907,12 @@ export const CerrarEmbarqueSchema = z.object({
       cBolsaHieloEnt: z.number().int().min(0).max(MAX_CANTIDAD_CIERRE).nullish().default(0),
     }).nullish(),
     preciosReales: z.object({
-      pacaAgua: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
-      pacaHielo: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
-      botellonFab: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
-      botellonDom: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
-      bolsaAgua: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
-      bolsaHielo: PrecioUnitarioSchema.max(MAX_MONTO_CIERRE).nullish().default(0),
+      pacaAgua: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
+      pacaHielo: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
+      botellonFab: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
+      botellonDom: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
+      bolsaAgua: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
+      bolsaHielo: z.number().min(0).max(MAX_MONTO_CIERRE).nullish().default(0),
     }).nullish(),
     pagado: z.enum(['COMPLETO', 'PARCIAL', 'NO_PAGADO']),
     pagos: z.array(z.object({
@@ -1001,10 +975,6 @@ export const ResumenFacturasQuerySchema = z.object({
   clienteId: z.string().min(1),
   desde: FechaResumenSchema.optional(),
   hasta: FechaResumenSchema.optional(),
-  // Ausente o TODAS = todas las facturas del cliente/período (#758).
-  estado: z.enum(['TODAS', 'EMITIDA', 'PARCIAL', 'PAGADA', 'ANULADA']).optional(),
-  // Solo aplica con TODAS. Ausente = se muestran (atenuadas, sin sumar).
-  incluirAnuladas: z.enum(['true', 'false']).optional(),
 }).refine((data) => !data.desde || !data.hasta || data.hasta >= data.desde, {
   message: 'La fecha hasta debe ser posterior o igual a la fecha desde',
   path: ['hasta'],
