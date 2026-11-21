@@ -44,6 +44,17 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe("#930 selección Cercanía en Pedidos", () => {
   beforeEach(() => { autorizarGPS(); });
 
+  it("conserva agrupación por barrio en otros pedidos y nunca duplica seleccionados", () => {
+    const c = { ...pedido("101"), grupoBarrio: { clave: "b:centro", etiqueta: "Centro" } };
+    const v = { ...pedido("102"), grupoBarrio: { clave: "b:villa", etiqueta: "Villa Nueva" } };
+    render(vista([c, v]));
+    expect(screen.getByTestId("pedidos-agrupados-barrio")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("cercania-check-101"));
+    expect(screen.getByTestId("cercania-seleccionado-101")).toBeTruthy();
+    expect(screen.getAllByTestId("cercania-check-101")).toHaveLength(1);
+    expect(screen.getByTestId("grupo-barrio-b:villa")).toBeTruthy();
+  });
+
   it("sube seleccionados y no consulta rutas al marcar/desmarcar", () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
