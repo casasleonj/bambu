@@ -322,8 +322,19 @@ export default function ProveedoresClient({ initialProveedores }: ProveedoresCli
       )}
 
       <ProveedorDetailModal open={showDetail} onClose={closeDetail} proveedor={selectedProveedor} onEdit={openEdit} />
-      <ProveedorFormModal open={modalOpen} onClose={closeModal} onSaved={fetchProveedores}
-        editingId={editingId} initialData={form} />
+      {/* #754: el modal se monta de forma persistente y su estado interno solo
+          se inicializa al montar. Sin la `key`, abrir «Editar» en el proveedor
+          B reutiliza el formulario que quedó del proveedor A. La key ata el
+          formulario al registro elegido: cada id estrena instancia, y el modo
+          Crear (null) también. */}
+      <ProveedorFormModal
+        key={editingId ?? 'nuevo'}
+        open={modalOpen}
+        onClose={closeModal}
+        onSaved={fetchProveedores}
+        editingId={editingId}
+        initialData={form}
+      />
       {modal}
     </div>
   );
