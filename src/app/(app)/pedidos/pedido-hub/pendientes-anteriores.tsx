@@ -16,6 +16,7 @@ interface Props {
   onOpen: (pedido: Pedido) => void;
   onVerTodos: () => void;
   onReintentar?: () => void;
+  modoRecorridoExterno?: boolean;
 }
 
 /**
@@ -25,7 +26,7 @@ interface Props {
  */
 export function PendientesAnteriores({
   pedidos, total, error, cargando, viewport, hoyBogota, consulta,
-  onAccion, onOpen, onVerTodos, onReintentar,
+  onAccion, onOpen, onVerTodos, onReintentar, modoRecorridoExterno,
 }: Props) {
   if (!cargando && !error && total === 0) return null;
   const marco =
@@ -77,6 +78,7 @@ export function PendientesAnteriores({
         onOpen={onOpen}
         consulta={consulta}
         arrastre
+        modoRecorridoExterno={modoRecorridoExterno}
       />
       {total > pedidos.length && (
         <p className="mt-2 text-xs text-slate-600">
