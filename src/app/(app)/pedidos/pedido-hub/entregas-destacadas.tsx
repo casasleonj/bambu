@@ -65,7 +65,11 @@ function Momento({
       <span>{cantidades(momento.cantidades)}</span>
       {momento.completa
         ? !ocultarCompletado && <span className="font-semibold text-emerald-800">✓ Completado</span>
-        : !momento.porConciliar && <span className="font-semibold text-amber-800">Parcial</span>}
+        : !momento.porConciliar && (
+            <span className="font-semibold text-amber-800">
+              Parcial{momento.faltante.length > 0 && " · faltaban " + cantidades(momento.faltante)}
+            </span>
+          )}
       {momento.porConciliar && <span className="font-semibold text-amber-800">Por conciliar</span>}
     </li>
   );

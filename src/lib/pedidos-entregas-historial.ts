@@ -42,6 +42,8 @@ export interface MomentoEntrega {
   cantidades: CantidadEntrega[];
   /** Evento tras el cual el pedido quedó completo (nunca si el histórico es dudoso). */
   completa: boolean;
+  /** Lo que aún faltaba por entregar tras este momento; vacío si completa o dudoso. */
+  faltante: CantidadEntrega[];
   porConciliar: boolean;
 }
 export interface EntregaDestacada {
@@ -146,6 +148,7 @@ export function proyectarEntregaHistorial(
       horaVerificable: !e.precisionDia,
       cantidades: lineas(new Map(cantidad.map((l) => [l.producto, l.cantidad]))),
       completa: false,
+      faltante: lineas(new Map([...pedidas].map(([producto, n]) => [producto, n - (acumulado.get(producto) ?? 0)]))),
       porConciliar: !!e.incompleto || !e.cantidades,
     };
     momentos.push(momento);
@@ -162,7 +165,7 @@ export function proyectarEntregaHistorial(
   if (dudoso) {
     fechaCompletado = null;
     for (const h of agrupados.values()) h.completado = false;
-    for (const m of momentos) m.completa = false;
+    for (const m of momentos) { m.completa = false; m.faltante = []; }
   }
   const completoAlCorte = !dudoso && comparar(cantidadAlCorte, pedidas);
   const anterior = diaEntregaBogota(pedido.fecha) < diaEntregaBogota(rango.desde);

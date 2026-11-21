@@ -67,6 +67,8 @@ describe("#763 — clasificación histórica de entregas", () => {
       ["2026-11-09T19:15:00.000Z", "2026-11-09", true, true],
     ]);
     expect(r?.entregas.map((m) => m.cantidades[0].cantidad)).toEqual([3, 3]);
+    expect(r?.entregas[0].faltante).toEqual([{ producto: "PACA_AGUA", cantidad: 3 }]);
+    expect(r?.entregas[1].faltante).toEqual([]);
   });
   it("#852: 11 p. m. en Colombia (04:00 UTC del día siguiente) conserva el día de Bogotá", () => {
     const r = proyectarEntregaHistorial(pedido, [
@@ -83,7 +85,7 @@ describe("#763 — clasificación histórica de entregas", () => {
   it("#852: histórico dudoso no marca ninguna entrega como completa", () => {
     const r = proyectarEntregaHistorial({ ...pedido, ajustePosterior: true }, [eLunes, evento("2", "2026-11-09T20:00:00Z", 3)], lunes);
     expect(r?.estadoAlCorte).toBe("POR_CONCILIAR");
-    expect(r?.entregas.every((m) => !m.completa)).toBe(true);
+    expect(r?.entregas.every((m) => !m.completa && m.faltante.length === 0)).toBe(true);
   });
   it("E19: tres fechas, la completitud se reconoce solo en el último hecho", () => {
     const r = proyectarEntregaHistorial(pedido, [

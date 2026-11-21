@@ -86,7 +86,7 @@ describe("#763 — tarjeta de entrega con histórico al corte", () => {
     expect(filas).toHaveLength(2);
     expect(filas[0].textContent).toMatch(/9:40\s*a\.\s*m\./);
     expect(filas[0]).toHaveTextContent("4 pacas de agua");
-    expect(filas[0]).toHaveTextContent("Parcial");
+    expect(filas[0]).toHaveTextContent("Parcial · faltaban 2 pacas de agua");
     expect(filas[1].textContent).toMatch(/2:15\s*p\.\s*m\./);
     expect(filas[1]).toHaveTextContent("2 pacas de agua");
     expect(filas[1]).toHaveTextContent("✓ Completado");
