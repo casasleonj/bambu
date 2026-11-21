@@ -78,7 +78,12 @@ export function OperacionConsulta({
   onOpen: (p: Pedido) => void;
   acciones: AccionesConsulta;
   /** #930: controles de selección solo en el modo Cercanía. */
-  seleccion?: { marcado: boolean; onAlternar: (pedido: Pedido) => void };
+  seleccion?: {
+    marcado: boolean;
+    onAlternar: (pedido: Pedido) => void;
+    ordenIds?: readonly string[];
+    fueraDePaginaIds?: ReadonlySet<string>;
+  };
 }) {
   return (
     <div
@@ -201,6 +206,7 @@ export function OperacionConsulta({
             }}
           >
             <div className={styles.cliente}>
+              {seleccion?.marcado && <span className="sr-only" data-testid={`cercania-seleccionado-${p.id}`}>Seleccionado</span>}
               {seleccion && (
                 <label className="inline-flex shrink-0 items-center gap-1 rounded px-1 py-1 text-xs text-blue-800" onClick={event => event.stopPropagation()}>
                   <input type="checkbox" className="h-5 w-5 accent-blue-700" checked={seleccion.marcado}
@@ -218,6 +224,12 @@ export function OperacionConsulta({
                 </label>
               )}
               <div>
+                {seleccion?.ordenIds?.includes(p.id) && (
+                  <span className="mb-1 inline-block rounded-md bg-blue-700 px-2 py-1 text-xs font-bold text-white"
+                    aria-label={`Parada ${seleccion.ordenIds.indexOf(p.id) + 1}`}>
+                    {seleccion.ordenIds.indexOf(p.id) + 1}
+                  </span>
+                )}
                 <strong className={styles.nombre}>
                   {p.negocioId ? "🏪" : "👤"} {nombre}
                 </strong>
@@ -269,6 +281,9 @@ export function OperacionConsulta({
                   >
                     ⚠️ {textoRiesgoOperativo(p.riesgoOperativo)}
                   </p>
+                )}
+                {seleccion?.fueraDePaginaIds?.has(p.id) && (
+                  <p className="mt-1 text-xs text-amber-800">Fuera del filtro o página actual; el servidor verificará su vigencia.</p>
                 )}
                 {/* #913: la venta anónima en punto no tiene barrio: no se rotula «Sin barrio». */}
                 {!esVentaAnonima(p) && (
