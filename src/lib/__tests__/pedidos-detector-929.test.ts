@@ -16,8 +16,9 @@ import { prisma } from '@/lib/prisma'
 import { getConfigs, getConfigNumber } from '@/lib/config'
 import { findPedidosEnRiesgo, findPedidosHoyEnRiesgoIds } from '../pedidos-sin-asignar'
 
-const findMany = vi.mocked(prisma.pedido.findMany)
-const embarquesCerrados = vi.mocked(prisma.embarque.count)
+const findMany = prisma.pedido.findMany as ReturnType<typeof vi.fn>
+const embarquesCerrados = prisma.embarque.count as ReturnType<typeof vi.fn>
+const groupBy = prisma.embarque.groupBy as ReturnType<typeof vi.fn>
 const hoy = new Date('2026-11-13T07:30:00-05:00')
 const ayer = new Date('2026-11-12T17:40:00-05:00')
 
@@ -41,7 +42,7 @@ beforeEach(() => {
     HORARIO_TARDE_INICIO: '14:00', HORARIO_TARDE_FIN: '17:00',
   })
   vi.mocked(getConfigNumber).mockResolvedValue(2)
-  vi.mocked(prisma.embarque.groupBy).mockResolvedValue([])
+  groupBy.mockResolvedValue([])
   embarquesCerrados.mockResolvedValue(0)
 })
 afterEach(() => vi.useRealTimers())
@@ -50,7 +51,7 @@ describe('#929 detector compartido: banner, filtro y tarjetas', () => {
   it('incluye a #1084 de ayer en riesgo 07:30 (fixture contrafactual), sin reiniciar por fecha', async () => {
     precargar([base('1084')])
     expect(await findPedidosHoyEnRiesgoIds()).toEqual(['1084'])
-    const where = findMany.mock.calls[0][0]!.where!
+    const where = findMany.mock.calls[0][0].where
     expect(where.fecha).toHaveProperty('lte')
     expect(where.fecha).not.toHaveProperty('gte')
   })
