@@ -310,8 +310,13 @@ test.describe('Embarques — Tab Físico — Idempotencia (retry offline)', () =
       expect(response.status(), `custodia inválida: ${String(custodia)}`).toBe(400)
     }
 
+    const sinReferenciaValida = await apiPost(page, `/api/embarques/${embarqueId}/movimientos`, {
+      tipo: 'DESCARTE', producto: 'PACA_AGUA', cantidad: 1, offlineId: '  ',
+    })
+    expect(sinReferenciaValida.status()).toBe(400)
+
     const lista = await (await apiGet(page, `/api/embarques/${embarqueId}/movimientos`)).json()
-    expect(lista.movimientos.filter((m: { tipo: string }) => m.tipo === 'CUSTODY_TRANSFER')).toHaveLength(0)
+    expect(lista.movimientos.filter((m: { tipo: string }) => m.tipo === 'CUSTODY_TRANSFER' || m.tipo === 'DESCARTE')).toHaveLength(0)
   })
 
   test('una referencia no puede identificarse con otro embarque ni con otra cantidad', async ({ page }) => {
