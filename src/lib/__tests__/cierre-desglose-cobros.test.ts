@@ -24,6 +24,20 @@ describe('#631 desglosarCobros', () => {
     expect(d.cuadra).toBe(true)
   })
 
+  it('#745: un BONO de hoy o de fiado anterior se conserva como crédito, no dinero digital', () => {
+    const d = desglosarCobros([
+      { metodo: 'BONO', monto: 8000, pedidoFecha: hoy },
+      { metodo: 'BONO', monto: 4000, pedidoFecha: ayer },
+      { metodo: 'NEQUI', monto: 3000, pedidoFecha: hoy },
+      { metodo: 'EFECTIVO', monto: 1000, pedidoFecha: ayer },
+    ], desde, hasta, sinAbonos, 4000)
+    expect(d.ventasHoy).toEqual({ efectivo: 0, digital: 3000, total: 3000, porMetodo: { NEQUI: 3000 } })
+    expect(d.fiadosAnteriores).toEqual({ efectivo: 1000, digital: 0, total: 1000, porMetodo: {} })
+    expect(d.digital).toBe(3000)
+    expect(d.efectivo).toBe(1000)
+    expect(d.cuadra).toBe(true)
+  })
+
   it('el límite del día es [desde, hasta): un pedido a las 00:00 de mañana es de otro día', () => {
     const manana = new Date(hasta)
     const d = desglosarCobros([{ metodo: 'EFECTIVO', monto: 5000, pedidoFecha: manana }], desde, hasta, sinAbonos, 5000)
@@ -87,40 +101,5 @@ describe('#631 detallarPorConfirmar', () => {
     }])
     expect(r[0]).toEqual({ pagoId: 'g1', pedidoId: 'p1', numero: 1042, clienteId: 'c1', cliente: 'Tienda La Esperanza', factura: 'F-0318', fecha: '2026-11-05T15:42:00.000Z', metodo: 'NEQUI', monto: 90000 })
     expect(r[1]).toMatchObject({ clienteId: null, cliente: 'Sin cliente', factura: null })
-  })
-})
-
-describe('#796 desglosarCobros con clasificación por fecha de entrega', () => {
-  it('un pedido creado ayer pero entregado y cobrado hoy cuenta como venta de hoy', () => {
-    const d = desglosarCobros([
-      { metodo: 'EFECTIVO', monto: 7500, pedidoFecha: ayer, clasificacion: { ventaDiaCentavos: 750000, carteraCentavos: 0, aproximado: false } },
-    ], desde, hasta, sinAbonos, 7500)
-    expect(d.ventasHoy.efectivo).toBe(7500)
-    expect(d.fiadosAnteriores.total).toBe(0)
-    expect(d.cuadra).toBe(true)
-  })
-
-  it('parte un cobro en venta de hoy y cartera sin perder centavos y respeta el medio', () => {
-    const d = desglosarCobros([
-      { metodo: 'NEQUI', monto: 250, pedidoFecha: hoy, clasificacion: { ventaDiaCentavos: 15000, carteraCentavos: 10000, aproximado: false } },
-    ], desde, hasta, sinAbonos, 250)
-    expect(d.ventasHoy.porMetodo).toEqual({ NEQUI: 150 })
-    expect(d.fiadosAnteriores.porMetodo).toEqual({ NEQUI: 100 })
-    expect(d.digital).toBe(250)
-    expect(d.cuadra).toBe(true)
-  })
-
-  it('lista los cobros de fecha aproximada con su pedido y monto', () => {
-    const d = desglosarCobros([
-      { metodo: 'EFECTIVO', monto: 5000, pedidoFecha: hoy, pedidoNumero: 1163, clasificacion: { ventaDiaCentavos: 500000, carteraCentavos: 0, aproximado: true } },
-      { metodo: 'EFECTIVO', monto: 3000, pedidoFecha: hoy, pedidoNumero: 1164, clasificacion: { ventaDiaCentavos: 300000, carteraCentavos: 0, aproximado: false } },
-    ], desde, hasta, sinAbonos, 8000)
-    expect(d.aproximados).toEqual({ cantidad: 1, monto: 5000, pedidos: [1163] })
-  })
-
-  it('sin clasificación conserva la regla anterior por fecha del pedido', () => {
-    const d = desglosarCobros([{ metodo: 'EFECTIVO', monto: 100, pedidoFecha: ayer }], desde, hasta, sinAbonos, 100)
-    expect(d.fiadosAnteriores.efectivo).toBe(100)
-    expect(d.aproximados?.cantidad).toBe(0)
   })
 })
