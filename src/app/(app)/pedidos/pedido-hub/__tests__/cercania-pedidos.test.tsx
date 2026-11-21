@@ -33,7 +33,8 @@ function autorizarGPS() {
       coords: {
         latitude: 10.03, longitude: -73.23, accuracy: 12,
         altitude: null, altitudeAccuracy: null, heading: null, speed: null,
-      }, timestamp: Date.now(),
+        toJSON: () => ({ latitude: 10.03, longitude: -73.23, accuracy: 12 }),
+      }, timestamp: Date.now(), toJSON: () => ({}),
     }) },
   });
 }
