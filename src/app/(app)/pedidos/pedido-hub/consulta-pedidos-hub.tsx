@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallowSearchParams } from "@/hooks/use-shallow-search-params";
 import { useConsultaPedidos } from "@/hooks/use-consulta-pedidos";
 import { useOnlineStatus } from "@/hooks/use-online-status";
@@ -114,7 +114,20 @@ export function ConsultaPedidosHub(props: Props) {
   // #788: rango que había antes de pulsar «Ver todos los períodos» (solo se honra
   // mientras la búsqueda sea la misma que lo originó).
   const [cercaniaActivo, setCercaniaActivo] = useState(false);
-  const [modoRecorrido, setModoRecorrido] = useState(() => params.getAll('recorrido').length > 0);
+  const [modoRecorrido, setModoRecorrido] = useState(() => params.getAll("recorrido").length > 0);
+  const prioridadesUrl = new URLSearchParams(paramKey).getAll("recorrido").length > 0;
+  const teniaPrioridadesUrl = useRef(prioridadesUrl);
+  // Navegación Atrás/Adelante o filtro que borra las prioridades:
+  // no permitir Recorrido activo con controles o ruta ya descartados.
+  useEffect(() => {
+    if (prioridadesUrl) {
+      setModoRecorrido(true);
+      setCercaniaActivo(false);
+    } else if (teniaPrioridadesUrl.current) {
+      setModoRecorrido(false);
+    }
+    teniaPrioridadesUrl.current = prioridadesUrl;
+  }, [prioridadesUrl]);
   const [filtrosPrevios, setFiltrosPrevios] =
     useState<FiltrosConsultaPedidos | null>(null);
   const estadoBusqueda = derivarEstadoBusqueda({
