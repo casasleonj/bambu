@@ -1,13 +1,14 @@
 import { z } from 'zod'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import type { Prisma, TipoMovimiento } from '@prisma/client'
+import { Prisma, type TipoMovimiento } from '@prisma/client'
+import { isDeepStrictEqual } from 'node:util'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { formatZodError } from '@/lib/utils'
 import { logger } from '@/lib/logger'
-import { validarMovimientoFisico } from '@/modules/embarques/domain/services/ledger-fisico.service'
+import { CUSTODIAS, validarMovimientoFisico } from '@/modules/embarques/domain/services/ledger-fisico.service'
 
 /**
  * GET /api/embarques/[id]/movimientos — lista el ledger físico del embarque
@@ -45,12 +46,53 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
+/** Datos que identifican un único movimiento, incluso si se retransmite tras perder conexión. */
+interface MovimientoReintentable {
+  embarqueId: string
+  tipo: string
+  producto: string
+  cantidad: number
+  origen: string | null
+  destino: string | null
+  metadata: unknown
+  authorization: string | null
+  userId: string | null
+}
+
+function esElMismoMovimiento(registrado: MovimientoReintentable, enviado: MovimientoReintentable): boolean {
+  return registrado.embarqueId === enviado.embarqueId &&
+    registrado.tipo === enviado.tipo &&
+    registrado.producto === enviado.producto &&
+    registrado.cantidad === enviado.cantidad &&
+    registrado.origen === enviado.origen &&
+    registrado.destino === enviado.destino &&
+    registrado.authorization === enviado.authorization &&
+    registrado.userId === enviado.userId &&
+    // La serialización JSON puede cambiar el orden de las claves entre reintentos.
+    isDeepStrictEqual(registrado.metadata ?? null, enviado.metadata ?? null)
+}
+
+async function recuperarMovimientoIdempotente(offlineId: string, esperado: MovimientoReintentable) {
+  const existente = await prisma.embarqueMovimiento.findUnique({
+    where: { offlineId },
+    include: { autorizador: { select: { id: true, nombre: true } } },
+  })
+  if (!existente) return null
+  if (!esElMismoMovimiento(existente, esperado)) {
+    // No revelar datos de otro embarque ni marcar una operación distinta como realizada.
+    return apiError('Esta referencia corresponde a otro movimiento. Verifica el estado antes de reintentar.', 409, {
+      code: 'REFERENCIA_MOVIMIENTO_DISTINTA',
+    })
+  }
+  return apiSuccess({ movimiento: existente, deduped: true })
+}
+
 const MovimientoSchema = z.object({
   tipo: z.enum(['REEMPAQUE', 'DESCARTE', 'CUSTODY_TRANSFER', 'AJUSTE_AUTORIZADO']),
   producto: z.string().min(1),
   cantidad: z.number().int().positive(),
-  origen: z.string().optional(),
-  destino: z.string().optional(),
+  origen: z.enum(CUSTODIAS).optional(),
+  destino: z.enum(CUSTODIAS).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   authorization: z.string().optional(),
   offlineId: z.string().optional(),
@@ -93,35 +135,50 @@ export async function POST(
       return apiError(errores.join('; '), 400)
     }
 
-    // Idempotencia (ADR-IDEMPOTENCIA-001, contrato §14): un retry con el
-    // mismo offlineId debe devolver el resultado ya creado, no un 500 por
-    // violación del constraint único de offlineId.
+    // La referencia identifica una operación en UN embarque, no cualquier fila global.
+    const esperado: MovimientoReintentable = {
+      embarqueId: id,
+      tipo: parsed.data.tipo,
+      producto: parsed.data.producto,
+      cantidad: parsed.data.cantidad,
+      origen: parsed.data.origen ?? null,
+      destino: parsed.data.destino ?? null,
+      metadata: parsed.data.metadata ?? null,
+      authorization: parsed.data.authorization ?? null,
+      userId: parsed.data.tipo === 'AJUSTE_AUTORIZADO' ? auth.user?.id ?? null : null,
+    }
     if (parsed.data.offlineId) {
-      const existente = await prisma.embarqueMovimiento.findUnique({
-        where: { offlineId: parsed.data.offlineId },
-        include: { autorizador: { select: { id: true, nombre: true } } },
-      })
-      if (existente) {
-        return apiSuccess({ movimiento: existente, deduped: true })
-      }
+      const anterior = await recuperarMovimientoIdempotente(parsed.data.offlineId, esperado)
+      if (anterior) return anterior
     }
 
-    const creado = await prisma.embarqueMovimiento.create({
-      data: {
-        embarqueId: id,
-        tipo: parsed.data.tipo,
-        producto: parsed.data.producto,
-        cantidad: parsed.data.cantidad,
-        origen: parsed.data.origen ?? null,
-        destino: parsed.data.destino ?? null,
-        metadata: parsed.data.metadata ? (parsed.data.metadata as unknown as Prisma.InputJsonValue) : undefined,
-        authorization: parsed.data.authorization ?? null,
-        userId: parsed.data.tipo === 'AJUSTE_AUTORIZADO' ? auth.user?.id ?? null : null,
-        offlineId: parsed.data.offlineId ?? null,
-      },
-    })
-
-    return apiSuccess({ movimiento: creado }, 201)
+    try {
+      const creado = await prisma.embarqueMovimiento.create({
+        data: {
+          embarqueId: id,
+          tipo: parsed.data.tipo,
+          producto: parsed.data.producto,
+          cantidad: parsed.data.cantidad,
+          origen: parsed.data.origen ?? null,
+          destino: parsed.data.destino ?? null,
+          metadata: parsed.data.metadata ? (parsed.data.metadata as unknown as Prisma.InputJsonValue) : undefined,
+          authorization: parsed.data.authorization ?? null,
+          userId: esperado.userId,
+          offlineId: parsed.data.offlineId ?? null,
+        },
+      })
+      return apiSuccess({ movimiento: creado }, 201)
+    } catch (error) {
+      // Dos dispositivos pueden superar el findUnique inicial simultáneamente.
+      // El índice único decide quién escribió; el perdedor consulta y coteja la
+      // operación exacta en vez de devolver un 500 o realizar otro movimiento.
+      if (parsed.data.offlineId &&
+          error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const anterior = await recuperarMovimientoIdempotente(parsed.data.offlineId, esperado)
+        if (anterior) return anterior
+      }
+      throw error
+    }
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error registrando movimiento físico')
     return apiError('Error registrando movimiento físico', 500)
