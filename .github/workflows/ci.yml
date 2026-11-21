@@ -37,6 +37,7 @@ on:
 
 permissions:
   contents: read
+  actions: read  # #334: lectura de artefactos del SHA exacto de main, nunca escritura
 
 concurrency:
   # `github.event_name` en el grupo: una corrida programada (soak) y una
@@ -142,8 +143,8 @@ jobs:
         # no pueden ser opcionales. Si fallan, el job falla y con él el gate.
         run: node --test scripts/ci/__tests__/clasificar-cambios.node.test.mjs scripts/ci/__tests__/politica-ci.node.test.mjs
 
-      - name: Validate Playwright JSON report parser (#334)
-        run: node --test scripts/ci/__tests__/playwright-spec-summary.node.test.mjs
+      - name: Validate Playwright JSON and baseline parsers (#334)
+        run: node --test scripts/ci/__tests__/playwright-spec-summary.node.test.mjs scripts/ci/__tests__/playwright-baseline.node.test.mjs
 
       - name: Classify diff (declarative vs. requires E2E)
         id: classify
@@ -534,6 +535,9 @@ jobs:
                      /etc/apt/sources.list.d/google-chrome.sources
           npx playwright install-deps chromium
 
+      - name: Generate E2E comparison manifest (#334)
+        run: node scripts/ci/playwright-baseline.mjs manifest "playwright-json-${{ matrix.shard }}" playwright-results/manifest.json
+
       - name: Run Playwright tests (shard ${{ matrix.shard }})
         env:
           PLAYWRIGHT_JSON_OUTPUT_FILE: playwright-results/resultado.json
@@ -541,16 +545,29 @@ jobs:
           mkdir -p playwright-results
           npx playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=list,html,json
 
+      - name: Fetch exact main baseline for shard (#334)
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BAMBU_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci/playwright-baseline.mjs fetch "playwright-json-${{ matrix.shard }}" playwright-baseline
+
       - name: Publish E2E specs to job summary (#334)
         if: always()
-        run: node scripts/ci/playwright-spec-summary.mjs playwright-results/resultado.json "shard ${{ matrix.shard }}/${{ strategy.job-total }}"
+        run: >
+          node scripts/ci/playwright-spec-summary.mjs playwright-results/resultado.json
+          "shard ${{ matrix.shard }}/${{ strategy.job-total }}"
+          playwright-baseline/resultado.json
+          playwright-results/manifest.json
+          playwright-baseline/manifest.json
 
       - name: Upload structured E2E results (#334)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-json-${{ matrix.shard }}
-          path: playwright-results/resultado.json
+          path: playwright-results/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -748,6 +765,9 @@ jobs:
       - name: Prepare Hub JSON report directory
         run: mkdir -p playwright-results
 
+      - name: Generate Hub comparison manifest (#334)
+        run: node scripts/ci/playwright-baseline.mjs manifest "playwright-json-hub" playwright-results/manifest.json
+
       - name: Run Playwright tests (suite del Hub, V2 ON)
         # Solo los specs gated tras NEXT_PUBLIC_PEDIDOS_V2. Suite chica
         # (~40 tests) → sin sharding. `--project=chromium` (desktop): la
@@ -771,16 +791,29 @@ jobs:
           e2e/pedidos-pendientes-anteriores-797.spec.ts
           e2e/pedidos-alerta-riesgo-929.spec.ts
 
+      - name: Fetch exact main baseline for Hub (#334)
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BAMBU_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci/playwright-baseline.mjs fetch "playwright-json-hub" playwright-baseline
+
       - name: Publish Hub specs to job summary (#334)
         if: always()
-        run: node scripts/ci/playwright-spec-summary.mjs playwright-results/resultado.json "Hub V2 ON"
+        run: >
+          node scripts/ci/playwright-spec-summary.mjs playwright-results/resultado.json
+          "Hub V2 ON"
+          playwright-baseline/resultado.json
+          playwright-results/manifest.json
+          playwright-baseline/manifest.json
 
       - name: Upload structured Hub results (#334)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-json-hub
-          path: playwright-results/resultado.json
+          path: playwright-results/
           if-no-files-found: ignore
           retention-days: 7
 
