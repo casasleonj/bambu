@@ -74,7 +74,7 @@ export function CercaniaPedidos({ activo, pedidos, viewport, hoyBogota, acciones
     setUltimaPagina(pedidos);
     const invalidados = new Set(elegidos.filter(p => {
       const actual = encontrados.get(p.id);
-      return actual !== undefined && !esVisitaPendienteCercania(actual);
+      return actual !== undefined && !esVisitaPendienteCercania(actual, hoyBogota);
     }).map(p => p.id));
     if (invalidados.size)
       setElegidos(anterior => anterior.filter(p => !invalidados.has(p.id)));
@@ -82,7 +82,7 @@ export function CercaniaPedidos({ activo, pedidos, viewport, hoyBogota, acciones
   // Fuera de página se conserva una instantánea hasta obtener datos frescos.
   // La API valida otra vez su estado físico al calcular.
   const seleccionados = elegidos.map(p => encontrados.get(p.id) ?? p)
-    .filter(esVisitaPendienteCercania);
+    .filter(p => esVisitaPendienteCercania(p, hoyBogota));
   const ids = new Set(seleccionados.map(p => p.id));
   const carga = resumirCargaCercania(seleccionados);
   // Los cambios físicos, financieros o de ubicación invalidan una sugerencia ya calculada.
@@ -109,14 +109,14 @@ export function CercaniaPedidos({ activo, pedidos, viewport, hoyBogota, acciones
     : seleccionados;
   const vistos = new Set<string>();
   const restantes = pedidos.filter(p => {
-    if (vistos.has(p.id) || ids.has(p.id) || !esVisitaPendienteCercania(p)) return false;
+    if (vistos.has(p.id) || ids.has(p.id) || !esVisitaPendienteCercania(p, hoyBogota)) return false;
     vistos.add(p.id);
     return true;
   });
 
   function alternar(p: Pedido) {
     if (ocupada.current) return;
-    if (!ids.has(p.id) && !esVisitaPendienteCercania(p)) return;
+    if (!ids.has(p.id) && !esVisitaPendienteCercania(p, hoyBogota)) return;
     if (!ids.has(p.id) && seleccionados.length >= 25) {
       setError("Puedes seleccionar hasta 25 pedidos por cálculo; ninguno será omitido.");
       return;
