@@ -11,6 +11,7 @@ test('solo compara manifiestos con runner y flags homologables', () => {
   })
   assert.equal(compareManifests(a, { ...a, v2: 'true' }).comparable, false)
   assert.equal(compareManifests(a, { ...a, playwright: 'otra' }).comparable, false)
+  assert.equal(compareManifests(a, { ...a, lockHash: 'lockfile-changed' }).comparable, false)
   assert.equal(compareManifests(a, { ...a, jobKey: 'playwright-json-2' }).comparable, false)
   assert.equal(compareManifests(a, null).comparable, false)
 })
