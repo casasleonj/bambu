@@ -199,6 +199,45 @@ test.describe('Facturas — experiencia de usuario', () => {
     await expect(page.getByText('No se pudo cargar el resumen')).toHaveCount(0)
   })
 
+  test('el encabezado del documento no se encima: apilado en móvil, en fila en escritorio y al imprimir (#873)', async ({ page }) => {
+    await loginAs(page, 'admin')
+    await goto(page, `/resumen-facturas?clienteId=${sandraId}`)
+    const empresa = page.getByTestId('resumen-doc-empresa')
+    const titulo = page.getByTestId('resumen-doc-titulo')
+    await expect(titulo).toBeVisible()
+    await expect(page.getByTestId('resumen-estado')).toBeVisible()
+
+    const medir = async () => {
+      const e = await empresa.boundingBox()
+      const t = await titulo.boundingBox()
+      if (!e || !t) throw new Error('no se pudo medir el encabezado del documento')
+      return { e, t }
+    }
+    const sinDesbordamiento = () =>
+      page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)
+
+    const ancho = page.viewportSize()?.width ?? 1280
+    const { e, t } = await medir()
+    expect(await sinDesbordamiento()).toBe(true)
+    if (ancho < 1024) {
+      // Móvil y tableta (donde la fila no cabe): el título queda debajo del bloque de la empresa.
+      expect(t.y).toBeGreaterThanOrEqual(e.y + e.height - 1)
+    } else {
+      // Escritorio: el título queda a la derecha del bloque de la empresa.
+      expect(t.x).toBeGreaterThanOrEqual(e.x + e.width - 1)
+    }
+    // El título cabe completo dentro de la pantalla.
+    expect(t.x).toBeGreaterThanOrEqual(0)
+    expect(t.x + t.width).toBeLessThanOrEqual(ancho + 1)
+
+    // Impresión (hoja A4 ≈ 794 px): siempre en fila, igual que antes del cambio.
+    await page.setViewportSize({ width: 794, height: 1123 })
+    await page.emulateMedia({ media: 'print' })
+    const imp = await medir()
+    expect(imp.t.x).toBeGreaterThanOrEqual(imp.e.x + imp.e.width - 1)
+    await page.emulateMedia({ media: null })
+  })
+
   test('un repartidor no puede leer el resumen consolidado', async ({ page }) => {
     await loginAs(page, 'repartidor')
     const res = await apiGet(page, `/api/clientes/${sandraId}/resumen-facturas`)
