@@ -112,6 +112,22 @@ export function ConsultaPedidosHub(props: Props) {
   );
   // #788: rango que había antes de pulsar «Ver todos los períodos» (solo se honra
   // mientras la búsqueda sea la misma que lo originó).
+  const [cercaniaActivo, setCercaniaActivo] = useState(false);
+  const [modoRecorridoLocal, setModoRecorrido] = useState(false);
+  const prioridadesUrl = new URLSearchParams(paramKey).getAll("recorrido").length > 0;
+  // Una URL con barrios priorizados tiene autoridad para activar Recorrido;
+  // el estado local permite usar el modo incluso sin prioridades todavía.
+  const modoRecorrido = modoRecorridoLocal || prioridadesUrl;
+  // Atrás/Adelante debe reconciliar el modo local con la URL visitada.
+  // El cambio de estado ocurre en el evento externo, no dentro del cuerpo del efecto.
+  useEffect(() => {
+    const alNavegar = () => {
+      setModoRecorrido(false);
+      setCercaniaActivo(false);
+    };
+    window.addEventListener("popstate", alNavegar);
+    return () => window.removeEventListener("popstate", alNavegar);
+  }, []);
   const [filtrosPrevios, setFiltrosPrevios] =
     useState<FiltrosConsultaPedidos | null>(null);
   const estadoBusqueda = derivarEstadoBusqueda({
@@ -260,6 +276,51 @@ export function ConsultaPedidosHub(props: Props) {
         onVerTodas={() => aplicar({ ...filtrosLeidos, fechaBase: "entrega", resumen: true, page: 1 })}
       />
     ) : null;
+  const hubNode = (
+              <PedidoHub
+                pedidos={filas}
+                counts={props.counts}
+                loading={!hayDatos && pendiente}
+                refetching={hayDatos && pendiente}
+                error={error}
+                userRole={props.userRole}
+                onAccion={props.onAccion}
+                onNuevaOperacion={props.onNuevaOperacion}
+                onRetry={refresh}
+                onRefetch={refresh}
+                onPeekMovilChange={props.onPeekMovilChange}
+                modoRecorridoExterno={modoRecorrido}
+                cercaniaActivo={cercaniaActivo}
+                arrastrados={arrastrados}
+                encabezadoLista={encabezado}
+                entregasSlot={entregasNode}
+                consulta={{
+                  userRole: props.userRole,
+                  gestionDirecta: props.gestion.activa && !gestionDesconocida,
+                  volver: `/pedidos${paramKey ? "?" + paramKey : ""}`,
+                  onVerPedido: props.onVerPedido,
+                  onVerFactura: props.onVerFactura,
+                  onCorregirPendiente: props.onCorregirPendiente,
+                  onDescartarPendiente: props.onDescartarPendiente,
+                  grupos: datos?.grupos,
+                  entregasAnteriores: integradoConFilas && entregasAplican && datos && filtrosLeidos
+                    ? {
+                        entregas: datos.destacadas ?? [],
+                        primeraPagina: datos.page <= 1,
+                        hasta: filtrosLeidos.hasta,
+                        periodo: periodoEntregas,
+                        onVerTodas: () => aplicar({ ...filtrosLeidos, fechaBase: "entrega", resumen: true, page: 1 }),
+                      }
+                    : undefined,
+                  grupoActivo: filtrosLeidos?.grupoBarrio || undefined,
+                  franjas: filtrosLeidos?.foco === "paraHoy",
+                  vacioCompromiso: rotulosCompromiso(filtrosLeidos?.foco) ?? undefined,
+                  onGrupoBarrio: filtrosLeidos
+                    ? (clave) => aplicar({ ...filtrosLeidos, grupoBarrio: clave ?? "", page: 1 })
+                    : undefined,
+                }}
+              />
+  );
   return (
     <div
       className="space-y-3 rounded-xl bg-[#f6f0e5] p-3 lg:p-4"
@@ -303,6 +364,38 @@ export function ConsultaPedidosHub(props: Props) {
             Reintentar consulta
           </button>
         )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2" data-testid="pedidos-modos">
+        <button type="button" aria-pressed={modoRecorrido} data-testid="recorrido-toggle"
+          className={`min-h-11 rounded-lg border px-3 text-sm font-semibold ${modoRecorrido ? "border-blue-700 bg-blue-700 text-white" : "border-stone-300 bg-white text-slate-800"}`}
+          onClick={() => {
+            const activar = !modoRecorrido;
+            params.set({
+              recorrido: undefined,
+              agrupar: 'barrio',
+              page: '1',
+            }, { history: 'push' });
+            setModoRecorrido(activar);
+            setCercaniaActivo(false);
+          }}>
+          Recorrido
+        </button>
+        <button type="button" aria-pressed={cercaniaActivo} data-testid="cercania-toggle"
+          className={`min-h-11 rounded-lg border px-3 text-sm font-semibold ${cercaniaActivo ? "border-blue-700 bg-blue-700 text-white" : "border-stone-300 bg-white text-slate-800"}`}
+          onClick={() => {
+            if (!cercaniaActivo) {
+              params.set({ recorrido: undefined }, { history: "push" });
+              setModoRecorrido(false);
+            }
+            setCercaniaActivo(valor => !valor);
+          }}>
+          📍 Cercanía
+        </button>
+        <span className="text-xs text-slate-600">
+          {cercaniaActivo ? "Selecciona pedidos; el GPS se obtiene al calcular."
+            : modoRecorrido ? "Orden manual de barrios"
+            : "Lista General por defecto"}
+        </span>
       </div>
       <FiltrosConsulta
         filtros={consulta.filtros}
@@ -364,6 +457,10 @@ export function ConsultaPedidosHub(props: Props) {
             </div>
           )}
           <section className="rounded-xl border border-stone-200 bg-white p-4">
+            {cercaniaActivo ? (
+              hubNode
+            ) : (
+              <>
             {!muestraHub && encabezado}
             {datos && datos.total > 0 && datos.pedidos.length === 0 ? (
               <div className="p-5 text-center">
@@ -474,47 +571,9 @@ export function ConsultaPedidosHub(props: Props) {
                 </button>
               </div>
             ) : (
-              <PedidoHub
-                pedidos={filas}
-                counts={props.counts}
-                loading={!hayDatos && pendiente}
-                refetching={hayDatos && pendiente}
-                error={error}
-                userRole={props.userRole}
-                onAccion={props.onAccion}
-                onNuevaOperacion={props.onNuevaOperacion}
-                onRetry={refresh}
-                onRefetch={refresh}
-                onPeekMovilChange={props.onPeekMovilChange}
-                arrastrados={arrastrados}
-                encabezadoLista={encabezado}
-                entregasSlot={entregasNode}
-                consulta={{
-                  userRole: props.userRole,
-                  gestionDirecta: props.gestion.activa && !gestionDesconocida,
-                  volver: `/pedidos${paramKey ? "?" + paramKey : ""}`,
-                  onVerPedido: props.onVerPedido,
-                  onVerFactura: props.onVerFactura,
-                  onCorregirPendiente: props.onCorregirPendiente,
-                  onDescartarPendiente: props.onDescartarPendiente,
-                  grupos: datos?.grupos,
-                  entregasAnteriores: integradoConFilas && entregasAplican && datos && filtrosLeidos
-                    ? {
-                        entregas: datos.destacadas ?? [],
-                        primeraPagina: datos.page <= 1,
-                        hasta: filtrosLeidos.hasta,
-                        periodo: periodoEntregas,
-                        onVerTodas: () => aplicar({ ...filtrosLeidos, fechaBase: "entrega", resumen: true, page: 1 }),
-                      }
-                    : undefined,
-                  grupoActivo: filtrosLeidos?.grupoBarrio || undefined,
-                  franjas: filtrosLeidos?.foco === "paraHoy",
-                  vacioCompromiso: rotulosCompromiso(filtrosLeidos?.foco) ?? undefined,
-                  onGrupoBarrio: filtrosLeidos
-                    ? (clave) => aplicar({ ...filtrosLeidos, grupoBarrio: clave ?? "", page: 1 })
-                    : undefined,
-                }}
-              />
+              hubNode
+            )}
+              </>
             )}
             {datos && datos.total > datos.pageSize && (
               <nav
