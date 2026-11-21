@@ -64,6 +64,18 @@ describe('#932 badge de otros cobros pendientes del cliente', () => {
     expect(badge).toHaveTextContent('reportado por confirmar')
   })
 
+  it('Escape cierra el panel visual aunque el resumen mantenga el foco', () => {
+    render(<OperacionList pedidos={[p()]} viewport="desktop" hoyBogota="2026-11-20"
+      onOpen={vi.fn()} onAccion={vi.fn()} consulta={consulta} />)
+    const badge = screen.getByTestId('fiados-anteriores-p1')
+    const details = badge.querySelector('details')
+    expect(details).not.toBeNull()
+    details!.open = true
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(details!.open).toBe(false)
+    expect(within(badge).getByRole('region', { hidden: true })).toHaveClass('!hidden')
+  })
+
   it('si falla la consulta muestra aviso de verificación, no deuda cero', () => {
     render(<OperacionList pedidos={[p({ fiadosAnteriores: undefined, fiadosConsultaError: true })]}
       viewport="desktop" hoyBogota="2026-11-20" onOpen={vi.fn()}
