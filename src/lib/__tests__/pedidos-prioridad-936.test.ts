@@ -31,7 +31,7 @@ describe('#936 · adversariales de la política de prioridad y FIFO (#921)', () 
     const parcial = pedido('parcial-ayer', {
       ...pagado,
       createdAt: new Date('2026-11-19T11:00:00.000Z'),
-      estadoEntrega: 'PARCIAL',
+      estadoEntrega: 'PENDIENTE',
       items: [{ cantPedido: 50, cantEntrega: 30, cantRegaloPedido: 0, cantRegaloEntrega: 0 }],
     })
     const pendiente = pedido('sin-pagar-anteayer', {
