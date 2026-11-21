@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clasificarGestionVial, type PedidoParaGestionVial } from '../seleccion-recorrido-vial'
+import { bloqueadaPorEmbarque, clasificarGestionVial, type PedidoParaGestionVial } from '../seleccion-recorrido-vial'
 
 const p = (v: Partial<PedidoParaGestionVial> = {}): PedidoParaGestionVial => ({
   estadoEntrega: 'PENDIENTE',
@@ -48,5 +48,18 @@ describe('#930 elegibilidad de parada en ruta vial', () => {
   })
   it('sin items modernos puede usar cantidades legacy, pero jamás perder regalos modernos', () => {
     expect(clasificarGestionVial(p({ items: [], legacyPendientes: [{ pedidas: 8, entregadas: 5 }] }))?.unidadesPendientes).toBe(3)
+  })
+  it('un embarque histórico no bloquea COBRO de entregado; sí una carga por entregar', () => {
+    const cobrar = clasificarGestionVial(p({
+      estadoEntrega: 'ENTREGADO',
+      items: [{ producto: 'PACA_AGUA', cantPedido: 10, cantEntrega: 10 }],
+      exigible: 9000,
+    }))
+    const entregar = clasificarGestionVial(p())
+    expect(cobrar).not.toBeNull()
+    expect(entregar).not.toBeNull()
+    expect(bloqueadaPorEmbarque('embarque-historico', cobrar!)).toBe(false)
+    expect(bloqueadaPorEmbarque('embarque-en-ruta', entregar!)).toBe(true)
+    expect(bloqueadaPorEmbarque(null, entregar!)).toBe(false)
   })
 })
