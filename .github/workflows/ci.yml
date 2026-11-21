@@ -143,7 +143,7 @@ jobs:
         run: node --test scripts/ci/__tests__/clasificar-cambios.node.test.mjs scripts/ci/__tests__/politica-ci.node.test.mjs
 
       - name: Validate Playwright JSON report parser (#334)
-        run: node --test scripts/ci/playwright-spec-summary.test.mjs
+        run: node --test scripts/ci/__tests__/playwright-spec-summary.node.test.mjs
 
       - name: Classify diff (declarative vs. requires E2E)
         id: classify
