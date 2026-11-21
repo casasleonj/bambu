@@ -31,15 +31,18 @@ export function buildManifest(jobKey, env = process.env) {
     workers: env.PW_WORKERS || '',
     configHash: sha256('playwright.config.ts'),
     fixtureHash: sha256('e2e/fixtures.ts'),
+    // La declaración de package.json NO prueba qué versión quedó instalada.
+    // Hash del lockfile evita homologar regresiones contra un árbol de dependencias diferente.
+    lockHash: sha256('package-lock.json'),
   }
 }
 
 export function compareManifests(a, b) {
   if (!a || !b) return { comparable: false, reason: 'falta manifiesto del PR o de main' }
   const props = ['schema', 'jobKey', 'playwright', 'nodeMajor', 'runnerOS', 'imageOS',
-    'v2', 'workers', 'configHash', 'fixtureHash']
+    'v2', 'workers', 'configHash', 'fixtureHash', 'lockHash']
   const required = ['schema', 'jobKey', 'playwright', 'nodeMajor', 'runnerOS',
-    'imageOS', 'configHash', 'fixtureHash']
+    'imageOS', 'configHash', 'fixtureHash', 'lockHash']
   if (required.some(k => a[k] === undefined || a[k] === null || a[k] === '' ||
       b[k] === undefined || b[k] === null || b[k] === '')) {
     return { comparable: false, reason: 'faltan datos requeridos para certificar la compatibilidad' }
