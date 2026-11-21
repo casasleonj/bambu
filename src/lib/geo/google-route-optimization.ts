@@ -98,7 +98,7 @@ export function construirSolicitudGoogle(input: SolicitudRecorridoVial) {
 export interface ResultadoRecorridoVial {
   ordenPedidoIds: string[]
   totalParadas: number
-  proveedor: 'GOOGLE_ROUTE_OPTIMIZATION'
+  proveedor: 'GOOGLE_ROUTE_OPTIMIZATION' | 'HEIGIT_VROOM'
   modoVial: 'DRIVING'
 }
 
