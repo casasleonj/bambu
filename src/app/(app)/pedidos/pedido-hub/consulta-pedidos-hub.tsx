@@ -15,6 +15,7 @@ import {
   type ResultadoConsultaPedidos,
 } from "@/lib/pedidos-consulta";
 import { PedidoHub, type PedidoHubCounts } from "./index";
+import { CercaniaPedidos } from "./cercania-pedidos";
 import { FiltrosConsulta } from "./filtros-consulta";
 import { EntregasDestacadas } from "./entregas-destacadas";
 import { ResumenConsulta } from "./resumen-consulta";
@@ -112,6 +113,7 @@ export function ConsultaPedidosHub(props: Props) {
   );
   // #788: rango que había antes de pulsar «Ver todos los períodos» (solo se honra
   // mientras la búsqueda sea la misma que lo originó).
+  const [cercaniaActivo, setCercaniaActivo] = useState(false);
   const [filtrosPrevios, setFiltrosPrevios] =
     useState<FiltrosConsultaPedidos | null>(null);
   const estadoBusqueda = derivarEstadoBusqueda({
@@ -304,6 +306,19 @@ export function ConsultaPedidosHub(props: Props) {
           </button>
         )}
       </div>
+      <div className="flex items-center gap-2" data-testid="pedidos-cercania-modo">
+        <button type="button" aria-pressed={cercaniaActivo} data-testid="cercania-toggle"
+          className={`min-h-11 rounded-lg border px-3 text-sm font-semibold ${cercaniaActivo ? "border-blue-700 bg-blue-700 text-white" : "border-stone-300 bg-white text-slate-800"}`}
+          onClick={() => {
+            if (!cercaniaActivo) params.set({ recorrido: undefined }, { history: "push" });
+            setCercaniaActivo(valor => !valor);
+          }}>
+          📍 Cercanía
+        </button>
+        <span className="text-xs text-slate-600">
+          {cercaniaActivo ? "Selecciona los pedidos; calcular requiere el GPS de este dispositivo." : "Lista General por defecto"}
+        </span>
+      </div>
       <FiltrosConsulta
         filtros={consulta.filtros}
         repartidores={datos?.repartidores ?? []}
@@ -364,6 +379,25 @@ export function ConsultaPedidosHub(props: Props) {
             </div>
           )}
           <section className="rounded-xl border border-stone-200 bg-white p-4">
+            {cercaniaActivo ? (
+              <CercaniaPedidos
+                activo={cercaniaActivo}
+                pedidos={[...filas, ...(arrastrados?.pedidos ?? [])]}
+                hoyBogota={getTodayString()}
+                acciones={{
+                  userRole: props.userRole,
+                  gestionDirecta: props.gestion.activa && !gestionDesconocida,
+                  volver: `/pedidos${paramKey ? "?" + paramKey : ""}`,
+                  onVerPedido: props.onVerPedido,
+                  onVerFactura: props.onVerFactura,
+                  onCorregirPendiente: props.onCorregirPendiente,
+                  onDescartarPendiente: props.onDescartarPendiente,
+                }}
+                onAccion={props.onAccion}
+                onOpen={pedido => props.onVerPedido(pedido.id)}
+              />
+            ) : (
+              <>
             {!muestraHub && encabezado}
             {datos && datos.total > 0 && datos.pedidos.length === 0 ? (
               <div className="p-5 text-center">
@@ -515,6 +549,8 @@ export function ConsultaPedidosHub(props: Props) {
                     : undefined,
                 }}
               />
+            )}
+              </>
             )}
             {datos && datos.total > datos.pageSize && (
               <nav
