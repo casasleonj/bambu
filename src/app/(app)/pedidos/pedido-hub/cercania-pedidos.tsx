@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { OperacionConsulta, type AccionesConsulta } from "./operacion-consulta";
 import { OperacionList } from "./operacion-list";
+import { resumirCargaCercania } from "./resumen-carga-cercania";
+import { getProductoIconConfig } from "@/lib/producto-iconos";
 import type { AccionKey, Pedido } from "./types";
 
 type Fase = "listo" | "gps" | "calculando" | "calculado" | "desactualizado" | "error";
@@ -17,6 +19,19 @@ interface Props {
 function registro(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
+const nombresProductos: Record<string, [string, string]> = {
+  PACA_AGUA: ["paca de agua", "pacas de agua"],
+  PACA_HIELO: ["paca de hielo", "pacas de hielo"],
+  BOTELLON: ["botellón", "botellones"],
+  BOLSA_AGUA: ["bolsa de agua", "bolsas de agua"],
+  BOLSA_HIELO: ["bolsa de hielo", "bolsas de hielo"],
+};
+
+function nombreProducto(producto: string, unidades: number): string {
+  const nombres = nombresProductos[producto];
+  return nombres ? nombres[unidades === 1 ? 0 : 1] : getProductoIconConfig(producto).label;
+}
+
 function ubicacionActual(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
@@ -51,6 +66,7 @@ export function CercaniaPedidos({ activo, pedidos, viewport, hoyBogota, acciones
   const encontrados = new Map(pedidos.map(p => [p.id, p]));
   const ids = new Set(elegidos.map(p => p.id));
   const seleccionados = elegidos.map(p => encontrados.get(p.id) ?? p);
+  const carga = resumirCargaCercania(seleccionados);
   // Los cambios físicos, financieros o de ubicación invalidan una sugerencia ya calculada.
   // No se optimiza de nuevo sin acción explícita del usuario (#930).
   const firmaGestion = JSON.stringify(seleccionados.map(p => [
@@ -154,7 +170,28 @@ export function CercaniaPedidos({ activo, pedidos, viewport, hoyBogota, acciones
             {fase === "calculado" ? "Orden sugerido" : fase === "desactualizado" ? "Desactualizado" : "Sin calcular"}
           </span>
         </div>
-        <p className="mt-1 text-xs text-blue-900">
+        <div className="mt-3 flex flex-wrap gap-2 text-sm text-blue-950" aria-live="polite"
+          data-testid="cercania-resumen-carga">
+          <span className="rounded-lg border border-blue-200 bg-white px-3 py-2 font-semibold"
+            data-testid="cercania-total-pedidos">
+            {carga.pedidos} {carga.pedidos === 1 ? "pedido" : "pedidos"}
+          </span>
+          <span className="rounded-lg border border-blue-200 bg-white px-3 py-2 font-semibold"
+            data-testid="cercania-total-productos">
+            {carga.pedidosSinDesglose ? "Al menos " : ""}{carga.unidades} {carga.unidades === 1 ? "unidad" : "unidades"} por llevar
+          </span>
+        </div>
+        {carga.porProducto.length > 0 && (
+          <p className="mt-2 text-xs text-blue-900" data-testid="cercania-desglose-productos">
+            {carga.porProducto.map(x => `${x.unidades} ${nombreProducto(x.producto, x.unidades)}`).join(" · ")}
+          </p>
+        )}
+        {carga.pedidosSinDesglose > 0 && (
+          <p className="mt-2 text-xs font-medium text-amber-900" role="status">
+            {carga.pedidosSinDesglose} {carga.pedidosSinDesglose === 1 ? "pedido requiere" : "pedidos requieren"} verificar cantidades antes de preparar la carga.
+          </p>
+        )}
+        <p className="mt-2 text-xs text-blue-900">
           {fase === "calculado" ? "Paradas numeradas por el proveedor vial." :
             "Los pedidos elegidos suben aquí; su orden inicial no es un recorrido optimizado."}
         </p>
