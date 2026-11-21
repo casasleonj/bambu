@@ -50,7 +50,7 @@ describe('#906: observador de consultas Pedidos/Fiados', () => {
   })
 
   it('ignora finales de otros endpoints no rastreados y no imprime identificadores', () => {
-    let ahora = 1000
+    const ahora = 1000
     const observador = new ContadorConsultas<object>(() => ahora)
     const noRastreado = { url: '/api/pedidos/consulta?clienteId=SECRETO' }
     observador.finalizar(noRastreado, true)
