@@ -24,7 +24,7 @@ const acciones = {
   onVerPedido: vi.fn(), onVerFactura: vi.fn(),
 };
 function vista(pedidos: Pedido[]) {
-  return <CercaniaPedidos activo pedidos={pedidos} hoyBogota="2026-11-21"
+  return <CercaniaPedidos activo pedidos={pedidos} viewport="desktop" hoyBogota="2026-11-21"
     acciones={acciones} onAccion={vi.fn()} onOpen={vi.fn()} />;
 }
 function autorizarGPS() {
