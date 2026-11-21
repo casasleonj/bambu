@@ -24,6 +24,8 @@ import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
 import { ordenarPorFranja } from "./pedidos-franja";
 import { ordenarPrioridadPedidos } from "./pedidos-prioridad-921";
+import { findPedidosEnRiesgo } from "./pedidos-sin-asignar";
+import { elegibleRiesgoOperativo, type RiesgoOperativo } from "./pedidos-riesgo-operativo";
 import { listarEntregasDestacadas } from "./pedidos-entregas-destacadas";
 import { PedidoMapper } from "@/modules/pedidos/infrastructure/mappers/PedidoMapper";
 import { PedidoDTOMapper } from "@/modules/pedidos/application/dto/PedidoDTOMapper";
@@ -231,11 +233,21 @@ export async function consultarPedidos(
   role: string | null,
   client = prisma,
 ): Promise<ResultadoConsultaPedidos> {
+  // Se evalúa una sola vez por consulta, incluso si tiene varias páginas
+  // internas de pedidos anteriores. No se consulta por cada tarjeta.
+  let riesgos: ReadonlyMap<string, RiesgoOperativo> = new Map();
+  if (client === prisma) {
+    try {
+      riesgos = await findPedidosEnRiesgo();
+    } catch (error) {
+      logger.warn({ err: error }, "No se pudieron evaluar los riesgos operativos de Pedidos");
+    }
+  }
   const fa = filtrosArrastrados(f);
   // #915: vista agrupada → los pendientes/parciales de días anteriores entran en la MISMA consulta
   // (un solo universo deduplicado por pedido, sin tope de 5, agrupado y paginado en el servidor).
   if (fa && arrastreIntegrado(f)) {
-    const integrado = await leerConsultaPedidos(f, role, client, false, fa);
+    const integrado = await leerConsultaPedidos(f, role, client, false, fa, riesgos);
     // #841: una entrega parcial de un pedido que ya se ve como fila de esta página no se repite como tarjeta.
     const visibles = new Set(integrado.pedidos.map((p) => p.id));
     const destacadas = integrado.actividadIntegrada
@@ -250,18 +262,18 @@ export async function consultarPedidos(
       arrastradosIntegrados: true,
     };
   }
-  const resultado = await leerConsultaPedidos(f, role, client);
+  const resultado = await leerConsultaPedidos(f, role, client, false, null, riesgos);
   if (!fa) return resultado;
   try {
     // #859: leer TODAS las páginas de arrastres, no solamente las primeras cinco.
     // Se conserva el paginado interno para no crear una consulta de tamaño ilimitado.
     const lote = 100;
-    const primera = await leerConsultaPedidos({ ...fa, page: 1, pageSize: lote }, role, client, true);
+    const primera = await leerConsultaPedidos({ ...fa, page: 1, pageSize: lote }, role, client, true, null, riesgos);
     const acumulados = [...primera.pedidos];
     const idsLeidos = new Set(acumulados.map(p => p.id));
     const paginas = Math.ceil(primera.total / lote);
     for (let pagina = 2; pagina <= paginas; pagina++) {
-      const siguiente = await leerConsultaPedidos({ ...fa, page: pagina, pageSize: lote }, role, client, true);
+      const siguiente = await leerConsultaPedidos({ ...fa, page: pagina, pageSize: lote }, role, client, true, null, riesgos);
       for (const pedido of siguiente.pedidos) {
         if (!idsLeidos.has(pedido.id)) {
           idsLeidos.add(pedido.id);
@@ -304,6 +316,7 @@ async function leerConsultaPedidos(
   arrastre = false,
   /** #915: filtros de arrastre cuando se integran a esta misma consulta (vista agrupada). */
   fArrastre: FiltrosConsultaPedidos | null = null,
+  riesgos: ReadonlyMap<string, RiesgoOperativo> = new Map(),
 ): Promise<ResultadoConsultaPedidos> {
   return client.$transaction(
     async (tx) => {
@@ -771,6 +784,8 @@ async function leerConsultaPedidos(
         }
       }
       const nombres = new Map(repartidores.map((r) => [r.id, r.nombre]));
+      // Usar el reloj de PostgreSQL que también se publica como leidoAt.
+      const [{ ahora }] = await tx.$queryRaw<Array<{ ahora: Date }>>`SELECT transaction_timestamp() AS ahora`;
       const pedidos = rows.map((raw) => {
         const dto = PedidoDTOMapper.toResumen(
           PedidoMapper.fromPrisma({ ...raw, factura: undefined }),
@@ -812,9 +827,15 @@ async function leerConsultaPedidos(
               cBolsaHieloPed: raw.cBolsaHieloPed,
               cBolsaHieloEnt: raw.cBolsaHieloEnt,
             };
+        const riesgo = riesgos.get(raw.id);
+        const estadoRiesgo = raw.estadoEntrega === "PENDIENTE" ? "sin_gestionar"
+          : raw.estadoEntrega === "NO_ENTREGADO" ? "sin_reasignar"
+          : raw.estadoEntrega === "EN_RUTA" ? "en_ruta" : null;
         return {
           ...dto,
           ...legacy,
+          ...(riesgo && riesgo.tipo === estadoRiesgo && elegibleRiesgoOperativo(raw, ahora)
+            ? { riesgoOperativo: riesgo } : {}),
           embarqueId: dto.embarqueId ?? undefined,
           tipo: tipoDesdeCanal(raw.canal),
           saldo: dec(raw.saldo),
@@ -928,9 +949,6 @@ async function leerConsultaPedidos(
         consultaDestacadas.destacadasTotal = Math.max(0, consultaDestacadas.destacadasTotal - (conBarrio.length - dentro.length));
         consultaDestacadas.destacadas = dentro;
       }
-      const [{ ahora }] = await tx.$queryRaw<
-        Array<{ ahora: Date }>
-      >`SELECT transaction_timestamp() AS ahora`;
       return {
         consultaKey: parametrosConsulta(f).toString(),
         pedidos,
