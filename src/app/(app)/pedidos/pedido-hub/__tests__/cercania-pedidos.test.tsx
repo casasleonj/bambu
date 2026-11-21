@@ -88,6 +88,33 @@ describe("#930 selección Cercanía en Pedidos", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it("no recalcula al llegar otro pedido pero invalida el orden si cambia un seleccionado", async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({
+        success: true, ordenPedidoIds: ["101"], totalParadas: 1,
+        proveedor: "HEIGIT_VROOM",
+      }),
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const inicial = { ...pedido("101"), estadoEntrega: "PENDIENTE", saldo: 1000 };
+    const { rerender } = render(vista([inicial]));
+    fireEvent.click(screen.getByTestId("cercania-check-101"));
+    fireEvent.click(screen.getByTestId("cercania-calcular"));
+    await screen.findByText(/Orden sugerido/);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    // Un nuevo pedido no integra automáticamente el recorrido calculado.
+    rerender(vista([inicial, pedido("102")]));
+    expect(screen.getByText(/Orden sugerido/)).toBeTruthy();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    // Cambio de saldo/destino/estado relevante: no mostrar el orden como vigente.
+    rerender(vista([{ ...inicial, saldo: 0 }, pedido("102")]));
+    await screen.findByText(/se modificó un pedido/);
+    expect(screen.queryByText(/Orden sugerido/)).toBeNull();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("permiso GPS denegado mantiene la selección y evita llamadas a proveedores", async () => {
     Object.defineProperty(navigator, "geolocation", {
       configurable: true,
