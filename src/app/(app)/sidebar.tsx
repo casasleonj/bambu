@@ -4,7 +4,7 @@ import { PushOptInStrip } from '@/components/push-opt-in-strip'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { signOut } from 'next-auth/react'
+import { cerrarSesionConservandoOrigen } from '@/lib/logout-origin'
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { MoreVertical } from 'lucide-react'
 import { markIntentionalSignOut } from '@/lib/auth-events'
@@ -850,7 +850,7 @@ export function Sidebar() {
               await revokeSessionOnLogout()
               await unsubscribePushOnLogout()
               await purgeSWCache()
-              signOut({ redirectTo: '/login' })
+              await cerrarSesionConservandoOrigen()
             }}
             className="flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-50 transition w-full"
             aria-label="Cerrar sesión"
