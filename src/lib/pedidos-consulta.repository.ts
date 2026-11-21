@@ -219,6 +219,18 @@ const centavos = (v: unknown) => {
   return n;
 };
 const dec = (v: unknown) => centavos(v) / 100;
+// #939: los pagos en Prisma son DECIMAL(10,2). Sumar Number(monto) puede
+// dejar 1500.30 + 0.60 < 1500.90 por binario y perder prioridad de pago
+// CONFIRMADO. Acumular centavos exactos, igual que el resto de esta consulta.
+const sumarConfirmados = (pagos: ReadonlyArray<{ monto: unknown }>): number => {
+  let sumaCentavos = 0;
+  for (const pago of pagos) {
+    sumaCentavos += centavos(pago.monto);
+    if (!Number.isSafeInteger(sumaCentavos))
+      throw new Error("Suma de pagos confirmados no verificable");
+  }
+  return sumaCentavos / 100;
+};
 
 /**
  * Una foto de la consulta completa, independiente de la página visible.
@@ -565,7 +577,7 @@ async function leerConsultaPedidos(
           total: Number(p.total),
           totalPagado: Number(p.totalPagado),
           saldo: Number(p.saldo),
-          confirmado: p.pagos.reduce((n, pago) => n + Number(pago.monto), 0),
+          confirmado: sumarConfirmados(p.pagos),
         })), new Date())
           .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
           .map(p => p.id);
@@ -588,7 +600,7 @@ async function leerConsultaPedidos(
           ...p,
           total: Number(p.total), totalPagado: Number(p.totalPagado),
           saldo: Number(p.saldo),
-          confirmado: p.pagos.reduce((n, pago) => n + Number(pago.monto), 0),
+          confirmado: sumarConfirmados(p.pagos),
         })), ahora);
         ordenPagina = ordenarPorFranja(priorizados, ahora, p => p)
           .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
