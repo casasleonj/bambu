@@ -7,8 +7,8 @@
 //
 // Batería adversarial contra Postgres real (DATABASE_URL de .env, puerto 5433).
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { testPrisma, resetAndSeed, disconnect, createTestCliente } from '@/lib/__tests__/integration/setup'
-import { PrismaClienteRepository } from '../PrismaClienteRepository'
+import { testPrisma, resetAndSeed, disconnect, createTestCliente } from './setup'
+import { PrismaClienteRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaClienteRepository'
 
 let repo: PrismaClienteRepository
 
