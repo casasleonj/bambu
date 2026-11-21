@@ -15,9 +15,11 @@ import type { ResumenFiadosAnteriores } from '@/lib/fiados-anteriores-pedido'
 export function FiadosAnterioresBadge({
   resumen,
   pedidoId,
+  clienteId,
 }: {
   resumen: ResumenFiadosAnteriores | undefined
   pedidoId: string
+  clienteId: string
 }) {
   if (!resumen || resumen.total <= 0) return null
 
@@ -49,7 +51,7 @@ export function FiadosAnterioresBadge({
         <span>Fiados anteriores</span>
       </summary>
       <div
-        className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden w-64 max-w-[calc(100vw-2rem)] rounded-lg border border-amber-300 bg-white p-3 text-left text-xs font-normal text-stone-800 shadow-xl group-hover:block group-focus-within:block group-open:block"
+        className="absolute left-0 top-full z-50 mt-1 hidden w-64 max-w-[calc(100vw-2rem)] rounded-lg border border-amber-300 bg-white p-3 text-left text-xs font-normal text-stone-800 shadow-xl group-hover:block group-focus-within:block group-open:block"
         role="note"
       >
         <p className="font-semibold">Cobro de pedidos anteriores</p>
@@ -66,6 +68,12 @@ export function FiadosAnterioresBadge({
           </ul>
         ) : <p className="mt-1 text-stone-600">Sin desglose verificable</p>}
         {negocios && <p className="mt-2 break-words text-stone-600">{negocios}</p>}
+        <a
+          href={`/pedidos?tab=fiados&fiadosCliente=${encodeURIComponent(clienteId)}`}
+          className="mt-2 inline-flex min-h-8 items-center rounded-md border border-amber-300 px-2 text-xs font-semibold text-amber-900 underline underline-offset-2 hover:bg-amber-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+        >
+          Ver fiados del cliente
+        </a>
         <p className="mt-2 text-[11px] text-stone-500">
           Las cantidades indican productos entregados en pedidos con deuda,
           no unidades individuales sin pagar.
