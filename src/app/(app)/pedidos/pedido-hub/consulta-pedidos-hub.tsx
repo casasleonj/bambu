@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useShallowSearchParams } from "@/hooks/use-shallow-search-params";
 import { useConsultaPedidos } from "@/hooks/use-consulta-pedidos";
 import { useOnlineStatus } from "@/hooks/use-online-status";
@@ -113,20 +113,21 @@ export function ConsultaPedidosHub(props: Props) {
   // #788: rango que había antes de pulsar «Ver todos los períodos» (solo se honra
   // mientras la búsqueda sea la misma que lo originó).
   const [cercaniaActivo, setCercaniaActivo] = useState(false);
-  const [modoRecorrido, setModoRecorrido] = useState(() => params.getAll("recorrido").length > 0);
+  const [modoRecorridoLocal, setModoRecorrido] = useState(false);
   const prioridadesUrl = new URLSearchParams(paramKey).getAll("recorrido").length > 0;
-  const teniaPrioridadesUrl = useRef(prioridadesUrl);
-  // Navegación Atrás/Adelante o filtro que borra las prioridades:
-  // no permitir Recorrido activo con controles o ruta ya descartados.
+  // Una URL con barrios priorizados tiene autoridad para activar Recorrido;
+  // el estado local permite usar el modo incluso sin prioridades todavía.
+  const modoRecorrido = modoRecorridoLocal || prioridadesUrl;
+  // Atrás/Adelante debe reconciliar el modo local con la URL visitada.
+  // El cambio de estado ocurre en el evento externo, no dentro del cuerpo del efecto.
   useEffect(() => {
-    if (prioridadesUrl) {
-      setModoRecorrido(true);
-      setCercaniaActivo(false);
-    } else if (teniaPrioridadesUrl.current) {
+    const alNavegar = () => {
       setModoRecorrido(false);
-    }
-    teniaPrioridadesUrl.current = prioridadesUrl;
-  }, [prioridadesUrl]);
+      setCercaniaActivo(false);
+    };
+    window.addEventListener("popstate", alNavegar);
+    return () => window.removeEventListener("popstate", alNavegar);
+  }, []);
   const [filtrosPrevios, setFiltrosPrevios] =
     useState<FiltrosConsultaPedidos | null>(null);
   const estadoBusqueda = derivarEstadoBusqueda({
