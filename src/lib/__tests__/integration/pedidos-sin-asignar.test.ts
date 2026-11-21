@@ -324,17 +324,23 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
 
   it('PENDIENTE recién creado (< umbral) NO entra en riesgo', async () => {
     const cliente = await crearClienteTest('Test Cliente Sin Riesgo Tiempo')
+    // vi.setSystemTime congela Date en Vitest, NO el DEFAULT now() de PostgreSQL.
+    // Si createdAt lo asigna la BD, puede quedar horas antes que el mediodía
+    // simulado y superar artificialmente el umbral de 3 minutos en CI.
+    const ahoraSimulado = new Date()
     const p = await testPrisma.pedido.create({
       data: {
         clienteId: cliente.id,
         canal: 'DOMICILIO',
         offlineId: uniqueId('sin-riesgo-tiempo'),
-        fecha: new Date(),
+        fecha: ahoraSimulado,
+        createdAt: ahoraSimulado,
         embarqueId: null,
         estadoEntrega: 'PENDIENTE',
         estadoPago: 'ANTICIPADO',
       },
     })
+    expect(p.createdAt.getTime()).toBe(ahoraSimulado.getTime())
 
     const ids = await findPedidosHoyEnRiesgoIds()
     expect(ids).not.toContain(p.id)
