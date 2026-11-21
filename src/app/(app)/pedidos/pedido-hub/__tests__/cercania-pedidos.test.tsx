@@ -68,6 +68,37 @@ describe("#930 selección Cercanía en Pedidos", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it("actualiza pedidos y productos físicos al marcar o desmarcar sin solicitar GPS", () => {
+    const gps = vi.fn();
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true, value: { getCurrentPosition: gps },
+    });
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    const uno = { ...pedido("101"), items: [{
+      producto: "PACA_AGUA", cantPedido: 5, cantEntrega: 2,
+      cantRegaloPedido: 2, cantRegaloEntrega: 1, precio: 0, subtotal: 0,
+    }] }; // tres de pago + un regalo
+    const dos = { ...pedido("102"), items: [{
+      producto: "PACA_HIELO", cantPedido: 3, cantEntrega: 1, precio: 0, subtotal: 0,
+    }] }; // dos de hielo
+    render(vista([uno, dos]));
+    expect(screen.getByTestId("cercania-total-pedidos")).toHaveTextContent("0 pedidos");
+    expect(screen.getByTestId("cercania-total-productos")).toHaveTextContent("0 unidades");
+    fireEvent.click(screen.getByTestId("cercania-check-101"));
+    expect(screen.getByTestId("cercania-total-pedidos")).toHaveTextContent("1 pedido");
+    expect(screen.getByTestId("cercania-total-productos")).toHaveTextContent("4 unidades por llevar");
+    expect(screen.getByTestId("cercania-desglose-productos")).toHaveTextContent("4 pacas de agua");
+    fireEvent.click(screen.getByTestId("cercania-check-102"));
+    expect(screen.getByTestId("cercania-total-productos")).toHaveTextContent("6 unidades por llevar");
+    expect(screen.getByTestId("cercania-desglose-productos")).toHaveTextContent("2 pacas de hielo");
+    fireEvent.click(screen.getByTestId("cercania-check-101"));
+    expect(screen.getByTestId("cercania-total-pedidos")).toHaveTextContent("1 pedido");
+    expect(screen.getByTestId("cercania-total-productos")).toHaveTextContent("2 unidades por llevar");
+    expect(gps).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("mantiene selección entre filtros/páginas y obtiene GPS solo al calcular", async () => {
     const fetcher = vi.fn().mockResolvedValue({
       ok: true, json: async () => ({
