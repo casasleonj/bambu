@@ -85,3 +85,13 @@ Run auditoría 43976532807, job 133681820057: failure. Log real: ERROR no hay bl
 **Merge:** NO AUTORIZADO.
 
 Recomendación de convergencia: autorizar primero el plan técnico corregido de #319 y #334/#906, realizar las verificaciones que las reglas permiten, y mantener bloqueados los cambios de UI hasta aprobación de maquetas. El costo de corregir no justifica saltar un gate documentado.
+
+## 9. Contraste con documentación oficial y versiones instaladas
+
+Versiones confirmadas en package.json de main: Next.js 16.2.4, Playwright Test 1.61.1, Prisma Client 6.19.3.
+
+- **Prisma ORM v6 (ADOPTAR):** la referencia oficial muestra error de unicidad P2002 y uso de Prisma.PrismaClientKnownRequestError. Aplica a la versión 6.19.3 del proyecto. Referencia: https://www.prisma.io/docs/orm/v6/prisma-client/debugging-and-troubleshooting/handling-exceptions-and-errors . No extrapolar nuevas excepciones de Prisma v7.
+- **Playwright (ADAPTAR):** reportero JSON ofrece outputFile y configuración por entorno, compatible con reportero HTML complementario. Se debe comprobar el comportamiento del CLI con la versión bloqueada antes de editar CI. Referencia oficial: https://playwright.dev/docs/test-reporters .
+- **GitHub Actions (ADOPTAR):** job summaries se escriben mediante el archivo GITHUB_STEP_SUMMARY, soportan Markdown y no transforman el estado del job. Referencia oficial: https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands .
+
+Ninguna fuente externa sustituye el contrato de negocio del ledger, las aprobaciones del PO ni los tests del repo. Especificaciones y ejemplos externos, **NO** ejecución local.
