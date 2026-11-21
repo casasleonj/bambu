@@ -745,6 +745,9 @@ jobs:
                      /etc/apt/sources.list.d/google-chrome.sources
           npx playwright install-deps chromium
 
+      - name: Prepare Hub JSON report directory
+        run: mkdir -p playwright-results
+
       - name: Run Playwright tests (suite del Hub, V2 ON)
         # Solo los specs gated tras NEXT_PUBLIC_PEDIDOS_V2. Suite chica
         # (~40 tests) → sin sharding. `--project=chromium` (desktop): la
