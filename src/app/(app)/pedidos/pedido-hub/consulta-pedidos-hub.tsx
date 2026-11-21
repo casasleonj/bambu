@@ -570,7 +570,7 @@ export function ConsultaPedidosHub(props: Props) {
                 </button>
               </div>
             ) : (
-              {hubNode}
+              hubNode
             )}
               </>
             )}
