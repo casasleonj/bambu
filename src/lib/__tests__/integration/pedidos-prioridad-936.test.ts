@@ -46,10 +46,11 @@ async function crear(
   ids[nombre] = p.id
 }
 
-const consulta = (extra = '') => consultarPedidos(leerFiltrosConsulta(
-  new URLSearchParams(`desde=${HOY}&hasta=${HOY}&clienteId=${clienteId}&agrupar=&pageSize=100${extra}`),
-  HOY,
-), 'ADMIN')
+const consulta = (extra = '') => {
+  const parametros = new URLSearchParams(`desde=${HOY}&hasta=${HOY}&clienteId=${clienteId}&agrupar=&pageSize=100`)
+  new URLSearchParams(extra.replace(/^&/, '')).forEach((valor, clave) => parametros.set(clave, valor))
+  return consultarPedidos(leerFiltrosConsulta(parametros, HOY), 'ADMIN')
+}
 
 describe('#936 · prioridad/FIFO en PostgreSQL real', () => {
   beforeAll(async () => {
