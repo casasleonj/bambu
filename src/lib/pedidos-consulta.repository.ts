@@ -24,6 +24,8 @@ import { remanentesPorProducto } from "./barrios/remanentes-barrio";
 import { ordenarBarriosFIFO } from "./barrios/fifo-barrio";
 import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
+import { detalleUnidadesEntregadasDelDia } from "./unidades-entregadas-dia";
+import { mostrarResumenOperativoHoy, resumirEntregasOperativasHoy } from "./pedidos-resumen-operativo-hoy";
 import { ordenarPorFranja } from "./pedidos-franja";
 import { ordenarPrioridadPedidos } from "./pedidos-prioridad-921";
 import { findPedidosEnRiesgo } from "./pedidos-sin-asignar";
@@ -889,6 +891,30 @@ async function leerConsultaPedidos(
           productos = [...sums.values()];
         }
       }
+      // #853: la tarjeta de pedidos fechados hoy NO representa todas las
+      // entregas físicas de hoy. Mostrar el balance físico aparte, tomando
+      // exactamente el mismo lector que Dashboard y Cierre, sin alterar
+      // el significado de otros filtros ni los importes históricos.
+      let operacionHoy: ReturnType<typeof resumirEntregasOperativasHoy> | null = null;
+      let operacionHoyError = false;
+      if (mostrarResumenOperativoHoy(f, todayStringBogota())) {
+        try {
+          const { detalle } = await detalleUnidadesEntregadasDelDia(tx, rango);
+          const ids = [...new Set(detalle.map((d) => d.pedidoId))];
+          const pedidosOrigen = await tx.pedido.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, fecha: true },
+          });
+          operacionHoy = resumirEntregasOperativasHoy(
+            detalle,
+            new Map(pedidosOrigen.map((p) => [p.id, p.fecha])),
+            rango,
+          );
+        } catch (error) {
+          logger.warn({ err: error }, "No se pudo conciliar el resumen operativo del día (#853)");
+          operacionHoyError = true;
+        }
+      }
       const nombres = new Map(repartidores.map((r) => [r.id, r.nombre]));
       // Usar el reloj de PostgreSQL que también se publica como leidoAt.
       const [{ ahora }] = await tx.$queryRaw<Array<{ ahora: Date }>>`SELECT transaction_timestamp() AS ahora`;
@@ -1077,6 +1103,8 @@ async function leerConsultaPedidos(
               saldo,
               fiado,
               pendienteEntrega: (centavos(saldo) - centavos(fiado)) / 100,
+              ...(operacionHoy ? { operacionHoy } : {}),
+              ...(operacionHoyError ? { operacionHoyError } : {}),
               productos: productos.sort((a, b) =>
                 a.producto.localeCompare(b.producto),
               ),
