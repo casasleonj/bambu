@@ -23,7 +23,7 @@ import { todayStringBogota } from '@/lib/dates'
 import { cobroDelDiaSinEspejoActivo } from '@/lib/cobro-dia-sin-espejo-flag'
 import { EntregaOficinaError, ESTADO_HTTP_OFICINA } from '@/modules/pedidos/domain/services/entrega-oficina.errors'
 import { idResultadoFiado, huellaCobroFiado, prepararCobroFiado, leerResultadoFiado, errorCobroPedido } from '@/lib/fiados-cobro-server'
-import { BonoSaldoFavorError, consumirBonoDeSaldoFavor, idConsumoBonoAbono, OPERACION_CONSUMO_BONO } from '@/lib/bono-saldo-favor'
+import { BonoSaldoFavorError, consumirBonoDeSaldoFavor, idConsumoBonoAbono, idConsumoBonoPago, OPERACION_CONSUMO_BONO } from '@/lib/bono-saldo-favor'
 import type { AplicacionFiado, ResultadoCobroFiado } from '@/lib/fiados-cobro'
 
 /** #772: un BONO sin respaldo o no aplicable nunca puede pagar deuda ni generar crédito.
@@ -169,6 +169,16 @@ export async function POST(request: NextRequest) {
           const pago = await tx.pago.create({ data: { pedidoId: pedido.id, metodo: fondo.metodo,
             monto: montoAplicar, offlineId: offlineId ?? null, ...(oficina ? { recibidoPorId, ocurridoAt } : {}),
             ...datosConfirmacionInicial(fondo.metodo, preparacion.metodosPorConfirmar) } })
+          // Cuando no se genera Abono, el Pago prueba el débito del BONO.
+          // Auditoría y descuento pertenecen a la misma transacción.
+          if (fondo.metodo === 'BONO' && (sinEspejo || !pedido.factura)) {
+            await logAudit({
+              id: idConsumoBonoPago(pago.id),
+              entidad: 'Pago', registroId: pago.id, accion: 'CREATE',
+              usuarioId: auth.user?.id,
+              datos: { operacion: OPERACION_CONSUMO_BONO, clienteId, metodo: 'BONO', monto: montoAplicar },
+            }, tx)
+          }
           saldo -= centavos; exigible -= centavos; pagado += centavos; aplicado += centavos
           fondo.restante -= centavos; fondo.aplicado += centavos
           await tx.pedido.update({ where: { id: pedido.id }, data: { totalPagado: pagado / 100,

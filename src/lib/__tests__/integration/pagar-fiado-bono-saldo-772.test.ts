@@ -15,7 +15,8 @@ import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { POST as pagarFiado } from '@/app/api/pedidos/pagar-fiado/route'
 import { POST as crearAbono } from '@/app/api/abonos/route'
 import { POST as corregirAbono } from '@/app/api/cartera/abonos/[id]/corregir/route'
-import { idConsumoBonoAbono } from '@/lib/bono-saldo-favor'
+import { POST as corregirPago } from '@/app/api/pagos/[id]/corregir/route'
+import { idConsumoBonoAbono, idConsumoBonoPago } from '@/lib/bono-saldo-favor'
 import { AnularPedidoUseCase } from '@/modules/pedidos/application/use-cases/AnularPedidoUseCase'
 import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
 import { PrismaFacturaRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaFacturaRepository'
@@ -344,4 +345,76 @@ describe('#772 — solo el saldo a favor disponible respalda BONO', () => {
     expect(await credito(f.clienteId)).toBe(0)
     expect(await pagosDel(f.pedidoId)).toHaveLength(1)
   })
+  it('BONO sin Abono: corrección parcial y anulación restituyen todo, sin doble crédito', async () => {
+    process.env.COBRO_DIA_SIN_ESPEJO = 'true'
+    process.env.CORRECCION_PAGO_SIN_ABONO = 'true'
+    try {
+      const f = await fiado()
+      await fijarCredito(f.clienteId, 5000)
+      const offlineId = unique()
+      const body = { clienteId: f.clienteId, pedidoId: f.pedidoId, metodo: 'BONO', monto: 2000, offlineId }
+      const cobrar = () => pagarFiado(new NextRequest('http://localhost/api/pedidos/pagar-fiado', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      }))
+      const first = await cobrar()
+      expect(first.status).toBe(200)
+      expect((await cobrar()).status).toBe(200)
+      expect(await credito(f.clienteId)).toBe(3000)
+      const pago = await testPrisma.pago.findFirstOrThrow({ where: { pedidoId: f.pedidoId, metodo: 'BONO' } })
+      expect(await testPrisma.abono.count({ where: { pedidoId: f.pedidoId } })).toBe(0)
+      expect(await testPrisma.historial.findUnique({ where: { id: idConsumoBonoPago(pago.id) } })).not.toBeNull()
+      const correccionOfflineId = unique()
+      const corregir = () => corregirPago(
+        new NextRequest('http://localhost/api/pagos/' + pago.id + '/corregir', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ tipo: 'MONTO', montoRevertido: 500,
+            motivo: 'Corrección parcial de BONO sin espejo', correccionOfflineId }),
+        }),
+        { params: Promise.resolve({ id: pago.id }) },
+      )
+      expect((await corregir()).status).toBe(201)
+      expect((await corregir()).status).toBe(200)
+      expect(await credito(f.clienteId)).toBe(3500)
+      const servicio = new AnularPedidoUseCase(
+        new PrismaPedidoRepository(), new PrismaFacturaRepository(),
+        new PrismaNotaCreditoRepository(), new PrismaTransactionManager(),
+      )
+      const ref = unique()
+      const anulado = await servicio.execute({ pedidoId: f.pedidoId, motivo: 'Revertir pedido',
+        offlineId: ref, actorId: adminId })
+      expect(anulado.saldoFavorBonoRestituido).toBe(1500)
+      expect(await credito(f.clienteId)).toBe(5000)
+      expect((await servicio.execute({ pedidoId: f.pedidoId, offlineId: ref, actorId: adminId })).deduped).toBe(true)
+      expect(await credito(f.clienteId)).toBe(5000)
+      expect(await pagosDel(f.pedidoId)).toHaveLength(1)
+    } finally {
+      delete process.env.COBRO_DIA_SIN_ESPEJO
+      delete process.env.CORRECCION_PAGO_SIN_ABONO
+    }
+  })
+
+  it('BONO legado sin evidencia en Pago no inventa crédito durante corrección', async () => {
+    process.env.CORRECCION_PAGO_SIN_ABONO = 'true'
+    try {
+      const f = await fiado()
+      const pago = await testPrisma.pago.create({
+        data: { pedidoId: f.pedidoId, metodo: 'BONO', monto: 1000 },
+      })
+      await testPrisma.pedido.update({ where: { id: f.pedidoId },
+        data: { totalPagado: 1000, saldo: f.deuda - 1000, estadoPago: 'PARCIAL' } })
+      await testPrisma.factura.update({ where: { id: f.facturaId },
+        data: { montoPagado: 1000, saldo: f.deuda - 1000, estado: 'PARCIAL' } })
+      expect(await testPrisma.historial.findUnique({ where: { id: idConsumoBonoPago(pago.id) } })).toBeNull()
+      const res = await corregirPago(new NextRequest('http://localhost/api/pagos/' + pago.id + '/corregir', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tipo: 'MONTO', montoRevertido: 1000, motivo: 'Legado sin débito',
+          correccionOfflineId: unique() }),
+      }), { params: Promise.resolve({ id: pago.id }) })
+      expect(res.status).toBe(201)
+      expect(await credito(f.clienteId)).toBe(0)
+    } finally {
+      delete process.env.CORRECCION_PAGO_SIN_ABONO
+    }
+  })
+
 })

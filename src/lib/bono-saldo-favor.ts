@@ -50,6 +50,8 @@ export const idConsumoBonoAbono = (abonoId: string): string => `bono-abono:${abo
 
 /** Evidencia propia de nuevos movimientos; los Abonos BONO históricos no se presumen debitados. */
 export const OPERACION_CONSUMO_BONO = 'CONSUMO_BONO_SALDO_FAVOR'
+/** Identificador de débito para el Pago sin Abono espejo (#796). */
+export const idConsumoBonoPago = (pagoId: string): string => 'bono-pago:' + pagoId
 
 type LectorBono = Pick<Prisma.TransactionClient, 'historial'>
 
@@ -76,6 +78,29 @@ export async function verificarConsumoBonoAbono(
   return true
 }
 
+/** Solo se restituyen Pagos BONO con evidencia propia de descuento. */
+export async function verificarConsumoBonoPago(
+  tx: LectorBono,
+  pago: { id: string; clienteId: string; metodo: string; monto: unknown },
+): Promise<boolean> {
+  if (pago.metodo !== 'BONO') return false
+  const registro = await tx.historial.findUnique({
+    where: { id: idConsumoBonoPago(pago.id) },
+    select: { entidad: true, registroId: true, datos: true },
+  })
+  if (!registro) return false
+  let raw: unknown
+  try { raw = JSON.parse(registro.datos) as unknown } catch { throw new Error('BONO_AUDITORIA_INVALIDA') }
+  if (!raw || typeof raw !== 'object') throw new Error('BONO_AUDITORIA_INVALIDA')
+  const datos = raw as Record<string, unknown>
+  if (registro.entidad !== 'Pago' || registro.registroId !== pago.id ||
+    datos.operacion !== OPERACION_CONSUMO_BONO || datos.clienteId !== pago.clienteId ||
+    datos.metodo !== 'BONO' || Number(datos.monto) !== Number(pago.monto)) {
+    throw new Error('BONO_AUDITORIA_INVALIDA')
+  }
+  return true
+}
+
 /**
  * #772: al anular/cancelar, retornar al cliente el BONO que se consumió en
  * esa deuda y aún no fue restituido por una CorreccionAbono.
@@ -85,7 +110,7 @@ export async function verificarConsumoBonoAbono(
  * El caller serializa las anulaciones y verifica el estado terminal.
  */
 export async function restituirBonoPedidoAnulado(
-  tx: Pick<Prisma.TransactionClient, 'abono' | 'historial' | 'cliente'>,
+  tx: Pick<Prisma.TransactionClient, 'abono' | 'pago' | 'historial' | 'cliente'>,
   pedidoId: string,
   clienteId: string,
 ): Promise<number> {
@@ -101,6 +126,24 @@ export async function restituirBonoPedidoAnulado(
     if (!(await verificarConsumoBonoAbono(tx, a))) continue
     const total = Math.round(Number(a.monto) * 100)
     const revertido = a.correcciones.reduce((suma, c) => suma + Math.round(Number(c.montoRevertido) * 100), 0)
+    if (!Number.isSafeInteger(total) || !Number.isSafeInteger(revertido) ||
+      revertido < 0 || revertido > total) throw new Error('BONO_CORRECCION_INVALIDA')
+    centavos += total - revertido
+  }
+  // El modo sin espejo guarda el débito en Pago, no en Abono.
+  const pagos = await tx.pago.findMany({
+    where: { pedidoId, metodo: 'BONO', pedido: { clienteId } },
+    select: {
+      id: true, metodo: true, monto: true,
+      abonoEspejo: { select: { id: true } },
+      correcciones: { select: { montoRevertido: true } },
+    },
+  })
+  for (const pago of pagos) {
+    if (pago.abonoEspejo) continue // ya se restituyó por su Abono
+    if (!(await verificarConsumoBonoPago(tx, { ...pago, clienteId }))) continue
+    const total = Math.round(Number(pago.monto) * 100)
+    const revertido = pago.correcciones.reduce((sum, item) => sum + Math.round(Number(item.montoRevertido) * 100), 0)
     if (!Number.isSafeInteger(total) || !Number.isSafeInteger(revertido) ||
       revertido < 0 || revertido > total) throw new Error('BONO_CORRECCION_INVALIDA')
     centavos += total - revertido
