@@ -38,6 +38,7 @@ import {
 } from "./cobros-periodo";
 import {
   leerEntregasConsulta,
+  requiereConciliacionEntrega,
   type EntregaConsulta,
 } from "./entregas-consulta";
 import {
@@ -801,7 +802,7 @@ async function leerConsultaPedidos(
             );
             entregasPorConciliar = new Set([
               ...hechos
-                .filter((e) => !e.cantidades || e.incompleto)
+                .filter(requiereConciliacionEntrega)
                 .map((e) => e.pedidoId),
               ...[...sinFechaEntrega].filter((id) => ids.has(id)),
             ]).size;
@@ -899,6 +900,11 @@ async function leerConsultaPedidos(
         const hechos = hechosPagina
           .filter((e) => e.pedidoId === raw.id)
           .sort((a, b) => +b.fecha - +a.fecha);
+        // #959: en mostrador un hecho HISTORICO con cantidades/fecha exactas
+        // sí es válido; no equiparar fuente histórica con evento incompleto.
+        const entregaEnRangoIncierta = diaOperativo && hechos.some((e) =>
+          e.fecha >= rango.desde && e.fecha < rango.hasta && requiereConciliacionEntrega(e),
+        );
         const ids = [
           ...new Set(
             hechos
@@ -961,14 +967,8 @@ async function leerConsultaPedidos(
             e.fecha >= rango.desde && e.fecha < rango.hasta
           ) ? {
             entregaEnPeriodo: {
-              porConciliar: hechos.some((e) =>
-                e.fecha >= rango.desde && e.fecha < rango.hasta &&
-                (e.fuente === "HISTORICO" || e.incompleto || !e.cantidades)
-              ),
-              unidades: hechos.some((e) =>
-                e.fecha >= rango.desde && e.fecha < rango.hasta &&
-                (e.fuente === "HISTORICO" || e.incompleto || !e.cantidades)
-              ) ? null : hechos
+              porConciliar: entregaEnRangoIncierta,
+              unidades: entregaEnRangoIncierta ? null : hechos
                 .filter((e) => e.fecha >= rango.desde && e.fecha < rango.hasta)
                 .reduce((n, e) => n + (e.cantidades ?? []).reduce((subtotal, l) => subtotal + l.cantidad, 0), 0),
             },
