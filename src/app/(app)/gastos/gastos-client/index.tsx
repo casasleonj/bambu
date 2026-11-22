@@ -23,6 +23,7 @@ export default function GastosPage() {
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
   const [categoria, setCategoria] = useState('')
   const [categoriasRemotas, setCategoriasRemotas] = useState<string[]>([])
+  const [categoriasCargadas, setCategoriasCargadas] = useState(false)
   const [notas, setNotas] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [monto, setMonto] = useState('')
@@ -34,6 +35,7 @@ export default function GastosPage() {
   const [montoTotal, setMontoTotal] = useState(0)
   const [loadingGastos, setLoadingGastos] = useState(true)
   const [errorGastos, setErrorGastos] = useState<string | null>(null)
+  const [errorActualizacion, setErrorActualizacion] = useState<string | null>(null)
   const requestSequence = useRef(0)
   const detalleSequence = useRef(0)
   const [detalle, setDetalle] = useState<Gasto | null>(null)
@@ -51,11 +53,15 @@ export default function GastosPage() {
   const [confirmarOperacionNoReal, setConfirmarOperacionNoReal] = useState(false)
   const [guardandoDetalle, setGuardandoDetalle] = useState(false)
 
-  const fetchGastos = useCallback(async () => {
-    // Descartar respuestas de filtros/páginas anteriores, incluido polling.
+  const fetchGastos = useCallback(async (mostrarCarga = false) => {
+    // Cada filtro/página invalida respuestas antiguas, incluso las del polling.
+    // En segundo plano mantenemos los gastos visibles: la lista no parpadea
+    // ni parece vacía cada 60 segundos.
     const sequence = ++requestSequence.current
-    setLoadingGastos(true)
-    setErrorGastos(null)
+    if (mostrarCarga) {
+      setLoadingGastos(true)
+      setErrorGastos(null)
+    }
     try {
       const params = new URLSearchParams()
       if (dateRange.desde) params.set('desde', dateRange.desde)
@@ -74,32 +80,40 @@ export default function GastosPage() {
       setMontoTotal(data.montoTotal)
       setTotalRegistros(data.total)
       setTotalPaginas(Math.max(1, data.totalPages))
+      setErrorGastos(null)
+      setErrorActualizacion(null)
     } catch (e) {
       if (sequence !== requestSequence.current) return
-      setErrorGastos(e instanceof Error ? e.message : 'No se pudieron cargar los gastos.')
-      setGastos([])
-      setMontoTotal(0)
-      setTotalRegistros(0)
-      setTotalPaginas(1)
+      const mensaje = e instanceof Error ? e.message : 'No se pudieron cargar los gastos.'
+      if (mostrarCarga) {
+        setErrorGastos(mensaje)
+        setGastos([])
+        setMontoTotal(0)
+        setTotalRegistros(0)
+        setTotalPaginas(1)
+      } else {
+        // Una falla de actualización NO borra registros previamente consultados.
+        setErrorActualizacion('No se pudo actualizar. Se muestran los últimos datos cargados.')
+      }
     } finally {
       if (sequence === requestSequence.current) setLoadingGastos(false)
     }
   }, [dateRange, pagina])
 
   const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
-    setPagina(1)
-    setDateRange({ desde, hasta })
+    // DateRangeFilter emite al montar. Si el valor no cambió, no ejecutar
+    // una segunda consulta idéntica ni reiniciar los resultados.
+    setDateRange(actual => actual.desde === desde && actual.hasta === hasta
+      ? actual : { desde, hasta })
+    setPagina(actual => actual === 1 ? actual : 1)
   }, [])
 
   useEffect(() => {
-    // Fetch de datos al montar / cambiar dateRange — side effect de red
-    // real, no derivable durante el render.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchGastos()
+    // Cambiar fecha/página sí requiere carga visible. El polling no.
+    void fetchGastos(true)
   }, [fetchGastos])
 
-  // Polling: refresh gastos every 60s.
-  usePollingRefetch(fetchGastos, 60_000)
+  usePollingRefetch(() => fetchGastos(false), 60_000)
 
   const abrirDetalle = useCallback(async (id: string, modo: 'VER' | 'EDITAR' = 'VER') => {
     const sequence = ++detalleSequence.current
@@ -153,16 +167,24 @@ export default function GastosPage() {
   ])
 
   useEffect(() => {
-    let mounted = true
-    fetch('/api/gastos/categorias')
+    // El listado no necesita consultar TODAS las categorías históricas.
+    // Cargar el catálogo solo cuando el usuario abre un formulario.
+    if ((!showCrear && modoDetalle !== 'EDITAR') || categoriasCargadas) return
+    const abort = new AbortController()
+    fetch('/api/gastos/categorias', { signal: abort.signal })
       .then(response => {
         if (!response.ok) throw new Error('Catálogo no disponible')
         return response.json()
       })
-      .then(json => { if (mounted && json.success && Array.isArray(json.categorias)) setCategoriasRemotas(json.categorias) })
-      .catch(() => { /* Conservamos las opciones base si el catálogo no está disponible. */ })
-    return () => { mounted = false }
-  }, [])
+      .then(json => {
+        if (!abort.signal.aborted && json.success && Array.isArray(json.categorias)) {
+          setCategoriasRemotas(json.categorias)
+          setCategoriasCargadas(true)
+        }
+      })
+      .catch(() => { /* Conservar categorías base; reintentar al abrir el siguiente formulario. */ })
+    return () => abort.abort()
+  }, [showCrear, modoDetalle, categoriasCargadas])
 
   function cambiarNuevo(clave: keyof DatosFormularioGasto, valor: string) {
     if (clave === 'categoria') setCategoria(valor)
@@ -336,8 +358,8 @@ export default function GastosPage() {
         setResponsable('')
         setNotas('')
         setCategoriasRemotas(actual => categoriasGastoDisponibles([...actual, categoria]))
-        setPagina(1)
-        void fetchGastos()
+        if (pagina !== 1) setPagina(1)
+        else void fetchGastos(false)
         toast.success('Gasto registrado')
       } else {
         const json = await res.json().catch(() => null)
@@ -535,7 +557,15 @@ export default function GastosPage() {
       {errorGastos && (
         <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <p>{errorGastos}</p>
-          <Button className="mt-3" variant="outline" onClick={() => void fetchGastos()}>Reintentar</Button>
+          <Button className="mt-3" variant="outline" onClick={() => void fetchGastos(true)}>Reintentar</Button>
+        </div>
+      )}
+      {errorActualizacion && !errorGastos && (
+        <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          {errorActualizacion}
+          <button type="button" className="ml-2 font-semibold underline" onClick={() => void fetchGastos(false)}>
+            Reintentar
+          </button>
         </div>
       )}
       {loadingGastos ? (
