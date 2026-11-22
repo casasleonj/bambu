@@ -5,6 +5,14 @@ import { Modal } from "@/components/modal";
 import { getProductoIconConfig } from "@/lib/producto-iconos";
 import { formatCurrency } from "@/lib/utils";
 import {
+  ETIQUETA_GRUPO,
+  filaProductoHoy,
+  lineaOrigen,
+  pedidosPorConciliar,
+  textoEntregadas,
+  textoPedidos,
+} from "./operacion-hoy-presentacion";
+import {
   baseEfectiva,
   type FiltrosConsultaPedidos,
   type ResumenConsultaPedidos,
@@ -37,9 +45,12 @@ function leerEsMovil(): boolean {
 export function ResumenConsulta({
   resumen: r,
   filtros: f,
+  onReintentar,
 }: {
   resumen: ResumenConsultaPedidos;
   filtros: FiltrosConsultaPedidos;
+  /** #853: reintenta la consulta cuando falló el balance de hoy. */
+  onReintentar?: () => void;
 }) {
   const [ayuda, setAyuda] = useState(false);
   const preferencia = useSyncExternalStore(
@@ -80,16 +91,12 @@ export function ResumenConsulta({
     >
       <h3 className="text-xs font-bold text-stone-700">
         📦{" "}
-        {entregas
-          ? "Productos entregados en el rango"
-          : r.operacionDia ? "Productos de pedidos fechados en la fecha consultada" : "Productos de los pedidos seleccionados"}
+        {entregas ? "Productos entregados en el rango" : "Productos de los pedidos seleccionados"}
       </h3>
       <p className="mt-1 text-xs text-stone-600">
         {entregas
           ? "Cantidades de entregas con evidencia del intervalo y de los repartidores elegidos. Las ventas de mostrador entregadas al vender cuentan en la hora de la venta."
-          : r.operacionDia
-            ? "Estas cantidades son acumuladas de pedidos fechados en la fecha consultada; no son las entregas físicas del día, que se muestran arriba."
-            : "Pedidas y entregadas acumuladas de esos pedidos; cada producto se cuenta por separado."}
+          : "Pedidas y entregadas acumuladas de esos pedidos; cada producto se cuenta por separado."}
       </p>
       <div className="mt-1 grid gap-x-5 lg:grid-cols-2">
         {r.productos.map((p) => {
@@ -197,37 +204,152 @@ export function ResumenConsulta({
         </p>
       )}
       <div id="consulta-resumen-detalle" hidden={!abierto}>
-        {r.operacionDia && (
+        {r.balanceOperativo ? (
           <div
             className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3"
             data-testid="consulta-resumen-operacion-hoy"
           >
             <h3 className="text-sm font-bold text-slate-800">
-              📦 Entregas físicas del {f.desde}: {r.operacionDia.total} productos
+              📦 Operación de hoy: {textoPedidos(r.balanceOperativo.pedidosUnicos.total)}
             </h3>
-            <p className="mt-1 text-xs text-slate-600">
-              Mismo criterio de productos entregados del Dashboard y del Cierre.
-              Incluye pedidos de días anteriores entregados en la fecha consultada, sin sumar entregas previas.
-            </p>
-            <div className="mt-2 space-y-2">
-              {r.operacionDia.productos.map((p) => {
-                const { Icon, label } = getProductoIconConfig(p.producto);
-                return (
-                  <div key={p.producto} className="border-t border-blue-200 pt-2 text-xs" data-producto-hoy={p.producto}>
-                    <div className="flex items-center justify-between gap-2">
-                      <strong className="flex items-center gap-1 text-slate-700">
-                        <Icon size={16} /> {label}
-                      </strong>
-                      <strong className="tabular-nums text-slate-800">{p.entregadasHoy} entregadas</strong>
-                    </div>
-                    <p className="mt-1 text-slate-600">
-                      {p.dePedidosFecha} de pedidos fechados ese día · {p.dePedidosAnteriores} de pedidos anteriores
-                      {p.porConciliarOrigen > 0 ? ` · ${p.porConciliarOrigen} sin fecha original verificable` : ""}
-                    </p>
+            <p className="mt-1 text-xs text-slate-600">Mismo criterio del Dashboard y del Cierre.</p>
+            {r.balanceOperativo.productos.length === 0 && (
+              <p className="mt-2 text-xs text-slate-600" data-testid="operacion-hoy-vacia">
+                Hoy no hay pedidos por gestionar ni entregas registradas.
+              </p>
+            )}
+            {r.balanceOperativo.productos.map((p) => {
+              const fila = filaProductoHoy(p);
+              const { Icon, label } = getProductoIconConfig(p.producto);
+              return (
+                <div key={p.producto} className="mt-2 border-t border-blue-200 pt-2 text-xs" data-producto-hoy={p.producto}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <strong className="flex items-center gap-1 text-sm text-slate-700">
+                      <Icon size={16} /> {label}
+                    </strong>
+                    <strong className="whitespace-nowrap text-sm tabular-nums text-slate-800">
+                      {textoEntregadas(fila.entregadas)}
+                    </strong>
                   </div>
-                );
-              })}
+                  <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 text-slate-600">
+                    <span className="tabular-nums">
+                      de {fila.porGestionar} por gestionar{fila.ajusteTexto ? ` · ${fila.ajusteTexto}` : ""}
+                    </span>
+                    <strong
+                      className={`tabular-nums ${fila.faltan === 0 ? "text-green-700" : "text-slate-800"}`}
+                      data-testid={`faltan-${p.producto}`}
+                    >
+                      faltan {fila.faltan}
+                    </strong>
+                  </div>
+                  <p className="mt-1 text-slate-600 tabular-nums">{fila.origen}</p>
+                  {fila.grupos.length > 0 && (
+                    <details className="mt-1">
+                      <summary className="flex min-h-8 cursor-pointer items-center text-xs font-semibold text-blue-700">
+                        Ver por origen
+                      </summary>
+                      <table className="w-full text-xs tabular-nums">
+                        <thead>
+                          <tr className="text-slate-600">
+                            <th className="py-1 text-left font-semibold" />
+                            <th className="px-1 py-1 text-right font-semibold">
+                              <span className="sm:hidden">Gest.</span>
+                              <span className="hidden sm:inline">Por gestionar</span>
+                            </th>
+                            {fila.hayAjustes && <th className="px-1 py-1 text-right font-semibold">Ajus.</th>}
+                            <th className="px-1 py-1 text-right font-semibold">
+                              <span className="sm:hidden">Entr.</span>
+                              <span className="hidden sm:inline">Entregadas</span>
+                            </th>
+                            <th className="px-1 py-1 text-right font-semibold">Faltan</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {fila.grupos.map(({ grupo, cantidades: c }) => (
+                            <tr key={grupo} className="border-t border-blue-100" data-grupo={grupo}>
+                              <td className="py-1.5 text-left">
+                                <span className="sm:hidden">{ETIQUETA_GRUPO[grupo].corta}</span>
+                                <span className="hidden sm:inline">{ETIQUETA_GRUPO[grupo].larga}</span>
+                              </td>
+                              <td className="px-1 text-right">{c.porGestionar}</td>
+                              {fila.hayAjustes && <td className="px-1 text-right text-amber-700">{c.ajustes}</td>}
+                              <td className="px-1 text-right">{c.entregadasHoy}</td>
+                              <td className="px-1 text-right">{c.faltan}</td>
+                            </tr>
+                          ))}
+                          <tr className="border-t-2 border-blue-300 font-extrabold">
+                            <td className="py-1.5 text-left">Total</td>
+                            <td className="px-1 text-right">{fila.total.porGestionar}</td>
+                            {fila.hayAjustes && <td className="px-1 text-right text-amber-700">{fila.total.ajustes}</td>}
+                            <td className="px-1 text-right">{fila.total.entregadasHoy}</td>
+                            <td className="px-1 text-right">{fila.total.faltan}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </details>
+                  )}
+                </div>
+              );
+            })}
+            {pedidosPorConciliar(r.balanceOperativo) > 0 && (
+              <p
+                role="status"
+                className="mt-3 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900"
+                data-testid="operacion-hoy-por-conciliar"
+              >
+                ⚠ {pedidosPorConciliar(r.balanceOperativo)}{" "}
+                {pedidosPorConciliar(r.balanceOperativo) === 1 ? "pedido" : "pedidos"} por conciliar. No se les asigna
+                pendiente inicial.
+              </p>
+            )}
+          </div>
+        ) : (
+          r.operacionDia && (
+            <div
+              className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3"
+              data-testid="consulta-resumen-operacion-hoy"
+            >
+              <h3 className="text-sm font-bold text-slate-800">
+                📦 Entregas físicas del {f.desde}: {r.operacionDia.total} productos
+              </h3>
+              <p className="mt-1 text-xs text-slate-600">Mismo criterio del Dashboard y del Cierre.</p>
+              <div className="mt-2 space-y-2">
+                {r.operacionDia.productos.map((p) => {
+                  const { Icon, label } = getProductoIconConfig(p.producto);
+                  return (
+                    <div key={p.producto} className="border-t border-blue-200 pt-2 text-xs" data-producto-hoy={p.producto}>
+                      <div className="flex items-center justify-between gap-2">
+                        <strong className="flex items-center gap-1 text-slate-700">
+                          <Icon size={16} /> {label}
+                        </strong>
+                        <strong className="tabular-nums text-slate-800">{textoEntregadas(p.entregadasHoy)}</strong>
+                      </div>
+                      <p className="mt-1 text-slate-600">
+                        {lineaOrigen([
+                          [p.dePedidosFecha, "de pedidos fechados ese día"],
+                          [p.dePedidosAnteriores, "de pedidos anteriores"],
+                          [p.porConciliarOrigen, "sin fecha original verificable"],
+                        ])}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
+          )
+        )}
+        {r.balanceOperativoError && (
+          <div
+            role="status"
+            className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded border border-red-300 bg-red-50 p-3 text-xs text-red-800"
+            data-testid="operacion-hoy-error"
+          >
+            <span>No se pudo calcular el balance de hoy. No se muestra un cero inventado.</span>
+            {onReintentar && (
+              <button type="button" onClick={onReintentar} className="min-h-11 rounded-lg border border-red-300 bg-white px-3 font-semibold">
+                Reintentar
+              </button>
+            )}
           </div>
         )}
         {r.operacionDiaError && (
@@ -405,15 +527,8 @@ export function ResumenConsulta({
                 consulta.
               </p>
             )}
-            {(r.productos.length > 0 || r.entregasPorConciliar > 0) &&
-              (r.operacionDia ? (
-                <details className="mt-3" data-testid="consulta-cohorte-fecha-pedido">
-                  <summary className="cursor-pointer py-2 text-xs font-semibold text-slate-700">
-                    Ver acumulados de pedidos fechados ese día (no son entregas del día)
-                  </summary>
-                  {productos}
-                </details>
-              ) : productos)}
+            {/* #853: con el bloque de entregas del día, los acumulados de pedidos fechados ese día no se muestran. */}
+            {!r.operacionDia && !r.balanceOperativo && (r.productos.length > 0 || r.entregasPorConciliar > 0) && productos}
           </>
         )}
       </div>
