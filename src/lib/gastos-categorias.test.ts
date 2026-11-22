@@ -24,6 +24,8 @@ describe('categorías de gastos #973', () => {
   it('descarta categorías personales del selector, incluso con tildes', () => {
     expect(esCategoriaPersonal(' nómina ')).toBe(true)
     expect(esCategoriaPersonal('comisiones')).toBe(true)
+    expect(esCategoriaPersonal('sueldos varios')).toBe(true)
+    expect(esCategoriaPersonal('pago de personal')).toBe(true)
     expect(esCategoriaPersonal('transporte')).toBe(false)
   })
   it('rechaza valores vacíos, símbolos arbitrarios y categorías demasiado largas', () => {
