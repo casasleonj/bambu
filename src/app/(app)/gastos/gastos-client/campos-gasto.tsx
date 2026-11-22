@@ -72,14 +72,14 @@ export function CamposGasto({ prefijo, datos, cambiar, categorias, bloqueado = f
         </p>
         <div>
           <label htmlFor={`${prefijo}-responsable`} className={label}>
-            {legado ? 'Responsable (dato anterior)' : 'Persona asociada al gasto'}
+            Persona asociada al gasto
           </label>
           <input id={`${prefijo}-responsable`} maxLength={100} disabled={bloqueado}
             value={datos.responsable} onChange={event => cambiar('responsable', event.target.value)}
             placeholder="Ej. Persona que realizó el pago" className={input} />
           <p className="mt-1 text-xs text-slate-600">
             {legado
-              ? 'Este dato fue guardado como «Responsable». No identifica necesariamente quién registró o pagó.'
+              ? 'Antes se llamaba «Responsable». No demuestra quién pagó ni quién registró; comprueba el dato antes de corregirlo.'
               : 'Si lo sabes, escribe quién estuvo a cargo. El sistema registra automáticamente el usuario que guarda el gasto.'}
           </p>
         </div>
