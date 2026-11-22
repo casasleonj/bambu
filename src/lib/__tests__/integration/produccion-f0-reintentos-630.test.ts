@@ -101,7 +101,8 @@ describe('#630 F0 — idempotencia semántica de Producción (PostgreSQL real)',
 
   it('replay idéntico después del cierre no genera una nueva producción', async () => {
     const s = await sellador()
-    const body = payload(s.id, randomUUID())
+    // Fecha exclusiva para este caso: no contamina otros tests del archivo.
+    const body = { ...payload(s.id, randomUUID()), fecha: dayInBogota(new Date(Date.now() - 20 * 86_400_000)) }
     expect((await crearProduccion(post(body))).status).toBe(201)
     await testPrisma.cierreDia.create({
       data: { fecha: startOfDayInBogota(body.fecha), cerradoPor: adminId },
