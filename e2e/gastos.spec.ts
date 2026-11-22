@@ -23,7 +23,7 @@ test.describe('Gastos', () => {
     await goto(page, '/gastos')
 
     await expect(page.locator('h1:has-text("Gastos")')).toBeVisible()
-    await expect(page.locator('button:has-text("Nuevo gasto")')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Nuevo gasto', exact: true })).toBeVisible()
   })
 
   test('crear gasto', async ({ page }) => {
