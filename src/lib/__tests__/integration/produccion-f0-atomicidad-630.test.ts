@@ -72,7 +72,7 @@ describe('#630 F0 — atomicidad de auditoría en Producción (PostgreSQL real)'
     mocks.audit.mockRejectedValueOnce(new Error('F0_AUDIT_FAILURE_INJECTED'))
     const res = await put(p.id, {
       obs: 'Corrección sintética que debe revertirse',
-      items: [{ producto: 'PACA_AGUA', conteoA: 14, conteoB: 14 }],
+      items: [{ producto: 'PACA_AGUA', conteoA: 14, conteoB: 14 }, { producto: 'PACA_HIELO' }],
     })
     expect(res.status).toBeGreaterThanOrEqual(400)
     const actual = await testPrisma.produccionItem.findFirstOrThrow({
