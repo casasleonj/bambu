@@ -1,11 +1,14 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useId } from 'react'
+import { FechaColombia } from '@/components/ui/fecha-colombia'
 import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 
 interface DateRangeFilterProps {
   onDateChange?: (desde: string | null, hasta: string | null) => void
   syncWithUrl?: boolean
+  /** Muestra DD/MM/AAAA sin modificar otros módulos que usan el filtro. */
+  formatoColombia?: boolean
 }
 
 const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
@@ -34,8 +37,10 @@ const SHORTCUTS = [
   { label: 'Esta semana', getDate: () => { const d = new Date(); d.setDate(d.getDate() + (6 - d.getDay())); return d } },
 ]
 
-export function DateRangeFilter({ onDateChange, syncWithUrl = true }: DateRangeFilterProps) {
+export function DateRangeFilter({ onDateChange, syncWithUrl = true, formatoColombia = false }: DateRangeFilterProps) {
   const params = useShallowSearchParams()
+  const idDesde = useId()
+  const idHasta = useId()
 
   const [desde, setDesde] = useState(params.get('desde') || '')
   const [hasta, setHasta] = useState(params.get('hasta') || '')
@@ -82,22 +87,22 @@ export function DateRangeFilter({ onDateChange, syncWithUrl = true }: DateRangeF
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <div className="flex items-center gap-2">
-        <label className="text-sm text-gray-600 whitespace-nowrap">Desde:</label>
-        <input
-          type="date"
-          value={desde}
-          onChange={(e) => handleDesdeChange(e.target.value)}
-          className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
-        />
+        <label htmlFor={idDesde} className="text-sm text-gray-600 whitespace-nowrap">Desde:</label>
+        {formatoColombia
+          ? <FechaColombia id={idDesde} value={desde} onChange={handleDesdeChange} />
+          : <input id={idDesde} type="date" value={desde}
+              onChange={(e) => handleDesdeChange(e.target.value)}
+              className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm" />}
+
       </div>
       <div className="flex items-center gap-2">
-        <label className="text-sm text-gray-600 whitespace-nowrap">Hasta:</label>
-        <input
-          type="date"
-          value={hasta}
-          onChange={(e) => handleHastaChange(e.target.value)}
-          className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
-        />
+        <label htmlFor={idHasta} className="text-sm text-gray-600 whitespace-nowrap">Hasta:</label>
+        {formatoColombia
+          ? <FechaColombia id={idHasta} value={hasta} onChange={handleHastaChange} />
+          : <input id={idHasta} type="date" value={hasta}
+              onChange={(e) => handleHastaChange(e.target.value)}
+              className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm" />}
+
       </div>
       <div className="flex gap-1">
         {SHORTCUTS.map((s) => {
