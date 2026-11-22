@@ -68,11 +68,21 @@ export async function PUT(
   addApiBreadcrumb('produccion.PUT start', { id, hasItems: !!parsed.data.items, hasObs: parsed.data.obs !== undefined })
 
   try {
+    // Obtener la fecha antes de abrir la tx para tomar el MISMO lock de día
+    // que usa Cierre. La lectura definitiva y el check se repiten bajo lock.
+    const referenciaFecha = await prisma.produccion.findUnique({
+      where: { id }, select: { fecha: true },
+    })
+    if (!referenciaFecha) return apiError('Producción no encontrada', 404)
+    const fechaLock = startOfDayInBogota(dayInBogota(referenciaFecha.fecha))
+
     const updated = await prisma.$transaction(
       async (tx) => {
         // Advisory lock para serializar vs POSTs concurrentes.
         // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:produccion` en lugar
         // del entero fijo 8 (que colisionaba con NC).
+        // Orden común entre POST, PUT y Cierre: CIERRE:fecha → SECUENCIA.
+        await acquireAdvisoryLockTx(tx, 'CIERRE', fechaLock.toISOString())
         await acquireAdvisoryLockTx(tx, 'SECUENCIA', 'produccion')
 
         // 1. Cargar Produccion existente con items
@@ -82,6 +92,9 @@ export async function PUT(
         })
         if (!existing) {
           throw new Error('PRODUCCION_NO_ENCONTRADA')
+        }
+        if (existing.fecha.getTime() !== fechaLock.getTime()) {
+          throw new Error('PRODUCCION_FECHA_CAMBIO_CONCURRENTE')
         }
 
         // 2. #645: se puede corregir la producción de hoy y de los 30 días anteriores (cierre atrasado), nunca más antigua.
@@ -236,7 +249,7 @@ export async function PUT(
           }
         }
 
-        logAudit({
+        await logAudit({
           entidad: 'Produccion',
           registroId: id,
           accion: 'UPDATE',
@@ -249,7 +262,7 @@ export async function PUT(
           usuarioId: userId,
           ip,
           userAgent,
-        }).catch(() => {})
+        }, tx)
 
         return result
       },
