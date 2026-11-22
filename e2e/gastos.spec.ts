@@ -5,8 +5,7 @@ import type { Page } from '@playwright/test'
 async function elegirCategoria(page: Page, nombre: string) {
   const selector = page.locator('#gasto-categoria')
   await selector.fill(nombre)
-  await page.getByRole('option', { name: new RegExp(`^${nombre}// @tests api/gasto
-, 'i') }).click()
+  await page.getByRole('option', { name: nombre, exact: true }).click()
 }
 
 test.describe('Gastos', () => {
