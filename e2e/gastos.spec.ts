@@ -131,11 +131,12 @@ test.describe('Gastos', () => {
     await page.click('button:has-text("Nuevo gasto")')
     await page.waitForTimeout(500)
 
+    await elegirCategoria(page, 'Insumos')
     await page.locator('#gasto-descripcion').fill('Sin monto')
 
     // Sin monto «Guardar» queda deshabilitado (no se puede ni hacer clic).
     await expect(page.locator('button:has-text("Guardar")')).toBeDisabled()
-    await expect(page.locator('h2:has-text("Nuevo gasto")')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Nuevo gasto', exact: true })).toBeVisible()
   })
 
   test('filtrar por fecha', async ({ page }) => {
