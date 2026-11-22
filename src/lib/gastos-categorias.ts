@@ -17,7 +17,9 @@ export function normalizarCategoriaGasto(value: string): string {
 }
 
 export function esCategoriaPersonal(value: string): boolean {
-  return PERSONALES.has(normalizarCategoriaGasto(value))
+  const categoria = normalizarCategoriaGasto(value)
+  return PERSONALES.has(categoria) ||
+    /\b(NOMINA|SALARIOS?|SUELDOS?|COMISION(?:ES)?|PAGOS? (?:DE|A) (?:PERSONAL|EMPLEADOS|TRABAJADORES))\b/.test(categoria)
 }
 
 export function categoriaGastoValida(value: string): boolean {
