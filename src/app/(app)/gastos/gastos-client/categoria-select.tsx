@@ -77,7 +77,7 @@ export function CategoriaGastoSelect({ value, onChange, options, disabled = fals
           aria-controls={listId} aria-activedescendant={abierto && items[activo] ? `${listId}-${activo}` : undefined}
           required={!value} disabled={disabled}
           value={abierto ? consulta : (value ? etiquetaCategoriaGasto(value) : '')}
-          onChange={event => { setConsulta(event.target.value); setActivo(0); setAbierto(true) }}
+          onChange={event => { if (value) onChange(''); setConsulta(event.target.value); setActivo(0); setAbierto(true) }}
           onFocus={() => { setConsulta(''); setActivo(0); setAbierto(true) }}
           onKeyDown={tecla}
           onBlur={event => {
