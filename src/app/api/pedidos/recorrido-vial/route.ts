@@ -21,9 +21,32 @@ import {
   optimizarRecorridoVial,
   ProveedorVialInvalidoError,
 } from '@/lib/geo/recorrido-vial-proveedor-server'
-import { bloqueadaPorEmbarque, clasificarGestionVial } from '@/lib/geo/seleccion-recorrido-vial'
+import { bloqueadaPorEmbarque, clasificarGestionVial, esParadaDeEntregaCercania } from '@/lib/geo/seleccion-recorrido-vial'
 
 export const runtime = 'nodejs'
+
+// Única proyección para ambos cortes: leer exactamente las mismas columnas
+// antes y después de pedir la optimización evita un plan con datos viejos.
+const pedidoVialSelect = {
+  id: true, clienteId: true, canal: true, estadoEntrega: true,
+  fechaEntrega: true, entregaNoAntesDe: true, embarqueId: true,
+  entregaLat: true, entregaLng: true,
+  cliente: { select: { lat: true, lng: true } },
+  negocio: { select: { lat: true, lng: true } },
+  items: {
+    orderBy: { id: 'asc' },
+    select: {
+      id: true, producto: true, cantPedido: true, cantEntrega: true,
+      cantRegaloPedido: true, cantRegaloEntrega: true,
+    },
+  },
+  cPacaAguaPed: true, cPacaAguaEnt: true,
+  cPacaHieloPed: true, cPacaHieloEnt: true,
+  cBotellonFabPed: true, cBotellonFabEnt: true,
+  cBotellonDomPed: true, cBotellonDomEnt: true,
+  cBolsaAguaPed: true, cBolsaAguaEnt: true,
+  cBolsaHieloPed: true, cBolsaHieloEnt: true,
+} as const satisfies Prisma.PedidoSelect
 
 const schema = z.strictObject({
   pedidoIds: z.array(z.string().min(1).max(128)).min(1).max(25),
@@ -73,31 +96,20 @@ export async function POST(request: NextRequest) {
   const ahora = new Date()
 
   try {
-    const { paradas, advertenciasHora } = await prisma.$transaction(async tx => {
+    const { paradas, advertenciasHora, versiones } = await prisma.$transaction(async tx => {
       const pedidos = await tx.pedido.findMany({
         where: { id: { in: pedidoIds } },
-        select: {
-          id: true, clienteId: true, canal: true, estadoEntrega: true,
-          fechaEntrega: true, entregaNoAntesDe: true, embarqueId: true,
-          entregaLat: true, entregaLng: true,
-          cliente: { select: { lat: true, lng: true } },
-          negocio: { select: { lat: true, lng: true } },
-          items: { select: {
-            producto: true, cantPedido: true, cantEntrega: true,
-            cantRegaloPedido: true, cantRegaloEntrega: true,
-          } },
-          cPacaAguaPed: true, cPacaAguaEnt: true,
-          cPacaHieloPed: true, cPacaHieloEnt: true,
-          cBotellonFabPed: true, cBotellonFabEnt: true,
-          cBotellonDomPed: true, cBotellonDomEnt: true,
-          cBolsaAguaPed: true, cBolsaAguaEnt: true,
-          cBolsaHieloPed: true, cBolsaHieloEnt: true,
-        },
+        select: pedidoVialSelect,
       })
       if (pedidos.length !== pedidoIds.length)
         throw new RecorridoVialError('PARADAS_INVALIDAS', 'Hay pedidos que ya no se encuentran disponibles.')
       const porId = new Map(pedidos.map(p => [p.id, p]))
       const exigibles = await leerExigibles(tx, { id: { in: pedidoIds } })
+      // El orden estable de items permite comparar el snapshot sin falsos
+      // cambios por el orden no garantizado de filas de PostgreSQL.
+      const versiones = new Map(pedidos.map(p => [
+        p.id, JSON.stringify([p, exigibles.get(p.id) ?? 0]),
+      ]))
       const ordenadas: ParadaVial[] = []
       const horas: string[] = []
       for (const id of pedidoIds) {
@@ -106,6 +118,10 @@ export async function POST(request: NextRequest) {
           throw new RecorridoVialError('PARADAS_INVALIDAS', 'Un pedido dejó de estar disponible.')
         if (isConsumidorFinalCanonical(p.clienteId))
           throw new RecorridoVialError('PARADAS_INVALIDAS', 'Una venta anónima no representa una visita de cobro.')
+        // #959: Cercanía sirve a entregas pendientes; un fiado de entrega ya
+        // completada se cobra desde Cartera, no agrega otra parada de reparto.
+        if (p.estadoEntrega === 'ENTREGADO')
+          throw new RecorridoVialError('PARADAS_INVALIDAS', 'Hay pedidos con entrega ya completada. Actualiza la selección.')
         const gestion = clasificarGestionVial({
           estadoEntrega: p.estadoEntrega,
           canal: p.canal,
@@ -120,10 +136,10 @@ export async function POST(request: NextRequest) {
           ],
           exigible: exigibles.get(id) ?? 0,
         })
-        if (!gestion)
-          throw new RecorridoVialError('PARADAS_INVALIDAS', 'La selección contiene pedidos sin gestión pendiente.')
-        // Un embarque histórico NO impide cobrar un pedido ya entregado.
-        // Solo impedimos reasignar una salida que aún transporta mercancía.
+        if (!esParadaDeEntregaCercania(gestion))
+          throw new RecorridoVialError('PARADAS_INVALIDAS', 'La selección contiene pedidos sin productos pendientes de entrega.')
+        // Cercanía solo acepta entregas físicas; no reasignar mercancía
+        // ya vinculada a un embarque de otra salida.
         if (bloqueadaPorEmbarque(p.embarqueId, gestion))
           throw new RecorridoVialError('PARADAS_INVALIDAS', 'Hay pedidos con carga asignada a un embarque. Revisa su repartidor.')
         // La fecha prometida de mañana se preserva, no se adelanta por GPS.
@@ -140,10 +156,32 @@ export async function POST(request: NextRequest) {
           throw new RecorridoVialError('COORDENADAS_INVALIDAS', 'Hay un destino sin coordenadas verificables.')
         ordenadas.push({ pedidoId: id, lat: coords.lat, lng: coords.lng, tipo: gestion.tipo })
       }
-      return { paradas: ordenadas, advertenciasHora: horas }
+      return { paradas: ordenadas, advertenciasHora: horas, versiones }
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 15_000 })
 
     const resultado = await optimizarRecorridoVial({ origen, paradas, salida: ahora })
+
+    // Otro operador puede cambiar la entrega, ubicación, horario, embarque
+    // o cobro mientras responde el proveedor. Un segundo corte de lectura
+    // descarta la ruta obsoleta ANTES de devolverla, sin llamar al proveedor
+    // por segunda vez y sin realizar escrituras (#959).
+    const cambiaron = await prisma.$transaction(async tx => {
+      const actuales = await tx.pedido.findMany({
+        where: { id: { in: pedidoIds } },
+        select: pedidoVialSelect,
+      })
+      if (actuales.length !== pedidoIds.length) return true
+      const exigiblesActuales = await leerExigibles(tx, { id: { in: pedidoIds } })
+      return actuales.some(p =>
+        versiones.get(p.id) !== JSON.stringify([p, exigiblesActuales.get(p.id) ?? 0]),
+      )
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 15_000 })
+    if (cambiaron)
+      throw new RecorridoVialError(
+        'PARADAS_INVALIDAS',
+        'Los pedidos cambiaron mientras se calculaba la ruta. Actualiza la selección y vuelve a calcular.',
+      )
+
     const response = apiSuccess({
       ...resultado,
       calculadoAt: ahora.toISOString(),
