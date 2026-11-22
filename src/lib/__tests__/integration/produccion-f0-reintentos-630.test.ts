@@ -113,6 +113,20 @@ describe('#630 F0 — idempotencia semántica de Producción (PostgreSQL real)',
     expect(await testPrisma.produccion.count({ where: { trabajadorId: s.id } })).toBe(1)
   })
 
+  it('el replay sin fecha respeta el día original aunque hoy sea otro día', async () => {
+    const s = await sellador()
+    const body = { ...payload(s.id, randomUUID()), fecha: dayInBogota(new Date(Date.now() - 12 * 86_400_000)) }
+    expect((await crearProduccion(post(body))).status).toBe(201)
+    // Equivale al cliente que no conoce la fecha exacta fijada por el
+    // servidor al crear. Se consulta la fecha del hecho original.
+    const { fecha: _fechaOriginal, ...replaySinFecha } = body
+    expect(_fechaOriginal).not.toBe(fecha())
+    const replay = await crearProduccion(post(replaySinFecha))
+    expect(replay.status, JSON.stringify(await replay.clone().json())).toBe(200)
+    expect((await replay.json()).deduped).toBe(true)
+    expect(await testPrisma.produccion.count({ where: { trabajadorId: s.id } })).toBe(1)
+  })
+
   it('mismo offlineId y payload diferente: NO afirma éxito ni altera el hecho original', async () => {
     const s = await sellador()
     const id = randomUUID()
