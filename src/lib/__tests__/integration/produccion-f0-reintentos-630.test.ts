@@ -13,7 +13,8 @@ vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn().mockResolvedValue(undefin
 
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { POST as crearProduccion } from '@/app/api/produccion/route'
-import { dayInBogota } from '@/lib/date-helpers'
+import { PUT as corregirProduccion } from '@/app/api/produccion/[id]/route'
+import { dayInBogota, startOfDayInBogota } from '@/lib/date-helpers'
 
 let adminId: string
 const fecha = () => dayInBogota(new Date(Date.now() - 86_400_000))
@@ -46,6 +47,68 @@ describe('#630 F0 — idempotencia semántica de Producción (PostgreSQL real)',
     expect(segunda.status, JSON.stringify(await segunda.clone().json())).toBe(200)
     const body = await segunda.json()
     expect(body.deduped).toBe(true)
+    expect(await testPrisma.produccion.count({ where: { trabajadorId: s.id } })).toBe(1)
+  })
+
+  it('el historial conserva la huella original en un CREATE confirmado', async () => {
+    const s = await sellador()
+    const primera = await crearProduccion(post(payload(s.id, randomUUID())))
+    expect(primera.status).toBe(201)
+    const p = await testPrisma.produccion.findFirstOrThrow({ where: { trabajadorId: s.id } })
+    const historial = await testPrisma.historial.findFirstOrThrow({
+      where: { entidad: 'Produccion', registroId: p.id, accion: 'CREATE' },
+    })
+    const datos = JSON.parse(historial.datos) as Record<string, unknown>
+    expect(datos._idempotencyHash).toMatch(/^[a-f0-9]{64}$/)
+  })
+
+  it('los items en distinto orden y observaciones con espacios son el mismo reintento', async () => {
+    const s = await sellador()
+    const body = payload(s.id, randomUUID())
+    expect((await crearProduccion(post(body))).status).toBe(201)
+    const replay = await crearProduccion(post({
+      ...body, obs: `  ${body.obs}  `, items: [...body.items].reverse(),
+    }))
+    expect(replay.status, JSON.stringify(await replay.clone().json())).toBe(200)
+    expect((await replay.json()).deduped).toBe(true)
+    expect(await testPrisma.produccion.count({ where: { trabajadorId: s.id } })).toBe(1)
+  })
+
+  it('replay original después de una corrección no deshace la corrección', async () => {
+    const s = await sellador()
+    const body = payload(s.id, randomUUID())
+    expect((await crearProduccion(post(body))).status).toBe(201)
+    const p = await testPrisma.produccion.findFirstOrThrow({ where: { trabajadorId: s.id } })
+    const correccion = await corregirProduccion(
+      new NextRequest(`http://localhost/api/produccion/${p.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          obs: 'Corrección posterior de la cantidad',
+          items: [{ producto: 'PACA_AGUA', conteoA: 14, conteoB: 14 }, { producto: 'PACA_HIELO' }],
+        }),
+      }), { params: Promise.resolve({ id: p.id }) },
+    )
+    expect(correccion.status, JSON.stringify(await correccion.clone().json())).toBe(200)
+
+    const reintento = await crearProduccion(post(body))
+    expect(reintento.status, JSON.stringify(await reintento.clone().json())).toBe(200)
+    expect((await reintento.json()).deduped).toBe(true)
+    const item = await testPrisma.produccionItem.findFirstOrThrow({
+      where: { produccionId: p.id, producto: 'PACA_AGUA' },
+    })
+    expect(item.producido).toBe(14)
+  })
+
+  it('replay idéntico después del cierre no genera una nueva producción', async () => {
+    const s = await sellador()
+    const body = payload(s.id, randomUUID())
+    expect((await crearProduccion(post(body))).status).toBe(201)
+    await testPrisma.cierreDia.create({
+      data: { fecha: startOfDayInBogota(body.fecha), cerradoPor: adminId },
+    })
+    const replay = await crearProduccion(post(body))
+    expect(replay.status, JSON.stringify(await replay.clone().json())).toBe(200)
+    expect((await replay.json()).deduped).toBe(true)
     expect(await testPrisma.produccion.count({ where: { trabajadorId: s.id } })).toBe(1)
   })
 
