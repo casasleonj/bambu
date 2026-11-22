@@ -11,6 +11,7 @@ import type { Gasto } from './types'
 import { categorias } from './types'
 import { Modal } from '@/components/modal'
 import { CamposGasto, type DatosFormularioGasto } from './campos-gasto'
+import { ConfirmarDescarte } from './confirmar-descarte'
 import { categoriasGastoDisponibles, etiquetaCategoriaGasto } from '@/lib/gastos-categorias'
 import { AlertTriangle, Eye, Pencil, Plus, ReceiptText, Tag, Wallet, X } from 'lucide-react'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
@@ -18,6 +19,7 @@ import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 export default function GastosPage() {
   const [gastos, setGastos] = useState<Gasto[]>([])
   const [showCrear, setShowCrear] = useState(false)
+  const [descartePendiente, setDescartePendiente] = useState<'CREAR' | 'CANCELAR_EDICION' | 'CERRAR_DETALLE' | null>(null)
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
   const [categoria, setCategoria] = useState('')
   const [categoriasRemotas, setCategoriasRemotas] = useState<string[]>([])
@@ -178,10 +180,20 @@ export default function GastosPage() {
     else if (clave === 'notas') setEditNotas(valor)
   }
 
+  function limpiarNuevoGasto() {
+    setCategoria('')
+    setDescripcion('')
+    setMonto('')
+    setResponsable('')
+    setNotas('')
+  }
+
   function cerrarCrear() {
     if (submitting) return
-    if ((categoria || descripcion || monto || responsable || notas) &&
-      !window.confirm('¿Descartar el gasto sin guardar?')) return
+    if (categoria || descripcion || monto || responsable || notas) {
+      setDescartePendiente('CREAR')
+      return
+    }
     setShowCrear(false)
   }
 
@@ -191,10 +203,7 @@ export default function GastosPage() {
     editNotas !== (detalle.notas ?? '') || motivo.trim().length > 0
   )
 
-  function cancelarCorreccion() {
-    if (guardandoDetalle) return
-    if ((detalleModificado || (modoDetalle === 'ANULAR' && (motivo || confirmarOperacionNoReal))) &&
-      !window.confirm('¿Descartar los cambios sin guardar?')) return
+  function volverAlDetalle() {
     if (detalle) {
       setEditCategoria(detalle.categoria)
       setEditDescripcion(detalle.descripcion)
@@ -208,10 +217,16 @@ export default function GastosPage() {
     setDetalleError(null)
   }
 
-  function cerrarDetalle() {
+  function cancelarCorreccion() {
     if (guardandoDetalle) return
-    if ((detalleModificado || (modoDetalle === 'ANULAR' && (motivo || confirmarOperacionNoReal))) &&
-      !window.confirm('¿Descartar los cambios sin guardar?')) return
+    if (detalleModificado || (modoDetalle === 'ANULAR' && (motivo || confirmarOperacionNoReal))) {
+      setDescartePendiente('CANCELAR_EDICION')
+      return
+    }
+    volverAlDetalle()
+  }
+
+  function cerrarDetalleDirecto() {
     ++detalleSequence.current
     setDetalle(null)
     setDetalleCargando(false)
@@ -220,6 +235,28 @@ export default function GastosPage() {
     const url = new URL(window.location.href)
     url.searchParams.delete('openGasto')
     window.history.replaceState(window.history.state, '', url)
+  }
+
+  function cerrarDetalle() {
+    if (guardandoDetalle) return
+    if (detalleModificado || (modoDetalle === 'ANULAR' && (motivo || confirmarOperacionNoReal))) {
+      setDescartePendiente('CERRAR_DETALLE')
+      return
+    }
+    cerrarDetalleDirecto()
+  }
+
+  function confirmarDescarte() {
+    const accion = descartePendiente
+    setDescartePendiente(null)
+    if (accion === 'CREAR') {
+      limpiarNuevoGasto()
+      setShowCrear(false)
+    } else if (accion === 'CANCELAR_EDICION') {
+      volverAlDetalle()
+    } else if (accion === 'CERRAR_DETALLE') {
+      cerrarDetalleDirecto()
+    }
   }
 
   async function guardarCorreccion(event?: React.FormEvent) {
@@ -340,6 +377,12 @@ export default function GastosPage() {
       <section aria-label="Filtrar gastos" className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
         <DateRangeFilter onDateChange={handleDateChange} formatoColombia soloHistorico />
       </section>
+
+      <ConfirmarDescarte
+        open={descartePendiente !== null}
+        onSeguirEditando={() => setDescartePendiente(null)}
+        onDescartar={confirmarDescarte}
+      />
 
       <Modal open={showCrear} onClose={cerrarCrear} title="Nuevo gasto operativo"
         className="relative mx-auto my-2 max-h-[94dvh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl sm:my-6">
