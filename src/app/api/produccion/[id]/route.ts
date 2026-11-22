@@ -35,6 +35,7 @@ import { startOfDayInBogota, todayInBogota, dayInBogota } from '@/lib/date-helpe
 import { DIAS_MAX_PRODUCCION_ATRASADA, motivoFechaProduccionInvalida } from '@/lib/produccion-fecha'
 import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
+import { marcarVersionProduccionCierre } from '@/lib/produccion-cierre-version'
 
 export async function PUT(
   request: NextRequest,
@@ -264,6 +265,7 @@ export async function PUT(
           userAgent,
         }, tx)
 
+        await marcarVersionProduccionCierre(tx, fechaLock)
         return result
       },
       {
