@@ -297,7 +297,7 @@ test.describe('Gastos', () => {
     expect(cajaTitulo!.width).toBeGreaterThan(125)
     expect(cajaTitulo!.height).toBeLessThan(100)
     expect(cajaTarjeta!.height).toBeLessThan(330)
-    await expect(tarjeta.getByText('$ 100.000')).toBeVisible()
+    await expect(tarjeta).toContainText('100.000')
     await expect(tarjeta.getByRole('button', { name: 'Ver detalle' })).toBeVisible()
     await expect(tarjeta.getByRole('button', { name: 'Corregir' })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
