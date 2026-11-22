@@ -127,7 +127,16 @@ export default function GastosPage() {
   // Abrir el MISMO detalle desde Cierre o una notificación (?openGasto=id).
   useEffect(() => {
     const gastoId = new URLSearchParams(window.location.search).get('openGasto')
-    if (gastoId) void abrirDetalle(gastoId)
+    if (!gastoId) return
+
+    // La carga es asíncrona: evitar setState síncrono dentro del efecto
+    // (React react-hooks/set-state-in-effect). Cancelar la microtarea si
+    // StrictMode desmonta/remonta antes de ejecutarla.
+    let cancelled = false
+    queueMicrotask(() => {
+      if (!cancelled) void abrirDetalle(gastoId)
+    })
+    return () => { cancelled = true }
   }, [abrirDetalle])
 
   function cerrarDetalle() {
