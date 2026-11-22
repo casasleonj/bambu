@@ -12,6 +12,7 @@ import { startOfDayInBogota, nowInBogota } from '@/lib/date-helpers'
 import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
+import { marcarVersionProduccionCierre } from '@/lib/produccion-cierre-version'
 import { whereEmbarquesPendientesCierreDia } from '@/lib/cierre-dia-embarques'
 import { CobrosSinConciliarError } from '@/lib/cobro-cartera'
 import { construirResumenCierre } from '@/lib/cierre-resumen'
@@ -229,6 +230,9 @@ export async function POST(request: NextRequest) {
       const cierre = await prisma.$transaction(async (tx) => {
         // 1. Advisory lock por día (ADR-CONCURRENCIA-001, §6 "Cierre").
         await acquireAdvisoryLockTx(tx, 'CIERRE', startOfDay.toISOString())
+        // Evita sellar un snapshot Serializable fijado mientras esperaba a
+        // Producción: un cambio concurrente de esta fila dispara P2034.
+        await marcarVersionProduccionCierre(tx, startOfDay)
 
         // 2. Validar el orden dentro del lock (#306, reglas del PO 2026-11-03):
         //    - un día YA cerrado no se cierra de nuevo (se valida abajo);
