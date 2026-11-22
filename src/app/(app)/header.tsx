@@ -7,7 +7,6 @@ import { useSession } from 'next-auth/react'
 import { cerrarSesionConservandoOrigen } from '@/lib/logout-origin'
 import Link from 'next/link'
 
-import { purgeSWCache } from '@/lib/purge-sw-cache'
 import { unsubscribePushOnLogout } from '@/lib/push-cleanup'
 import { revokeSessionOnLogout } from '@/lib/session-cleanup'
 import { ConnectivityIndicator } from '@/components/connectivity-indicator'
@@ -195,7 +194,7 @@ export function Header({ fechaLarga, fechaCorta }: HeaderProps) {
                     markIntentionalSignOut()
                     await revokeSessionOnLogout()
                     await unsubscribePushOnLogout()
-                    await purgeSWCache()
+
                     await cerrarSesionConservandoOrigen()
                   }}
                   className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"

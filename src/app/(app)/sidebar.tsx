@@ -29,7 +29,6 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { purgeSWCache } from '@/lib/purge-sw-cache'
 import { unsubscribePushOnLogout } from '@/lib/push-cleanup'
 import { revokeSessionOnLogout } from '@/lib/session-cleanup'
 import { CajaBaseHeader } from '@/components/caja-base-header'
@@ -849,7 +848,7 @@ export function Sidebar() {
               markIntentionalSignOut()
               await revokeSessionOnLogout()
               await unsubscribePushOnLogout()
-              await purgeSWCache()
+
               await cerrarSesionConservandoOrigen()
             }}
             className="flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-50 transition w-full"

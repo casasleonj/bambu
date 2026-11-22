@@ -1,6 +1,7 @@
 'use client'
 
 import { signOut } from 'next-auth/react'
+import { purgeSWCache } from '@/lib/purge-sw-cache'
 
 /**
  * #812. Auth.js puede devolver un destino construido con el host de escucha
@@ -15,7 +16,13 @@ import { signOut } from 'next-auth/react'
 export async function cerrarSesionConservandoOrigen(
   finalizarSesion: () => Promise<{ url: string | null }> = () => signOut({ redirect: false }),
   navegar: (ruta: string) => void = ruta => window.location.replace(ruta),
+  limpiarCache: () => Promise<void> = purgeSWCache,
 ): Promise<void> {
+  // Un fallo de CacheStorage (permisos, PWA dañada, cuota) no debe
+  // dejar la sesión activa por impedir la llamada a Auth.js.
+  try { await limpiarCache() } catch {
+    // La sesión sigue revocándose y las APIs deben rechazarla.
+  }
   const resultado = await finalizarSesion()
   // next-auth@5.0.0-beta.31 SignOutResponse solo contiene `url`.
   // No existe `ok`: validar ese campo haría fallar hasta un logout correcto.

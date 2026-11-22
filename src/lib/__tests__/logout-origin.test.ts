@@ -33,4 +33,14 @@ describe('#812: cerrar sesión sin cambiar de origen', () => {
     ).rejects.toThrow('falló la red')
     expect(navegar).not.toHaveBeenCalled()
   })
+  it('la caché PWA fallida no bloquea signOut ni la navegación del mismo origen', async () => {
+    const acciones: string[] = []
+    const terminar = vi.fn(async () => { acciones.push('signOut'); return { url: 'http://0.0.0.0:3001/login' } })
+    const navegar = vi.fn((ruta: string) => { acciones.push('navegar:' + ruta) })
+    const limpiar = vi.fn(async () => { acciones.push('purge'); throw new Error('CacheStorage unavailable') })
+    await cerrarSesionConservandoOrigen(terminar, navegar, limpiar)
+    expect(acciones).toEqual(['purge', 'signOut', 'navegar:/login'])
+    expect(terminar).toHaveBeenCalledOnce()
+  })
+
 })
