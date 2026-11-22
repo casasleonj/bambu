@@ -241,5 +241,7 @@ export interface CierreData {
       descripcion: string
       monto: number
     }[]
+    /** Anotados tras el cierre, con fecha efectiva anterior. Informativo, nunca efectivo adicional. */
+    gastosRetroactivos?: import('@/lib/cierre-gastos-retroactivos').GastoRetroactivoDelCierre[]
   } | null
 }

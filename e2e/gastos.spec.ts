@@ -128,6 +128,88 @@ test.describe('Gastos', () => {
     expect(bodyText.length).toBeGreaterThan(0)
   })
 
+  test('#816: Gastos no ofrece Mañana y Esta semana termina hoy', async ({ page }) => {
+    await loginAs(page, 'admin')
+    await goto(page, '/gastos')
+
+    await expect(page.getByRole('button', { name: /^Mañana/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Hoy', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Ayer', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Esta semana', exact: true })).toBeVisible()
+
+    const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date())
+    await page.getByRole('button', { name: 'Esta semana', exact: true }).click()
+    const fechas = page.locator('input[type="date"]')
+    await expect(fechas).toHaveCount(2)
+    await expect(fechas.nth(1)).toHaveValue(hoy)
+    await expect(fechas.nth(0)).not.toHaveValue('')
+    await expect(fechas.nth(0)).toHaveAttribute('max', hoy)
+    await expect(fechas.nth(1)).toHaveAttribute('max', hoy)
+  })
+
+  test('#755: crear, abrir por enlace, corregir y anular un gasto (desktop/móvil)', async ({ page }) => {
+    await loginAs(page, 'admin')
+    await goto(page, '/gastos')
+
+    await page.getByRole('button', { name: 'Nuevo Gasto' }).click()
+    const descripcion = 'Combustible JL #755 E2E'
+    await page.locator('#gasto-categoria').selectOption('TRANSPORTE')
+    await page.locator('#gasto-descripcion').fill(descripcion)
+    await page.locator('#gasto-monto').fill('50000')
+
+    const [alta] = await Promise.all([
+      page.waitForResponse(res => res.url().endsWith('/api/gastos') && res.request().method() === 'POST'),
+      page.getByRole('button', { name: 'Guardar', exact: true }).click(),
+    ])
+    expect(alta.status()).toBe(201)
+    const gastoId: string = (await alta.json()).gasto.id
+    expect(gastoId).toBeTruthy()
+
+    // El mismo detalle sirve para enlaces compartidos desde Cierre.
+    await goto(page, `/gastos?openGasto=${gastoId}`)
+    const detalle = page.getByTestId('gasto-detalle')
+    await expect(detalle).toContainText(descripcion)
+    await expect(detalle).toContainText('50.000')
+    await detalle.getByRole('button', { name: 'Corregir', exact: true }).click()
+    await detalle.locator('#editar-monto-gasto').fill('45000')
+    await detalle.locator('#gasto-motivo-ajuste').fill('Comprobante inicial mal digitado')
+
+    const [correccion] = await Promise.all([
+      page.waitForResponse(res => res.url().endsWith(`/api/gastos/${gastoId}`) && res.request().method() === 'PATCH'),
+      detalle.getByRole('button', { name: 'Guardar corrección' }).click(),
+    ])
+    expect(correccion.status()).toBe(200)
+    await expect(detalle).toContainText('45.000')
+
+    await detalle.getByRole('button', { name: 'Anular registro' }).click()
+    await detalle.locator('#gasto-motivo-origen').selectOption('REGISTRO_DUPLICADO')
+    await detalle.locator('#gasto-motivo-ajuste').fill('Se registró dos veces el mismo comprobante')
+    await detalle.getByRole('checkbox').check()
+
+    const [anulacion] = await Promise.all([
+      page.waitForResponse(res => res.url().endsWith(`/api/gastos/${gastoId}`) && res.request().method() === 'PATCH'),
+      detalle.getByRole('button', { name: 'Confirmar anulación' }).click(),
+    ])
+    expect(anulacion.status()).toBe(200)
+    await expect(detalle).toContainText('fue anulado')
+    await expect(detalle).toContainText('45.000')
+    await expect(detalle.getByRole('button', { name: 'Corregir', exact: true })).toHaveCount(0)
+
+    const final = await apiGet(page, `/api/gastos/${gastoId}`)
+    expect(final.status()).toBe(200)
+    const gasto = (await final.json()).gasto
+    expect(Number(gasto.monto)).toBe(0)
+    expect(Number(gasto.montoAntesAnular)).toBe(45000)
+    expect(gasto.anuladoAt).toBeTruthy()
+    expect(gasto.version).toBe(2)
+    await goto(page, '/gastos')
+    const tarjetaAnulada = page.getByTestId(`gasto-${gastoId}`)
+    await expect(tarjetaAnulada).toContainText('Anulado')
+    await expect(tarjetaAnulada).toContainText('Original: ')
+    await expect(tarjetaAnulada).toContainText('45.000')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  })
+
   test('API crear gasto', async ({ page }) => {
     await loginAs(page, 'admin')
 
