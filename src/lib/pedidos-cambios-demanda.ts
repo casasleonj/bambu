@@ -111,7 +111,7 @@ export function interpretarEvidenciaDemanda(datos: unknown, fechaEvento: Date): 
 }
 
 /**
- * Registro de TODO código que escribe líneas de pedido (`pedidoItem.*`). Un test lo contrasta
+ * Registro de cualquier código que escribe líneas de pedido (`pedidoItem.*`). Un test lo contrasta
  * con el código: si aparece un escritor nuevo sin registrar, falla. Así una edición futura de
  * la cantidad pedida no puede pasar sin dejar evidencia del antes y el después.
  *
