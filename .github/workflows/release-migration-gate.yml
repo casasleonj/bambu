@@ -11,7 +11,9 @@ on:
     paths:
       - '.github/workflows/release-migration-gate.yml'
       - 'scripts/ci/release-migration-gate.mjs'
+      - 'scripts/ci/release-migration-policy.mjs'
       - 'scripts/ci/__tests__/release-migration-gate.node.test.mjs'
+      - 'scripts/ci/__tests__/release-migration-policy.node.test.mjs'
   workflow_dispatch:
 
 permissions:
@@ -31,7 +33,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test scripts/ci/__tests__/release-migration-gate.node.test.mjs
+      - run: >-
+          node --test scripts/ci/__tests__/release-migration-gate.node.test.mjs
+          scripts/ci/__tests__/release-migration-policy.node.test.mjs
 
   release-migration:
     name: Production migration gate
@@ -62,30 +66,30 @@ jobs:
             echo "::error::No es posible obtener el diff de main. Fail closed."
             exit 1
           fi
-          # Un success de 'prisma migrate deploy' NO demuestra que SQL crudo
-          # separado haya sido aplicado. Se analiza por separado y se BLOQUEA
-          # el gate cuando cambia el manifiesto/ejecutor de SQL crudo, incluso
-          # si el mismo commit cambia también Prisma.
+          # El manifiesto SQL crudo es SOLO para tests y desarrollo (ver
+          # scripts/aplicar-migraciones-sql-crudas.sh). Production aplica
+          # prisma/migrations/** mediante prisma migrate deploy; evitar
+          # bloquear prod por un cambio de fixtures de CI.
           set +e
-          git diff --quiet "$BEFORE" "$AFTER" -- \
-            scripts/migraciones-sql-crudas.txt scripts/aplicar-migraciones-sql-crudas.sh
-          raw_rc=$?
-          git diff --quiet "$BEFORE" "$AFTER" -- prisma/schema.prisma prisma/migrations/
-          prisma_rc=$?
+          git diff --quiet "$BEFORE" "$AFTER" -- prisma/schema.prisma
+          schema_rc=$?
           set -e
-          case "$raw_rc" in
-            0) echo "raw_sql_changed=false" >> "$GITHUB_OUTPUT" ;;
-            1) echo "raw_sql_changed=true" >> "$GITHUB_OUTPUT" ;;
-            *) echo "::error::No se pudo clasificar SQL crudo ($raw_rc)"; exit 1 ;;
+          case "$schema_rc" in
+            0) echo "schema_changed=false" >> "$GITHUB_OUTPUT" ;;
+            1) echo "schema_changed=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::No se pudo clasificar schema Prisma ($schema_rc)"; exit 1 ;;
           esac
-          case "$prisma_rc" in
-            0) echo "needs_migration=false" >> "$GITHUB_OUTPUT" ;;
-            1) echo "needs_migration=true" >> "$GITHUB_OUTPUT" ;;
-            *) echo "::error::No se pudo clasificar Prisma ($prisma_rc)"; exit 1 ;;
-          esac
+          # --no-renames hace que un rename incluya la baja de la ruta vieja:
+          # no permite ocultar modificación de una migración histórica.
+          git diff --name-status --no-renames -z "$BEFORE" "$AFTER" -- \
+            prisma/migrations/ > "$RUNNER_TEMP/prisma-migrations.diff"
+          # El analizador SOLO acepta archivos migration.sql nuevos: modificar,
+          # eliminar o renombrar migraciones ya presentes no certifica esquema.
+          new_count="$(node scripts/ci/release-migration-policy.mjs < "$RUNNER_TEMP/prisma-migrations.diff")"
+          echo "new_migrations=$new_count" >> "$GITHUB_OUTPUT"
       - name: Comprobar resultado de migrate-deploy.yml para el SHA exacto
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          NEEDS_MIGRATION: ${{ steps.schema-diff.outputs.needs_migration }}
-          RAW_SQL_CHANGED: ${{ steps.schema-diff.outputs.raw_sql_changed }}
+          SCHEMA_CHANGED: ${{ steps.schema-diff.outputs.schema_changed }}
+          NEW_MIGRATIONS: ${{ steps.schema-diff.outputs.new_migrations }}
         run: node scripts/ci/release-migration-gate.mjs

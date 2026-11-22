@@ -89,41 +89,42 @@ test('solo permite emitir gate en push main',async()=>{
   await assert.rejects(main({GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/dev',
     NEEDS_MIGRATION:'false'}),/main/)
   await assert.rejects(main({GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
-    NEEDS_MIGRATION:'unknown',RAW_SQL_CHANGED:'false'}),/Clasificación/)
+    SCHEMA_CHANGED:'unknown',NEW_MIGRATIONS:'0'}),/Clasificación/)
 })
 test('sin cambios Prisma en main aprueba sin red ni secretos',async()=>{
   const previous=console.log;let count=0
   try{console.log=()=>count++;await main({
-    GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',NEEDS_MIGRATION:'false',
-    RAW_SQL_CHANGED:'false',
+    GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',SCHEMA_CHANGED:'false',
+    NEW_MIGRATIONS:'0',
   })}finally{console.log=previous}
   assert.equal(count,1)
 })
 
-test('SQL crudo bloquea aunque el commit tenga también Prisma',async()=>{
-  for (const needsMigration of ['false','true']) {
+test('schema Prisma modificado sin migración nueva bloquea el falso verde',async()=>{
+  await assert.rejects(main({
+    GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
+    SCHEMA_CHANGED:'true',NEW_MIGRATIONS:'0',
+    GITHUB_SHA:sha,GITHUB_TOKEN:'synthetic-only',
+  }), /sin migración nueva/)
+})
+test('clasificación ausente o desconocida bloquea',async()=>{
+  for(const value of [undefined,'','unknown']) {
     await assert.rejects(main({
       GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
-      NEEDS_MIGRATION:needsMigration, RAW_SQL_CHANGED:'true',
-      GITHUB_SHA:sha, GITHUB_TOKEN:'synthetic-only',
-    }), /SQL crudo modificado/)
+      SCHEMA_CHANGED:'false',NEW_MIGRATIONS:value,
+    }), /Conteo de migraciones/)
   }
+  await assert.rejects(main({
+    GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
+    SCHEMA_CHANGED:'unknown',NEW_MIGRATIONS:'1',
+  }), /Clasificación/)
 })
-test('clasificación SQL crudo omitida o ambigua falla cerrada',async()=>{
-  for(const raw of [undefined,'','unknown']) {
-    await assert.rejects(main({
-      GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
-      NEEDS_MIGRATION:'false', RAW_SQL_CHANGED:raw,
-    }), /Clasificación SQL crudo/)
-  }
-})
-test('el workflow separa SQL crudo y Prisma y transmite ambos outputs',()=>{
+test('el workflow cuenta migraciones nuevas y NO trata el manifiesto de tests como DDL de producción',()=>{
   const workflow=readFileSync(new URL('../../../.github/workflows/release-migration-gate.yml',import.meta.url),'utf8')
-  assert.ok(workflow.includes('raw_sql_changed=true'))
-  assert.ok(workflow.includes('raw_sql_changed=false'))
-  assert.ok(workflow.includes('needs_migration=true'))
-  assert.ok(workflow.includes('NEEDS_MIGRATION: ${{ steps.schema-diff.outputs.needs_migration }}'))
-  assert.ok(workflow.includes('RAW_SQL_CHANGED: ${{ steps.schema-diff.outputs.raw_sql_changed }}'))
-  assert.ok(workflow.includes('scripts/migraciones-sql-crudas.txt'))
-  assert.ok(workflow.includes('prisma/schema.prisma prisma/migrations/'))
+  assert.ok(workflow.includes('git diff --name-status --no-renames -z'))
+  assert.ok(workflow.includes('new_migrations=$new_count'))
+  assert.ok(workflow.includes('SCHEMA_CHANGED: ${{ steps.schema-diff.outputs.schema_changed }}'))
+  assert.ok(workflow.includes('NEW_MIGRATIONS: ${{ steps.schema-diff.outputs.new_migrations }}'))
+  assert.ok(!workflow.includes('RAW_SQL_CHANGED:'))
+  assert.ok(!workflow.includes('raw_sql_changed='))
 })

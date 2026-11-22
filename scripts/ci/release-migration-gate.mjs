@@ -73,17 +73,21 @@ export async function waitForMigration({
 export async function main(env=process.env) {
   if (env.GITHUB_EVENT_NAME!=='push' || env.GITHUB_REF!=='refs/heads/main')
     throw new Error('Solo el evento push de main puede emitir este check')
-  // La herramienta 'prisma migrate deploy' no ejecuta el manifiesto SQL crudo.
-  // No aceptar un éxito de Prisma como evidencia de aplicación de SQL crudo.
-  if (env.RAW_SQL_CHANGED !== 'false' && env.RAW_SQL_CHANGED !== 'true')
-    throw new Error('Clasificación SQL crudo ausente o ambigua')
-  if (env.RAW_SQL_CHANGED === 'true')
-    throw new Error('SQL crudo modificado: no existe prueba de aplicación en producción; bloqueo conservador')
-  if (env.NEEDS_MIGRATION==='false') {
-    console.log('Sin cambios en Prisma ni SQL crudo: no requiere migración.')
+  // El manifiesto SQL crudo se aplica a bases locales/CI; no se usa en Supabase.
+  // La evidencia de producción viene de prisma/migrations/**, no del manifiesto.
+  if (env.SCHEMA_CHANGED !== 'false' && env.SCHEMA_CHANGED !== 'true')
+    throw new Error('Clasificación de schema Prisma ausente o ambigua')
+  if (typeof env.NEW_MIGRATIONS !== 'string' || !/^\\d+$/.test(env.NEW_MIGRATIONS))
+    throw new Error('Conteo de migraciones nuevas ausente o inválido')
+  const newMigrations = Number(env.NEW_MIGRATIONS)
+  if (!Number.isSafeInteger(newMigrations) || newMigrations > 1000)
+    throw new Error('Conteo de migraciones nuevas fuera de límite')
+  if (env.SCHEMA_CHANGED === 'true' && newMigrations === 0)
+    throw new Error('schema.prisma cambió sin migración nueva: no certificar un migrate deploy vacío')
+  if (env.SCHEMA_CHANGED === 'false' && newMigrations === 0) {
+    console.log('Sin cambios de esquema ni migraciones de producción: gate no requiere migración.')
     return
   }
-  if (env.NEEDS_MIGRATION!=='true') throw new Error('Clasificación de cambios desconocida')
   const result=await waitForMigration({sha:env.GITHUB_SHA,token:env.GITHUB_TOKEN})
   console.log('Migración del mismo SHA verificada; run '+result.runId+', intento '+result.runAttempt)
 }
