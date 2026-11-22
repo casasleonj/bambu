@@ -252,7 +252,7 @@ export default function GastosPage() {
       <p className="text-sm text-muted-foreground">Los pagos al personal se administran desde Nómina. Cierre consolida esos movimientos por separado.</p>
 
       <div className="bg-white p-4 rounded-xl shadow space-y-3">
-        <DateRangeFilter onDateChange={handleDateChange} formatoColombia />
+        <DateRangeFilter onDateChange={handleDateChange} formatoColombia soloHistorico />
       </div>
 
       <div className="flex gap-2">
