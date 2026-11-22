@@ -500,10 +500,10 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           <div className="bg-amber-50 border border-amber-300 rounded-xl p-6">
             <div className="flex items-center gap-2 mb-4">
               <AlertTriangle className="w-5 h-5 text-amber-600" />
-              <h3 className="text-lg font-bold text-amber-800">Ventas Nocturnas (post-cierre)</h3>
+              <h3 className="text-lg font-bold text-amber-800">Movimientos posteriores al cierre</h3>
             </div>
             <p className="text-sm text-amber-700 mb-4">
-              Se registraron transacciones después del cierre. Este dinero se entregó junto con el cierre.
+              Se detectaron operaciones posteriores al cierre. Sus cobros y gastos requieren conciliación: no se presupone que el dinero se entregó ni que salió en efectivo.
             </p>
 
             <div className="grid grid-cols-3 gap-3 mb-4">
@@ -551,10 +551,14 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
 
             <div className="mt-4 pt-3 border-t border-amber-300">
               <div className="flex justify-between text-base font-bold text-amber-900">
-                <span>Total entregado incluyendo nocturnas</span>
-                <span>{formatMoney(Number(data.netoCaja || 0) + postCobrado - postGastos)}</span>
+                <span>Valor histórico del cierre (sin recalcular)</span>
+                <span>{formatMoney(Number(data.netoCaja || 0))}</span>
               </div>
             </div>
+            <p className="mt-2 text-xs text-amber-800">
+              No se calcula automáticamente un nuevo «total entregado»: los cobros posteriores
+              pueden ser digitales, pendientes de confirmar o no haber ingresado a la caja física.
+            </p>
           </div>
         )}
 
