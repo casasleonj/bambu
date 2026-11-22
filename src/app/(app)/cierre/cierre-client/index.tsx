@@ -431,6 +431,39 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             if (signal) void fetchCierre(fecha, signal)
           }} />}
         <CierreDesgloseCobros data={data} />
+        {(post?.gastosRetroactivos?.length ?? 0) > 0 && (
+          <section data-testid="cierre-gastos-retroactivos" className="rounded-xl border border-amber-300 bg-amber-50 p-4 sm:p-5">
+            <h3 className="font-semibold text-amber-900">Movimientos registrados después del cierre</h3>
+            <p className="mt-1 text-sm text-amber-900">
+              Se anotaron salidas con fecha efectiva de esta jornada después de haberla cerrado.
+              Son novedades para conciliar: <strong>el cierre guardado no cambió</strong> y
+              estos valores no se suman ni se restan automáticamente del efectivo.
+            </p>
+            <div className="mt-3 space-y-2">
+              {post?.gastosRetroactivos?.map(gasto => (
+                <div key={gasto.id} className="rounded-md border border-amber-200 bg-white px-3 py-2 text-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium text-slate-800">{gasto.concepto}</div>
+                      <div className="mt-1 text-xs text-slate-600">
+                        Origen: {gasto.origen === 'NOMINA' ? 'Nómina' : gasto.origen === 'EMBARQUES' ? 'Embarques' : 'Gastos'}
+                        {' · '}Registrado: {new Date(gasto.fechaRegistro).toLocaleString('es-CO', {
+                          timeZone: 'America/Bogota', day: '2-digit', month: '2-digit',
+                          hour: '2-digit', minute: '2-digit',
+                        })}
+                      </div>
+                    </div>
+                    <div className="font-semibold tabular-nums text-slate-900">{formatMoney(gasto.monto)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-amber-800">
+              Estos registros explican diferencias entre consultas actuales y el cierre histórico.
+              Los pagos del personal se administran únicamente desde Nómina.
+            </p>
+          </section>
+        )}
         <CierreDetalleVentas data={data} />
 
         {/* Arqueo */}
