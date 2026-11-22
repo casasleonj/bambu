@@ -1,0 +1,78 @@
+# #703 R0: produce el check único "Production migration gate" para CADA push a main.
+# Este check NO se exige en Vercel hasta validar el PR y activarlo explícitamente
+# en Deployment Checks junto a "CI gate (resumen)". Sin escritura en BD ni deploy.
+name: Production migration gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-migration-gate.yml'
+      - 'scripts/ci/release-migration-gate.mjs'
+      - 'scripts/ci/__tests__/release-migration-gate.node.test.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  policy-tests:
+    name: Production migration policy tests
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test scripts/ci/__tests__/release-migration-gate.node.test.mjs
+
+  release-migration:
+    name: Production migration gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Identificar cambios de Prisma entre el push anterior y el nuevo
+        id: schema-diff
+        shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$BEFORE" =~ ^[a-f0-9]{40}$ && "$AFTER" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "::error::SHAs inválidos para clasificación"
+            exit 1
+          fi
+          if ! git cat-file -e "$BEFORE^{commit}" || ! git cat-file -e "$AFTER^{commit}"; then
+            echo "::error::No es posible obtener el diff de main. Fail closed."
+            exit 1
+          fi
+          set +e
+          git diff --quiet "$BEFORE" "$AFTER" -- prisma/schema.prisma prisma/migrations/
+          rc=$?
+          set -e
+          case "$rc" in
+            0) echo "needs_migration=false" >> "$GITHUB_OUTPUT" ;;
+            1) echo "needs_migration=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::Error al clasificar cambios ($rc)"; exit 1 ;;
+          esac
+      - name: Comprobar resultado de migrate-deploy.yml para el SHA exacto
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NEEDS_MIGRATION: ${{ steps.schema-diff.outputs.needs_migration }}
+        run: node scripts/ci/release-migration-gate.mjs
