@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { getTodayString } from '@/lib/dates'
@@ -23,25 +23,51 @@ export default function GastosPage() {
   const [monto, setMonto] = useState('')
   const [responsable, setResponsable] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [pagina, setPagina] = useState(1)
+  const [totalPaginas, setTotalPaginas] = useState(1)
+  const [totalRegistros, setTotalRegistros] = useState(0)
+  const [montoTotal, setMontoTotal] = useState(0)
+  const [loadingGastos, setLoadingGastos] = useState(true)
+  const [errorGastos, setErrorGastos] = useState<string | null>(null)
+  const requestSequence = useRef(0)
 
   const fetchGastos = useCallback(async () => {
+    // Descartar respuestas de filtros/páginas anteriores, incluido polling.
+    const sequence = ++requestSequence.current
+    setLoadingGastos(true)
+    setErrorGastos(null)
     try {
       const params = new URLSearchParams()
       if (dateRange.desde) params.set('desde', dateRange.desde)
       if (dateRange.hasta) params.set('hasta', dateRange.hasta)
-      if (!dateRange.desde && !dateRange.hasta) {
-        params.set('fecha', getTodayString())
-      }
+      if (!dateRange.desde && !dateRange.hasta) params.set('fecha', getTodayString())
+      params.set('origen', 'OPERATIVO')
+      params.set('page', String(pagina))
       const res = await fetch(`/api/gastos?${params.toString()}`)
+      if (!res.ok) throw new Error('No fue posible consultar los gastos. Verifica tu conexión o permisos.')
       const data = await res.json()
-      setGastos(data.gastos || data.data || [])
+      if (!data.success || !Array.isArray(data.data) || typeof data.montoTotal !== 'number') {
+        throw new Error('El servidor no entregó el resumen completo de gastos.')
+      }
+      if (sequence !== requestSequence.current) return
+      setGastos(data.data)
+      setMontoTotal(data.montoTotal)
+      setTotalRegistros(data.total)
+      setTotalPaginas(Math.max(1, data.totalPages))
     } catch (e) {
-      console.error(e)
-      toast.error('Error cargando gastos')
+      if (sequence !== requestSequence.current) return
+      setErrorGastos(e instanceof Error ? e.message : 'No se pudieron cargar los gastos.')
+      setGastos([])
+      setMontoTotal(0)
+      setTotalRegistros(0)
+      setTotalPaginas(1)
+    } finally {
+      if (sequence === requestSequence.current) setLoadingGastos(false)
     }
-  }, [dateRange])
+  }, [dateRange, pagina])
 
   const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
+    setPagina(1)
     setDateRange({ desde, hasta })
   }, [])
 
@@ -78,7 +104,8 @@ export default function GastosPage() {
         setDescripcion('')
         setMonto('')
         setResponsable('')
-        fetchGastos()
+        setPagina(1)
+        void fetchGastos()
         toast.success('Gasto registrado')
       } else {
         toast.error('Error registrando gasto')
@@ -90,7 +117,6 @@ export default function GastosPage() {
     setSubmitting(false)
   }
 
-  const totalGastos = gastos.reduce((sum, g) => sum + Number(g.monto), 0)
 
   const cats = {
     ARRIENDO: '🏠',
@@ -104,7 +130,8 @@ export default function GastosPage() {
 
   return (
     <div className="p-4 space-y-4">
-      <h1 className="text-2xl font-bold">📝 Gastos</h1>
+      <h1 className="text-2xl font-bold tracking-tight">📝 Gastos operativos</h1>
+      <p className="text-sm text-muted-foreground">Los pagos al personal se administran desde Nómina. Cierre consolida esos movimientos por separado.</p>
 
       <div className="bg-white p-4 rounded-xl shadow space-y-3">
         <DateRangeFilter onDateChange={handleDateChange} />
@@ -159,7 +186,15 @@ export default function GastosPage() {
         </Card>
       )}
 
-      {gastos.length === 0 ? (
+      {errorGastos && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <p>{errorGastos}</p>
+          <Button className="mt-2" variant="outline" onClick={() => void fetchGastos()}>Reintentar</Button>
+        </div>
+      )}
+      {loadingGastos ? (
+        <p role="status" className="text-sm text-muted-foreground">Cargando gastos...</p>
+      ) : errorGastos ? null : gastos.length === 0 ? (
         <EmptyState
           icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>}
           title={dateRange.desde && dateRange.hasta ? 'No hay gastos en el rango seleccionado' : 'No hay gastos registrados hoy'}
@@ -170,9 +205,12 @@ export default function GastosPage() {
       ) : (
         <div className="space-y-4">
           <div className="flex justify-between p-3 bg-muted rounded-lg font-bold">
-            <span>Total Gastos:</span>
-            <span>{formatCurrency(totalGastos)}</span>
+            <span>Total gastos operativos del período:</span>
+            <span data-testid="gastos-monto-total">{formatCurrency(montoTotal)}</span>
           </div>
+          <p className="text-xs text-muted-foreground" data-testid="gastos-resumen-pagina">
+            Mostrando {gastos.length} de {totalRegistros} gastos operativos · página {pagina} de {totalPaginas}
+          </p>
           {gastos.map((gasto) => (
             <Card key={gasto.id}>
               <CardContent className="py-3">
@@ -186,12 +224,19 @@ export default function GastosPage() {
                   </div>
                   <div className="text-right">
                     <div className="font-medium">{formatCurrency(Number(gasto.monto))}</div>
-                    <div className="text-xs text-muted-foreground">{new Date(gasto.fecha).toLocaleDateString()}</div>
+                    <div className="text-xs text-muted-foreground">{new Date(gasto.fecha).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
                   </div>
                 </div>
               </CardContent>
             </Card>
           ))}
+          {totalPaginas > 1 && (
+            <nav aria-label="Páginas de gastos" className="flex items-center justify-between gap-3">
+              <Button variant="outline" disabled={pagina === 1} onClick={() => setPagina(p => Math.max(1, p - 1))}>Anterior</Button>
+              <span className="text-sm text-muted-foreground">Página {pagina} de {totalPaginas}</span>
+              <Button variant="outline" disabled={pagina >= totalPaginas} onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))}>Siguiente</Button>
+            </nav>
+          )}
         </div>
       )}
     </div>
