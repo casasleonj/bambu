@@ -4,7 +4,7 @@ import { EmptyState } from '@/components/empty-state'
 import { pedidoItemsResumen } from '../pedido-items'
 import { deriveOperacion, origenLabel, embarqueLinea } from './derive-operacion'
 import type { AccionKey, DeriveContext, Pedido } from './types'
-import { OperacionConsulta,type AccionesConsulta } from './operacion-consulta'
+import { OperacionConsulta, type AccionesConsulta, type SeleccionConsulta } from './operacion-consulta'
 import { useEffect, useRef, useState } from 'react'
 import { GrupoBarrioEncabezado } from './grupo-barrio-encabezado'
 import { EntregasDestacadas } from './entregas-destacadas'
@@ -13,6 +13,7 @@ import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import { CLAVE_VENTA_ANONIMA } from '@/lib/barrios/grupo-barrio'
 import { useAhora } from '@/hooks/use-ahora'
 import { ordenarPorFranja, type Franja } from '@/lib/pedidos-franja'
+import { FiadosAnterioresBadge } from './fiados-anteriores-badge'
 
 const money = (n: number) => new Intl.NumberFormat('es-CO').format(Number(n) || 0)
 
@@ -27,6 +28,10 @@ interface OperacionListProps {
   consulta?: AccionesConsulta
   /** #797: lista de pendientes de días anteriores (solo en la consulta). */
   arrastre?: boolean
+  /** Control unificado de modos desde la consulta global de Pedidos. */
+  modoRecorridoExterno?: boolean
+  /** #930: las mismas casillas de Pedidos en vista agrupada o por franjas. */
+  seleccion?: SeleccionConsulta
 }
 
 function clienteLinea(p: Pedido): string {
@@ -69,6 +74,7 @@ function OperacionRowDesktop({
           )}
         </div>
         <div className="text-sm font-medium text-gray-800">{clienteLinea(pedido)}</div>
+        <FiadosAnterioresBadge resumen={pedido.fiadosAnteriores} pedidoId={pedido.id} clienteId={pedido.clienteId} consultaError={pedido.fiadosConsultaError} />
       </td>
       <td className="px-3 py-2 align-top text-sm text-gray-600">
         {pedido.canal === 'DOMICILIO' && <span className="mr-1" title="Domicilio">🚚</span>}
@@ -121,6 +127,7 @@ function OperacionCardMobile({
         <div className="text-sm font-medium text-gray-800">{clienteLinea(pedido)}</div>
         <span className="text-xs text-gray-400">#{pedido.numero}</span>
       </div>
+      <FiadosAnterioresBadge resumen={pedido.fiadosAnteriores} pedidoId={pedido.id} clienteId={pedido.clienteId} consultaError={pedido.fiadosConsultaError} />
       <div className="mt-0.5 text-xs text-gray-500">
         {pedido.canal === 'DOMICILIO' && <span className="mr-1">🚚</span>}
         {pedidoItemsResumen(pedido)}
@@ -164,8 +171,8 @@ const TONO_FRANJA: Record<Franja, string> = {
  * «Más tarde hoy» arranca plegado pero muestra cuántos hay y se despliega con un toque.
  */
 function ListaPorFranja({
-  pedidos, viewport, hoyBogota, onAccion, onOpen, consulta, arrastre,
-}: { pedidos: Pedido[]; viewport: 'desktop' | 'mobile'; hoyBogota: string; onAccion: (p: Pedido, k: AccionKey) => void; onOpen: (p: Pedido) => void; consulta: AccionesConsulta; arrastre?: boolean }) {
+  pedidos, viewport, hoyBogota, onAccion, onOpen, consulta, arrastre, seleccion,
+}: { pedidos: Pedido[]; viewport: 'desktop' | 'mobile'; hoyBogota: string; onAccion: (p: Pedido, k: AccionKey) => void; onOpen: (p: Pedido) => void; consulta: AccionesConsulta; arrastre?: boolean; seleccion?: SeleccionConsulta }) {
   const ahora = useAhora()
   const [tardeAbierto, setTardeAbierto] = useState(false)
   const ordenados = ordenarPorFranja(pedidos, ahora, (p) => p)
@@ -193,7 +200,7 @@ function ListaPorFranja({
               )}
             </div>
             {!plegado && (
-              <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre} />
+              <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre} seleccion={seleccion} />
             )}
           </section>
         )
@@ -203,10 +210,11 @@ function ListaPorFranja({
 }
 
 export function OperacionList({
-  pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen, consulta, arrastre,
+  pedidos, viewport, hoyBogota, contextByPedido, onAccion, onOpen, consulta, arrastre, modoRecorridoExterno, seleccion,
 }: OperacionListProps) {
   // #859: recorrido manual temporal de la vista, sin alterar FIFO del servidor.
-  const [modoRecorrido, setModoRecorrido] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('recorrido'))
+  const [modoRecorridoLocal, setModoRecorrido] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('recorrido'))
+  const modoRecorrido = modoRecorridoExterno ?? modoRecorridoLocal
   const [barrioSeleccionado, setBarrioSeleccionado] = useState("")
   // #913: el Recorrido cambia la URL SIN navegación de servidor (antes cada clic repetía la consulta
   // completa de la página en el servidor y solo después pedía los datos: dos viajes en serie).
@@ -233,7 +241,7 @@ export function OperacionList({
   }
 
   if (consulta?.franjas && !pedidos.some((p) => p.grupoBarrio) && pedidos.some((p) => p.entregaNoAntesDe)) {
-    return <ListaPorFranja pedidos={pedidos} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} consulta={consulta} arrastre={arrastre} />
+    return <ListaPorFranja pedidos={pedidos} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} consulta={consulta} arrastre={arrastre} seleccion={seleccion} />
   }
 
   if (consulta && pedidos.some((p) => p.grupoBarrio)) {
@@ -288,10 +296,13 @@ export function OperacionList({
     return (
       <div data-testid="pedidos-agrupados-barrio">
         <div className="my-2 flex flex-wrap items-center gap-2 text-xs">
-          <button type="button" aria-label="Volver al orden FIFO" aria-pressed={!modoRecorrido} onClick={() => { setModoRecorrido(false); aplicarRecorrido([]) }}
-            className={`rounded-md border px-3 py-1.5 ${!modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>FIFO</button>
-          <button type="button" aria-pressed={modoRecorrido} onClick={() => setModoRecorrido(true)}
-            className={`rounded-md border px-3 py-1.5 ${modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>Recorrido</button>
+          {modoRecorridoExterno === undefined && (
+          <button type="button" aria-pressed={modoRecorrido}
+            onClick={() => { if (modoRecorrido) { setModoRecorrido(false); aplicarRecorrido([]) } else setModoRecorrido(true) }}
+            className={`rounded-md border px-3 py-1.5 ${modoRecorrido ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>
+            Recorrido
+          </button>
+          )}
           {modoRecorrido && (
             <>
               <label htmlFor="recorrido-barrio" className="font-medium text-stone-700">Priorizar barrio</label>
@@ -333,7 +344,7 @@ export function OperacionList({
                 </div>
               )}
               {b.filas.length > 0 && (
-                <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre}/>
+                <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre} seleccion={seleccion}/>
               )}
               {consulta.entregasAnteriores && entregasPorClave.has(b.clave) && bloquesVisibles.findIndex(x => x.clave === b.clave) === i && (
                 <div className="mt-2" data-testid={`entregas-anteriores-${b.clave}`}>
@@ -356,7 +367,7 @@ export function OperacionList({
     )
   }
 
-  if (consulta) return <OperacionConsulta pedidos={pedidos} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre}/>
+  if (consulta) return <OperacionConsulta pedidos={pedidos} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre} seleccion={seleccion}/>
 
   const ctxFor = (id: string): Omit<DeriveContext, 'hoyBogota'> => contextByPedido?.[id] ?? {}
 

@@ -23,6 +23,14 @@ import type { EntregaDestacada } from "@/lib/pedidos-entregas-historial";
 import styles from "./operacion-consulta.module.css";
 import { esVentaAnonima } from "@/lib/barrios/grupo-barrio";
 import { textoRiesgoOperativo } from "@/lib/pedidos-riesgo-operativo";
+import { FiadosAnterioresBadge } from "./fiados-anteriores-badge";
+
+export interface SeleccionConsulta {
+  marcado: boolean;
+  onAlternar: (pedido: Pedido) => void;
+  ordenIds?: readonly string[];
+  fueraDePaginaIds?: ReadonlySet<string>;
+}
 
 export interface AccionesConsulta {
   userRole: string | null;
@@ -67,6 +75,7 @@ export function OperacionConsulta({
   onOpen,
   acciones,
   arrastre = false,
+  seleccion,
 }: {
   /** #797: muestra la fecha original y la antigüedad de cada pedido arrastrado. */
   arrastre?: boolean;
@@ -76,6 +85,8 @@ export function OperacionConsulta({
   onAccion: (p: Pedido, k: AccionKey) => void;
   onOpen: (p: Pedido) => void;
   acciones: AccionesConsulta;
+  /** #930: controles de selección solo en el modo Cercanía. */
+  seleccion?: SeleccionConsulta;
 }) {
   return (
     <div
@@ -198,7 +209,30 @@ export function OperacionConsulta({
             }}
           >
             <div className={styles.cliente}>
+              {seleccion?.marcado && <span className="sr-only" data-testid={`cercania-seleccionado-${p.id}`}>Seleccionado</span>}
+              {seleccion && (
+                <label className="inline-flex shrink-0 items-center gap-1 rounded px-1 py-1 text-xs text-blue-800" onClick={event => event.stopPropagation()}>
+                  <input type="checkbox" className="h-5 w-5 accent-blue-700" checked={seleccion.marcado}
+                    data-testid={`cercania-check-${p.id}`}
+                    aria-label={`${seleccion.marcado ? "Quitar" : "Seleccionar"} pedido #${p.numero}`}
+                    onChange={() => seleccion.onAlternar(p)}
+                    disabled={
+                      !!p._pendingSync || !!p.embarqueId && p.estadoEntrega !== "ENTREGADO" ||
+                      ["CANCELADO", "ANULADO"].includes(p.estadoEntrega) ||
+                      esVentaAnonima(p) ||
+                      !(p.canal === "DOMICILIO" && p.estadoEntrega !== "ENTREGADO") &&
+                        !((p.exigible ?? p.saldo) > 0)
+                    }
+                  />
+                </label>
+              )}
               <div>
+                {seleccion?.ordenIds?.includes(p.id) && (
+                  <span className="mb-1 inline-block rounded-md bg-blue-700 px-2 py-1 text-xs font-bold text-white"
+                    aria-label={`Parada ${seleccion.ordenIds.indexOf(p.id) + 1}`}>
+                    {seleccion.ordenIds.indexOf(p.id) + 1}
+                  </span>
+                )}
                 <strong className={styles.nombre}>
                   {p.negocioId ? "🏪" : "👤"} {nombre}
                 </strong>
@@ -206,6 +240,7 @@ export function OperacionConsulta({
                   Pedido #{p.numero} ·{" "}
                   {p.negocioId ? `Negocio de ${p.nombreCli}` : "Persona"}
                 </p>
+                <FiadosAnterioresBadge resumen={p.fiadosAnteriores} pedidoId={p.id} clienteId={p.clienteId} consultaError={p.fiadosConsultaError} />
                 {arrastre && (
                   <p
                     className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"
@@ -250,6 +285,9 @@ export function OperacionConsulta({
                   >
                     ⚠️ {textoRiesgoOperativo(p.riesgoOperativo)}
                   </p>
+                )}
+                {seleccion?.fueraDePaginaIds?.has(p.id) && (
+                  <p className="mt-1 text-xs text-amber-800">Fuera del filtro o página actual; el servidor verificará su vigencia.</p>
                 )}
                 {/* #913: la venta anónima en punto no tiene barrio: no se rotula «Sin barrio». */}
                 {!esVentaAnonima(p) && (

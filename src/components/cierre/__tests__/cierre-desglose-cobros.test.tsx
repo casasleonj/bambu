@@ -147,9 +147,23 @@ describe('#646 desplegables: gastos, abonos y correcciones, listas largas', () =
     expect(caja).toHaveTextContent('2 gastos')
     expect(caja).toHaveTextContent('Gasto 1')
     expect(caja).toHaveTextContent('Combustible')
-    expect(caja).toHaveTextContent('registró: Carlos')
+    // Una fila de Cierre histórico sin autor verificable NO puede afirmar
+    // que la persona de referencia fue quien hizo el registro.
+    expect(caja).toHaveTextContent('referencia histórica: Carlos')
+    expect(caja).not.toHaveTextContent('registró: Carlos')
     expect(caja).toHaveTextContent('Total de gastos')
     expect(caja).toHaveTextContent('3.000')
+  })
+
+  it('#755: diferencia autor verificado y responsable sin inventar registrador', () => {
+    render(<CierreDesgloseCobros data={datos({
+      totalGastos: 1000,
+      gastosDelDia: [gasto(1, { registroConfiable: true, responsable: 'Conductor', origen: 'GASTOS' })],
+    })} />)
+    const caja = screen.getByTestId('cierre-gastos-del-dia')
+    expect(caja).toHaveTextContent('registró: Carlos')
+    expect(caja).toHaveTextContent('responsable: Conductor')
+    expect(caja).not.toHaveTextContent('referencia histórica: Carlos')
   })
 
   it('sin gastos no aparece el desplegable', () => {
