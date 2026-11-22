@@ -63,7 +63,9 @@ jobs:
             exit 1
           fi
           set +e
-          # Los SQL crudos no los ejecuta prisma migrate deploy. Si cambian,\n          # se exige un gate de migración (fail-closed hasta diseñar su aplicación segura).\n          git diff --quiet "$BEFORE" "$AFTER" -- prisma/schema.prisma prisma/migrations/ \
+          # Los SQL crudos no los ejecuta prisma migrate deploy. Si cambian,
+          # se exige un gate de migración (fail-closed hasta diseñar su aplicación segura).
+          git diff --quiet "$BEFORE" "$AFTER" -- prisma/schema.prisma prisma/migrations/ \
             scripts/migraciones-sql-crudas.txt scripts/aplicar-migraciones-sql-crudas.sh
           rc=$?
           set -e
