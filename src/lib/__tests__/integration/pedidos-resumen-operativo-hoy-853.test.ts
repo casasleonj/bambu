@@ -77,6 +77,10 @@ describe("#853 · totales físicos de Hoy en PostgreSQL", () => {
 
   it("suma las 10 unidades previas entregadas hoy sin sumarlas a la cohorte de pedidos de hoy", async () => {
     const antes = (await consultarPedidos(filtros(), "ADMIN", testPrisma)).resumen!;
+    const filtroAyer = leerFiltrosConsulta(new URLSearchParams({
+      desde: ayer, hasta: ayer, resumen: "1",
+    }), dia);
+    const antesAyer = (await consultarPedidos(filtroAyer, "ADMIN", testPrisma)).resumen!;
     const hoy = await pedido(5, dia);
     const anterior = await pedido(12, ayer);
     await evento(hoy.id, dia, "10:00", 5);
@@ -84,6 +88,10 @@ describe("#853 · totales físicos de Hoy en PostgreSQL", () => {
     await evento(anterior.id, dia, "12:00", 10);
 
     const despues = (await consultarPedidos(filtros(), "ADMIN", testPrisma)).resumen!;
+    const despuesAyer = (await consultarPedidos(filtroAyer, "ADMIN", testPrisma)).resumen!;
+    expect(despuesAyer.operacionDia!.total - antesAyer.operacionDia!.total).toBe(2);
+    expect(despuesAyer.operacionDia!.productos.find(p => p.producto === "PACA_AGUA")?.dePedidosFecha).toBeGreaterThanOrEqual(2);
+    expect(despuesAyer.productos.find(p => p.producto === "PACA_AGUA")?.entregadas).toBeGreaterThanOrEqual(12);
     const agua = (r: typeof despues) => r.operacionDia?.productos.find(p => p.producto === "PACA_AGUA");
     expect(despues.operacionDia!.total - antes.operacionDia!.total).toBe(15);
     expect((agua(despues)?.dePedidosFecha ?? 0) - (agua(antes)?.dePedidosFecha ?? 0)).toBe(5);
