@@ -46,6 +46,20 @@ describe('selector de categorías de Gastos #973', () => {
     expect(screen.getByRole('option', { name: 'Gasolina' })).toBeTruthy()
   })
 
+  it('conserva el menú al recibir blur táctil sin destino antes del clic', () => {
+    const onChange = vi.fn()
+    render(<CategoriaGastoSelect value="" onChange={onChange} options={['OTRO']} />)
+    const input = screen.getByRole('combobox')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'otro' } })
+    expect(screen.getByRole('option', { name: 'Otro' })).toBeTruthy()
+    fireEvent.blur(input, { relatedTarget: null })
+    const opcion = screen.getByRole('option', { name: 'Otro' })
+    expect(opcion).toBeTruthy()
+    fireEvent.click(opcion)
+    expect(onChange).toHaveBeenCalledWith('OTRO')
+  })
+
   it('Escape solo cierra el desplegable', () => {
     const onChange = vi.fn()
     render(<CategoriaGastoSelect value="" onChange={onChange} options={['ARRIENDO']} />)
