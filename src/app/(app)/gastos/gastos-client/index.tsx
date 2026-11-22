@@ -612,7 +612,8 @@ export default function GastosPage() {
                 </div>
               </div>
             </article>
-          ))}         {totalPaginas > 1 && (
+          ))}
+          {totalPaginas > 1 && (
             <nav aria-label="Páginas de gastos" className="flex items-center justify-between gap-3">
               <Button variant="outline" disabled={pagina === 1} onClick={() => setPagina(p => Math.max(1, p - 1))}>Anterior</Button>
               <span className="text-sm text-slate-600">Página {pagina} de {totalPaginas}</span>
