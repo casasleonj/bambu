@@ -185,14 +185,32 @@ export default function GastosPage() {
     setShowCrear(false)
   }
 
+  const detalleModificado = detalle && modoDetalle === 'EDITAR' && (
+    editCategoria !== detalle.categoria || editDescripcion !== detalle.descripcion ||
+    editMonto !== String(detalle.monto) || editResponsable !== (detalle.responsable ?? '') ||
+    editNotas !== (detalle.notas ?? '') || motivo.trim().length > 0
+  )
+
+  function cancelarCorreccion() {
+    if (guardandoDetalle) return
+    if ((detalleModificado || (modoDetalle === 'ANULAR' && (motivo || confirmarOperacionNoReal))) &&
+      !window.confirm('¿Descartar los cambios sin guardar?')) return
+    if (detalle) {
+      setEditCategoria(detalle.categoria)
+      setEditDescripcion(detalle.descripcion)
+      setEditMonto(String(detalle.monto))
+      setEditResponsable(detalle.responsable ?? '')
+      setEditNotas(detalle.notas ?? '')
+    }
+    setMotivo('')
+    setConfirmarOperacionNoReal(false)
+    setModoDetalle('VER')
+    setDetalleError(null)
+  }
+
   function cerrarDetalle() {
     if (guardandoDetalle) return
-    const modificado = detalle && modoDetalle === 'EDITAR' && (
-      editCategoria !== detalle.categoria || editDescripcion !== detalle.descripcion ||
-      editMonto !== String(detalle.monto) || editResponsable !== (detalle.responsable ?? '') ||
-      editNotas !== (detalle.notas ?? '') || motivo.trim().length > 0
-    )
-    if ((modificado || (modoDetalle === 'ANULAR' && (motivo || confirmarOperacionNoReal))) &&
+    if ((detalleModificado || (modoDetalle === 'ANULAR' && (motivo || confirmarOperacionNoReal))) &&
       !window.confirm('¿Descartar los cambios sin guardar?')) return
     ++detalleSequence.current
     setDetalle(null)
@@ -444,7 +462,7 @@ export default function GastosPage() {
                 </div>
                 <div className="sticky bottom-0 flex gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
                   <Button type="button" variant="outline" className="flex-1"
-                    onClick={() => { setModoDetalle('VER'); setDetalleError(null); setMotivo('') }}>Cancelar</Button>
+                    onClick={cancelarCorreccion}>Cancelar</Button>
                   <Button type="submit" variant={modoDetalle === 'ANULAR' ? 'destructive' : 'default'}
                     className="flex-1" disabled={guardandoDetalle || (modoDetalle === 'ANULAR' && !confirmarOperacionNoReal)}>
                     {guardandoDetalle ? 'Guardando…' : modoDetalle === 'ANULAR' ? 'Confirmar anulación' : 'Guardar corrección'}
