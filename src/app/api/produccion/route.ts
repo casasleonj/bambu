@@ -18,6 +18,7 @@ import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { resolverStockInicial } from '@/lib/stock-inicial'
+import { marcarVersionProduccionCierre } from '@/lib/produccion-cierre-version'
 import { coincideProduccionPersistida, huellaCreacionProduccion } from '@/lib/produccion-idempotencia'
 
 const MAX_RETRIES = 3
@@ -368,6 +369,9 @@ export async function POST(request: NextRequest) {
             userAgent,
           }, tx)
 
+          // Bump version alongside production and Historial; a stale
+          // Serializable Cierre must retry rather than seal old numbers.
+          await marcarVersionProduccionCierre(tx, fechaProduccion)
           return { deduped: false as const, produccion }
         },
         {
