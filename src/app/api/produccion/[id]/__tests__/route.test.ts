@@ -42,7 +42,10 @@ describe('FASE F: PUT /api/produccion/[id] solo ADMIN + auditoría', () => {
     expect(putSource).toMatch(/after/)
     expect(putSource).toMatch(/changedFields/)
     expect(putSource).toMatch(/diffSummary/)
-    expect(putSource).toMatch(/\.catch\(\(\)\s*=>\s*\{\}\)/)
+    // La auditoría debe formar parte de la misma transacción y provocar rollback si falla.
+    expect(putSource).toMatch(/await logAudit\(/)
+    expect(putSource).toMatch(/\}, tx\)/)
+    expect(putSource).not.toMatch(/logAudit\([\s\S]*?\.catch\(\(\)\s*=>\s*\{\}\)/)
   })
 
   it('usa advisory lock para serializar vs POST concurrentes', () => {
