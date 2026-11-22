@@ -216,8 +216,20 @@ export default function CierreDesgloseCobros({ data }: { data: CierreData | null
           resumen={`${gastos ? `${gastos.length} gasto${gastos.length === 1 ? '' : 's'}` : `${porCategoria.reduce((t, g) => t + g.cantidad, 0)} gastos`} · ${formatCurrency(totalGastos)}`}>
           {gastos ? (
             <ListaLimitada items={gastos} render={(g) => (
-              <Fila key={g.id} izquierda={g.descripcion}
-                detalle={<>{g.categoria} · {soloHora(g.fecha)}{g.registro ? ` · registró: ${g.registro}` : ''}</>}
+              <Fila key={g.id}
+                izquierda={<Enlace href={
+                  g.origen === 'NOMINA' || g.categoria === 'NOMINA' || g.descripcion.startsWith('Reversión nómina anulada -')
+                    ? '/nomina'
+                    : g.origen === 'EMBARQUES' ? '/embarques'
+                      : `/gastos?openGasto=${encodeURIComponent(g.id)}`
+                }>{g.descripcion}</Enlace>}
+                detalle={<>
+                  {g.categoria} · {soloHora(g.fecha)}
+                  {g.responsable ? ` · responsable: ${g.responsable}` : ''}
+                  {g.registro ? g.registroConfiable
+                    ? ` · registró: ${g.registro}`
+                    : ` · referencia histórica: ${g.registro}` : ''}
+                </>}
                 derecha={formatCurrency(g.monto)} />
             )} />
           ) : (
