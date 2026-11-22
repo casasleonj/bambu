@@ -131,8 +131,9 @@ export async function POST(request: NextRequest) {
 
       // #796 paso 3: el cobro de UN pedido entregado hoy (camino #597, ya validado arriba con `errorCobroPedido`) es venta del
       // día, no cartera: no se le crea el `Abono` espejo. Solo con ambas banderas (sin camino de corrección por pago no se
-      // omite nada) y sin recepción retroactiva de oficina (su día de caja puede no ser el de la entrega).
-      const sinEspejo = Boolean(pedidoId) && !oficina && cobroDelDiaSinEspejoActivo()
+      // omite nada). La recepción de oficina también cuenta si fue HOY (`ocurridoAt` nulo: su día de caja es el de la entrega,
+      // que este camino ya exigió); la de fecha retroactiva conserva su espejo porque su día de caja puede no ser el de la entrega.
+      const sinEspejo = Boolean(pedidoId) && ocurridoAt === null && cobroDelDiaSinEspejoActivo()
       const fondos = pagos.map(p => ({ ...p, restante: Math.round(p.monto * 100), aplicado: 0 }))
       const pagosAplicados: AplicacionFiado[] = []
       const culminados: Array<{ pedidoId: string; numero: number }> = []
