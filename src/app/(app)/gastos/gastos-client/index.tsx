@@ -407,7 +407,7 @@ export default function GastosPage() {
                   </p>
                 </div>
                 {detalle.responsable && <p className="text-sm text-slate-700">
-                  <strong>Responsable (dato anterior):</strong> {detalle.responsable}
+                  <strong>Persona asociada (dato registrado):</strong> {detalle.responsable}
                 </p>}
                 {detalle.notas && <p className="break-words text-sm text-slate-700">
                   <strong>Notas:</strong> {detalle.notas}
@@ -531,7 +531,7 @@ export default function GastosPage() {
                     </div>
                   </div>
                   {gasto.responsable && <p className="mt-2 text-xs text-slate-600">
-                    Responsable (dato anterior): {gasto.responsable}
+                    Persona asociada (dato registrado): {gasto.responsable}
                   </p>}
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
