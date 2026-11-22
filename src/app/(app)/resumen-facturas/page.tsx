@@ -352,23 +352,26 @@ export default function ResumenFacturasPage() {
           <div className="p-6 print:p-4">
             {/* Header del documento */}
             <div className="border-b-2 border-gray-800 pb-4 mb-4 doc-header">
-              <div className="flex justify-between items-start">
-                <div className="flex items-start gap-4">
-                  <Image src="/logo-agua-bambu.jpg" alt="Logo" width={1280} height={652} className="h-14 w-auto object-contain print:h-20" />
-                  <div>
+              {/* #873: donde la fila no cabe (móvil, tableta con barra lateral) el logo/empresa y
+                  el título se apilan (antes se encimaban o se cortaban); desde `lg` y al imprimir
+                  siguen en fila, exactamente como antes. */}
+              <div className="flex flex-col gap-y-3 lg:flex-row lg:justify-between lg:items-start print:flex-row print:justify-between print:items-start">
+                <div className="flex items-start gap-3 lg:gap-4 min-w-0 lg:min-w-auto print:gap-4 print:min-w-auto" data-testid="resumen-doc-empresa">
+                  <Image src="/logo-agua-bambu.jpg" alt="Logo" width={1280} height={652} className="h-12 lg:h-14 w-auto object-contain print:h-20" />
+                  <div className="min-w-0 break-words lg:min-w-auto lg:break-normal print:min-w-auto print:break-normal">
                     <h2 className="text-xl font-bold text-gray-900">{empresa.nombre}</h2>
                     <p className="text-sm text-gray-600">NIT: {empresa.nit}</p>
                     {empresa.direccion && <p className="text-xs text-gray-500">{empresa.direccion}</p>}
                     {empresa.telefono && <p className="text-xs text-gray-500">Tel: {empresa.telefono}</p>}
                   </div>
                 </div>
-                <div className="text-right text-sm">
+                <div className="text-left text-sm lg:text-right print:text-right" data-testid="resumen-doc-titulo">
                   <p className="font-bold text-gray-900 uppercase tracking-wider text-base">Resumen Consolidado de Cuenta</p>
                   <p className="text-gray-600 mt-1">{resumenNumber}</p>
                   <p className="text-gray-500 text-xs">Generado: {generatedAt}</p>
                 </div>
               </div>
-              <div className="mt-3 flex gap-6 text-xs text-gray-600">
+              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-600">
                 <span><strong>Período de facturas:</strong> {formatPeriodo(periodo.desde, periodo.hasta)}</span>
                 <span data-testid="resumen-estado"><strong>Estado:</strong> {estadoNombre}</span>
               </div>
