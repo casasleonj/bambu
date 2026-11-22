@@ -11,6 +11,9 @@ import { logger } from '@/lib/logger'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
+import { parseFechaGasto } from '@/lib/fecha-gasto'
+import { dayInBogota, startOfDayInBogota } from '@/lib/date-helpers'
+import { acquireAdvisoryLockTx } from '@/lib/locks'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-4): Only ADMIN/CONTADOR can read gastos
@@ -38,21 +41,44 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // La vista de Gastos administra SOLO egresos operativos. Nómina y
+    // Embarques se gestionan en su módulo original, aunque Cierre continúe
+    // contabilizando todos los movimientos físicos/contables.
+    if (searchParams.get('origen') === 'OPERATIVO') {
+      where = {
+        ...where,
+        NOT: [
+          { categoria: 'NOMINA' },
+          { esPagoPersonal: true },
+          { trabajadorId: { not: null } },
+          { embarqueId: { not: null } },
+          // En registros anteriores la anulación de Nómina usó categoría OTRO
+          // y carece de vínculo: no ofrecerla como gasto operativo editable.
+          { descripcion: { startsWith: 'Reversión nómina anulada -' } },
+        ],
+      }
+    }
+
     const prismaPagination = getPrismaPagination(pagination)
 
-    const [gastos, total] = await Promise.all([
+    // #755: paginar filas NO debe paginar el importe total del período.
+    // El mismo snapshot PostgreSQL garantiza que lista, cantidad e importe
+    // coincidan aunque se registre un gasto mientras se ejecuta la consulta.
+    const [gastos, total, importes] = await prisma.$transaction([
       prisma.gasto.findMany({
         where,
-        orderBy: { fecha: 'desc' },
+        orderBy: [{ fecha: 'desc' }, { id: 'desc' }],
         ...prismaPagination,
       }),
       prisma.gasto.count({ where }),
-    ])
+      prisma.gasto.aggregate({ where, _sum: { monto: true } }),
+    ], { isolationLevel: 'RepeatableRead' })
 
+    const montoTotal = Number(importes._sum.monto ?? 0)
     return apiSuccess(
       pagination.all
-        ? { gastos, total }
-        : buildPaginationResponse(gastos, total, pagination.page!, pagination.pageSize!)
+        ? { gastos, total, montoTotal }
+        : { ...buildPaginationResponse(gastos, total, pagination.page!, pagination.pageSize!), montoTotal }
     )
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching gastos:')
@@ -83,16 +109,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const gasto = await prisma.gasto.create({
-      data: {
-        categoria,
-        descripcion,
-        monto,
-        responsable,
-        notas,
-        fecha: fecha ? new Date(fecha) : new Date(),
-      },
+    // Fecha efectiva validada: YYYY-MM-DD pertenece a Bogotá, no a UTC.
+    const fechaEfectiva = fecha ? parseFechaGasto(fecha) : new Date()
+    if (!fechaEfectiva) return apiError('Fecha de gasto inválida', 400)
+    const diaContable = startOfDayInBogota(dayInBogota(fechaEfectiva))
+
+    // Mismo lock que POST /api/cierre: ninguna creación de gasto puede cruzarse
+    // con el snapshot de un día ya cerrado. No reescribir cierres históricos.
+    const gasto = await prisma.$transaction(async (tx) => {
+      await acquireAdvisoryLockTx(tx, 'CIERRE', diaContable.toISOString())
+      const cerrado = await tx.cierreDia.findUnique({ where: { fecha: diaContable }, select: { id: true } })
+      if (cerrado) return null
+      return tx.gasto.create({
+        data: { categoria, descripcion, monto, responsable, notas, fecha: fechaEfectiva },
+      })
     })
+    if (!gasto) {
+      return apiError('Este día ya tiene cierre. Se requiere un ajuste contable autorizado.', 409, {
+        code: 'GASTO_DIA_CERRADO',
+      })
+    }
 
     logAudit({
       entidad: 'Gasto',
