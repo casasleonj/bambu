@@ -91,6 +91,8 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)
   if (roleCheck instanceof Response) return roleCheck
+  const actorId = (authResult.user as { id?: string } | undefined)?.id
+  if (!actorId) return apiError('No se pudo identificar al usuario que registra el gasto', 401)
   try {
     const body = await request.json()
     const parsed = GastoCreateSchema.safeParse(body)
@@ -120,23 +122,25 @@ export async function POST(request: NextRequest) {
       await acquireAdvisoryLockTx(tx, 'CIERRE', diaContable.toISOString())
       const cerrado = await tx.cierreDia.findUnique({ where: { fecha: diaContable }, select: { id: true } })
       if (cerrado) return null
-      return tx.gasto.create({
-        data: { categoria, descripcion, monto, responsable, notas, fecha: fechaEfectiva },
+      const creado = await tx.gasto.create({
+        data: { categoria, descripcion, monto, responsable, notas, fecha: fechaEfectiva, createdById: actorId },
       })
+      // #755: un gasto no queda registrado si falla su evidencia de autoría.
+      // Misma transacción del cierre y del alta: sin auditorías fantasma.
+      await logAudit({
+        entidad: 'Gasto',
+        registroId: creado.id,
+        accion: 'CREATE',
+        datos: { categoria, descripcion, monto, fecha: fechaEfectiva.toISOString() },
+        usuarioId: actorId,
+      }, tx)
+      return creado
     })
     if (!gasto) {
       return apiError('Este día ya tiene cierre. Se requiere un ajuste contable autorizado.', 409, {
         code: 'GASTO_DIA_CERRADO',
       })
     }
-
-    logAudit({
-      entidad: 'Gasto',
-      registroId: gasto.id,
-      accion: 'CREATE',
-      datos: { categoria, descripcion, monto },
-      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
-    }).catch(() => {})
 
     publishRealtimeEvent('gasto.created', gasto.id).catch(() => {})
 
