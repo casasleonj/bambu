@@ -84,16 +84,16 @@ describe("#853 · totales físicos de Hoy en PostgreSQL", () => {
     await evento(anterior.id, dia, "12:00", 10);
 
     const despues = (await consultarPedidos(filtros(), "ADMIN", testPrisma)).resumen!;
-    const agua = (r: typeof despues) => r.operacionHoy?.productos.find(p => p.producto === "PACA_AGUA");
-    expect(despues.operacionHoy!.total - antes.operacionHoy!.total).toBe(15);
-    expect((agua(despues)?.dePedidosHoy ?? 0) - (agua(antes)?.dePedidosHoy ?? 0)).toBe(5);
+    const agua = (r: typeof despues) => r.operacionDia?.productos.find(p => p.producto === "PACA_AGUA");
+    expect(despues.operacionDia!.total - antes.operacionDia!.total).toBe(15);
+    expect((agua(despues)?.dePedidosFecha ?? 0) - (agua(antes)?.dePedidosFecha ?? 0)).toBe(5);
     expect((agua(despues)?.dePedidosAnteriores ?? 0) - (agua(antes)?.dePedidosAnteriores ?? 0)).toBe(10);
     expect((despues.productos.find(p => p.producto === "PACA_AGUA")?.entregadas ?? 0) -
       (antes.productos.find(p => p.producto === "PACA_AGUA")?.entregadas ?? 0)).toBe(5);
 
     const filtrado = await consultarPedidos(filtros("canal=PUNTO"), "ADMIN", testPrisma);
-    expect(filtrado.resumen?.operacionHoy).toBeUndefined();
+    expect(filtrado.resumen?.operacionDia).toBeUndefined();
     const historico = await consultarPedidos(filtros("fechaBase=entrega"), "ADMIN", testPrisma);
-    expect(historico.resumen?.operacionHoy).toBeUndefined();
+    expect(historico.resumen?.operacionDia).toBeUndefined();
   }, 60000);
 });

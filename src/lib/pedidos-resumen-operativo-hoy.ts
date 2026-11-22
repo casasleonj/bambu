@@ -4,23 +4,23 @@ import type { RangoDia, UnidadEntregadaDetalle } from "./unidades-entregadas-dia
 export interface ProductoOperativoHoy {
   producto: string;
   entregadasHoy: number;
-  dePedidosHoy: number;
+  dePedidosFecha: number;
   dePedidosAnteriores: number;
   porConciliarOrigen: number;
 }
 
-export interface ResumenOperativoHoy {
+export interface ResumenOperativoDia {
   total: number;
   productos: ProductoOperativoHoy[];
 }
 
 /**
- * Solo el resumen general del día vigente se compara con Dashboard/Cierre.
+ * Solo un día completo consultado (actual o histórico) se compara con Dashboard/Cierre.
  * Una búsqueda, selección de barrio, horario o filtro cambia el universo:
  * no se debe presentar el total global como si respetara esos filtros.
  */
-export function mostrarResumenOperativoHoy(f: FiltrosConsultaPedidos, hoy: string): boolean {
-  return f.resumen && !f.all && f.desde === hoy && f.hasta === hoy &&
+export function mostrarResumenOperativoDelDia(f: FiltrosConsultaPedidos, hoy: string): boolean {
+  return f.resumen && !f.all && !!f.desde && f.desde === f.hasta && f.desde <= hoy &&
     !f.desdeHora && !f.hastaHora && f.fechaBase === "pedido" &&
     f.registro === "activos" && f.pago === "todos" &&
     !f.search && !f.clienteId && !f.grupoBarrio && !f.foco && !f.conRecurrencia &&
@@ -33,13 +33,13 @@ export function mostrarResumenOperativoHoy(f: FiltrosConsultaPedidos, hoy: strin
  * Resume los DELTAS físicos del día, no el acumulado actual de cada pedido.
  * Los datos provienen del mismo lector canónico usado por Dashboard y Cierre.
  * Los pedidos anteriores se reconocen por fecha original, sin reescribirla.
- * Las fechas futuras o ausentes no se clasifican artificialmente como «hoy».
+ * Las fechas futuras o ausentes no se atribuyen a la fecha consultada.
  */
-export function resumirEntregasOperativasHoy(
+export function resumirEntregasOperativasDelDia(
   detalles: readonly Pick<UnidadEntregadaDetalle, "pedidoId" | "producto" | "cantidad">[],
   fechaOriginalPorPedido: ReadonlyMap<string, Date>,
   rango: RangoDia,
-): ResumenOperativoHoy {
+): ResumenOperativoDia {
   const porProducto = new Map<string, ProductoOperativoHoy>();
   for (const d of detalles) {
     if (!Number.isSafeInteger(d.cantidad) || d.cantidad < 0) {
@@ -49,7 +49,7 @@ export function resumirEntregasOperativasHoy(
     const actual = porProducto.get(d.producto) ?? {
       producto: d.producto,
       entregadasHoy: 0,
-      dePedidosHoy: 0,
+      dePedidosFecha: 0,
       dePedidosAnteriores: 0,
       porConciliarOrigen: 0,
     };
@@ -60,7 +60,7 @@ export function resumirEntregasOperativasHoy(
     } else if (fecha < rango.desde) {
       actual.dePedidosAnteriores += d.cantidad;
     } else {
-      actual.dePedidosHoy += d.cantidad;
+      actual.dePedidosFecha += d.cantidad;
     }
     porProducto.set(d.producto, actual);
   }

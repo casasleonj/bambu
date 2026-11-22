@@ -82,13 +82,13 @@ export function ResumenConsulta({
         📦{" "}
         {entregas
           ? "Productos entregados en el rango"
-          : r.operacionHoy ? "Productos de pedidos fechados hoy" : "Productos de los pedidos seleccionados"}
+          : r.operacionDia ? "Productos de pedidos fechados en la fecha consultada" : "Productos de los pedidos seleccionados"}
       </h3>
       <p className="mt-1 text-xs text-stone-600">
         {entregas
           ? "Cantidades de entregas con evidencia del intervalo y de los repartidores elegidos. Las ventas de mostrador entregadas al vender cuentan en la hora de la venta."
-          : r.operacionHoy
-            ? "Estas cantidades son acumuladas de pedidos fechados hoy. Las entregas físicas del día (incluidas las de pedidos anteriores) se muestran arriba."
+          : r.operacionDia
+            ? "Estas cantidades son acumuladas de pedidos fechados en la fecha consultada; no son las entregas físicas del día, que se muestran arriba."
             : "Pedidas y entregadas acumuladas de esos pedidos; cada producto se cuenta por separado."}
       </p>
       <div className="mt-1 grid gap-x-5 lg:grid-cols-2">
@@ -164,13 +164,13 @@ export function ResumenConsulta({
           className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums text-slate-800"
           data-testid="consulta-resumen-linea"
         >
-          {r.operacionHoy && (
+          {r.operacionDia && (
             <span data-testid="consulta-total-fisico-hoy">
-              Entregadas hoy <b>{r.operacionHoy.total}</b>
+              Entregadas el {f.desde} <b>{r.operacionDia.total}</b>
             </span>
           )}
-          {r.operacionHoyError && (
-            <span role="status">Entregas de hoy por conciliar</span>
+          {r.operacionDiaError && (
+            <span role="status">Entregas de la fecha consultada por conciliar</span>
           )}
           {cobros && r.cobros ? (
             <span>
@@ -197,20 +197,20 @@ export function ResumenConsulta({
         </p>
       )}
       <div id="consulta-resumen-detalle" hidden={!abierto}>
-        {r.operacionHoy && (
+        {r.operacionDia && (
           <div
             className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3"
             data-testid="consulta-resumen-operacion-hoy"
           >
             <h3 className="text-sm font-bold text-slate-800">
-              📦 Entregas físicas de hoy: {r.operacionHoy.total} productos
+              📦 Entregas físicas del {f.desde}: {r.operacionDia.total} productos
             </h3>
             <p className="mt-1 text-xs text-slate-600">
               Mismo criterio de productos entregados del Dashboard y del Cierre.
-              Incluye pedidos de días anteriores entregados hoy, sin sumar sus entregas previas.
+              Incluye pedidos de días anteriores entregados en la fecha consultada, sin sumar entregas previas.
             </p>
             <div className="mt-2 space-y-2">
-              {r.operacionHoy.productos.map((p) => {
+              {r.operacionDia.productos.map((p) => {
                 const { Icon, label } = getProductoIconConfig(p.producto);
                 return (
                   <div key={p.producto} className="border-t border-blue-200 pt-2 text-xs" data-producto-hoy={p.producto}>
@@ -221,7 +221,7 @@ export function ResumenConsulta({
                       <strong className="tabular-nums text-slate-800">{p.entregadasHoy} entregadas</strong>
                     </div>
                     <p className="mt-1 text-slate-600">
-                      {p.dePedidosHoy} de pedidos de hoy · {p.dePedidosAnteriores} de pedidos anteriores
+                      {p.dePedidosFecha} de pedidos fechados ese día · {p.dePedidosAnteriores} de pedidos anteriores
                       {p.porConciliarOrigen > 0 ? ` · ${p.porConciliarOrigen} sin fecha original verificable` : ""}
                     </p>
                   </div>
@@ -230,9 +230,9 @@ export function ResumenConsulta({
             </div>
           </div>
         )}
-        {r.operacionHoyError && (
+        {r.operacionDiaError && (
           <p role="status" className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-            No se pudo verificar el total físico de hoy. El resumen por fecha del pedido sigue disponible; no se muestra un cero inventado.
+            No se pudo verificar el total físico de la fecha consultada. El resumen por fecha del pedido sigue disponible; no se muestra un cero inventado.
           </p>
         )}
         <p className="mt-1 text-xs text-slate-500">
@@ -406,7 +406,14 @@ export function ResumenConsulta({
               </p>
             )}
             {(r.productos.length > 0 || r.entregasPorConciliar > 0) &&
-              productos}
+              (r.operacionDia ? (
+                <details className="mt-3" data-testid="consulta-cohorte-fecha-pedido">
+                  <summary className="cursor-pointer py-2 text-xs font-semibold text-slate-700">
+                    Ver acumulados de pedidos fechados ese día (no son entregas del día)
+                  </summary>
+                  {productos}
+                </details>
+              ) : productos)}
           </>
         )}
       </div>

@@ -68,29 +68,33 @@ describe("ResumenConsulta colapsable", () => {
     const conOperacion = {
       ...resumen,
       productos: [{ producto: "PACA_AGUA", pedidas: 571, entregadas: 571 }],
-      operacionHoy: {
+      operacionDia: {
         total: 581,
         productos: [{
           producto: "PACA_AGUA",
           entregadasHoy: 581,
-          dePedidosHoy: 571,
+          dePedidosFecha: 571,
           dePedidosAnteriores: 10,
           porConciliarOrigen: 0,
         }],
       },
     };
-    render(<ResumenConsulta resumen={conOperacion} filtros={filtros} />);
+    const historicos = { ...filtros, all: false, desde: "2026-11-21", hasta: "2026-11-21", canal: [] } as FiltrosConsultaPedidos;
+    render(<ResumenConsulta resumen={conOperacion} filtros={historicos} />);
     expect(screen.getByTestId("consulta-total-fisico-hoy")).toHaveTextContent("581");
     fireEvent.click(screen.getByTestId("consulta-resumen-alternar"));
-    expect(screen.getByTestId("consulta-resumen-operacion-hoy")).toHaveTextContent("581 productos");
-    expect(screen.getByTestId("consulta-resumen-operacion-hoy")).toHaveTextContent("571 de pedidos de hoy");
+    expect(screen.getByTestId("consulta-resumen-operacion-hoy")).toHaveTextContent("2026-11-21: 581 productos");
+    expect(screen.getByTestId("consulta-resumen-operacion-hoy")).toHaveTextContent("571 de pedidos fechados ese día");
     expect(screen.getByTestId("consulta-resumen-operacion-hoy")).toHaveTextContent("10 de pedidos anteriores");
+    expect(screen.getByTestId("consulta-cohorte-fecha-pedido")).not.toHaveAttribute("open");
     expect(screen.getByTestId("consulta-productos-resumen")).toHaveTextContent("571 pedidas");
+    fireEvent.click(screen.getByText("Ver acumulados de pedidos fechados ese día (no son entregas del día)"));
+    expect(screen.getByTestId("consulta-cohorte-fecha-pedido")).toHaveAttribute("open");
   });
 
   it("cuando falla la lectura física no muestra un cero ficticio", () => {
     movil(true);
-    render(<ResumenConsulta resumen={{ ...resumen, operacionHoyError: true }} filtros={filtros} />);
+    render(<ResumenConsulta resumen={{ ...resumen, operacionDiaError: true }} filtros={filtros} />);
     expect(screen.getByText("Entregas de hoy por conciliar")).toBeInTheDocument();
     expect(screen.queryByTestId("consulta-total-fisico-hoy")).toBeNull();
   });

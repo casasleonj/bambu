@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { leerFiltrosConsulta } from "../pedidos-consulta";
 import {
-  mostrarResumenOperativoHoy,
-  resumirEntregasOperativasHoy,
+  mostrarResumenOperativoDelDia,
+  resumirEntregasOperativasDelDia,
 } from "../pedidos-resumen-operativo-hoy";
 
 const D = "2026-11-21";
@@ -23,7 +23,7 @@ describe("#853: productos entregados hoy frente a productos de pedidos fechados 
       { pedidoId: "nuevo", producto: "PACA_AGUA", cantidad: 571 },
       { pedidoId: "1349", producto: "PACA_AGUA", cantidad: 10 },
     ];
-    const r = resumirEntregasOperativasHoy(
+    const r = resumirEntregasOperativasDelDia(
       detalle,
       new Map([["nuevo", fecha(D)], ["1349", fecha("2026-11-20")]]),
       rango,
@@ -31,12 +31,12 @@ describe("#853: productos entregados hoy frente a productos de pedidos fechados 
     expect(r.total).toBe(581);
     expect(r.productos).toEqual([{
       producto: "PACA_AGUA", entregadasHoy: 581,
-      dePedidosHoy: 571, dePedidosAnteriores: 10, porConciliarOrigen: 0,
+      dePedidosFecha: 571, dePedidosAnteriores: 10, porConciliarOrigen: 0,
     }]);
   });
 
   it("solo cuenta los deltas entregados hoy, no el acumulado de entregas parciales anteriores", () => {
-    const r = resumirEntregasOperativasHoy(
+    const r = resumirEntregasOperativasDelDia(
       [
         { pedidoId: "parcial", producto: "PACA_AGUA", cantidad: 6 },
         { pedidoId: "parcial", producto: "PACA_AGUA", cantidad: 4 },
@@ -49,7 +49,7 @@ describe("#853: productos entregados hoy frente a productos de pedidos fechados 
   });
 
   it("separa productos, conserva regalos físicos y no confunde cohorte futura con hoy", () => {
-    const r = resumirEntregasOperativasHoy(
+    const r = resumirEntregasOperativasDelDia(
       [
         { pedidoId: "hoy", producto: "BOTELLON", cantidad: 3 },
         { pedidoId: "anterior", producto: "PACA_HIELO", cantidad: 2 },
@@ -67,20 +67,27 @@ describe("#853: productos entregados hoy frente a productos de pedidos fechados 
     expect(r.total).toBe(9);
     expect(r.productos.find(p => p.producto === "PACA_AGUA")).toEqual({
       producto: "PACA_AGUA", entregadasHoy: 4,
-      dePedidosHoy: 0, dePedidosAnteriores: 1, porConciliarOrigen: 3,
+      dePedidosFecha: 0, dePedidosAnteriores: 1, porConciliarOrigen: 3,
     });
   });
 
+  it("conserva el total físico del día al consultarlo después de medianoche, sin habilitar fechas futuras", () => {
+    expect(mostrarResumenOperativoDelDia(filtros(), "2026-11-22")).toBe(true);
+    expect(mostrarResumenOperativoDelDia(filtros(), "2026-11-20")).toBe(false);
+    expect(mostrarResumenOperativoDelDia(filtros("hasta=2026-11-22"), "2026-11-22")).toBe(false);
+    expect(mostrarResumenOperativoDelDia(filtros("search=cliente"), "2026-11-22")).toBe(false);
+  });
+
   it("rechaza cantidades inválidas en vez de presentarlas como hechos físicos", () => {
-    expect(() => resumirEntregasOperativasHoy(
+    expect(() => resumirEntregasOperativasDelDia(
       [{ pedidoId: "x", producto: "PACA_AGUA", cantidad: 1.5 }],
       new Map([["x", fecha(D)]]), rango,
     )).toThrow("no verificable");
   });
 
   it("solo habilita el agregado global en Hoy sin filtros, con o sin agrupación territorial", () => {
-    expect(mostrarResumenOperativoHoy(filtros(), D)).toBe(true);
-    expect(mostrarResumenOperativoHoy(filtros("agrupar=barrio"), D)).toBe(true);
+    expect(mostrarResumenOperativoDelDia(filtros(), D)).toBe(true);
+    expect(mostrarResumenOperativoDelDia(filtros("agrupar=barrio"), D)).toBe(true);
     for (const q of [
       "desdeHora=09:00", "canal=PUNTO", "search=cliente", "clienteId=c",
       "repartidorId=r", "grupoBarrio=b:centro", "estadoEntrega=ENTREGADO",
@@ -88,7 +95,7 @@ describe("#853: productos entregados hoy frente a productos de pedidos fechados 
       "origen=VENTA_RAPIDA", "pago=fiado", "foco=paraHoy", "conRecurrencia=true",
       "hasta=2026-11-22", "all=true", "resumen=0",
     ]) {
-      expect(mostrarResumenOperativoHoy(filtros(q), D), q).toBe(false);
+      expect(mostrarResumenOperativoDelDia(filtros(q), D), q).toBe(false);
     }
   });
 });
