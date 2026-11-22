@@ -64,6 +64,7 @@ export function CamposGasto({ prefijo, datos, cambiar, categorias, bloqueado = f
             className={`${input} pl-7 text-lg font-semibold tabular-nums`}
             placeholder="0" value={datos.monto} onChange={event => cambiar('monto', event.target.value)} />
         </div>
+        <p className="mt-1 text-xs text-slate-600">Ejemplo: escribe 35000 para registrar $35.000. No uses puntos de miles.</p>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
