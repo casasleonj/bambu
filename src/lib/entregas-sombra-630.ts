@@ -41,6 +41,7 @@ export interface PedidoDiagnosticoSombra {
   numero: number | null
   fechaCreacion: string
   estadoActual: string
+  alertasPedido: string[]
   lineas: LineaSombra[]
 }
 export interface DiagnosticoEntregasSombra {
@@ -80,6 +81,7 @@ export function diagnosticarPedidoEntregasSombra(
     alertas.set(producto, new Set())
   }
 
+  const alertasPedido = new Set<string>()
   const vistos = new Map<string, string>()
   for (const evento of eventos.filter(e => e.pedidoId === pedido.id)) {
     const firma = JSON.stringify({
@@ -90,6 +92,7 @@ export function diagnosticarPedidoEntregasSombra(
     const anterior = vistos.get(evento.id)
     if (anterior !== undefined) {
       if (anterior !== firma) {
+        alertasPedido.add('IDENTIDAD_REUTILIZADA_CON_OTRO_CONTENIDO')
         for (const producto of PRODUCTOS) alertas.get(producto)!.add('IDENTIDAD_REUTILIZADA_CON_OTRO_CONTENIDO')
       }
       continue // nunca sumar dos veces el mismo ID
@@ -97,15 +100,18 @@ export function diagnosticarPedidoEntregasSombra(
     vistos.set(evento.id, firma)
 
     if (evento.incompleto) {
+      alertasPedido.add('EVIDENCIA_GLOBAL_INCOMPLETA')
       for (const producto of PRODUCTOS) alertas.get(producto)!.add('EVIDENCIA_GLOBAL_INCOMPLETA')
     }
     if (!evento.cantidades?.length) {
+      alertasPedido.add('EVENTO_SIN_CANTIDADES_VERIFICABLES')
       for (const producto of PRODUCTOS) alertas.get(producto)!.add('EVENTO_SIN_CANTIDADES_VERIFICABLES')
       continue
     }
     const diaEvento = dayInBogota(evento.fecha)
     for (const linea of evento.cantidades) {
       if (!esProducto(linea.producto)) {
+        alertasPedido.add('PRODUCTO_NO_RECONOCIDO')
         for (const producto of PRODUCTOS) alertas.get(producto)!.add('PRODUCTO_NO_RECONOCIDO')
         continue
       }
@@ -113,6 +119,7 @@ export function diagnosticarPedidoEntregasSombra(
         (linea.cantidadRegalo !== undefined &&
           (!Number.isSafeInteger(linea.cantidadRegalo) || linea.cantidadRegalo < 0 ||
             linea.cantidadRegalo > linea.cantidad))) {
+        alertasPedido.add('CANTIDAD_INVALIDA')
         alertas.get(linea.producto)!.add('CANTIDAD_INVALIDA')
         continue
       }
@@ -155,7 +162,8 @@ export function diagnosticarPedidoEntregasSombra(
   }
   return {
     pedidoId: pedido.id, numero: pedido.numero,
-    fechaCreacion: dayInBogota(pedido.fecha), estadoActual: pedido.estadoEntrega, lineas,
+    fechaCreacion: dayInBogota(pedido.fecha), estadoActual: pedido.estadoEntrega,
+    alertasPedido: [...alertasPedido].sort(), lineas,
   }
 }
 
