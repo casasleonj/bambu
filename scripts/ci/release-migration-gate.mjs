@@ -77,7 +77,7 @@ export async function main(env=process.env) {
   // La evidencia de producción viene de prisma/migrations/**, no del manifiesto.
   if (env.SCHEMA_CHANGED !== 'false' && env.SCHEMA_CHANGED !== 'true')
     throw new Error('Clasificación de schema Prisma ausente o ambigua')
-  if (typeof env.NEW_MIGRATIONS !== 'string' || !/^\\d+$/.test(env.NEW_MIGRATIONS))
+  if (typeof env.NEW_MIGRATIONS !== 'string' || !/^\d+$/.test(env.NEW_MIGRATIONS))
     throw new Error('Conteo de migraciones nuevas ausente o inválido')
   const newMigrations = Number(env.NEW_MIGRATIONS)
   if (!Number.isSafeInteger(newMigrations) || newMigrations > 1000)
