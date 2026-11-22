@@ -2362,6 +2362,13 @@ model Gasto {
   trabajadorId String?
   trabajador   Trabajador? @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
 
+  // #755: solo anulaciones de registros operativos de día ABIERTO.
+  // El importe original permanece disponible para el historial; monto=0
+  // mantiene coherentes los agregados monetarios antiguos sin doble resta.
+  anuladoAt         DateTime? @db.Timestamptz()
+  montoAntesAnular  Decimal?  @db.Decimal(10, 2)
+  motivoAnulacion   String?   @db.VarChar(500)
+
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
 
