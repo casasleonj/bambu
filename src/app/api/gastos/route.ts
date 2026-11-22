@@ -61,6 +61,7 @@ export async function GET(request: NextRequest) {
     }
 
     const prismaPagination = getPrismaPagination(pagination)
+    const consultaInicio = performance.now()
 
     // #755: paginar filas NO debe paginar el importe total del período.
     // El mismo snapshot PostgreSQL garantiza que lista, cantidad e importe
@@ -75,12 +76,22 @@ export async function GET(request: NextRequest) {
       prisma.gasto.aggregate({ where, _sum: { monto: true } }),
     ], { isolationLevel: 'RepeatableRead' })
 
+    const consultaMs = Math.round(performance.now() - consultaInicio)
+    if (consultaMs > 1000) {
+      // Diagnóstico de latencia sin registrar importes, conceptos ni identidades.
+      // La API mantiene la transacción que concilia filas, conteo y suma.
+      logger.warn({ duracionMs: consultaMs, filas: gastos.length, pagina: pagination.page, origenOperativo: searchParams.get('origen') === 'OPERATIVO' }, 'Consulta de Gastos lenta')
+    }
     const montoTotal = Number(importes._sum.monto ?? 0)
-    return apiSuccess(
+    const respuesta = apiSuccess(
       pagination.all
         ? { gastos, total, montoTotal }
         : { ...buildPaginationResponse(gastos, total, pagination.page!, pagination.pageSize!), montoTotal }
     )
+    // Permite distinguir tiempo de PostgreSQL/Prisma de red, autenticación
+    // y renderizado en herramientas de desarrollo sin alterar el JSON.
+    respuesta.headers.set('Server-Timing', `gastos-db;dur=${consultaMs}`)
+    return respuesta
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching gastos:')
     return apiError('Error fetching gastos', 500)
