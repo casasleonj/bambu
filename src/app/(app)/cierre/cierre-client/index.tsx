@@ -430,7 +430,40 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             const signal = abortControllerRef.current?.signal
             if (signal) void fetchCierre(fecha, signal)
           }} />}
-        <CierreDesgloseCobros data={data} />
+        <CierreDesgloseCobros data={data} puedeVerGastos={userRole === 'ADMIN' || userRole === 'CONTADOR'} />
+        {(post?.gastosRetroactivos?.length ?? 0) > 0 && (
+          <section data-testid="cierre-gastos-retroactivos" className="rounded-xl border border-amber-300 bg-amber-50 p-4 sm:p-5">
+            <h3 className="font-semibold text-amber-900">Movimientos registrados después del cierre</h3>
+            <p className="mt-1 text-sm text-amber-900">
+              Se anotaron salidas con fecha efectiva de esta jornada después de haberla cerrado.
+              Son novedades para conciliar: <strong>el cierre guardado no cambió</strong> y
+              estos valores no se suman ni se restan automáticamente del efectivo.
+            </p>
+            <div className="mt-3 space-y-2">
+              {post?.gastosRetroactivos?.map(gasto => (
+                <div key={gasto.id} className="rounded-md border border-amber-200 bg-white px-3 py-2 text-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium text-slate-800">{gasto.concepto}</div>
+                      <div className="mt-1 text-xs text-slate-600">
+                        Origen: {gasto.origen === 'NOMINA' ? 'Nómina' : gasto.origen === 'EMBARQUES' ? 'Embarques' : 'Gastos'}
+                        {' · '}Registrado: {new Date(gasto.fechaRegistro).toLocaleString('es-CO', {
+                          timeZone: 'America/Bogota', day: '2-digit', month: '2-digit',
+                          hour: '2-digit', minute: '2-digit',
+                        })}
+                      </div>
+                    </div>
+                    <div className="font-semibold tabular-nums text-slate-900">{formatMoney(gasto.monto)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-amber-800">
+              Estos registros explican diferencias entre consultas actuales y el cierre histórico.
+              Los pagos del personal se administran únicamente desde Nómina.
+            </p>
+          </section>
+        )}
         <CierreDetalleVentas data={data} />
 
         {/* Arqueo */}
@@ -467,10 +500,10 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           <div className="bg-amber-50 border border-amber-300 rounded-xl p-6">
             <div className="flex items-center gap-2 mb-4">
               <AlertTriangle className="w-5 h-5 text-amber-600" />
-              <h3 className="text-lg font-bold text-amber-800">Ventas Nocturnas (post-cierre)</h3>
+              <h3 className="text-lg font-bold text-amber-800">Movimientos posteriores al cierre</h3>
             </div>
             <p className="text-sm text-amber-700 mb-4">
-              Se registraron transacciones después del cierre. Este dinero se entregó junto con el cierre.
+              Se detectaron operaciones posteriores al cierre. Sus cobros y gastos requieren conciliación: no se presupone que el dinero se entregó ni que salió en efectivo.
             </p>
 
             <div className="grid grid-cols-3 gap-3 mb-4">
@@ -518,10 +551,14 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
 
             <div className="mt-4 pt-3 border-t border-amber-300">
               <div className="flex justify-between text-base font-bold text-amber-900">
-                <span>Total entregado incluyendo nocturnas</span>
-                <span>{formatMoney(Number(data.netoCaja || 0) + postCobrado - postGastos)}</span>
+                <span>Valor histórico del cierre (sin recalcular)</span>
+                <span>{formatMoney(Number(data.netoCaja || 0))}</span>
               </div>
             </div>
+            <p className="mt-2 text-xs text-amber-800">
+              No se calcula automáticamente un nuevo «total entregado»: los cobros posteriores
+              pueden ser digitales, pendientes de confirmar o no haber ingresado a la caja física.
+            </p>
           </div>
         )}
 
@@ -673,7 +710,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           />
         </div>
         <CierreKpiGrid data={data} onReintentarFiado={reintentarFiado} />
-        <CierreDesgloseCobros data={data} />
+        <CierreDesgloseCobros data={data} puedeVerGastos={userRole === 'ADMIN' || userRole === 'CONTADOR'} />
         <CierreDetalleVentas data={data} />
       </CierreSection>
 

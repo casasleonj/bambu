@@ -74,10 +74,13 @@ describe('#646 — detalle de gastos, abonos y correcciones del día', () => {
 
   it('lista cada gasto con descripción, categoría, hora y quién lo registró, y suma el total de gastos', async () => {
     const c = await leer()
-    const gastos = c.gastosDelDia as Array<{ descripcion: string; categoria: string; monto: number; fecha: string; registro: string | null }>
+    const gastos = c.gastosDelDia as Array<{ descripcion: string; categoria: string; monto: number; fecha: string; registro: string | null; responsable: string | null; registroConfiable: boolean }>
     expect(gastos.map(g => g.descripcion)).toEqual(['Gasolina camión', 'Bolsas para hielo'])
-    expect(gastos[0]).toMatchObject({ categoria: 'COMBUSTIBLE', monto: 20000, registro: 'Carlos' })
-    expect(gastos[1].registro).toBeTruthy() // sin «responsable», sale quien lo creó
+    // Registro anterior sin createdById: «Carlos» es responsable, no autor verificado.
+    expect(gastos[0]).toMatchObject({ categoria: 'COMBUSTIBLE', monto: 20000, registro: null, responsable: 'Carlos' })
+    // Registro con createdById: muestra al autor real, no inventa responsable.
+    expect(gastos[1]).toMatchObject({ registroConfiable: true, responsable: null })
+    expect(gastos[1].registro).toBeTruthy()
     expect(new Date(gastos[0].fecha).getTime()).toBe(mediodia(DIA, 8).getTime())
     expect(gastos.reduce((t, g) => t + g.monto, 0)).toBe(c.totalGastos)
   })
