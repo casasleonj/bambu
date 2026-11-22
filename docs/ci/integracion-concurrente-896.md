@@ -67,22 +67,22 @@ Distinguir validar un mismo árbol de ejecutar otra certificación sobre otro SH
 
 **Sesgos detectados:**
 - **Sesgo de disponibilidad:** se presentó una cola personalizada como sustituto de Merge Queue sin probar que los checks del candidato temporal satisfacen la protección de los PR originales. **Cambio sustancial:** descartar la cola propia inmediata; sin traslado, serializar bajo strict.
-- **Sesgo de capacidad/CPU:** pasar de nueve builds a dos no demuestra reducir latencia: los jobs actuales trabajan en paralelo y con build compartido todos esperan \`needs: build\`. **Cambio:** ensayo A/B sobre la ruta crítica, no inferencia por conteo de builds.
+- **Sesgo de capacidad/CPU:** pasar de nueve builds a dos no demuestra reducir latencia: los jobs actuales trabajan en paralelo y con build compartido todos esperan `needs: build`. **Cambio:** ensayo A/B sobre la ruta crítica, no inferencia por conteo de builds.
 - **Sesgo de independencia por rutas:** ausencia de conflictos Git no garantiza independencia semántica (importaciones indirectas, límites de dinero, sesiones, esquema). **Cambio:** validar unión y riesgo real.
 - **Sesgo de muestra:** duraciones puntuales de 15/20/58 min no son p50/p95 ni permiten fijar una meta de ahorro. **Cambio:** instrumentación y distribución real por tipo de PR y job.
 
-**Ambigüedad eliminada:** \`strict\` de ruleset es una protección de **merge**, no una promesa de que el deployment haya esperado los jobs en \`main\`. El gate de CI no certifica migraciones ni configuración efectiva de Vercel. Una rama temporal no hereda automáticamente el estado exigido por \`main\`.
+**Ambigüedad eliminada:** `strict` de ruleset es una protección de **merge**, no una promesa de que el deployment haya esperado los jobs en `main`. El gate de CI no certifica migraciones ni configuración efectiva de Vercel. Una rama temporal no hereda automáticamente el estado exigido por `main`.
 
 ### Iteración 2: intentar romper la propuesta corregida
 
-1. **Artefacto oculto/incompleto:** GitHub \`upload-artifact@v4\` excluye archivos ocultos por defecto, y el build Next standalone está en \`.next\`. Si se activa indiscriminadamente \`include-hidden-files\`, podrían colarse \`.env\` u otros secretos. **Mitigación:** \`tar\` con allowlist explícita y validación de inventario/manifiesto; no habilitar glob de todo el repositorio. Mantener permisos y verificar checksum tras descarga.
-2. **Parámetros diferentes al build:** Hub V2 ON incluye \`NEXT_PUBLIC_PEDIDOS_V2=true\` y \`NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR=true\` en el paso de build; los defaults del job legacy y \`workflow_dispatch\` varían. **Mitigación:** identidad por conjunto **completo** de variables efectivas y entorno, nunca alias simplista ON/OFF.
-3. **Arranque de servidor desde paquete:** el \`output: standalone\` exige \`node .next/standalone/server.js\` y copiar \`public\` y \`.next/static\`. Reempacar mal rompe UI o provoca falsos negativos. **Mitigación:** smoke real del build desempaquetado y comprobación de hash/archivos antes de Playwright.
-4. **Construcción dependiente de secreto:** cada shard genera \`NEXTAUTH_SECRET\` antes del build; un build desacoplado puede cambiar el momento de fijarlo. **Mitigación:** comprobar primero si el secreto es consumido al compilar o solo en runtime; mantener secretos de autenticación por job, nunca empaquetarlos.
-5. **Colisión o envenenamiento de artefactos:** un artifact de PR no es entrada confiable de deploy privilegiado; \`workflow_run\` y caches compartidas son superficies de ataque. **Mitigación:** solo artefactos **dentro del mismo run no privilegiado**, IDs de upload outputs inmutables, checksum/verificación, \`permissions: contents:read\`, sin \`pull_request_target\` ni secretos de producción. Cualquier fallo aborta.
-6. **Misma base, distinto código probado:** en \`pull_request\`, \`GITHUB_SHA\` referencia el merge de prueba, no necesariamente \`head.sha\`. Si avanza \`main\`, el head no cambia pero el merge de prueba sí. **Mitigación:** manifest con test-merge SHA, parents/base y candidato exacto; revalidar cuando no coincidan.
-7. **Más workers, menos aislamiento:** \`playwright.config.ts\` explica que workers>1 producen carreras de sesiones por reset de BD. **Mitigación:** mantener 8 shards con \`workers=1\` hasta demostrar aislamiento real por worker; no inflar paralelismo para compensar tiempos.
-8. **Comportamiento de Vercel desconocido:** \`vercel.json\` no contiene un guard de release, pero Deployment Checks pueden estar en dashboard. **Mitigación:** tratar protección efectiva de promoción como **PENDIENTE DE VERIFICACIÓN**, no afirmar que está activada/desactivada.
+1. **Artefacto oculto/incompleto:** GitHub `upload-artifact@v4` excluye archivos ocultos por defecto, y el build Next standalone está en `.next`. Si se activa indiscriminadamente `include-hidden-files`, podrían colarse `.env` u otros secretos. **Mitigación:** `tar` con allowlist explícita y validación de inventario/manifiesto; no habilitar glob de todo el repositorio. Mantener permisos y verificar checksum tras descarga.
+2. **Parámetros diferentes al build:** Hub V2 ON incluye `NEXT_PUBLIC_PEDIDOS_V2=true` y `NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR=true` en el paso de build; los defaults del job legacy y `workflow_dispatch` varían. **Mitigación:** identidad por conjunto **completo** de variables efectivas y entorno, nunca alias simplista ON/OFF.
+3. **Arranque de servidor desde paquete:** el `output: standalone` exige `node .next/standalone/server.js` y copiar `public` y `.next/static`. Reempacar mal rompe UI o provoca falsos negativos. **Mitigación:** smoke real del build desempaquetado y comprobación de hash/archivos antes de Playwright.
+4. **Construcción dependiente de secreto:** cada shard genera `NEXTAUTH_SECRET` antes del build; un build desacoplado puede cambiar el momento de fijarlo. **Mitigación:** comprobar primero si el secreto es consumido al compilar o solo en runtime; mantener secretos de autenticación por job, nunca empaquetarlos.
+5. **Colisión o envenenamiento de artefactos:** un artifact de PR no es entrada confiable de deploy privilegiado; `workflow_run` y caches compartidas son superficies de ataque. **Mitigación:** solo artefactos **dentro del mismo run no privilegiado**, IDs de upload outputs inmutables, checksum/verificación, `permissions: contents:read`, sin `pull_request_target` ni secretos de producción. Cualquier fallo aborta.
+6. **Misma base, distinto código probado:** en `pull_request`, `GITHUB_SHA` referencia el merge de prueba, no necesariamente `head.sha`. Si avanza `main`, el head no cambia pero el merge de prueba sí. **Mitigación:** manifest con test-merge SHA, parents/base y candidato exacto; revalidar cuando no coincidan.
+7. **Más workers, menos aislamiento:** `playwright.config.ts` explica que workers>1 producen carreras de sesiones por reset de BD. **Mitigación:** mantener 8 shards con `workers=1` hasta demostrar aislamiento real por worker; no inflar paralelismo para compensar tiempos.
+8. **Comportamiento de Vercel desconocido:** `vercel.json` no contiene un guard de release, pero Deployment Checks pueden estar en dashboard. **Mitigación:** tratar protección efectiva de promoción como **PENDIENTE DE VERIFICACIÓN**, no afirmar que está activada/desactivada.
 9. **Fuente del check alterada:** cambios de workflows, script de gate o checks externos pueden producir un status verde engañoso. **Mitigación:** proteger paths de política con review específica, identidad de aplicación emisora y cambio conservador de gate. No aceptar metadata arbitraria en el artifact.
 
 ### Iteración 3: romper los controles de la segunda iteración
@@ -90,39 +90,39 @@ Distinguir validar un mismo árbol de ejecutar otra certificación sobre otro SH
 | Contraejemplo | Cómo rompe el diseño mejorado | Salvaguarda final |
 |---|---|---|
 | Build único tarda más en subir/bajar que ocho builds paralelos | El ahorro de runner-minutos empeora p95 del desarrollador | Pilotar ambas variantes con mismo código, revertir si p95 o flake empeora |
-| Un artefacto empaquetado contiene \`.env\` por un symlink / archivo generado | Se filtra secreto incluso con nombre de tar inocente | Revisar árbol real, symlinks, archivos permitidos, tamaño y contenido sensible; no publicar hasta validación |
-| Check principal falla pero \`continue-on-error\` aparenta job verde | Resultado nominal confunde certificación real | Verificar \`suite_ok\`, steps exigidos y resultado de gate; no usar solo \`conclusion\` |
+| Un artefacto empaquetado contiene `.env` por un symlink / archivo generado | Se filtra secreto incluso con nombre de tar inocente | Revisar árbol real, symlinks, archivos permitidos, tamaño y contenido sensible; no publicar hasta validación |
+| Check principal falla pero `continue-on-error` aparenta job verde | Resultado nominal confunde certificación real | Verificar `suite_ok`, steps exigidos y resultado de gate; no usar solo `conclusion` |
 | Dos PR son verdes individualmente y rompen juntos una consulta PostgreSQL | Tests aislados insuficientes | Candidato combinado con integración real, E2E y escenarios de datos sintéticos |
-| PR A entra en cola, B cambia, C fusiona a \`main\` | Resultado del lote queda obsoleto | Verificar SHA/árbol/padres del candidato en una operación atómica o dejar que Merge Queue nativo lo gestione |
-| Nueva \`merge_group\` no dispara gate obligatorio | Check queda eternamente pendiente | Prueba end-to-end con \`on: merge_group\`, nombre único y check exigido; probar caso fail/timeout |
+| PR A entra en cola, B cambia, C fusiona a `main` | Resultado del lote queda obsoleto | Verificar SHA/árbol/padres del candidato en una operación atómica o dejar que Merge Queue nativo lo gestione |
+| Nueva `merge_group` no dispara gate obligatorio | Check queda eternamente pendiente | Prueba end-to-end con `on: merge_group`, nombre único y check exigido; probar caso fail/timeout |
 | Batch de 5 PR falla por uno de ellos | Ahorrar CI individual crea colas lentas y aislar el fallo cuesta más | Empezar con batch=1, medir; ampliar a 2 solo con evidencia y aislamiento de fallos, establecer límite de espera |
-| Una actualización bot usa \`GITHUB_TOKEN\` y no desencadena el flujo esperado | La cola queda pendiente o parece inactiva | Comprobar causalidad/eventos, no asumir que todo push del bot dispara Actions; validar permisos y trigger real |
+| Una actualización bot usa `GITHUB_TOKEN` y no desencadena el flujo esperado | La cola queda pendiente o parece inactiva | Comprobar causalidad/eventos, no asumir que todo push del bot dispara Actions; validar permisos y trigger real |
 | Transferir repositorio para usar Merge Queue rompe Vercel o integración GitHub App | Se acelera CI pero se interrumpe producción | Ensayo/reversión de titularidad e integraciones, responsable y ventana aprobada antes de migrar |
 | Pasan los tests en candidato GitHub, Vercel reconstruye con distintas variables | El artefacto certificado no es el que ejecuta producción | Identidad de deploy + verificación explícita de flags/entorno, deployment check obligatorio antes de alias/promoción |
 | Se mezcla smoke nocturno con gate de release | Un skipped/verde tardío enmascara un fallo actual | Identidades y check names distintos; nightly no sustituye merge gate |
 | Al hacer squash se conserva el árbol pero cambia SHA | Reutilizar resultado por árbol exclusivamente ignora entorno, origen y política | Registrar equivalencia completa como hipótesis, nunca activar bypass hasta probar autorización de promoción |
 | El selector clasifica mal SQL dinámico o una dependencia no importada | Omite una regresión financiera | Full conservador para dinero, inventario, Prisma, permisos, offline, CI o dependencias inciertas |
-| Despliegue comienza después del merge pero antes de las pruebas de \`push\` | CI correcto a destiempo no protege producción | Guard de promoción efectivo, no confiar solo en CI de PR |
+| Despliegue comienza después del merge pero antes de las pruebas de `push` | CI correcto a destiempo no protege producción | Guard de promoción efectivo, no confiar solo en CI de PR |
 
 ### Resultado de convergencia: política mejorada
 
 **PROPUESTA CONVERGIDA, AÚN NO IMPLEMENTADA:**
 
-- **C0: conservar seguridad actual.** \`strict=true\` y \`CI gate (resumen)\` siguen activos. Nada de bypass, cambio de ruleset, merge automático, secretos de producción ni reducción de cobertura; mantener PR #976 como documental.
+- **C0: conservar seguridad actual.** `strict=true` y `CI gate (resumen)` siguen activos. Nada de bypass, cambio de ruleset, merge automático, secretos de producción ni reducción de cobertura; mantener PR #976 como documental.
 - **C1: medir antes de optimizar.** Separar tiempo por commit, runner-minutos, tiempo en cola, build, CI PR, CI push, y tiempos posteriores al merge. Revisar estado real de Vercel/migraciones como dependencia bloqueante de cualquier release gate nuevo.
 - **C2: ensayo de build compartido dentro del mismo run.** Dos o más artefactos **por perfil efectivo**, sin reutilizar entre PRs ni en despliegue; benchmark A/B y rollback explícito. También medir alternativa más sencilla de evitar instalaciones repetidas y pinning de versiones sin cambiar semántica.
 - **C3: acabar modo sombra de selector.** Comparación automática por ID de test, proyecto, flags y candidato, con falsos negativos adversariales. No activar omisiones todavía.
-- **C4: fusiones concurrentes.** Para eliminar de verdad la revalidación de ramas, evaluar traslado seguro a organización y Merge Queue nativo, en fase/decisión aparte. Hasta entonces, flujo serial \`strict\` + CI más eficiente. No introducir cola casera.
+- **C4: fusiones concurrentes.** Para eliminar de verdad la revalidación de ramas, evaluar traslado seguro a organización y Merge Queue nativo, en fase/decisión aparte. Hasta entonces, flujo serial `strict` + CI más eficiente. No introducir cola casera.
 - **C5: promoción segura.** Investigar primero si Vercel tiene deployment checks requeridos y si Prisma migración/producción quedan ordenados; **no** usar omisiones PR→push ni confiar en checks de GitHub como control de dominios de producción.
 
 **Criterio de detener iteración:** tras las rondas 2 y 3, los riesgos restantes derivan de datos que no pueden concluirse con análisis documental (rendimiento de artefactos, configuración efectiva de Vercel, viabilidad de titularidad y comportamiento de Actions real). Proponer más mecanismos sin medir esos hechos sería complejidad especulativa. El siguiente aprendizaje de alto valor es **un ensayo controlado con datos sintéticos y CI real**, manteniendo política vigente.
 
 ### Evidencia externa de las correcciones
 
-- [GitHub: Merge Queue y \`merge_group\`](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)
+- [GitHub: Merge Queue y `merge_group`](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)
 - [GitHub: eventos PR y test merge SHA](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)
 - [GitHub: artifacts ocultos y permisos](https://github.com/actions/upload-artifact)
-- [Next.js: standalone, \`public\` y \`.next/static\`](https://nextjs.org/docs/app/api-reference/config/next-config-js/output)
+- [Next.js: standalone, `public` y `.next/static`](https://nextjs.org/docs/app/api-reference/config/next-config-js/output)
 - [OWASP: GitHub Actions security](https://cheatsheetseries.owasp.org/cheatsheets/GitHub_Actions_Security_Cheat_Sheet.html)
 - [Vercel: Deployment Checks](https://vercel.com/docs/deployment-checks)
 - [GitHub: transferencia de repositorios](https://docs.github.com/en/repositories/creating-and-managing-repositories/transferring-a-repository)
