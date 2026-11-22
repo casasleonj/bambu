@@ -98,6 +98,26 @@ describe('#630 F1-A — hechos físicos por fecha, sin contabilidad ni escritura
   it('F1-12: dos eventos distintos conservan identidad y cantidades independientes', () => {
     expect(agua(pedido(), [evento('a', martes, 4), evento('b', martes, 6)])?.conEvidenciaEnDia).toBe(10)
   })
+  it('una evidencia incompleta no inventa productos ni confunde fecha desconocida con revisión', () => {
+    const p = pedido({ cPacaAguaEnt: 10, cPacaHieloEnt: 5 })
+    const d = diagnosticarPedidoEntregasSombra(p, [evento('a', martes, 10, { incompleto: true })], martes)
+    expect(d.lineas.map(l => l.producto)).toEqual(['PACA_AGUA', 'PACA_HIELO'])
+    expect(d.lineas[0]).toMatchObject({ residualSinFecha: 0, estado: 'REVISAR_EVIDENCIA' })
+    expect(d.lineas[1]).toMatchObject({ residualSinFecha: 5, estado: 'SIN_FECHA' })
+    expect(d.alertasPedido).toContain('EVIDENCIA_GLOBAL_INCOMPLETA')
+  })
+  it('una línea de cantidad cero no inventa salida ni conflicto', () => {
+    const l = agua(pedido(), [evento('cero', martes, 0), evento('diez', martes, 10)])
+    expect(l).toMatchObject({ conEvidenciaEnDia: 10, estado: 'CONCILIADO' })
+  })
+  it('evento desconocido sin ningún producto acumulado sigue visible como alerta del pedido', () => {
+    const p = pedido({ cPacaAguaEnt: 0 })
+    const d = diagnosticarPedidoEntregasSombra(p, [
+      evento('desconocido', martes, 3, { cantidades: [{ producto: 'SIN_CODIGO', cantidad: 3 }] }),
+    ], martes)
+    expect(d.lineas).toEqual([])
+    expect(d.alertasPedido).toContain('PRODUCTO_NO_RECONOCIDO')
+  })
   it('unidades negativas en el acumulado no se silencian como cero válido', () => {
     const l = agua(pedido({ cPacaAguaEnt: -2 }), [])
     expect(l?.estado).toBe('CONFLICTO')
