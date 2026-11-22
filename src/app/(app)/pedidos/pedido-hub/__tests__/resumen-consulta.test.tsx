@@ -215,6 +215,11 @@ describe("ResumenConsulta · Operación de hoy (#853 Fase 2)", () => {
     expect(fila).toHaveTextContent("de 36 por gestionar · 2 cancelados o reducidos");
     expect(fila).toHaveTextContent("Ajus.");
     expect(screen.getByTestId("faltan-PACA_HIELO")).toHaveTextContent("faltan 4");
+    // Sin ajuste en el grupo: «–», no un «0» (regla del PO de no mostrar ceros).
+    const celdaAjuste = (g: string) => fila.querySelector(`tr[data-grupo="${g}"]`)!.querySelectorAll("td")[2];
+    expect(celdaAjuste("pendientesAnteriores")).toHaveTextContent("–");
+    expect(celdaAjuste("parcialesAnteriores")).toHaveTextContent("–");
+    expect(celdaAjuste("pedidosHoy")).toHaveTextContent("-2");
   });
 
   it("avisa los pedidos por conciliar sin asignarles pendiente inicial", () => {

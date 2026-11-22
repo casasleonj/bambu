@@ -272,7 +272,7 @@ export function ResumenConsulta({
                                 <span className="hidden sm:inline">{ETIQUETA_GRUPO[grupo].larga}</span>
                               </td>
                               <td className="px-1 text-right">{c.porGestionar}</td>
-                              {fila.hayAjustes && <td className="px-1 text-right text-amber-700">{c.ajustes}</td>}
+                              {fila.hayAjustes && <td className="px-1 text-right text-amber-700">{c.ajustes === 0 ? "–" : c.ajustes}</td>}
                               <td className="px-1 text-right">{c.entregadasHoy}</td>
                               <td className="px-1 text-right">{c.faltan}</td>
                             </tr>
@@ -280,7 +280,7 @@ export function ResumenConsulta({
                           <tr className="border-t-2 border-blue-300 font-extrabold">
                             <td className="py-1.5 text-left">Total</td>
                             <td className="px-1 text-right">{fila.total.porGestionar}</td>
-                            {fila.hayAjustes && <td className="px-1 text-right text-amber-700">{fila.total.ajustes}</td>}
+                            {fila.hayAjustes && <td className="px-1 text-right text-amber-700">{fila.total.ajustes === 0 ? "–" : fila.total.ajustes}</td>}
                             <td className="px-1 text-right">{fila.total.entregadasHoy}</td>
                             <td className="px-1 text-right">{fila.total.faltan}</td>
                           </tr>
