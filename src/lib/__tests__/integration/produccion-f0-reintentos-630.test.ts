@@ -141,4 +141,38 @@ describe('#630 F0 — idempotencia semántica de Producción (PostgreSQL real)',
     })
     expect(p.items.find(i => i.producto === 'PACA_AGUA')?.producido).toBe(10)
   })
+  it('replay verificado de hace más de 30 días: recupera el original, pero rechaza alta nueva', async () => {
+    const s = await sellador()
+    const fechaAntigua = dayInBogota(new Date(Date.now() - 40 * 86_400_000))
+    const body = { ...payload(s.id, randomUUID()), fecha: fechaAntigua }
+    const previo = await testPrisma.produccion.create({
+      data: {
+        trabajadorId: s.id, fecha: startOfDayInBogota(fechaAntigua),
+        turno: 'MANANA', obs: body.obs, offlineId: body.offlineId,
+        items: { create: body.items.map(item => ({
+          producto: item.producto, conteoA: item.conteoA, conteoB: item.conteoB,
+          stockFinFisico: item.stockFinFisico,
+          producido: Math.round((item.conteoA + item.conteoB) / 2),
+        })) },
+      },
+    })
+    const repetido = await crearProduccion(post(body))
+    expect(repetido.status, JSON.stringify(await repetido.clone().json())).toBe(200)
+    expect((await repetido.json()).deduped).toBe(true)
+    expect(await testPrisma.produccion.count({ where: { trabajadorId: s.id } })).toBe(1)
+
+    const otroContenido = await crearProduccion(post({
+      ...body, items: body.items.map(item => item.producto === 'PACA_AGUA'
+        ? { ...item, conteoA: item.conteoA + 2 } : item),
+    }))
+    expect(otroContenido.status).toBe(409)
+
+    const altaTardia = await crearProduccion(post({ ...body, offlineId: randomUUID() }))
+    expect(altaTardia.status).toBe(422)
+    expect((await altaTardia.json()).error.code).toBe('FECHA_MUY_ANTIGUA')
+    expect(await testPrisma.produccion.findUniqueOrThrow({ where: { id: previo.id } })).toMatchObject({
+      id: previo.id, offlineId: body.offlineId,
+    })
+  })
+
 })

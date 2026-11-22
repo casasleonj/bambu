@@ -99,11 +99,8 @@ export async function POST(request: NextRequest) {
   // #645: con `fecha` (cierre atrasado) la producción se registra en ese día, hasta 30 días atrás y nunca en el futuro (#899).
   const hoy = todayInBogota()
   const diaProduccion = parsed.data.fecha ?? hoy
-  if (parsed.data.fecha) {
-    const motivo = motivoFechaProduccionInvalida(diaProduccion, hoy)
-    if (motivo === 'FECHA_FUTURA') return apiError('No se puede registrar producción de un día que no ha llegado', 422, { code: motivo })
-    if (motivo) return apiError(`Solo se registra producción de hoy y de los ${DIAS_MAX_PRODUCCION_ATRASADA} días anteriores`, 422, { code: motivo })
-  }
+  // La ventana de 30 días solo aplica a ALTAS NUEVAS: dedup primero bajo
+  // lock para no rechazar reintentos offline de hechos históricos intactos.
   const fechaProduccion = startOfDayInBogota(diaProduccion)
   const { startDate: startOfDay, endDate: endOfDay } = getDateRange(diaProduccion, diaProduccion)
 
@@ -202,6 +199,14 @@ export async function POST(request: NextRequest) {
               if (!coincide) throw new Error('OFFLINE_ID_CONFLICTO')
               return { deduped: true as const, produccion: existente }
             }
+          }
+
+          // Reintentos genuinos (mismo offlineId y misma huella) ya
+          // retornaron arriba. Aplicar el límite al ALTA, nunca al replay.
+          // Volver a leer el día actual por si cruzó medianoche esperando lock.
+          if (parsed.data.fecha) {
+            const motivo = motivoFechaProduccionInvalida(diaProduccion, todayInBogota())
+            if (motivo) throw new Error(motivo)
           }
 
           // Un alta nueva de un día cerrado jamás puede entrar después del
@@ -399,6 +404,12 @@ export async function POST(request: NextRequest) {
 
       if (lastError.message === 'OFFLINE_ID_CONFLICTO') {
         return apiError('Este identificador de reintento ya corresponde a una producción con datos diferentes', 409, { code: 'OFFLINE_ID_CONFLICTO' })
+      }
+      if (lastError.message === 'FECHA_FUTURA') {
+        return apiError('No se puede registrar producción de un día que no ha llegado', 422, { code: 'FECHA_FUTURA' })
+      }
+      if (lastError.message === 'FECHA_MUY_ANTIGUA') {
+        return apiError(`Solo se registra producción de hoy y de los ${DIAS_MAX_PRODUCCION_ATRASADA} días anteriores`, 422, { code: 'FECHA_MUY_ANTIGUA' })
       }
       if (lastError.message === 'DIA_CERRADO') {
         return apiError('Ese día ya está cerrado: no se puede registrar producción', 409, { code: 'DIA_CERRADO' })
