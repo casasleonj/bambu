@@ -3,9 +3,18 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth-check'
 import { ResumenFacturasQuerySchema } from '@/lib/validators'
-import { buildFacturasListWhere, type FacturaEstado, type FacturasFiltros } from '@/lib/facturas-filtros'
-import { abonosNetosFactura, detalleItemsFactura, totalizarResumen } from '@/lib/resumen-facturas'
-import { ResumenFacturasPdf, type ResumenPdfData, type ResumenPdfFactura } from '@/lib/resumen-facturas-pdf'
+import { buildFacturasBaseWhere, type FacturasFiltros } from '@/lib/facturas-filtros'
+import {
+  abonosNetosFactura,
+  detalleItemsFactura,
+  encabezadoResumen,
+  estadosDeResumen,
+  fechaMasAntigua,
+  totalizarResumen,
+  type EstadoResumenEntrada,
+} from '@/lib/resumen-facturas'
+import { ResumenFacturasPdf, datoTexto, dinero, type ResumenPdfData, type ResumenPdfFactura } from '@/lib/resumen-facturas-pdf'
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
 import { apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 
@@ -16,6 +25,8 @@ const ESTADO_PDF: Record<'EMITIDA' | 'PARCIAL' | 'PAGADA', { texto: string; colo
   PARCIAL: { texto: 'Pago parcial', color: '#d97706' },
   PAGADA: { texto: 'Pagada', color: '#15803d' },
 }
+
+const CONTEXTO_TXT = { POR_COBRAR: 'Por cobrar', PAGADA: 'Pagadas', TODAS: 'Vigentes' } as const
 
 const fmtFecha = (d: Date): string =>
   d.toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -62,31 +73,40 @@ export async function GET(
       return apiError('Las facturas anuladas no se comparten con el cliente', 400)
     }
 
-    const estado: FacturaEstado | null =
-      parsed.data.estado && parsed.data.estado !== 'TODAS' ? parsed.data.estado : null
+    // Mismo contenido que la pantalla (#977): la pestaña manda y las anuladas no se mezclan.
+    const estadoPedido: EstadoResumenEntrada = parsed.data.estado ?? 'TODAS'
     const filtros: FacturasFiltros = {
       desde: desde ?? null,
       hasta: hasta ?? null,
       clienteId,
       facturaId: null,
-      estado,
+      estado: null,
       pendiente: false,
       incluirAnuladas: false,
     }
+    const baseWhere = buildFacturasBaseWhere(filtros)
 
-    const [cliente, facturas, empresaConfigs] = await Promise.all([
-      prisma.cliente.findUnique({ where: { id: clienteId }, select: { nombre: true, apellido: true } }),
+    const [cliente, facturas, anuladasAgg, empresaConfigs] = await Promise.all([
+      prisma.cliente.findUnique({
+        where: { id: clienteId },
+        select: { nombre: true, apellido: true, telefono: true, direccion: true, barrio: true },
+      }),
       prisma.factura.findMany({
-        where: buildFacturasListWhere(filtros),
-        orderBy: { fecha: 'asc' },
+        where: { ...baseWhere, estado: { in: estadosDeResumen(estadoPedido) } },
+        orderBy: [{ fecha: 'asc' }, { numero: 'asc' }],
         include: {
           pedido: {
-            select: { items: { select: { producto: true, cantPedido: true, cantEntrega: true, precio: true, subtotal: true } } },
+            select: { id: true, items: { select: { producto: true, cantPedido: true, cantEntrega: true, precio: true, subtotal: true } } },
           },
           abonos: {
             select: { fecha: true, monto: true, correcciones: { select: { montoRevertido: true } } },
           },
         },
+      }),
+      prisma.factura.aggregate({
+        where: { ...baseWhere, estado: 'ANULADA' },
+        _count: { _all: true },
+        _sum: { total: true },
       }),
       prisma.config.findMany({
         where: { clave: { in: ['empresa_nombre', 'empresa_nit', 'empresa_direccion', 'empresa_telefono'] } },
@@ -98,6 +118,12 @@ export async function GET(
 
     const empresa: Record<string, string> = {}
     empresaConfigs.forEach((cfg) => { empresa[cfg.clave] = cfg.valor })
+
+    // Misma deuda exigible que la pantalla, Fiados y Cartera (#656/#977).
+    const pedidoIds = facturas.map((f) => f.pedido?.id).filter((id): id is string => Boolean(id))
+    const exigibles = pedidoIds.length > 0 ? await leerExigibles(prisma, { id: { in: pedidoIds } }) : new Map<string, number>()
+    const debeDe = (f: (typeof facturas)[number]): number =>
+      f.estado === 'ANULADA' ? 0 : f.pedido ? exigibles.get(f.pedido.id) ?? 0 : Number(f.saldo)
 
     const filas: ResumenPdfFactura[] = facturas.map((f) => {
       const total = Number(f.total)
@@ -128,8 +154,10 @@ export async function GET(
         color: ui.color,
         total,
         montoPagado,
-        saldo: Number(f.saldo),
+        debe: debeDe(f),
         items: detalle.items,
+        pendientes: detalle.pendientes,
+        pendienteMonto: detalle.pendienteMonto,
         otrosAjustes: detalle.otrosAjustes,
         abonos: abonos ? abonos.map((a) => ({ fechaTxt: fmtFecha(a.fecha), monto: a.monto })) : null,
       }
@@ -140,9 +168,20 @@ export async function GET(
         estado: f.estado,
         total: Number(f.total),
         montoPagado: Number(f.montoPagado || 0),
-        saldo: Number(f.saldo),
+        saldo: debeDe(f),
       })),
     )
+    const anuladas = { count: anuladasAgg._count._all, totalHistorico: Number(anuladasAgg._sum.total ?? 0) }
+    const masAntigua = fechaMasAntigua(
+      facturas.map((f) => ({
+        fecha: f.fecha.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }),
+        estado: f.estado,
+        saldo: debeDe(f),
+      })),
+    )
+    const encabezado = encabezadoResumen(estadoPedido, totales, anuladas, masAntigua)
+    const fechaLarga = (iso: string): string => fmtFecha(new Date(`${iso}T12:00:00-05:00`))
+    const porCobrar = estadoPedido === 'POR_COBRAR' || estadoPedido === 'EMITIDA' || estadoPedido === 'PARCIAL'
 
     const nombre = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ')
     const data: ResumenPdfData = {
@@ -153,12 +192,19 @@ export async function GET(
         telefono: empresa.empresa_telefono || '',
       },
       clienteNombre: nombre,
-      periodoTxt: periodoTxt(desde, hasta),
+      clienteTelefono: cliente.telefono ?? '',
+      clienteDireccion: [cliente.direccion, cliente.barrio].filter(Boolean).join(', '),
       generadoTxt: new Date().toLocaleString('es-CO', {
         timeZone: 'America/Bogota', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
       }),
+      encabezado,
+      datosTxt: encabezado.datos.map((d) => ({ etiqueta: d.etiqueta, valor: datoTexto(d, fechaLarga) })),
+      contextoTxt: `${CONTEXTO_TXT[porCobrar ? 'POR_COBRAR' : estadoPedido === 'PAGADA' ? 'PAGADA' : 'TODAS']} (${totales.count}) · ${periodoTxt(desde, hasta)} · de la más antigua a la más reciente`,
       facturas: filas,
-      totales,
+      pie: porCobrar ? { etiqueta: `Suma de las ${totales.count} por cobrar`, monto: totales.saldo } : null,
+      anuladasTxt: estadoPedido === 'TODAS' && anuladas.count > 0
+        ? `Anuladas aparte: ${anuladas.count} (${dinero(anuladas.totalHistorico)}). No son venta ni deuda y no suman.`
+        : null,
     }
 
     const buffer = await renderToBuffer(ResumenFacturasPdf({ data }))

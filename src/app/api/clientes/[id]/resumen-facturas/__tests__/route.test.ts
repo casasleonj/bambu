@@ -6,7 +6,9 @@ const requireRole = vi.fn()
 const clienteFindUnique = vi.fn()
 const facturaFindMany = vi.fn()
 const facturaGroupBy = vi.fn()
+const facturaAggregate = vi.fn()
 const configFindMany = vi.fn()
+const leerExigibles = vi.fn()
 
 vi.mock('@/lib/auth-check', () => ({ requireRole: (...a: unknown[]) => requireRole(...a) }))
 vi.mock('@/lib/prisma', () => ({
@@ -15,11 +17,13 @@ vi.mock('@/lib/prisma', () => ({
     factura: {
       findMany: (...a: unknown[]) => facturaFindMany(...a),
       groupBy: (...a: unknown[]) => facturaGroupBy(...a),
+      aggregate: (...a: unknown[]) => facturaAggregate(...a),
     },
     config: { findMany: (...a: unknown[]) => configFindMany(...a) },
   },
 }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn() } }))
+vi.mock('@/lib/entregas-exigibles-db', () => ({ leerExigibles: (...a: unknown[]) => leerExigibles(...a) }))
 
 const get = async (query: string) => {
   const { GET } = await import('../route')
@@ -35,6 +39,8 @@ describe('GET /api/clientes/[id]/resumen-facturas', () => {
     clienteFindUnique.mockResolvedValue({ id: 'c1', nombre: 'sandra', apellido: 'leon', telefono: '1', direccion: null, barrio: null })
     facturaFindMany.mockResolvedValue([])
     facturaGroupBy.mockResolvedValue([])
+    facturaAggregate.mockResolvedValue({ _count: { _all: 0 }, _sum: { total: null } })
+    leerExigibles.mockResolvedValue(new Map())
     configFindMany.mockResolvedValue([])
   })
 
@@ -60,8 +66,8 @@ describe('GET /api/clientes/[id]/resumen-facturas', () => {
     const body = await res.json()
     expect(body.periodo).toEqual({ desde: null, hasta: null })
     expect(facturaFindMany.mock.calls[0][0].where).not.toHaveProperty('fecha')
-    // Sin `estado` (enlace antiguo) = Todas, anuladas incluidas: sin filtro de estado.
-    expect(facturaFindMany.mock.calls[0][0].where).not.toHaveProperty('estado')
+    // Sin `estado` = Todas = solo vigentes: las anuladas no se mezclan (#977).
+    expect(facturaFindMany.mock.calls[0][0].where.estado).toEqual({ in: ['EMITIDA', 'PARCIAL', 'PAGADA'] })
   })
 
   it('un solo extremo también filtra', async () => {
@@ -75,19 +81,19 @@ describe('GET /api/clientes/[id]/resumen-facturas', () => {
     expect((await get('?desde=2026-10-24&hasta=2026-01-01')).status).toBe(400)
   })
 
-  describe('filtro de estado (#758)', () => {
-    it.each(['EMITIDA', 'PARCIAL', 'PAGADA', 'ANULADA'] as const)('estado=%s trae solo ese estado', async (estado) => {
+  describe('filtro de estado (#758, #977)', () => {
+    it.each([
+      ['POR_COBRAR', ['EMITIDA', 'PARCIAL']],
+      ['EMITIDA', ['EMITIDA']],
+      ['PARCIAL', ['PARCIAL']],
+      ['PAGADA', ['PAGADA']],
+      ['ANULADA', ['ANULADA']],
+      ['TODAS', ['EMITIDA', 'PARCIAL', 'PAGADA']],
+    ] as const)('estado=%s trae solo %j', async (estado, esperados) => {
       const res = await get(`?estado=${estado}`)
       expect(res.status).toBe(200)
-      expect(facturaFindMany.mock.calls[0][0].where.estado).toBe(estado)
+      expect(facturaFindMany.mock.calls[0][0].where.estado).toEqual({ in: esperados })
       expect((await res.json()).filtro.estado).toBe(estado)
-    })
-
-    it('estado=TODAS y sin estado incluyen las anuladas; incluirAnuladas=false las quita', async () => {
-      await get('?estado=TODAS')
-      expect(facturaFindMany.mock.calls[0][0].where).not.toHaveProperty('estado')
-      await get('?estado=TODAS&incluirAnuladas=false')
-      expect(facturaFindMany.mock.calls[1][0].where.estado).toEqual({ not: 'ANULADA' })
     })
 
     it('rechaza un estado inválido', async () => {
@@ -102,7 +108,7 @@ describe('GET /api/clientes/[id]/resumen-facturas', () => {
       expect(facturaGroupBy.mock.calls[0][0].where.clienteId).toBe('c1')
     })
 
-    it('cada factura trae sus productos con etiqueta y los otros ajustes (#867)', async () => {
+    it('cada factura trae lo ENTREGADO por producto, lo pendiente y los otros ajustes (#867, #977)', async () => {
       facturaFindMany.mockResolvedValue([
         {
           id: 'a', numero: 'FAC-1', fecha: new Date('2026-11-02T15:00:00Z'), total: 65_000, montoPagado: 0, saldo: 65_000, estado: 'EMITIDA',
@@ -110,28 +116,50 @@ describe('GET /api/clientes/[id]/resumen-facturas', () => {
             id: 'p1', numero: 7, fecha: new Date(), saldo: 65_000, totalPagado: 0,
             items: [{ producto: 'PACA_AGUA', cantPedido: 10, cantEntrega: 6, precio: 6_000, subtotal: 60_000 }],
           },
+          abonos: [],
         },
       ])
+      leerExigibles.mockResolvedValue(new Map([['p1', 36_000]]))
       const body = await (await get('')).json()
       expect(body.facturas[0].items).toEqual([
-        { producto: 'PACA_AGUA', etiqueta: 'Paca Agua', cantidad: 10, cantEntrega: 6, precio: 6_000, subtotal: 60_000 },
+        { producto: 'PACA_AGUA', etiqueta: 'Paca Agua', cantidad: 6, cantPedida: 10, precio: 6_000, subtotal: 36_000 },
       ])
+      expect(body.facturas[0].pendientes).toEqual([{ producto: 'PACA_AGUA', etiqueta: 'Paca Agua', cantidad: 4 }])
+      expect(body.facturas[0].pendienteMonto).toBe(24_000)
       expect(body.facturas[0].otrosAjustes).toBe(5_000)
       const select = facturaFindMany.mock.calls[0][0].include.pedido.select
       expect(select.items.select).toMatchObject({ producto: true, cantPedido: true, subtotal: true })
     })
 
-    it('los totales suman solo vigentes y reportan las anuladas aparte', async () => {
-      const base = { fecha: new Date('2026-11-02T15:00:00Z'), pedido: null }
+    it('lo que se debe es la deuda EXIGIBLE (lo entregado menos lo pagado), no el saldo contractual (#656)', async () => {
+      const base = { fecha: new Date('2026-11-02T15:00:00Z'), abonos: [] }
+      facturaFindMany.mockResolvedValue([
+        { ...base, id: 'a', numero: 'FAC-1', total: 12_000, montoPagado: 0, saldo: 12_000, estado: 'EMITIDA',
+          pedido: { id: 'p1', numero: 1, fecha: new Date(), saldo: 12_000, totalPagado: 0, items: [] } },
+        { ...base, id: 'b', numero: 'FAC-2', total: 10_000, montoPagado: 0, saldo: 10_000, estado: 'EMITIDA',
+          pedido: { id: 'p2', numero: 2, fecha: new Date(), saldo: 10_000, totalPagado: 0, items: [] } },
+      ])
+      // p1: se entregó 2/3 (cobra $8.000); p2: nada entregado todavía (no se debe nada aún).
+      leerExigibles.mockResolvedValue(new Map([['p1', 8_000], ['p2', 0]]))
+      const body = await (await get('?estado=POR_COBRAR')).json()
+      expect(leerExigibles).toHaveBeenCalledWith(expect.anything(), { id: { in: ['p1', 'p2'] } })
+      expect(body.facturas.map((f: { debe: number }) => f.debe)).toEqual([8_000, 0])
+      expect(body.totales.saldo).toBe(8_000)
+      expect(body.encabezado).toMatchObject({ etiqueta: 'Saldo que se debe', monto: 8_000 })
+    })
+
+    it('los totales suman solo vigentes y las anuladas se reportan aparte, fuera de la lista', async () => {
+      const base = { fecha: new Date('2026-11-02T15:00:00Z'), pedido: null, abonos: [] }
       facturaFindMany.mockResolvedValue([
         { ...base, id: 'a', numero: 'FAC-1', total: 120_000, montoPagado: 120_000, saldo: 0, estado: 'PAGADA' },
         { ...base, id: 'b', numero: 'FAC-2', total: 85_000, montoPagado: 40_000, saldo: 45_000, estado: 'PARCIAL' },
-        { ...base, id: 'c', numero: 'FAC-3', total: 50_000, montoPagado: 20_000, saldo: 0, estado: 'ANULADA' },
       ])
+      facturaAggregate.mockResolvedValue({ _count: { _all: 1 }, _sum: { total: 50_000 } })
       const body = await (await get('')).json()
       expect(body.totales).toEqual({ total: 205_000, totalPagado: 160_000, saldo: 45_000, count: 2 })
       expect(body.anuladas).toEqual({ count: 1, totalHistorico: 50_000 })
-      expect(body.facturas.map((x: { estado: string }) => x.estado)).toEqual(['PAGADA', 'PARCIAL', 'ANULADA'])
+      expect(body.facturas.map((x: { estado: string }) => x.estado)).toEqual(['PAGADA', 'PARCIAL'])
+      expect(facturaAggregate.mock.calls[0][0].where.estado).toBe('ANULADA')
     })
   })
 })

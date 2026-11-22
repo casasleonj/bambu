@@ -1,6 +1,15 @@
 // @tests totalizarResumen / conteosPorEstado — resumen consolidado de facturas (#758)
 import { describe, it, expect } from 'vitest'
-import { abonosNetosFactura, conteosPorEstado, detalleItemsFactura, totalizarResumen, type FacturaParaResumen } from '../resumen-facturas'
+import {
+  abonosNetosFactura,
+  conteosPorEstado,
+  detalleItemsFactura,
+  encabezadoResumen,
+  estadosDeResumen,
+  fechaMasAntigua,
+  totalizarResumen,
+  type FacturaParaResumen,
+} from '../resumen-facturas'
 
 const f = (estado: FacturaParaResumen['estado'], total: number, montoPagado: number): FacturaParaResumen => ({
   estado,
@@ -86,7 +95,77 @@ describe('detalleItemsFactura (#867)', () => {
   })
 
   it('sin ítems devuelve la lista vacía y todo el total como ajuste', () => {
-    expect(detalleItemsFactura([], 40_000)).toEqual({ items: [], otrosAjustes: 40_000 })
+    expect(detalleItemsFactura([], 40_000)).toEqual({ items: [], pendientes: [], pendienteMonto: 0, otrosAjustes: 40_000 })
+  })
+
+  it('muestra solo lo ENTREGADO por línea y deja lo pendiente aparte (no se cobra en el detalle)', () => {
+    const r = detalleItemsFactura(
+      [item('PACA_AGUA', 10, 6_000, 60_000, 4), item('BOTELLON', 2, 15_000, 30_000, 0)],
+      90_000,
+    )
+    expect(r.items).toHaveLength(1)
+    expect(r.items[0]).toMatchObject({ producto: 'PACA_AGUA', cantidad: 4, cantPedida: 10, precio: 6_000, subtotal: 24_000 })
+    expect(r.pendientes.map((p) => [p.producto, p.cantidad])).toEqual([['PACA_AGUA', 6], ['BOTELLON', 2]])
+    expect(r.pendienteMonto).toBe(66_000)
+    expect(r.otrosAjustes).toBe(0)
+  })
+
+  it('el valor entregado de una parcial usa el precio con sus decimales (sin redondear antes de multiplicar)', () => {
+    const r = detalleItemsFactura([item('BOLSA_HIELO', 3, 3_333.333333, 10_000, 2)], 10_000)
+    expect(r.items[0].subtotal).toBe(6_666.67)
+    expect(r.pendienteMonto).toBe(3_333.33)
+  })
+})
+
+describe('estadosDeResumen / encabezadoResumen (#977)', () => {
+  it('«Por cobrar» = emitidas + parciales; «Todas» = vigentes sin anuladas', () => {
+    expect(estadosDeResumen('POR_COBRAR')).toEqual(['EMITIDA', 'PARCIAL'])
+    expect(estadosDeResumen('TODAS')).toEqual(['EMITIDA', 'PARCIAL', 'PAGADA'])
+    expect(estadosDeResumen(undefined)).toEqual(['EMITIDA', 'PARCIAL', 'PAGADA'])
+    expect(estadosDeResumen('ANULADA')).toEqual(['ANULADA'])
+  })
+
+  const totales = { total: 700_000, totalPagado: 280_000, saldo: 420_000, count: 20 }
+  const anuladas = { count: 4, totalHistorico: 140_000 }
+
+  it('«Por cobrar» no mezcla pagado ni facturado: solo saldo, cantidad y la más antigua', () => {
+    const e = encabezadoResumen('POR_COBRAR', { ...totales, count: 15 }, anuladas, '2026-04-04')
+    expect(e).toMatchObject({ etiqueta: 'Saldo que se debe', monto: 420_000, tono: 'debe' })
+    expect(e.datos.map((d) => d.etiqueta)).toEqual(['Facturas por cobrar', 'La más antigua'])
+    expect(JSON.stringify(e)).not.toMatch(/Pagado|Facturado/)
+  })
+
+  it('«Pagadas» muestra solo el total pagado en esas facturas, sin deuda', () => {
+    const e = encabezadoResumen('PAGADA', { total: 200_000, totalPagado: 200_000, saldo: 0, count: 5 }, anuladas, null)
+    expect(e).toMatchObject({ etiqueta: 'Total pagado en estas facturas', monto: 200_000, tono: 'alDia' })
+  })
+
+  it('«Anuladas» muestra el importe histórico como neutro', () => {
+    const e = encabezadoResumen('ANULADA', { total: 0, totalPagado: 0, saldo: 0, count: 0 }, anuladas, null)
+    expect(e).toMatchObject({ monto: 140_000, tono: 'neutro' })
+  })
+
+  it('«Todas» sí lleva facturado y pagado: es el estado de cuenta completo', () => {
+    const e = encabezadoResumen('TODAS', totales, anuladas, null)
+    expect(e.datos.map((d) => d.etiqueta)).toEqual(['Facturado', 'Pagado'])
+  })
+
+  it('«Por cobrar» sin saldo dice que está al día', () => {
+    const e = encabezadoResumen('POR_COBRAR', { total: 0, totalPagado: 0, saldo: 0, count: 0 }, anuladas, null)
+    expect(e.tono).toBe('alDia')
+    expect(e.nota).toBe('Todo al día. No hay saldo pendiente.')
+  })
+
+  it('fechaMasAntigua ignora anuladas y facturas sin saldo', () => {
+    expect(
+      fechaMasAntigua([
+        { fecha: '2026-03-01', estado: 'ANULADA', saldo: 0 },
+        { fecha: '2026-04-04', estado: 'EMITIDA', saldo: 60_000 },
+        { fecha: '2026-03-10', estado: 'PAGADA', saldo: 0 },
+        { fecha: '2026-05-01', estado: 'PARCIAL', saldo: 10 },
+      ]),
+    ).toBe('2026-04-04')
+    expect(fechaMasAntigua([])).toBeNull()
   })
 })
 
