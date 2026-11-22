@@ -1,5 +1,9 @@
 // @tests embarques detail page — dedicated E2E coverage
 // Covers: action bar, assign modal, send/cancel flows, closed summary
+//
+// #822: estos casos no prueban la validación de stock, solo las acciones del detalle. El stock
+// estimado es compartido entre specs (sale de la última producción), así que cargan lo mínimo
+// (lo que necesita cada caso) para no agotarlo según el shard en que caigan.
 import { test, expect, loginAs, apiPost, createTrabajador, createCliente, BASE } from './fixtures'
 
 test.describe('Embarques — Detail Page Actions', () => {
@@ -14,7 +18,7 @@ test.describe('Embarques — Detail Page Actions', () => {
     const eRes = await apiPost(page, '/api/embarques', {
       trabajadorId,
       horaSalida: '08:00',
-      carga: [{ producto: 'PACA_AGUA', cargadas: 5 }],
+      carga: [{ producto: 'PACA_AGUA', cargadas: 2 }],
     })
     expect(eRes.ok()).toBe(true)
     const eData = await eRes.json()
@@ -66,7 +70,7 @@ test.describe('Embarques — Detail Page Actions', () => {
     const eRes = await apiPost(page, '/api/embarques', {
       trabajadorId,
       horaSalida: '08:00',
-      carga: [{ producto: 'PACA_AGUA', cargadas: 5 }],
+      carga: [{ producto: 'PACA_AGUA', cargadas: 1 }],
     })
     expect(eRes.ok()).toBe(true)
     const eData = await eRes.json()
@@ -95,7 +99,7 @@ test.describe('Embarques — Detail Page Actions', () => {
     const eRes = await apiPost(page, '/api/embarques', {
       trabajadorId,
       horaSalida: '08:00',
-      carga: [{ producto: 'PACA_AGUA', cargadas: 5 }],
+      carga: [{ producto: 'PACA_AGUA', cargadas: 1 }],
     })
     expect(eRes.ok()).toBe(true)
     const eData = await eRes.json()
@@ -125,7 +129,7 @@ test.describe('Embarques — Detail Page Actions', () => {
     const eRes = await apiPost(page, '/api/embarques', {
       trabajadorId,
       horaSalida: '08:00',
-      carga: [{ producto: 'PACA_AGUA', cargadas: 5 }],
+      carga: [{ producto: 'PACA_AGUA', cargadas: 1 }],
     })
     expect(eRes.ok()).toBe(true)
     const eData = await eRes.json()
@@ -155,7 +159,7 @@ test.describe('Embarques — Detail Page Actions', () => {
       trabajadorId,
       horaSalida: '08:00',
       carga: [
-        { producto: 'PACA_AGUA', cargadas: 5 },
+        { producto: 'PACA_AGUA', cargadas: 1 },
         { producto: 'PACA_HIELO', cargadas: 0 },
         { producto: 'BOTELLON', cargadas: 0 },
         { producto: 'BOLSA_AGUA', cargadas: 0 },
