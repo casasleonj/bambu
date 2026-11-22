@@ -109,7 +109,10 @@ export default function GastosPage() {
   }, [])
 
   useEffect(() => {
-    // Cambiar fecha/página sí requiere carga visible. El polling no.
+    // Cambiar fecha/página requiere carga visible, no es estado derivable
+    // del render. Se inicia una petición asíncrona y se protege su respuesta
+    // con requestSequence; el polling revalida sin ocultar la lista.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchGastos(true)
   }, [fetchGastos])
 
