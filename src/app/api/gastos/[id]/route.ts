@@ -75,7 +75,11 @@ export async function GET(
         code: 'GASTO_OTRO_MODULO',
       })
     }
-    return apiSuccess({ gasto })
+    const dia = startOfDayInBogota(dayInBogota(gasto.fecha))
+    const cierre = await prisma.cierreDia.findUnique({
+      where: { fecha: dia }, select: { id: true },
+    })
+    return apiSuccess({ gasto, diaCerrado: Boolean(cierre) })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error al consultar gasto')
     return apiError('No fue posible consultar este gasto', 500)
