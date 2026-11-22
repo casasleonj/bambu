@@ -17,6 +17,7 @@ import { POST as crearAbono } from '@/app/api/abonos/route'
 import { POST as corregirAbono } from '@/app/api/cartera/abonos/[id]/corregir/route'
 import { POST as corregirPago } from '@/app/api/pagos/[id]/corregir/route'
 import { idConsumoBonoAbono, idConsumoBonoPago } from '@/lib/bono-saldo-favor'
+import { CLAVE_GESTION_ADMIN_SIN_EMBARQUE } from '@/lib/config-claves-restringidas'
 import { AnularPedidoUseCase } from '@/modules/pedidos/application/use-cases/AnularPedidoUseCase'
 import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
 import { PrismaFacturaRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaFacturaRepository'
@@ -414,6 +415,47 @@ describe('#772 — solo el saldo a favor disponible respalda BONO', () => {
       expect(await credito(f.clienteId)).toBe(0)
     } finally {
       delete process.env.CORRECCION_PAGO_SIN_ABONO
+    }
+  })
+
+  it('oficina HOY y BONO sin espejo (#961): conserva procedencia y restituye al anular', async () => {
+    const previa = await testPrisma.config.findUnique({ where: { clave: CLAVE_GESTION_ADMIN_SIN_EMBARQUE } })
+    process.env.COBRO_DIA_SIN_ESPEJO = 'true'
+    process.env.CORRECCION_PAGO_SIN_ABONO = 'true'
+    try {
+      await testPrisma.config.upsert({
+        where: { clave: CLAVE_GESTION_ADMIN_SIN_EMBARQUE },
+        create: { clave: CLAVE_GESTION_ADMIN_SIN_EMBARQUE, valor: 'true' },
+        update: { valor: 'true' },
+      })
+      const f = await fiado()
+      await fijarCredito(f.clienteId, 5000)
+      const body = { clienteId: f.clienteId, pedidoId: f.pedidoId,
+        monto: 2000, metodo: 'BONO', recibioDinero: 'OFICINA', offlineId: unique() }
+      const registrar = () => pagarFiado(new NextRequest('http://localhost/api/pedidos/pagar-fiado', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      }))
+      expect((await registrar()).status).toBe(200)
+      expect((await registrar()).status).toBe(200)
+      const pago = await testPrisma.pago.findFirstOrThrow({ where: { pedidoId: f.pedidoId, metodo: 'BONO' } })
+      expect(await testPrisma.abono.count({ where: { pedidoId: f.pedidoId } })).toBe(0)
+      expect(await testPrisma.historial.findUnique({ where: { id: idConsumoBonoPago(pago.id) } })).not.toBeNull()
+      expect(await credito(f.clienteId)).toBe(3000)
+      const servicio = new AnularPedidoUseCase(
+        new PrismaPedidoRepository(), new PrismaFacturaRepository(),
+        new PrismaNotaCreditoRepository(), new PrismaTransactionManager(),
+      )
+      const resultado = await servicio.execute({ pedidoId: f.pedidoId,
+        motivo: 'Anular cobro oficina con BONO', offlineId: unique(), actorId: adminId })
+      expect(resultado.saldoFavorBonoRestituido).toBe(2000)
+      expect(await credito(f.clienteId)).toBe(5000)
+    } finally {
+      delete process.env.COBRO_DIA_SIN_ESPEJO
+      delete process.env.CORRECCION_PAGO_SIN_ABONO
+      if (previa) await testPrisma.config.update({
+        where: { clave: CLAVE_GESTION_ADMIN_SIN_EMBARQUE }, data: { valor: previa.valor },
+      })
+      else await testPrisma.config.deleteMany({ where: { clave: CLAVE_GESTION_ADMIN_SIN_EMBARQUE } })
     }
   })
 
