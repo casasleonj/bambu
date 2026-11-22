@@ -18,6 +18,7 @@ import { POST as crearProduccion } from '@/app/api/produccion/route'
 import { PUT as corregirProduccion } from '@/app/api/produccion/[id]/route'
 import { dayInBogota, startOfDayInBogota } from '@/lib/date-helpers'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
+import { marcarVersionProduccionCierre } from '@/lib/produccion-cierre-version'
 
 let adminId: string
 const dia = (dias: number) => dayInBogota(new Date(Date.now() - dias * 86_400_000))
@@ -128,19 +129,33 @@ describe('#630 F0 — no registrar Producción luego de confirmar Cierre', () =>
           ] },
         },
       })
+      await marcarVersionProduccionCierre(tx, fechaInicio)
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 10000 })
 
     await productorListo
     let avisoCierre: () => void = () => undefined
     const cierreArrancado = new Promise<void>(resolve => { avisoCierre = resolve })
-    const cierre = testPrisma.$transaction(async tx => {
-      avisoCierre()
-      await acquireAdvisoryLockTx(tx, 'CIERRE', fechaInicio.toISOString())
-      return tx.produccion.count({ where: { fecha: fechaInicio } })
-    }, {
-      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      timeout: 10000, maxWait: 5000,
-    })
+    let intentos = 0
+    const cierre = (async () => {
+      for (let intento = 0; intento < 3; intento++) {
+        intentos++
+        try {
+          return await testPrisma.$transaction(async tx => {
+            if (intento === 0) avisoCierre()
+            await acquireAdvisoryLockTx(tx, 'CIERRE', fechaInicio.toISOString())
+            await marcarVersionProduccionCierre(tx, fechaInicio)
+            return tx.produccion.count({ where: { fecha: fechaInicio } })
+          }, {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+            timeout: 10000, maxWait: 5000,
+          })
+        } catch (error) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034' && intento < 2) continue
+          throw error
+        }
+      }
+      throw new Error('Cierre agotó reintentos')
+    })()
 
     await cierreArrancado
     await new Promise<void>(resolve => setTimeout(resolve, 350))
@@ -148,6 +163,7 @@ describe('#630 F0 — no registrar Producción luego de confirmar Cierre', () =>
     await productor
     const visibles = await cierre
     expect(visibles).toBe(1)
+    expect(intentos).toBeGreaterThan(1) // hubo detección de snapshot obsoleto
   })
 
 })
