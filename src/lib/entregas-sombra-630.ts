@@ -166,7 +166,7 @@ export async function consultarEntregasSombraDelDia(
   fecha: string,
 ): Promise<DiagnosticoEntregasSombra> {
   const desde = startOfDayInBogota(fecha)
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(fecha) || !Number.isFinite(+desde) || dayInBogota(desde) !== fecha) {
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(fecha) || !Number.isFinite(+desde) || dayInBogota(desde) !== fecha) {
     throw new Error('FECHA_SOMBRA_INVALIDA')
   }
   const hasta = new Date(+desde + 86_400_000)
