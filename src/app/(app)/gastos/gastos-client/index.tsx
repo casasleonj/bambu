@@ -342,16 +342,14 @@ export default function GastosPage() {
       </section>
 
       <Modal open={showCrear} onClose={cerrarCrear} title="Nuevo gasto operativo"
-        className="mx-auto my-2 max-h-[94dvh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl sm:my-6">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+        className="relative mx-auto my-2 max-h-[94dvh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl sm:my-6">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 pr-16 sm:px-6 sm:pr-16">
           <div>
             <h2 className="text-xl font-bold text-slate-900">Nuevo gasto</h2>
             <p className="text-xs text-slate-600">Completa los datos de la salida operativa.</p>
           </div>
-          <button type="button" aria-label="Cerrar formulario" onClick={cerrarCrear}
-            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100">
-            <X aria-hidden="true" className="h-5 w-5" />
-          </button>
+          {/* El cierre va después del formulario en el orden de teclado: así el foco inicial
+              del modal permanece en Categoría y no desmonta sus opciones durante la selección. */}
         </div>
         <form onSubmit={crearGasto}>
           <div className="px-4 py-4 sm:px-6">
@@ -365,12 +363,16 @@ export default function GastosPage() {
             </Button>
           </div>
         </form>
+        <button type="button" aria-label="Cerrar formulario" onClick={cerrarCrear}
+          className="absolute right-3 top-3 z-20 rounded-lg p-2 text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-600">
+          <X aria-hidden="true" className="h-5 w-5" />
+        </button>
       </Modal>
 
       <Modal open={detalleCargando || !!detalle || !!detalleError} onClose={cerrarDetalle}
         title={modoDetalle === 'EDITAR' ? 'Corregir gasto' : modoDetalle === 'ANULAR' ? 'Anular gasto' : 'Detalle del gasto'}
         data-testid="gasto-detalle"
-        className="mx-auto my-2 max-h-[94dvh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl sm:my-6">
+        className="relative mx-auto my-2 max-h-[94dvh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl sm:my-6">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
           <div>
             <h2 className="text-xl font-bold text-slate-900">
@@ -380,10 +382,7 @@ export default function GastosPage() {
               {detalle ? fechaGasto(detalle.fecha) : 'Consultando registro…'}
             </p>
           </div>
-          <button type="button" aria-label="Cerrar detalle" onClick={cerrarDetalle}
-            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100">
-            <X className="h-5 w-5" aria-hidden="true" />
-          </button>
+
         </div>
         {detalleCargando && <p role="status" className="px-6 py-10 text-center text-sm text-slate-600">Cargando gasto…</p>}
         {detalleError && <p role="alert" className="mx-4 mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{detalleError}</p>}
@@ -472,6 +471,10 @@ export default function GastosPage() {
             )}
           </div>
         )}
+        <button type="button" aria-label="Cerrar detalle" onClick={cerrarDetalle}
+          className="absolute right-3 top-3 z-20 rounded-lg p-2 text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-600">
+          <X aria-hidden="true" className="h-5 w-5" />
+        </button>
       </Modal>
 
       {!errorGastos && !loadingGastos && <section aria-label="Resumen de gastos" className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm sm:p-5">
