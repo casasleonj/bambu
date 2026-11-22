@@ -183,6 +183,11 @@ test.describe('Gastos', () => {
     expect(Number(gasto.montoAntesAnular)).toBe(45000)
     expect(gasto.anuladoAt).toBeTruthy()
     expect(gasto.version).toBe(2)
+    await goto(page, '/gastos')
+    const tarjetaAnulada = page.getByTestId(`gasto-${gastoId}`)
+    await expect(tarjetaAnulada).toContainText('Anulado')
+    await expect(tarjetaAnulada).toContainText('Original: ')
+    await expect(tarjetaAnulada).toContainText('45.000')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   })
 
