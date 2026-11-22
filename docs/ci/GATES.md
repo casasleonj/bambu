@@ -1,5 +1,18 @@
 # Gates de merge y producción (#703)
 
+## Estado vigente verificado — 2026-11-22 (supersede afirmaciones de 08–09/11)
+
+**ESTADO TÉCNICO ACTUAL:** El ruleset de repositorio [«Protección main - CI obligatorio.»](https://github.com/casasleonj/bambu/rules/27807059), creado el 21/11, está activo sobre la rama predeterminada y exige el status `CI gate (resumen)` con `strict_required_status_checks_policy: true`. También impide borrado y actualizaciones no fast-forward, y exige PR. La API heredada `branches/main/protection` devuelve 403 a esta integración; **ese 403 no significa que no haya ruleset**. Verificado mediante la lectura de `repos/casasleonj/bambu/rulesets/27807059` el 22/11. **La tabla histórica «Qué existe hoy» de abajo describe únicamente la fotografía del 08/11 y NO la configuración vigente.**
+
+**HECHO:** `.github/workflows/ci.yml` conserva CI para `pull_request` y `push` a `main`, con ocho shards E2E y un job E2E Hub (V2 ON). Cada shard y el Hub ejecutan `npm run build` por separado en sus runners. El modo sombra `ci-impact-shadow.yml` no autoriza omitir gates. El resumen del CI actual exige resultado real de integración (`suite_ok=true`) aunque su job se configure como informativo, por lo que la tabla histórica de «lint, integration» tampoco es autoridad vigente.
+
+**BRECHA DOCUMENTAL CORREGIDA:** esta sección declara explícitamente la evidencia más reciente; se conservan intactos los antecedentes y decisiones anteriores con fecha para mantener trazabilidad.
+
+**PROPUESTA NO IMPLEMENTADA:** [#896](https://github.com/casasleonj/bambu/issues/896) analiza reducción de CI repetido y PRs concurrentes. Ver [plan de integración concurrente](./integracion-concurrente-896.md). Ningún cambio de este documento habilita merges sin checks, reemplaza el ruleset ni certifica el despliegue en Vercel.
+
+---
+
+
 Estado verificado el 2026-11-08 con `gh api` (solo lectura).
 
 ## Qué existe hoy
