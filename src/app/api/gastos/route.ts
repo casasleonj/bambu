@@ -17,6 +17,7 @@ import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { esCategoriaPersonal } from '@/lib/gastos-categorias'
 
 export async function GET(request: NextRequest) {
+  const peticionInicio = performance.now()
   // FIX CRITICAL (C-SEC-4): Only ADMIN/CONTADOR can read gastos
   // Previously: requireAuth() only — any user could read internal cost data
   const authResult = await requireRole(['ADMIN', 'CONTADOR'])
@@ -77,10 +78,11 @@ export async function GET(request: NextRequest) {
     ], { isolationLevel: 'RepeatableRead' })
 
     const consultaMs = Math.round(performance.now() - consultaInicio)
-    if (consultaMs > 1000) {
+    const peticionMs = Math.round(performance.now() - peticionInicio)
+    if (consultaMs > 1000 || peticionMs > 1500) {
       // Diagnóstico de latencia sin registrar importes, conceptos ni identidades.
       // La API mantiene la transacción que concilia filas, conteo y suma.
-      logger.warn({ duracionMs: consultaMs, filas: gastos.length, pagina: pagination.page, origenOperativo: searchParams.get('origen') === 'OPERATIVO' }, 'Consulta de Gastos lenta')
+      logger.warn({ consultaMs, peticionMs, filas: gastos.length, pagina: pagination.page, origenOperativo: searchParams.get('origen') === 'OPERATIVO' }, 'Consulta de Gastos lenta')
     }
     const montoTotal = Number(importes._sum.monto ?? 0)
     const respuesta = apiSuccess(
@@ -90,7 +92,7 @@ export async function GET(request: NextRequest) {
     )
     // Permite distinguir tiempo de PostgreSQL/Prisma de red, autenticación
     // y renderizado en herramientas de desarrollo sin alterar el JSON.
-    respuesta.headers.set('Server-Timing', `gastos-db;dur=${consultaMs}`)
+    respuesta.headers.set('Server-Timing', `gastos-db;dur=${consultaMs}, gastos-api;dur=${peticionMs}`)
     return respuesta
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching gastos:')
