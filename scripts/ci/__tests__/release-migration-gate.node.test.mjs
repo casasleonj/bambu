@@ -1,4 +1,5 @@
 import {test} from 'node:test'
+import {readFileSync} from 'node:fs'
 import {strict as assert} from 'node:assert'
 import {chooseRun,evaluateRun,waitForMigration,main} from '../release-migration-gate.mjs'
 
@@ -88,12 +89,41 @@ test('solo permite emitir gate en push main',async()=>{
   await assert.rejects(main({GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/dev',
     NEEDS_MIGRATION:'false'}),/main/)
   await assert.rejects(main({GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
-    NEEDS_MIGRATION:'unknown'}),/Clasificación/)
+    NEEDS_MIGRATION:'unknown',RAW_SQL_CHANGED:'false'}),/Clasificación/)
 })
 test('sin cambios Prisma en main aprueba sin red ni secretos',async()=>{
   const previous=console.log;let count=0
   try{console.log=()=>count++;await main({
     GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',NEEDS_MIGRATION:'false',
+    RAW_SQL_CHANGED:'false',
   })}finally{console.log=previous}
   assert.equal(count,1)
+})
+
+test('SQL crudo bloquea aunque el commit tenga también Prisma',async()=>{
+  for (const needsMigration of ['false','true']) {
+    await assert.rejects(main({
+      GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
+      NEEDS_MIGRATION:needsMigration, RAW_SQL_CHANGED:'true',
+      GITHUB_SHA:sha, GITHUB_TOKEN:'synthetic-only',
+    }), /SQL crudo modificado/)
+  }
+})
+test('clasificación SQL crudo omitida o ambigua falla cerrada',async()=>{
+  for(const raw of [undefined,'','unknown']) {
+    await assert.rejects(main({
+      GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
+      NEEDS_MIGRATION:'false', RAW_SQL_CHANGED:raw,
+    }), /Clasificación SQL crudo/)
+  }
+})
+test('el workflow separa SQL crudo y Prisma y transmite ambos outputs',()=>{
+  const workflow=readFileSync(new URL('../../../.github/workflows/release-migration-gate.yml',import.meta.url),'utf8')
+  assert.ok(workflow.includes('raw_sql_changed=true'))
+  assert.ok(workflow.includes('raw_sql_changed=false'))
+  assert.ok(workflow.includes('needs_migration=true'))
+  assert.ok(workflow.includes('NEEDS_MIGRATION: ${{ steps.schema-diff.outputs.needs_migration }}'))
+  assert.ok(workflow.includes('RAW_SQL_CHANGED: ${{ steps.schema-diff.outputs.raw_sql_changed }}'))
+  assert.ok(workflow.includes('scripts/migraciones-sql-crudas.txt'))
+  assert.ok(workflow.includes('prisma/schema.prisma prisma/migrations/'))
 })

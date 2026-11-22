@@ -62,20 +62,30 @@ jobs:
             echo "::error::No es posible obtener el diff de main. Fail closed."
             exit 1
           fi
+          # Un success de 'prisma migrate deploy' NO demuestra que SQL crudo
+          # separado haya sido aplicado. Se analiza por separado y se BLOQUEA
+          # el gate cuando cambia el manifiesto/ejecutor de SQL crudo, incluso
+          # si el mismo commit cambia también Prisma.
           set +e
-          # Los SQL crudos no los ejecuta prisma migrate deploy. Si cambian,
-          # se exige un gate de migración (fail-closed hasta diseñar su aplicación segura).
-          git diff --quiet "$BEFORE" "$AFTER" -- prisma/schema.prisma prisma/migrations/ \
+          git diff --quiet "$BEFORE" "$AFTER" -- \
             scripts/migraciones-sql-crudas.txt scripts/aplicar-migraciones-sql-crudas.sh
-          rc=$?
+          raw_rc=$?
+          git diff --quiet "$BEFORE" "$AFTER" -- prisma/schema.prisma prisma/migrations/
+          prisma_rc=$?
           set -e
-          case "$rc" in
+          case "$raw_rc" in
+            0) echo "raw_sql_changed=false" >> "$GITHUB_OUTPUT" ;;
+            1) echo "raw_sql_changed=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::No se pudo clasificar SQL crudo ($raw_rc)"; exit 1 ;;
+          esac
+          case "$prisma_rc" in
             0) echo "needs_migration=false" >> "$GITHUB_OUTPUT" ;;
             1) echo "needs_migration=true" >> "$GITHUB_OUTPUT" ;;
-            *) echo "::error::Error al clasificar cambios ($rc)"; exit 1 ;;
+            *) echo "::error::No se pudo clasificar Prisma ($prisma_rc)"; exit 1 ;;
           esac
       - name: Comprobar resultado de migrate-deploy.yml para el SHA exacto
         env:
           GITHUB_TOKEN: ${{ github.token }}
           NEEDS_MIGRATION: ${{ steps.schema-diff.outputs.needs_migration }}
+          RAW_SQL_CHANGED: ${{ steps.schema-diff.outputs.raw_sql_changed }}
         run: node scripts/ci/release-migration-gate.mjs

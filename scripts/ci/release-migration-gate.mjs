@@ -73,8 +73,14 @@ export async function waitForMigration({
 export async function main(env=process.env) {
   if (env.GITHUB_EVENT_NAME!=='push' || env.GITHUB_REF!=='refs/heads/main')
     throw new Error('Solo el evento push de main puede emitir este check')
+  // La herramienta 'prisma migrate deploy' no ejecuta el manifiesto SQL crudo.
+  // No aceptar un éxito de Prisma como evidencia de aplicación de SQL crudo.
+  if (env.RAW_SQL_CHANGED !== 'false' && env.RAW_SQL_CHANGED !== 'true')
+    throw new Error('Clasificación SQL crudo ausente o ambigua')
+  if (env.RAW_SQL_CHANGED === 'true')
+    throw new Error('SQL crudo modificado: no existe prueba de aplicación en producción; bloqueo conservador')
   if (env.NEEDS_MIGRATION==='false') {
-    console.log('Sin cambios en Prisma: gate de esquema no requiere ejecución.')
+    console.log('Sin cambios en Prisma ni SQL crudo: no requiere migración.')
     return
   }
   if (env.NEEDS_MIGRATION!=='true') throw new Error('Clasificación de cambios desconocida')
