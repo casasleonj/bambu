@@ -30,7 +30,9 @@ describe('#630 F1-A: lector sombra utiliza hechos existentes sin alterar fuentes
         clienteId, fecha: t(lunes), canal: 'DOMICILIO', origen: 'PEDIDO',
         estado: estadoEntrega, estadoEntrega,
         estadoPago: estadoEntrega === 'ANULADO' ? 'ANULADO' : 'PENDIENTE',
-        total: 0, saldo: 0, totalPagado: 0, cPacaAguaEnt: unidades,
+        total: estadoEntrega === 'ANULADO' ? 0 : 23000,
+        saldo: estadoEntrega === 'ANULADO' ? 0 : 23000,
+        totalPagado: 0, cPacaAguaEnt: unidades,
       },
     })
   }
