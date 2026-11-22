@@ -20,8 +20,18 @@ export async function cerrarSesionConservandoOrigen(
 ): Promise<void> {
   // Un fallo de CacheStorage (permisos, PWA dañada, cuota) no debe
   // dejar la sesión activa por impedir la llamada a Auth.js.
-  try { await limpiarCache() } catch {
+  // CacheStorage puede quedarse pendiente (SW bloqueado, pestaña en segundo
+  // plano). Limitar el tiempo para que la limpieza no secuestre el logout.
+  let timer: ReturnType<typeof setTimeout> | null = null
+  try {
+    await Promise.race([
+      limpiarCache(),
+      new Promise<void>((resolve) => { timer = setTimeout(resolve, 3000) }),
+    ])
+  } catch {
     // La sesión sigue revocándose y las APIs deben rechazarla.
+  } finally {
+    if (timer !== null) clearTimeout(timer)
   }
   const resultado = await finalizarSesion()
   // next-auth@5.0.0-beta.31 SignOutResponse solo contiene `url`.

@@ -43,4 +43,20 @@ describe('#812: cerrar sesión sin cambiar de origen', () => {
     expect(terminar).toHaveBeenCalledOnce()
   })
 
+  it('una limpieza de caché que no responde tampoco bloquea la revocación de sesión', async () => {
+    vi.useFakeTimers()
+    try {
+      const acciones: string[] = []
+      const terminar = vi.fn(async () => { acciones.push('signOut'); return { url: '/login' } })
+      const navegar = vi.fn((ruta: string) => { acciones.push('navegar:' + ruta) })
+      const esperaSinFin = () => new Promise<void>(() => {})
+      const cierre = cerrarSesionConservandoOrigen(terminar, navegar, esperaSinFin)
+      await vi.advanceTimersByTimeAsync(3000)
+      await cierre
+      expect(acciones).toEqual(['signOut', 'navegar:/login'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
 })
