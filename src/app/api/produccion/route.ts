@@ -111,8 +111,7 @@ export async function POST(request: NextRequest) {
 
   // Re-leemos ventas adentro del handler para mayor fidelidad (pueden cambiar
   // entre el preview y el POST)
-  const [stockInicial, ventas, previas] = await Promise.all([
-    resolverStockInicial(prisma, parsed.data.fecha ? fechaProduccion : undefined),
+  const [ventas, previas] = await Promise.all([
     getVentasDelDia(parsed.data.fecha ? new Date(fechaProduccion.getTime() + 12 * 3_600_000) : undefined),
     // #645: varias producciones el mismo día (otro sellador u otro turno)
     prisma.produccion.findMany({
@@ -125,10 +124,6 @@ export async function POST(request: NextRequest) {
   const conflictoJornada = (prev: typeof previas) => prev
     .filter((p) => p.trabajadorId === parsed.data.trabajadorId)
     .some((p) => (parsed.data.turno === 'JORNADA') !== (p.turno === 'JORNADA'))
-  if (conflictoJornada(previas)) {
-    return apiError('Ese sellador ya tiene producción ese día con otro tipo de turno: la jornada completa no se combina con mañana, tarde o noche', 409, { code: 'JORNADA_CON_OTRO_TURNO' })
-  }
-
   // FIX 1.5: validar server-side que obs esté presente si hay diferencia
   const perdidasAgua = itemAgua.rotas + itemAgua.filtradas + itemAgua.consumoInterno
   const perdidasHielo = itemHielo.rotas + itemHielo.filtradas + itemHielo.consumoInterno
