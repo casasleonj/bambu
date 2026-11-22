@@ -36,8 +36,10 @@ const AnularSchema = z.object({
   accion: z.literal('ANULAR'),
   ...Concurrency,
   motivoOrigen: z.enum(['REGISTRO_DUPLICADO', 'DINERO_NO_SALIO']),
-  // Anular es corregir un registro equivocado. Jamás infiere reintegro físico.
-  confirmarNoReintegro: z.literal(true),
+  // Solo se anula si NO corresponde a una salida adicional de efectivo.
+  // Si el dinero realmente salió, se requiere gestionar un reintegro real,
+  // nunca fabricar dinero disponible mediante una anulación.
+  confirmarOperacionNoReal: z.literal(true),
 }).strict()
 
 const ActualizarSchema = z.discriminatedUnion('accion', [EditarSchema, AnularSchema])
@@ -131,7 +133,7 @@ export async function PATCH(
         datos: {
           tipo: input.accion === 'EDITAR' ? 'CORRECCION_DIA_ABIERTO' : 'ANULACION_DIA_ABIERTO',
           motivo: input.motivo,
-          ...(input.accion === 'ANULAR' ? { motivoOrigen: input.motivoOrigen, confirmarNoReintegro: true } : {}),
+          ...(input.accion === 'ANULAR' ? { motivoOrigen: input.motivoOrigen, confirmarOperacionNoReal: true } : {}),
           antes: {
             categoria: gasto.categoria, descripcion: gasto.descripcion,
             monto: Number(gasto.monto), responsable: gasto.responsable,
