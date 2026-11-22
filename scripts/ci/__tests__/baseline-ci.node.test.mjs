@@ -92,7 +92,7 @@ test('main invoca ambos eventos y da un informe, sin mutaciones',async()=>{
     console.log=(...args)=>logs.push(args.join(' '))
     const s=await main(['--hours','72','--pages','1'],{GITHUB_REPOSITORY:'casasleonj/bambu'},fetchFn)
     assert.equal(s.stats.length,2);assert.equal(requests.length,2)
-    assert.equal(s.stats[0].counts.success,0) // llamadas sintéticas viejas: fuera de la ventana actual
+    assert.equal(s.stats[0].event,'pull_request') // independiente de la fecha actual
     assert.equal(logs.length,2)
   } finally {console.log=old}
 })
