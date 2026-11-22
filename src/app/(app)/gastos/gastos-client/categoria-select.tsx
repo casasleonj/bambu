@@ -20,6 +20,7 @@ export function CategoriaGastoSelect({ value, onChange, options, disabled = fals
   const inputId = id ?? generatedId
   const listId = `${inputId}-opciones`
   const container = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const [abierto, setAbierto] = useState(false)
   const [consulta, setConsulta] = useState('')
   const [activo, setActivo] = useState(0)
@@ -73,12 +74,12 @@ export function CategoriaGastoSelect({ value, onChange, options, disabled = fals
       <div className="relative">
         <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-blue-600" />
         <input
-          id={inputId} role="combobox" aria-autocomplete="list" aria-expanded={abierto}
+          ref={inputRef} id={inputId} role="combobox" aria-autocomplete="list" aria-expanded={abierto}
           aria-controls={listId} aria-activedescendant={abierto && items[activo] ? `${listId}-${activo}` : undefined}
           required={!value} disabled={disabled}
           value={abierto ? consulta : (value ? etiquetaCategoriaGasto(value) : '')}
           onChange={event => { if (value) onChange(''); setConsulta(event.target.value); setActivo(0); setAbierto(true) }}
-          onFocus={() => { setConsulta(''); setActivo(0); setAbierto(true) }}
+          onFocus={() => { setConsulta(value ? etiquetaCategoriaGasto(value) : ''); setActivo(0); setAbierto(true) }}
           onKeyDown={tecla}
           onBlur={event => {
             if (!container.current?.contains(event.relatedTarget as Node)) setAbierto(false)
@@ -86,7 +87,12 @@ export function CategoriaGastoSelect({ value, onChange, options, disabled = fals
           autoComplete="off" placeholder="Buscar o agregar categoría..."
           className="h-12 w-full rounded-xl border-2 border-blue-200 bg-blue-50/40 pl-10 pr-10 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-100 disabled:opacity-60"
         />
-        <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-4 h-4 w-4 text-blue-600" />
+        <button type="button" aria-label="Ver todas las categorías" disabled={disabled}
+          onMouseDown={event => event.preventDefault()}
+          onClick={() => { inputRef.current?.focus(); setConsulta(''); setActivo(0); setAbierto(true) }}
+          className="absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-lg text-blue-700 hover:bg-blue-100">
+          <ChevronDown aria-hidden="true" className="h-4 w-4" />
+        </button>
       </div>
       {abierto && !disabled && (
         <div id={listId} role="listbox" aria-label="Categorías de gasto"
