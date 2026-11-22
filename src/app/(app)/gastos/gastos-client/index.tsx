@@ -557,58 +557,62 @@ export default function GastosPage() {
           </p>
           {gastos.map(gasto => (
             <article key={gasto.id} data-testid={'gasto-' + gasto.id}
-              className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start gap-2.5">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-lg" aria-hidden="true">
-                      {iconoCategoria[gasto.categoria] ?? <Tag className="h-5 w-5 text-blue-700" />}
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="break-words font-semibold text-slate-900">{gasto.descripcion}</h3>
-                      <p className="mt-0.5 text-xs text-slate-600">
-                        {etiquetaCategoriaGasto(gasto.categoria)} · {fechaGasto(gasto.fecha)}
-                      </p>
-                      {gasto.anuladoAt && (
-                        <span className="mt-1 inline-flex rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                          Anulado
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {gasto.responsable && <p className="mt-2 text-xs text-slate-600">
-                    Persona asociada (dato registrado): {gasto.responsable}
-                  </p>}
+              className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
+              {/* La descripción siempre dispone del ancho completo en móvil.
+                  El importe y las acciones ocupan su propia fila, no la comprimen. */}
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-lg" aria-hidden="true">
+                  {iconoCategoria[gasto.categoria] ?? <Tag className="h-5 w-5 text-blue-700" />}
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  {gasto.anuladoAt ? (
-                    <div className="text-right">
-                      <p className="text-xs font-semibold text-slate-600">Original</p>
-                      <p className="text-base font-semibold tabular-nums text-slate-500 line-through">
-                        {formatCurrency(Number(gasto.montoAntesAnular ?? 0))}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-xl font-bold tabular-nums text-slate-900">
-                      {formatCurrency(Number(gasto.monto))}
+                <div className="min-w-0 flex-1">
+                  <h3 className="whitespace-normal break-words text-base font-semibold leading-snug text-slate-900 [overflow-wrap:anywhere]">
+                    {gasto.descripcion}
+                  </h3>
+                  <p className="mt-1 break-words text-xs text-slate-600">
+                    {etiquetaCategoriaGasto(gasto.categoria)} · {fechaGasto(gasto.fecha)}
+                  </p>
+                  {gasto.anuladoAt && (
+                    <span className="mt-2 inline-flex rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                      Anulado
+                    </span>
+                  )}
+                  {gasto.responsable && (
+                    <p className="mt-2 break-words text-xs text-slate-600 [overflow-wrap:anywhere]">
+                      Persona asociada (dato registrado): {gasto.responsable}
                     </p>
                   )}
-                  <div className="flex flex-wrap justify-end gap-1.5">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => void abrirDetalle(gasto.id)}>
-                      <Eye aria-hidden="true" className="mr-1 h-4 w-4" /> Ver detalle
-                    </Button>
-                    {!gasto.anuladoAt && (
-                      <Button type="button" variant="outline" size="sm"
-                        onClick={() => void abrirDetalle(gasto.id, 'EDITAR')}>
-                        <Pencil aria-hidden="true" className="mr-1 h-4 w-4" /> Corregir
-                      </Button>
-                    )}
+                </div>
+              </div>
+              <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                {gasto.anuladoAt ? (
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-slate-600">Importe original (anulado)</p>
+                    <p className="break-words text-xl font-semibold tabular-nums text-slate-500 line-through">
+                      {formatCurrency(Number(gasto.montoAntesAnular ?? 0))}
+                    </p>
                   </div>
+                ) : (
+                  <p className="min-w-0 break-words text-xl font-bold tabular-nums text-slate-900">
+                    {formatCurrency(Number(gasto.monto))}
+                  </p>
+                )}
+                <div className={`grid w-full gap-2 sm:flex sm:w-auto sm:shrink-0 sm:flex-wrap sm:justify-end ${gasto.anuladoAt ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                  <Button type="button" variant="outline" size="sm"
+                    className="min-h-11 min-w-0 whitespace-nowrap px-2 sm:px-3"
+                    onClick={() => void abrirDetalle(gasto.id)}>
+                    <Eye aria-hidden="true" className="mr-1 h-4 w-4 shrink-0" /> Ver detalle
+                  </Button>
+                  {!gasto.anuladoAt && (
+                    <Button type="button" variant="outline" size="sm"
+                      className="min-h-11 min-w-0 whitespace-nowrap px-2 sm:px-3"
+                      onClick={() => void abrirDetalle(gasto.id, 'EDITAR')}>
+                      <Pencil aria-hidden="true" className="mr-1 h-4 w-4 shrink-0" /> Corregir
+                    </Button>
+                  )}
                 </div>
               </div>
             </article>
-          ))}
-          {totalPaginas > 1 && (
+          ))}         {totalPaginas > 1 && (
             <nav aria-label="Páginas de gastos" className="flex items-center justify-between gap-3">
               <Button variant="outline" disabled={pagina === 1} onClick={() => setPagina(p => Math.max(1, p - 1))}>Anterior</Button>
               <span className="text-sm text-slate-600">Página {pagina} de {totalPaginas}</span>
