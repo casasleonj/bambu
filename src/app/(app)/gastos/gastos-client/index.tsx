@@ -378,12 +378,6 @@ export default function GastosPage() {
         <DateRangeFilter onDateChange={handleDateChange} formatoColombia soloHistorico />
       </section>
 
-      <ConfirmarDescarte
-        open={descartePendiente !== null}
-        onSeguirEditando={() => setDescartePendiente(null)}
-        onDescartar={confirmarDescarte}
-      />
-
       <Modal open={showCrear} onClose={cerrarCrear} title="Nuevo gasto operativo"
         className="relative mx-auto my-2 max-h-[94dvh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl sm:my-6">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 pr-16 sm:px-6 sm:pr-16">
@@ -519,6 +513,12 @@ export default function GastosPage() {
           <X aria-hidden="true" className="h-5 w-5" />
         </button>
       </Modal>
+
+      <ConfirmarDescarte
+        open={descartePendiente !== null}
+        onSeguirEditando={() => setDescartePendiente(null)}
+        onDescartar={confirmarDescarte}
+      />
 
       {!errorGastos && !loadingGastos && <section aria-label="Resumen de gastos" className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm sm:p-5">
         <div className="flex items-center gap-2 text-sm font-medium text-blue-900">
