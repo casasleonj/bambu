@@ -1,6 +1,6 @@
 # #896 · Integración concurrente de PR sin CI infinito
 
-Fecha de verificación: 2026-11-22. **Estado: PROPUESTA documentada; ningún mecanismo de merge ni ahorro en release está activado por este documento.**
+Fecha de verificación: 2026-11-22. **Estado: PROPUESTA documentada; ningún mecanismo de merge ni ahorro en release está activado por este documento.** Revisión adversarial de tres rondas incorporada a continuación. Las restricciones nuevas de la auditoría **prevalecen sobre cualquier frase anterior** si hubiera tensión entre ellas.
 
 ## Problema y objetivo
 
@@ -26,8 +26,8 @@ Continuar #896 como única iniciativa de CI adaptativo, conservando gates y evid
 ### F1. Baseline y optimización de builds, sin reducir cobertura
 
 1. Medir p50/p95 de `ready_for_review → merge`, duración por job, runner-minutos, cancelaciones, número de compilaciones, coste y fallos de baseline, usando historial suficientemente representativo.
-2. Prototipar build único compartido para los ocho shards V2 OFF y otro build independiente V2 ON. Publicar artefactos inmutables con identidad de commit/árbol, perfil de flags, versión Node/Next/Prisma y lockfile, con checksum, permisos de solo lectura y retención breve. Cada shard deberá conservar su **propia BD/Redis/fixtures** para no mezclar estado. Revisar que el build standalone contenga estáticos, ficheros generados y runtime esperado.
-3. Comparar p50/p95 y runner-minutos antes/después. Abortar o revertir si el tiempo de empaquetado/descarga o la inestabilidad anula el beneficio. **No modificar los tests de negocio para alcanzar el objetivo.**
+2. **HIPÓTESIS, no optimización demostrada:** probar, de manera controlada y reversible, un build por perfil efectivo para los ocho shards y el Hub, **únicamente dentro del mismo workflow run y mismo candidato de merge**. Perfiles no se reducen ciegamente a ON/OFF: se incluyen todos los `NEXT_PUBLIC_*`, también `NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR`, y los overrides de `workflow_dispatch`. No publicar artefactos de PR en un flujo privilegiado de deployment. Generar un archivo empaquetado de rutas explícitas del build standalone (no un `include-hidden-files:true` indiscriminado), comprobar integridad, manifiesto, contenido, permisos y ausencia de secretos antes de distribuir a shards. Validar `public/`, `.next/static/`, Prisma y runtime del servidor. Mantener PostgreSQL, Redis y fixtures aislados por shard, con el mismo número de tests/flags/assertions.
+3. Evaluar dos métricas separadas: **latencia en el camino crítico** y **runner-minutos totales**. El patrón build `needs` → shards crea una barrera serial y puede ser más lento que nueve builds paralelos. Comparar variantes A/B sobre commits equivalentes con múltiples muestras y dispersión; mantener la variante actual si el nuevo grafo empeora p95 o confiabilidad. **No modificar tests ni asserts del producto para obtener ahorro.**
 
 ### F2. Selector de pruebas por impacto, modo sombra
 
@@ -37,13 +37,13 @@ Aprovechar `#901` integrado: medir falsos negativos, cobertura exacta por entorn
 
 Se deben separar **certificación de PR individual** y **certificación del candidato de integración**. La confirmación de PR A verde + PR B verde no prueba automáticamente A+B.
 
-**Alternativa preferida para evaluar:** GitHub Merge Queue nativo si la titularidad/plan/configuración de la organización y los integradores lo permiten; comprobar soporte antes de recomendar migración. El workflow de `merge_group` debe emitir un único gate requerido y validar la combinación exacta que será fusionada. Definir límites de lote y estrategia de diagnóstico cuando falle un grupo.
+**Alternativa preferida, condicionada:** GitHub Merge Queue **solo** si el repositorio pasa a ser público de organización o cumple las condiciones vigentes de GitHub para la característica. Hoy `casasleonj/bambu` pertenece a una cuenta personal: **no dispone de Merge Queue nativo en esa titularidad**. Antes de recomendar traslado hay que auditar integraciones de Vercel, Supabase, Sentry, GitHub Apps, OAuth, secrets, webhooks, dominio, ramas protegidas, redirects y rollback; no ejecutar traslado como parte de CI. Una vez habilitado, configurar un único check requerido que se emita en `pull_request` y `merge_group`, validar el candidato exacto y probar lotes de tamaño inicial uno; crecer a dos **solo** con evidencia de estabilidad. Un `merge_group` no debe quedar con required check pendiente por falta de trigger.
 
-**Alternativa sin cambio de titularidad:** cola serializada controlada, sin bypass de `main`, con candidato sintético inmutable sobre la punta real de `main`. Al aprobarse, comprobar que la rama objetivo no ha avanzado y que el árbol certificado es el que se va a fusionar; revalidar ante discrepancia. No asumir que GitHub puede aplicar una certificación de una rama temporal a un PR distinto de manera automática. Si no es posible garantizar identidad/atomicidad por permisos/herramientas, **mantener strict y CI full**; no anunciar ahorro ficticio.
+**Alternativa práctica sin cambiar titularidad (por ahora):** **serialización conservadora bajo `strict=true` y gate actual**; preparar/validar un PR cada vez, cancelar intentos obsoletos, acelerar la suite y evitar commits meramente administrativos. Puede seguir requiriendo nueva certificación cuando avanza `main`: reconocer esta limitación expresamente. Una cola casera con rama temporal es **DESCARTADA como implementación inmediata**, porque su check no equivale automáticamente al estado requerido de los PR originales; una excepción al ruleset o un push directo abrirían una brecha de seguridad. Retomarla solamente con demostración independiente de identidad, atomicidad, source-check, permisos y ausencia de bypass.
 
 ### F4. Duplicación PR → push y despliegue
 
-Distinguir validar un mismo árbol de ejecutar otra certificación sobre otro SHA. Reutilización solo con identidad reproducible de **contenido + base + perfil flags + dependencias + versión de workflow/selector + entorno + resultados de jobs**. No usar un artefacto de sombra, caché o check de una base anterior como certificado. Revisar control real de despliegue de Vercel y migraciones Prisma. No aplicar ahorro post-merge antes de demostrar que producción no se adelanta a un gate requerido.
+Distinguir validar un mismo árbol de ejecutar otra certificación sobre otro SHA. GitHub `pull_request` verifica normalmente un **test merge commit**; `head.sha` por sí solo no identifica ese candidato. Comparar SHA de merge/candidato, padres, árbol, base, perfil exacto, configuración/lockfile, workflow/selector, resultados y fuentes de status. Reutilización PR→push de `main` sigue **no habilitada** incluso si el árbol coincide: un merge squash/rebase cambia el commit y Vercel puede compilar otro candidato con otro entorno. Artefacto sombra, caché y check de otra base no certifican release. Revisar el proyecto Vercel **desde configuración efectiva**, porque `vercel.json` no prueba por sí solo si están habilitados Deployment Checks. Corroborar secuencia de Prisma, deploy y promoción; ningún skip de CI postmerge sin evidencia de la barrera efectiva. Evitar nombres de check duplicados entre GitHub/Vercel.
 
 ## Casos adversariales obligatorios
 
@@ -59,6 +59,74 @@ Distinguir validar un mismo árbol de ejecutar otra certificación sobre otro SH
 | Falla de descarga de build, checksum incorrecto, artifact missing | Fallar job, nunca ejecutar E2E sobre build parcial |
 | Cambios de lockfile/entorno/versiones, o selector modificado | Invalidar reutilización previa |
 | Fallo del deployment/migración, incluso con CI verde | Mantener bloqueo de promoción y trazabilidad del incidente |
+
+
+## Auditoría adversarial iterada (22/11/2026)
+
+### Iteración 1: romper la primera propuesta
+
+**Sesgos detectados:**
+- **Sesgo de disponibilidad:** se presentó una cola personalizada como sustituto de Merge Queue sin probar que los checks del candidato temporal satisfacen la protección de los PR originales. **Cambio sustancial:** descartar la cola propia inmediata; sin traslado, serializar bajo strict.
+- **Sesgo de capacidad/CPU:** pasar de nueve builds a dos no demuestra reducir latencia: los jobs actuales trabajan en paralelo y con build compartido todos esperan \`needs: build\`. **Cambio:** ensayo A/B sobre la ruta crítica, no inferencia por conteo de builds.
+- **Sesgo de independencia por rutas:** ausencia de conflictos Git no garantiza independencia semántica (importaciones indirectas, límites de dinero, sesiones, esquema). **Cambio:** validar unión y riesgo real.
+- **Sesgo de muestra:** duraciones puntuales de 15/20/58 min no son p50/p95 ni permiten fijar una meta de ahorro. **Cambio:** instrumentación y distribución real por tipo de PR y job.
+
+**Ambigüedad eliminada:** \`strict\` de ruleset es una protección de **merge**, no una promesa de que el deployment haya esperado los jobs en \`main\`. El gate de CI no certifica migraciones ni configuración efectiva de Vercel. Una rama temporal no hereda automáticamente el estado exigido por \`main\`.
+
+### Iteración 2: intentar romper la propuesta corregida
+
+1. **Artefacto oculto/incompleto:** GitHub \`upload-artifact@v4\` excluye archivos ocultos por defecto, y el build Next standalone está en \`.next\`. Si se activa indiscriminadamente \`include-hidden-files\`, podrían colarse \`.env\` u otros secretos. **Mitigación:** \`tar\` con allowlist explícita y validación de inventario/manifiesto; no habilitar glob de todo el repositorio. Mantener permisos y verificar checksum tras descarga.
+2. **Parámetros diferentes al build:** Hub V2 ON incluye \`NEXT_PUBLIC_PEDIDOS_V2=true\` y \`NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR=true\` en el paso de build; los defaults del job legacy y \`workflow_dispatch\` varían. **Mitigación:** identidad por conjunto **completo** de variables efectivas y entorno, nunca alias simplista ON/OFF.
+3. **Arranque de servidor desde paquete:** el \`output: standalone\` exige \`node .next/standalone/server.js\` y copiar \`public\` y \`.next/static\`. Reempacar mal rompe UI o provoca falsos negativos. **Mitigación:** smoke real del build desempaquetado y comprobación de hash/archivos antes de Playwright.
+4. **Construcción dependiente de secreto:** cada shard genera \`NEXTAUTH_SECRET\` antes del build; un build desacoplado puede cambiar el momento de fijarlo. **Mitigación:** comprobar primero si el secreto es consumido al compilar o solo en runtime; mantener secretos de autenticación por job, nunca empaquetarlos.
+5. **Colisión o envenenamiento de artefactos:** un artifact de PR no es entrada confiable de deploy privilegiado; \`workflow_run\` y caches compartidas son superficies de ataque. **Mitigación:** solo artefactos **dentro del mismo run no privilegiado**, IDs de upload outputs inmutables, checksum/verificación, \`permissions: contents:read\`, sin \`pull_request_target\` ni secretos de producción. Cualquier fallo aborta.
+6. **Misma base, distinto código probado:** en \`pull_request\`, \`GITHUB_SHA\` referencia el merge de prueba, no necesariamente \`head.sha\`. Si avanza \`main\`, el head no cambia pero el merge de prueba sí. **Mitigación:** manifest con test-merge SHA, parents/base y candidato exacto; revalidar cuando no coincidan.
+7. **Más workers, menos aislamiento:** \`playwright.config.ts\` explica que workers>1 producen carreras de sesiones por reset de BD. **Mitigación:** mantener 8 shards con \`workers=1\` hasta demostrar aislamiento real por worker; no inflar paralelismo para compensar tiempos.
+8. **Comportamiento de Vercel desconocido:** \`vercel.json\` no contiene un guard de release, pero Deployment Checks pueden estar en dashboard. **Mitigación:** tratar protección efectiva de promoción como **PENDIENTE DE VERIFICACIÓN**, no afirmar que está activada/desactivada.
+9. **Fuente del check alterada:** cambios de workflows, script de gate o checks externos pueden producir un status verde engañoso. **Mitigación:** proteger paths de política con review específica, identidad de aplicación emisora y cambio conservador de gate. No aceptar metadata arbitraria en el artifact.
+
+### Iteración 3: romper los controles de la segunda iteración
+
+| Contraejemplo | Cómo rompe el diseño mejorado | Salvaguarda final |
+|---|---|---|
+| Build único tarda más en subir/bajar que ocho builds paralelos | El ahorro de runner-minutos empeora p95 del desarrollador | Pilotar ambas variantes con mismo código, revertir si p95 o flake empeora |
+| Un artefacto empaquetado contiene \`.env\` por un symlink / archivo generado | Se filtra secreto incluso con nombre de tar inocente | Revisar árbol real, symlinks, archivos permitidos, tamaño y contenido sensible; no publicar hasta validación |
+| Check principal falla pero \`continue-on-error\` aparenta job verde | Resultado nominal confunde certificación real | Verificar \`suite_ok\`, steps exigidos y resultado de gate; no usar solo \`conclusion\` |
+| Dos PR son verdes individualmente y rompen juntos una consulta PostgreSQL | Tests aislados insuficientes | Candidato combinado con integración real, E2E y escenarios de datos sintéticos |
+| PR A entra en cola, B cambia, C fusiona a \`main\` | Resultado del lote queda obsoleto | Verificar SHA/árbol/padres del candidato en una operación atómica o dejar que Merge Queue nativo lo gestione |
+| Nueva \`merge_group\` no dispara gate obligatorio | Check queda eternamente pendiente | Prueba end-to-end con \`on: merge_group\`, nombre único y check exigido; probar caso fail/timeout |
+| Batch de 5 PR falla por uno de ellos | Ahorrar CI individual crea colas lentas y aislar el fallo cuesta más | Empezar con batch=1, medir; ampliar a 2 solo con evidencia y aislamiento de fallos, establecer límite de espera |
+| Una actualización bot usa \`GITHUB_TOKEN\` y no desencadena el flujo esperado | La cola queda pendiente o parece inactiva | Comprobar causalidad/eventos, no asumir que todo push del bot dispara Actions; validar permisos y trigger real |
+| Transferir repositorio para usar Merge Queue rompe Vercel o integración GitHub App | Se acelera CI pero se interrumpe producción | Ensayo/reversión de titularidad e integraciones, responsable y ventana aprobada antes de migrar |
+| Pasan los tests en candidato GitHub, Vercel reconstruye con distintas variables | El artefacto certificado no es el que ejecuta producción | Identidad de deploy + verificación explícita de flags/entorno, deployment check obligatorio antes de alias/promoción |
+| Se mezcla smoke nocturno con gate de release | Un skipped/verde tardío enmascara un fallo actual | Identidades y check names distintos; nightly no sustituye merge gate |
+| Al hacer squash se conserva el árbol pero cambia SHA | Reutilizar resultado por árbol exclusivamente ignora entorno, origen y política | Registrar equivalencia completa como hipótesis, nunca activar bypass hasta probar autorización de promoción |
+| El selector clasifica mal SQL dinámico o una dependencia no importada | Omite una regresión financiera | Full conservador para dinero, inventario, Prisma, permisos, offline, CI o dependencias inciertas |
+| Despliegue comienza después del merge pero antes de las pruebas de \`push\` | CI correcto a destiempo no protege producción | Guard de promoción efectivo, no confiar solo en CI de PR |
+
+### Resultado de convergencia: política mejorada
+
+**PROPUESTA CONVERGIDA, AÚN NO IMPLEMENTADA:**
+
+- **C0: conservar seguridad actual.** \`strict=true\` y \`CI gate (resumen)\` siguen activos. Nada de bypass, cambio de ruleset, merge automático, secretos de producción ni reducción de cobertura; mantener PR #976 como documental.
+- **C1: medir antes de optimizar.** Separar tiempo por commit, runner-minutos, tiempo en cola, build, CI PR, CI push, y tiempos posteriores al merge. Revisar estado real de Vercel/migraciones como dependencia bloqueante de cualquier release gate nuevo.
+- **C2: ensayo de build compartido dentro del mismo run.** Dos o más artefactos **por perfil efectivo**, sin reutilizar entre PRs ni en despliegue; benchmark A/B y rollback explícito. También medir alternativa más sencilla de evitar instalaciones repetidas y pinning de versiones sin cambiar semántica.
+- **C3: acabar modo sombra de selector.** Comparación automática por ID de test, proyecto, flags y candidato, con falsos negativos adversariales. No activar omisiones todavía.
+- **C4: fusiones concurrentes.** Para eliminar de verdad la revalidación de ramas, evaluar traslado seguro a organización y Merge Queue nativo, en fase/decisión aparte. Hasta entonces, flujo serial \`strict\` + CI más eficiente. No introducir cola casera.
+- **C5: promoción segura.** Investigar primero si Vercel tiene deployment checks requeridos y si Prisma migración/producción quedan ordenados; **no** usar omisiones PR→push ni confiar en checks de GitHub como control de dominios de producción.
+
+**Criterio de detener iteración:** tras las rondas 2 y 3, los riesgos restantes derivan de datos que no pueden concluirse con análisis documental (rendimiento de artefactos, configuración efectiva de Vercel, viabilidad de titularidad y comportamiento de Actions real). Proponer más mecanismos sin medir esos hechos sería complejidad especulativa. El siguiente aprendizaje de alto valor es **un ensayo controlado con datos sintéticos y CI real**, manteniendo política vigente.
+
+### Evidencia externa de las correcciones
+
+- [GitHub: Merge Queue y \`merge_group\`](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)
+- [GitHub: eventos PR y test merge SHA](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)
+- [GitHub: artifacts ocultos y permisos](https://github.com/actions/upload-artifact)
+- [Next.js: standalone, \`public\` y \`.next/static\`](https://nextjs.org/docs/app/api-reference/config/next-config-js/output)
+- [OWASP: GitHub Actions security](https://cheatsheetseries.owasp.org/cheatsheets/GitHub_Actions_Security_Cheat_Sheet.html)
+- [Vercel: Deployment Checks](https://vercel.com/docs/deployment-checks)
+- [GitHub: transferencia de repositorios](https://docs.github.com/en/repositories/creating-and-managing-repositories/transferring-a-repository)
+
 
 ## Criterios de aceptación de un futuro PR funcional
 
