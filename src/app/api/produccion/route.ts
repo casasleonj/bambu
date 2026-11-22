@@ -18,6 +18,7 @@ import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { resolverStockInicial } from '@/lib/stock-inicial'
+import { coincideProduccionPersistida, huellaCreacionProduccion } from '@/lib/produccion-idempotencia'
 
 const MAX_RETRIES = 3
 
@@ -105,9 +106,8 @@ export async function POST(request: NextRequest) {
   const fechaProduccion = startOfDayInBogota(diaProduccion)
   const { startDate: startOfDay, endDate: endOfDay } = getDateRange(diaProduccion, diaProduccion)
 
-  // #645: un día ya cerrado no admite producción nueva (cambiaría un cierre ya guardado).
-  const cierreDelDia = await prisma.cierreDia.findFirst({ where: { fecha: fechaProduccion }, select: { id: true } })
-  if (cierreDelDia) return apiError('Ese día ya está cerrado: no se puede registrar producción', 409, { code: 'DIA_CERRADO' })
+  // La comprobación de Cierre se realiza DENTRO de la transacción, bajo
+  // CIERRE:fecha. El precheck externo permitía una carrera con Cierre.
 
   // Re-leemos ventas adentro del handler para mayor fidelidad (pueden cambiar
   // entre el preview y el POST)
@@ -156,15 +156,10 @@ export async function POST(request: NextRequest) {
       stockIniAgua, stockIniHielo, stockFinEsperadoAgua, stockFinEsperadoHielo, diferenciaAgua, diferenciaHielo, itemBot, hayDiferencia,
     }
   }
-  const { hayDiferencia } = cuadrar(previas, stockInicial)
+  // Esta validación se hace dentro del lock para no impedir un replay legítimo
+  // cuyo entorno (ventas/stock) pudo haber cambiado después del primer guardado.
   const obsTrim = (parsed.data.obs || '').trim()
-
-  if (hayDiferencia && obsTrim === '') {
-    return apiError(
-      'Si hay diferencia de stock debés explicar la causa en observaciones',
-      400,
-    )
-  }
+  const huellaEntrada = huellaCreacionProduccion(parsed.data, fechaProduccion)
 
   let lastError: Error | null = null
 
@@ -177,6 +172,9 @@ export async function POST(request: NextRequest) {
           // Serializable + advisory lock juntos causan P2034 innecesarios.
           // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:produccion` en lugar
           // del entero fijo 8 (que colisionaba con NC).
+          // Orden único de locks: CIERRE:fecha → SECUENCIA:produccion.
+          // Ambos POST y PUT respetan este orden y el cierre usa CIERRE:fecha.
+          await acquireAdvisoryLockTx(tx, 'CIERRE', fechaProduccion.toISOString())
           await acquireAdvisoryLockTx(tx, 'SECUENCIA', 'produccion')
 
           // FASE 1 (ADR-IDEMPOTENCIA-001): dedup por offlineId DENTRO del lock.
@@ -188,9 +186,36 @@ export async function POST(request: NextRequest) {
               include: { items: true, trabajador: true },
             })
             if (existente) {
+              // Los registros nuevos conservan la huella del request original en
+              // Historial. El fallback se usa solo para producción histórica.
+              const auditoria = await tx.historial.findFirst({
+                where: { entidad: 'Produccion', registroId: existente.id, accion: 'CREATE' },
+                orderBy: { fecha: 'asc' },
+                select: { datos: true },
+              })
+              let huellaOriginal: string | null = null
+              if (auditoria) {
+                try {
+                  const datos = JSON.parse(auditoria.datos) as Record<string, unknown>
+                  if (typeof datos._idempotencyHash === 'string') huellaOriginal = datos._idempotencyHash
+                } catch {
+                  // Historial legado inválido: comparar los campos persistidos.
+                }
+              }
+              const coincide = huellaOriginal !== null
+                ? huellaOriginal === huellaEntrada
+                : coincideProduccionPersistida(existente, parsed.data, fechaProduccion)
+              if (!coincide) throw new Error('OFFLINE_ID_CONFLICTO')
               return { deduped: true as const, produccion: existente }
             }
           }
+
+          // Un alta nueva de un día cerrado jamás puede entrar después del
+          // cierre: se comprueba en la misma tx protegida por CIERRE:fecha.
+          const cierreVigente = await tx.cierreDia.findUnique({
+            where: { fecha: fechaProduccion }, select: { id: true },
+          })
+          if (cierreVigente) throw new Error('DIA_CERRADO')
 
           // Re-validar duplicado dentro del lock (defense in depth).
           // Como el lock se libera al hacer COMMIT, los requests posteriores
@@ -270,7 +295,7 @@ export async function POST(request: NextRequest) {
           }
           const comRepartTotal = comRepartAgua + comRepartHielo
 
-          return { deduped: false as const, produccion: await tx.produccion.create({
+          const produccion = await tx.produccion.create({
             data: {
               fecha: fechaProduccion,
               turno: parsed.data.turno,
@@ -319,7 +344,36 @@ export async function POST(request: NextRequest) {
               },
             },
             include: { trabajador: true, items: true },
-          }) }
+          })
+
+          // Auditoría de creación ATÓMICA: si falla Historial, Prisma revierte
+          // tanto Produccion como sus items y la API no afirma éxito.
+          await logAudit({
+            entidad: 'Produccion',
+            registroId: produccion.id,
+            accion: 'CREATE',
+            datos: {
+              _idempotencyHash: huellaEntrada,
+              fecha: produccion.fecha,
+              turno: produccion.turno,
+              prodAgua,
+              prodHielo,
+              diferenciaAgua: produccion.items.find(i => i.producto === 'PACA_AGUA')?.diferencia,
+              diferenciaHielo: produccion.items.find(i => i.producto === 'PACA_HIELO')?.diferencia,
+              obs: produccion.obs,
+              items: produccion.items.map(i => ({
+                producto: i.producto,
+                producido: i.producido,
+                stockFinFisico: i.stockFinFisico,
+                diferencia: i.diferencia,
+              })),
+            },
+            usuarioId: userId,
+            ip,
+            userAgent,
+          }, tx)
+
+          return { deduped: false as const, produccion }
         },
         {
           // ReadCommitted es suficiente: el advisory lock serializa.
@@ -334,31 +388,6 @@ export async function POST(request: NextRequest) {
         return apiSuccess({ produccion, deduped: true }, 200)
       }
 
-      // FIX 4.1: audit log detallado
-      logAudit({
-        entidad: 'Produccion',
-        registroId: produccion.id,
-        accion: 'CREATE',
-        datos: {
-          fecha: produccion.fecha,
-          turno: produccion.turno,
-          prodAgua,
-          prodHielo,
-          diferenciaAgua: produccion.items.find((i) => i.producto === 'PACA_AGUA')?.diferencia,
-          diferenciaHielo: produccion.items.find((i) => i.producto === 'PACA_HIELO')?.diferencia,
-          obs: produccion.obs,
-          items: produccion.items.map(i => ({
-            producto: i.producto,
-            producido: i.producido,
-            stockFinFisico: i.stockFinFisico,
-            diferencia: i.diferencia,
-          })),
-        },
-        usuarioId: userId,
-        ip,
-        userAgent,
-      }).catch(() => {})
-
       publishRealtimeEvent('produccion.created', produccion.id).catch(() => {})
 
       return apiSuccess({ produccion }, 201)
@@ -370,6 +399,12 @@ export async function POST(request: NextRequest) {
         if (attempt < MAX_RETRIES - 1) continue
       }
 
+      if (lastError.message === 'OFFLINE_ID_CONFLICTO') {
+        return apiError('Este identificador de reintento ya corresponde a una producción con datos diferentes', 409, { code: 'OFFLINE_ID_CONFLICTO' })
+      }
+      if (lastError.message === 'DIA_CERRADO') {
+        return apiError('Ese día ya está cerrado: no se puede registrar producción', 409, { code: 'DIA_CERRADO' })
+      }
       if (lastError.message === 'PRODUCCION_DUPLICADA') {
         return apiError(
           `Ya existe producción registrada para este trabajador en el turno ${parsed.data.turno} de ese día`,
