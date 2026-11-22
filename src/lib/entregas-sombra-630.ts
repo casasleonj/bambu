@@ -24,7 +24,7 @@ export interface PedidoSombra {
   items: Array<{ producto: string; cantEntrega: number; cantRegaloEntrega: number }>
 }
 
-export type EstadoLineaSombra = 'CONCILIADO' | 'SIN_FECHA' | 'CONFLICTO' | 'REVISAR_ANULACION'
+export type EstadoLineaSombra = 'CONCILIADO' | 'SIN_FECHA' | 'CONFLICTO' | 'REVISAR_EVIDENCIA' | 'REVISAR_ANULACION'
 export interface LineaSombra {
   producto: Producto
   acumuladoActual: number
@@ -109,13 +109,14 @@ export function diagnosticarPedidoEntregasSombra(
         for (const producto of PRODUCTOS) alertas.get(producto)!.add('PRODUCTO_NO_RECONOCIDO')
         continue
       }
-      if (!Number.isSafeInteger(linea.cantidad) || linea.cantidad <= 0 ||
+      if (!Number.isSafeInteger(linea.cantidad) || linea.cantidad < 0 ||
         (linea.cantidadRegalo !== undefined &&
           (!Number.isSafeInteger(linea.cantidadRegalo) || linea.cantidadRegalo < 0 ||
             linea.cantidadRegalo > linea.cantidad))) {
         alertas.get(linea.producto)!.add('CANTIDAD_INVALIDA')
         continue
       }
+      if (linea.cantidad === 0) continue // línea sin salida física; no es un defecto
       // cantidad YA incluye el regalo (#795). No sumar cantidadRegalo otra vez.
       const porDia = dias.get(linea.producto)!
       porDia.set(diaEvento, (porDia.get(diaEvento) ?? 0) + linea.cantidad)
@@ -136,14 +137,16 @@ export function diagnosticarPedidoEntregasSombra(
     if (acumuladoActual < 0) avisos.add('ACUMULADO_NEGATIVO')
     if (excesoFrenteAcumulado > 0) avisos.add('EVENTOS_EXCEDEN_ACUMULADO')
     if (anulado) avisos.add('ESTADO_ACTUAL_ANULADO_REVISAR_COMPENSACION')
-    if (acumuladoActual === 0 && acreditado === 0 && avisos.size === 0) continue
+    // Alertas globales no generan líneas ficticias para productos ausentes.
+    if (acumuladoActual === 0 && acreditado === 0) continue
 
     const conflicto = [...avisos].some(a =>
       a === 'IDENTIDAD_REUTILIZADA_CON_OTRO_CONTENIDO' || a === 'PRODUCTO_NO_RECONOCIDO' ||
       a === 'CANTIDAD_INVALIDA' || a === 'ACUMULADO_NEGATIVO' || a === 'EVENTOS_EXCEDEN_ACUMULADO')
     const estado: EstadoLineaSombra = conflicto ? 'CONFLICTO'
       : anulado ? 'REVISAR_ANULACION'
-      : residualSinFecha > 0 || avisos.size > 0 ? 'SIN_FECHA' : 'CONCILIADO'
+      : residualSinFecha > 0 ? 'SIN_FECHA'
+      : avisos.size > 0 ? 'REVISAR_EVIDENCIA' : 'CONCILIADO'
     lineas.push({
       producto, acumuladoActual, conEvidenciaEnDia,
       conEvidenciaOtrosDias: acreditado - conEvidenciaEnDia, porDia,
@@ -176,6 +179,7 @@ export async function consultarEntregasSombraDelDia(
   const pedidos = await db.pedido.findMany({
     where: { OR: [{ fecha: { gte: desde, lt: hasta } }, { id: { in: ids } }] },
     take: MAX_PEDIDOS + 1,
+    orderBy: [{ fecha: 'asc' }, { id: 'asc' }],
     select: {
       id: true, numero: true, fecha: true, estadoEntrega: true,
       cPacaAguaEnt: true, cPacaHieloEnt: true, cBotellonFabEnt: true,
