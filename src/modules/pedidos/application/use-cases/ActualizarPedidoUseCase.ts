@@ -22,6 +22,7 @@
 
 import { Money, UnitPrice } from '@/shared/domain'
 import { logAudit } from '@/lib/audit'
+import { evidenciaDemanda, type LineaDemanda } from '@/lib/pedidos-cambios-demanda'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
 import { EstadoEntregaVO } from '../../domain/value-objects/EstadoEntrega'
 import { EstadoPagoVO } from '../../domain/value-objects/EstadoPago'
@@ -157,6 +158,8 @@ export class ActualizarPedidoUseCase {
       const totalAnterior = pedido.total.toDecimal()
       const totalPagado = pedido.totalPagado.toDecimal()
       let totalCambio = false
+      // #853: evidencia estructurada del antes/después de la demanda, solo si cambian las líneas.
+      let cambioDemanda: ReturnType<typeof evidenciaDemanda> | null = null
 
       // ── ECONÓMICA: items ───────────────────────────────────────────────────
       if (input.items && input.items.length > 0) {
@@ -231,6 +234,12 @@ export class ActualizarPedidoUseCase {
             props.total = Money.fromDecimal(nuevoTotal)
             totalCambio = nuevoTotal !== totalAnterior
             registrar('items', { items: lineasAntes, total: totalAnterior }, { items: lineasDespues, total: nuevoTotal })
+            const demandaFisica = (items: readonly PedidoItem[]): LineaDemanda[] =>
+              items.map((i) => ({ producto: i.producto as string, cantidad: i.cantPedido + i.cantRegaloPedido }))
+            cambioDemanda = evidenciaDemanda('EDICION', new Date(), {
+              antes: demandaFisica(pedido.items),
+              despues: demandaFisica(nuevosItems),
+            })
           }
         }
       }
@@ -395,7 +404,7 @@ export class ActualizarPedidoUseCase {
         entidad: 'Pedido',
         registroId: saved.id.get(),
         accion: 'UPDATE',
-        datos: { numero: saved.numero, estado: saved.estadoEntrega.get(), campos, antes, despues },
+        datos: { numero: saved.numero, estado: saved.estadoEntrega.get(), campos, antes, despues, ...(cambioDemanda ?? {}) },
         usuarioId: input.usuarioId,
         casoId: input.casoId,
       }, tx)
