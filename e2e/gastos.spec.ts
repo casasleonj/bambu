@@ -30,7 +30,7 @@ test.describe('Gastos', () => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
 
-    await page.click('button:has-text("Nuevo gasto")')
+    await page.getByRole('button', { name: 'Nuevo gasto', exact: true }).click()
     await page.waitForTimeout(500)
 
     await elegirCategoria(page, 'Servicios')
@@ -57,7 +57,7 @@ test.describe('Gastos', () => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
 
-    await page.click('button:has-text("Nuevo gasto")')
+    await page.getByRole('button', { name: 'Nuevo gasto', exact: true }).click()
     await page.waitForTimeout(500)
 
     await elegirCategoria(page, 'Transporte')
@@ -87,7 +87,7 @@ test.describe('Gastos', () => {
   test('categoría obligatoria: no guarda hasta seleccionar', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
-    await page.getByRole('button', { name: 'Nuevo gasto' }).click()
+    await page.getByRole('button', { name: 'Nuevo gasto', exact: true }).click()
     await page.locator('#gasto-descripcion').fill('Prueba categoría obligatoria')
     await page.locator('#gasto-monto').fill('5000')
     const guardar = page.getByRole('button', { name: 'Guardar gasto' })
@@ -106,7 +106,7 @@ test.describe('Gastos', () => {
   test('permite crear categoría nueva y reutilizarla', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
-    await page.getByRole('button', { name: 'Nuevo gasto' }).click()
+    await page.getByRole('button', { name: 'Nuevo gasto', exact: true }).click()
     const categoria = page.locator('#gasto-categoria')
     await categoria.fill('Repuestos menores')
     await page.getByRole('option', { name: /Agregar categoría «Repuestos Menores»/ }).click()
@@ -119,7 +119,7 @@ test.describe('Gastos', () => {
     ])
     expect(alta.status()).toBe(201)
     expect((await alta.json()).gasto.categoria).toBe('REPUESTOS MENORES')
-    await page.getByRole('button', { name: 'Nuevo gasto' }).click()
+    await page.getByRole('button', { name: 'Nuevo gasto', exact: true }).click()
     await categoria.fill('repuestos')
     await expect(page.getByRole('option', { name: 'Repuestos Menores' })).toBeVisible()
   })
@@ -128,7 +128,7 @@ test.describe('Gastos', () => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
 
-    await page.click('button:has-text("Nuevo gasto")')
+    await page.getByRole('button', { name: 'Nuevo gasto', exact: true }).click()
     await page.waitForTimeout(500)
 
     await elegirCategoria(page, 'Insumos')
@@ -178,7 +178,7 @@ test.describe('Gastos', () => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
 
-    await page.getByRole('button', { name: 'Nuevo gasto' }).click()
+    await page.getByRole('button', { name: 'Nuevo gasto', exact: true }).click()
     const descripcion = 'Combustible JL #755 E2E'
     await elegirCategoria(page, 'Transporte')
     await page.locator('#gasto-descripcion').fill(descripcion)
@@ -234,6 +234,37 @@ test.describe('Gastos', () => {
     await expect(tarjetaAnulada).toContainText('Anulado')
     await expect(tarjetaAnulada).toContainText('Original')
     await expect(tarjetaAnulada).toContainText('45.000')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  })
+
+  test('#973: Corregir en la lista abre directamente el formulario en modal', async ({ page }) => {
+    await loginAs(page, 'admin')
+    const creado = await apiPost(page, '/api/gastos', {
+      categoria: 'TRANSPORTE',
+      descripcion: 'Corregir desde lista #973',
+      monto: 13000,
+    })
+    expect(creado.status()).toBe(201)
+    const { gasto } = await creado.json()
+    await goto(page, '/gastos')
+    const fila = page.getByTestId(`gasto-${gasto.id}`)
+    await expect(fila).toBeVisible()
+    await fila.getByRole('button', { name: 'Corregir' }).click()
+    const modal = page.getByRole('dialog', { name: 'Corregir gasto' })
+    await expect(modal).toBeVisible()
+    await expect(modal.locator('#editar-categoria')).toHaveValue('Transporte')
+    await expect(modal.locator('#editar-descripcion')).toHaveValue('Corregir desde lista #973')
+    await expect(modal.locator('#editar-monto')).toHaveValue('13000')
+    await modal.locator('#editar-descripcion').fill('Cambio todavía no guardado')
+    // Al descartar, conserva la trazabilidad y no persiste una edición accidental.
+    page.once('dialog', async confirmacion => {
+      expect(confirmacion.message()).toContain('Descartar')
+      await confirmacion.accept()
+    })
+    await modal.getByRole('button', { name: 'Cancelar' }).click()
+    await expect(page.getByRole('dialog', { name: 'Detalle del gasto' })).toBeVisible()
+    const detalle = await apiGet(page, `/api/gastos/${gasto.id}`)
+    expect((await detalle.json()).gasto.descripcion).toBe('Corregir desde lista #973')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   })
 
