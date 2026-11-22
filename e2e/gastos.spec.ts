@@ -128,6 +128,25 @@ test.describe('Gastos', () => {
     expect(bodyText.length).toBeGreaterThan(0)
   })
 
+  test('#816: Gastos no ofrece Mañana y Esta semana termina hoy', async ({ page }) => {
+    await loginAs(page, 'admin')
+    await goto(page, '/gastos')
+
+    await expect(page.getByRole('button', { name: /^Mañana/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Hoy', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Ayer', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Esta semana', exact: true })).toBeVisible()
+
+    const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date())
+    await page.getByRole('button', { name: 'Esta semana', exact: true }).click()
+    const fechas = page.locator('input[type="date"]')
+    await expect(fechas).toHaveCount(2)
+    await expect(fechas.nth(1)).toHaveValue(hoy)
+    await expect(fechas.nth(0)).not.toHaveValue('')
+    await expect(fechas.nth(0)).toHaveAttribute('max', hoy)
+    await expect(fechas.nth(1)).toHaveAttribute('max', hoy)
+  })
+
   test('#755: crear, abrir por enlace, corregir y anular un gasto (desktop/móvil)', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
