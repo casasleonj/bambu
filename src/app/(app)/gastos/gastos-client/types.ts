@@ -5,6 +5,10 @@ export interface Gasto {
   monto: number
   responsable: string | null
   fecha: string
+  notas?: string | null
+  version?: number
+  anuladoAt?: string | null
+  montoAntesAnular?: number | null
 }
 
 // #641: NOMINA no se ofrece al registrar un gasto: los pagos al personal van por «Pagar» en Nómina.
