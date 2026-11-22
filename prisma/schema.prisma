@@ -2365,6 +2365,7 @@ model Gasto {
   // #755: solo anulaciones de registros operativos de día ABIERTO.
   // El importe original permanece disponible para el historial; monto=0
   // mantiene coherentes los agregados monetarios antiguos sin doble resta.
+  version           Int       @default(0)
   anuladoAt         DateTime? @db.Timestamptz()
   montoAntesAnular  Decimal?  @db.Decimal(10, 2)
   motivoAnulacion   String?   @db.VarChar(500)
