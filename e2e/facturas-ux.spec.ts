@@ -202,21 +202,36 @@ test.describe('Facturas — experiencia de usuario', () => {
   test('el encabezado del documento no se encima: apilado en móvil, en fila en escritorio y al imprimir (#873)', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, `/resumen-facturas?clienteId=${sandraId}`)
-    const empresa = page.getByTestId('resumen-doc-empresa')
     const titulo = page.getByTestId('resumen-doc-titulo')
     await expect(titulo).toBeVisible()
     await expect(page.getByTestId('resumen-estado')).toBeVisible()
 
-    const medir = async () => {
-      const e = await empresa.boundingBox()
-      const t = await titulo.boundingBox()
-      if (!e || !t) throw new Error('no se pudo medir el encabezado del documento')
-      return { e, t }
+    // Las dos cajas se leen en UNA sola llamada: si se pidieran por separado, la página puede
+    // reacomodarse entre una y otra (p. ej. al pasar a impresión) y dar un solape falso.
+    const medir = () =>
+      page.evaluate(() => {
+        const caja = (id: string) => {
+          const r = document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect()
+          if (!r) throw new Error(`no se encontró ${id}`)
+          return { x: r.x, y: r.y, width: r.width, height: r.height }
+        }
+        return { e: caja('resumen-doc-empresa'), t: caja('resumen-doc-titulo') }
+      })
+    // Espera a que el encabezado deje de moverse (dos lecturas seguidas iguales).
+    const estable = async () => {
+      let previa = JSON.stringify(await medir())
+      for (let i = 0; i < 20; i++) {
+        await page.waitForTimeout(150)
+        const actual = JSON.stringify(await medir())
+        if (actual === previa) return
+        previa = actual
+      }
     }
     const sinDesbordamiento = () =>
       page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)
 
     const ancho = page.viewportSize()?.width ?? 1280
+    await estable()
     const { e, t } = await medir()
     expect(await sinDesbordamiento()).toBe(true)
     if (ancho < 1024) {
@@ -233,6 +248,7 @@ test.describe('Facturas — experiencia de usuario', () => {
     // Impresión (hoja A4 ≈ 794 px): siempre en fila, igual que antes del cambio.
     await page.setViewportSize({ width: 794, height: 1123 })
     await page.emulateMedia({ media: 'print' })
+    await estable()
     const imp = await medir()
     expect(imp.t.x).toBeGreaterThanOrEqual(imp.e.x + imp.e.width - 1)
     await page.emulateMedia({ media: null })
