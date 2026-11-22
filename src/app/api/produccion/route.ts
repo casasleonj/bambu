@@ -1,23 +1,25 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
+import { Prisma, type Turno } from '@prisma/client'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ProduccionCreateSchema } from '@/lib/validators'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
-import { getVentasDelDia } from '@/lib/ventas'
+import { getVentasDelDia, type VentasDelDia } from '@/lib/ventas'
 import { calcComSellador, itemBotellon } from '@/lib/comisiones'
 import { getTodayRange, getDateRange } from '@/lib/dates'
 import { DIAS_MAX_PRODUCCION_ATRASADA, motivoFechaProduccionInvalida } from '@/lib/produccion-fecha'
-import { netoPrevioDelDia } from '@/lib/produccion-previas'
+import { netoPrevioDelDia, type ProduccionPrevia } from '@/lib/produccion-previas'
 import { startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { resolverStockInicial } from '@/lib/stock-inicial'
+import { marcarVersionProduccionCierre } from '@/lib/produccion-cierre-version'
+import { coincideProduccionPersistida, huellaCreacionProduccion } from '@/lib/produccion-idempotencia'
 
 const MAX_RETRIES = 3
 
@@ -97,38 +99,22 @@ export async function POST(request: NextRequest) {
   // #645: con `fecha` (cierre atrasado) la producción se registra en ese día, hasta 30 días atrás y nunca en el futuro (#899).
   const hoy = todayInBogota()
   const diaProduccion = parsed.data.fecha ?? hoy
-  if (parsed.data.fecha) {
-    const motivo = motivoFechaProduccionInvalida(diaProduccion, hoy)
-    if (motivo === 'FECHA_FUTURA') return apiError('No se puede registrar producción de un día que no ha llegado', 422, { code: motivo })
-    if (motivo) return apiError(`Solo se registra producción de hoy y de los ${DIAS_MAX_PRODUCCION_ATRASADA} días anteriores`, 422, { code: motivo })
-  }
+  // La ventana de 30 días solo aplica a ALTAS NUEVAS: dedup primero bajo
+  // lock para no rechazar reintentos offline de hechos históricos intactos.
   const fechaProduccion = startOfDayInBogota(diaProduccion)
   const { startDate: startOfDay, endDate: endOfDay } = getDateRange(diaProduccion, diaProduccion)
 
-  // #645: un día ya cerrado no admite producción nueva (cambiaría un cierre ya guardado).
-  const cierreDelDia = await prisma.cierreDia.findFirst({ where: { fecha: fechaProduccion }, select: { id: true } })
-  if (cierreDelDia) return apiError('Ese día ya está cerrado: no se puede registrar producción', 409, { code: 'DIA_CERRADO' })
+  // La comprobación de Cierre se realiza DENTRO de la transacción, bajo
+  // CIERRE:fecha. El precheck externo permitía una carrera con Cierre.
 
-  // Re-leemos ventas adentro del handler para mayor fidelidad (pueden cambiar
-  // entre el preview y el POST)
-  const [stockInicial, ventas, previas] = await Promise.all([
-    resolverStockInicial(prisma, parsed.data.fecha ? fechaProduccion : undefined),
-    getVentasDelDia(parsed.data.fecha ? new Date(fechaProduccion.getTime() + 12 * 3_600_000) : undefined),
-    // #645: varias producciones el mismo día (otro sellador u otro turno)
-    prisma.produccion.findMany({
-      where: { fecha: fechaProduccion },
-      select: { trabajadorId: true, turno: true, items: { select: { producto: true, producido: true, rotas: true, filtradas: true, consumoInterno: true } } },
-    }),
-  ])
+  // #630: no leer ventas ni producciones previas antes del lock; una entrega
+  // confirmada durante la espera debe reflejarse en el cuadre guardado.
+  type PreviaTurno = ProduccionPrevia & { trabajadorId: string; turno: Turno }
 
   // #645: «Jornada completa» no convive con otro turno del mismo sellador ese día.
-  const conflictoJornada = (prev: typeof previas) => prev
+  const conflictoJornada = (prev: PreviaTurno[]) => prev
     .filter((p) => p.trabajadorId === parsed.data.trabajadorId)
     .some((p) => (parsed.data.turno === 'JORNADA') !== (p.turno === 'JORNADA'))
-  if (conflictoJornada(previas)) {
-    return apiError('Ese sellador ya tiene producción ese día con otro tipo de turno: la jornada completa no se combina con mañana, tarde o noche', 409, { code: 'JORNADA_CON_OTRO_TURNO' })
-  }
-
   // FIX 1.5: validar server-side que obs esté presente si hay diferencia
   const perdidasAgua = itemAgua.rotas + itemAgua.filtradas + itemAgua.consumoInterno
   const perdidasHielo = itemHielo.rotas + itemHielo.filtradas + itemHielo.consumoInterno
@@ -137,7 +123,7 @@ export async function POST(request: NextRequest) {
   // pasa a ser parte del stock inicial de esta, para que el cuadre del día no cuente dos veces ni olvide nada.
   // #668: se calcula DOS veces — acá para avisar pronto, y otra vez dentro del lock con lo que haya en ese momento, que es lo
   // que se guarda. Si no, dos selladores a la vez guardarían el mismo inicial sin ver lo del otro.
-  const cuadrar = (prev: typeof previas, base: Awaited<ReturnType<typeof resolverStockInicial>>) => {
+  const cuadrar = (prev: PreviaTurno[], base: Awaited<ReturnType<typeof resolverStockInicial>>, ventas: VentasDelDia) => {
     const stockIniAgua = base.stockIniAgua + netoPrevioDelDia(prev, 'PACA_AGUA')
     const stockIniHielo = base.stockIniHielo + netoPrevioDelDia(prev, 'PACA_HIELO')
     // #618: botellones llenos (sin pérdidas): lo llenado por las producciones anteriores del día suma al inicial.
@@ -156,15 +142,10 @@ export async function POST(request: NextRequest) {
       stockIniAgua, stockIniHielo, stockFinEsperadoAgua, stockFinEsperadoHielo, diferenciaAgua, diferenciaHielo, itemBot, hayDiferencia,
     }
   }
-  const { hayDiferencia } = cuadrar(previas, stockInicial)
+  // Esta validación se hace dentro del lock para no impedir un replay legítimo
+  // cuyo entorno (ventas/stock) pudo haber cambiado después del primer guardado.
   const obsTrim = (parsed.data.obs || '').trim()
-
-  if (hayDiferencia && obsTrim === '') {
-    return apiError(
-      'Si hay diferencia de stock debés explicar la causa en observaciones',
-      400,
-    )
-  }
+  const huellaEntrada = huellaCreacionProduccion(parsed.data, fechaProduccion)
 
   let lastError: Error | null = null
 
@@ -177,6 +158,9 @@ export async function POST(request: NextRequest) {
           // Serializable + advisory lock juntos causan P2034 innecesarios.
           // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:produccion` en lugar
           // del entero fijo 8 (que colisionaba con NC).
+          // Orden único de locks: CIERRE:fecha → SECUENCIA:produccion.
+          // Ambos POST y PUT respetan este orden y el cierre usa CIERRE:fecha.
+          await acquireAdvisoryLockTx(tx, 'CIERRE', fechaProduccion.toISOString())
           await acquireAdvisoryLockTx(tx, 'SECUENCIA', 'produccion')
 
           // FASE 1 (ADR-IDEMPOTENCIA-001): dedup por offlineId DENTRO del lock.
@@ -188,9 +172,49 @@ export async function POST(request: NextRequest) {
               include: { items: true, trabajador: true },
             })
             if (existente) {
+              // Los registros nuevos conservan la huella del request original en
+              // Historial. El fallback se usa solo para producción histórica.
+              const auditoria = await tx.historial.findFirst({
+                where: { entidad: 'Produccion', registroId: existente.id, accion: 'CREATE' },
+                orderBy: { fecha: 'asc' },
+                select: { datos: true },
+              })
+              let huellaOriginal: string | null = null
+              if (auditoria) {
+                try {
+                  const datos = JSON.parse(auditoria.datos) as Record<string, unknown>
+                  if (typeof datos._idempotencyHash === 'string') huellaOriginal = datos._idempotencyHash
+                } catch {
+                  // Historial legado inválido: comparar los campos persistidos.
+                }
+              }
+              // Sin fecha explícita, el primer intento fijó la fecha en el
+              // servidor. Un reintento tras medianoche sigue siendo el MISMO
+              // alta; no debe compararse con la fecha actual del segundo envío.
+              const fechaOriginalParaReplay = parsed.data.fecha ? fechaProduccion : existente.fecha
+              const huellaReplay = huellaCreacionProduccion(parsed.data, fechaOriginalParaReplay)
+              const coincide = huellaOriginal !== null
+                ? huellaOriginal === huellaReplay
+                : coincideProduccionPersistida(existente, parsed.data, fechaOriginalParaReplay)
+              if (!coincide) throw new Error('OFFLINE_ID_CONFLICTO')
               return { deduped: true as const, produccion: existente }
             }
           }
+
+          // Reintentos genuinos (mismo offlineId y misma huella) ya
+          // retornaron arriba. Aplicar el límite al ALTA, nunca al replay.
+          // Volver a leer el día actual por si cruzó medianoche esperando lock.
+          if (parsed.data.fecha) {
+            const motivo = motivoFechaProduccionInvalida(diaProduccion, todayInBogota())
+            if (motivo) throw new Error(motivo)
+          }
+
+          // Un alta nueva de un día cerrado jamás puede entrar después del
+          // cierre: se comprueba en la misma tx protegida por CIERRE:fecha.
+          const cierreVigente = await tx.cierreDia.findUnique({
+            where: { fecha: fechaProduccion }, select: { id: true },
+          })
+          if (cierreVigente) throw new Error('DIA_CERRADO')
 
           // Re-validar duplicado dentro del lock (defense in depth).
           // Como el lock se libera al hacer COMMIT, los requests posteriores
@@ -214,7 +238,8 @@ export async function POST(request: NextRequest) {
           })
           if (conflictoJornada(previasTx)) throw new Error('JORNADA_CON_OTRO_TURNO')
           const baseTx = await resolverStockInicial(tx, parsed.data.fecha ? fechaProduccion : undefined)
-          const cuadre = cuadrar(previasTx, baseTx)
+          const ventasTx = await getVentasDelDia(new Date(fechaProduccion.getTime() + 12 * 3_600_000), tx)
+          const cuadre = cuadrar(previasTx, baseTx, ventasTx)
           if (cuadre.hayDiferencia && obsTrim === '') throw new Error('OBS_REQUERIDA')
 
           const trabajador = await tx.trabajador.findUnique({
@@ -270,7 +295,7 @@ export async function POST(request: NextRequest) {
           }
           const comRepartTotal = comRepartAgua + comRepartHielo
 
-          return { deduped: false as const, produccion: await tx.produccion.create({
+          const produccion = await tx.produccion.create({
             data: {
               fecha: fechaProduccion,
               turno: parsed.data.turno,
@@ -289,7 +314,7 @@ export async function POST(request: NextRequest) {
                     conteoB: itemAgua.conteoB,
                     producido: prodAgua,
                     stockIni: cuadre.stockIniAgua,
-                    ventas: ventas.aguaVendida,
+                    ventas: ventasTx.aguaVendida,
                     stockFinEsperado: cuadre.stockFinEsperadoAgua,
                     stockFinFisico: itemAgua.stockFinFisico,
                     diferencia: cuadre.diferenciaAgua,
@@ -304,7 +329,7 @@ export async function POST(request: NextRequest) {
                     conteoB: itemHielo.conteoB,
                     producido: prodHielo,
                     stockIni: cuadre.stockIniHielo,
-                    ventas: ventas.hieloVendido,
+                    ventas: ventasTx.hieloVendido,
                     stockFinEsperado: cuadre.stockFinEsperadoHielo,
                     stockFinFisico: itemHielo.stockFinFisico,
                     diferencia: cuadre.diferenciaHielo,
@@ -319,7 +344,39 @@ export async function POST(request: NextRequest) {
               },
             },
             include: { trabajador: true, items: true },
-          }) }
+          })
+
+          // Auditoría de creación ATÓMICA: si falla Historial, Prisma revierte
+          // tanto Produccion como sus items y la API no afirma éxito.
+          await logAudit({
+            entidad: 'Produccion',
+            registroId: produccion.id,
+            accion: 'CREATE',
+            datos: {
+              _idempotencyHash: huellaEntrada,
+              fecha: produccion.fecha,
+              turno: produccion.turno,
+              prodAgua,
+              prodHielo,
+              diferenciaAgua: produccion.items.find(i => i.producto === 'PACA_AGUA')?.diferencia,
+              diferenciaHielo: produccion.items.find(i => i.producto === 'PACA_HIELO')?.diferencia,
+              obs: produccion.obs,
+              items: produccion.items.map(i => ({
+                producto: i.producto,
+                producido: i.producido,
+                stockFinFisico: i.stockFinFisico,
+                diferencia: i.diferencia,
+              })),
+            },
+            usuarioId: userId,
+            ip,
+            userAgent,
+          }, tx)
+
+          // Bump version alongside production and Historial; a stale
+          // Serializable Cierre must retry rather than seal old numbers.
+          await marcarVersionProduccionCierre(tx, fechaProduccion)
+          return { deduped: false as const, produccion }
         },
         {
           // ReadCommitted es suficiente: el advisory lock serializa.
@@ -334,31 +391,6 @@ export async function POST(request: NextRequest) {
         return apiSuccess({ produccion, deduped: true }, 200)
       }
 
-      // FIX 4.1: audit log detallado
-      logAudit({
-        entidad: 'Produccion',
-        registroId: produccion.id,
-        accion: 'CREATE',
-        datos: {
-          fecha: produccion.fecha,
-          turno: produccion.turno,
-          prodAgua,
-          prodHielo,
-          diferenciaAgua: produccion.items.find((i) => i.producto === 'PACA_AGUA')?.diferencia,
-          diferenciaHielo: produccion.items.find((i) => i.producto === 'PACA_HIELO')?.diferencia,
-          obs: produccion.obs,
-          items: produccion.items.map(i => ({
-            producto: i.producto,
-            producido: i.producido,
-            stockFinFisico: i.stockFinFisico,
-            diferencia: i.diferencia,
-          })),
-        },
-        usuarioId: userId,
-        ip,
-        userAgent,
-      }).catch(() => {})
-
       publishRealtimeEvent('produccion.created', produccion.id).catch(() => {})
 
       return apiSuccess({ produccion }, 201)
@@ -370,6 +402,18 @@ export async function POST(request: NextRequest) {
         if (attempt < MAX_RETRIES - 1) continue
       }
 
+      if (lastError.message === 'OFFLINE_ID_CONFLICTO') {
+        return apiError('Este identificador de reintento ya corresponde a una producción con datos diferentes', 409, { code: 'OFFLINE_ID_CONFLICTO' })
+      }
+      if (lastError.message === 'FECHA_FUTURA') {
+        return apiError('No se puede registrar producción de un día que no ha llegado', 422, { code: 'FECHA_FUTURA' })
+      }
+      if (lastError.message === 'FECHA_MUY_ANTIGUA') {
+        return apiError(`Solo se registra producción de hoy y de los ${DIAS_MAX_PRODUCCION_ATRASADA} días anteriores`, 422, { code: 'FECHA_MUY_ANTIGUA' })
+      }
+      if (lastError.message === 'DIA_CERRADO') {
+        return apiError('Ese día ya está cerrado: no se puede registrar producción', 409, { code: 'DIA_CERRADO' })
+      }
       if (lastError.message === 'PRODUCCION_DUPLICADA') {
         return apiError(
           `Ya existe producción registrada para este trabajador en el turno ${parsed.data.turno} de ese día`,
