@@ -345,6 +345,38 @@ test.describe('Gastos', () => {
     await expect.poll(() => consultados).toBe(1)
   })
 
+  test('#979: el polling no oculta gastos ni duplica la carga inicial', async ({ page }) => {
+    await loginAs(page, 'admin')
+    const alta = await apiPost(page, '/api/gastos', {
+      categoria: 'OTRO', descripcion: 'Sigue visible al refrescar', monto: 8500,
+    })
+    expect(alta.status()).toBe(201)
+    let solicitudesIniciales = 0
+    page.on('request', request => {
+      if (request.url().includes('/api/gastos?') && request.method() === 'GET') solicitudesIniciales += 1
+    })
+    await goto(page, '/gastos')
+    await expect(page.getByText('Sigue visible al refrescar')).toBeVisible()
+    expect(solicitudesIniciales).toBe(1)
+
+    let refrescos = 0
+    await page.route('**/api/gastos?**', async ruta => {
+      refrescos += 1
+      await new Promise(resolve => setTimeout(resolve, 600))
+      await ruta.continue()
+    })
+    const siguiente = page.waitForResponse(resp =>
+      resp.url().includes('/api/gastos?') && resp.request().method() === 'GET'
+    )
+    // Evento real escuchado por el hook al recuperar conectividad.
+    await page.evaluate(() => window.dispatchEvent(new Event('online')))
+    await expect.poll(() => refrescos).toBe(1)
+    await expect(page.getByText('Sigue visible al refrescar')).toBeVisible()
+    await expect(page.getByText('Cargando gastos…')).toHaveCount(0)
+    await siguiente
+    await expect(page.getByText('Sigue visible al refrescar')).toBeVisible()
+  })
+
   test('API crear gasto', async ({ page }) => {
     await loginAs(page, 'admin')
 
