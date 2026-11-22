@@ -1,4 +1,5 @@
 import { PrismaClient, RolUsuario, OrigenPedido, EstadoEntrega, EstadoPago } from '@prisma/client'
+import { exigirBaseLocal } from './seed-guard'
 
 /**
  * Seed de volumen para pruebas de performance (Módulo 12 QA Paranoico).
@@ -12,6 +13,9 @@ import { PrismaClient, RolUsuario, OrigenPedido, EstadoEntrega, EstadoPago } fro
  *   npx tsx prisma/seed-large.ts
  *   CLIENTES=500 PEDIDOS=1000 npx tsx prisma/seed-large.ts
  */
+
+// Los seeds crean usuarios con contraseñas conocidas: solo se ejecutan contra una base local (ver seed-guard.ts).
+exigirBaseLocal()
 
 const prisma = new PrismaClient({
   datasourceUrl: process.env.DIRECT_URL || process.env.DATABASE_URL,
