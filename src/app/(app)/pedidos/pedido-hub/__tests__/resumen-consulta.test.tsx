@@ -63,4 +63,36 @@ describe("ResumenConsulta colapsable", () => {
     render(<ResumenConsulta resumen={resumen} filtros={filtros} />);
     expect(screen.getByTestId("consulta-resumen-alternar")).toHaveAttribute("aria-expanded", "true");
   });
+  it("muestra 581 entregadas hoy y explica por qué no son las 571 de pedidos fechados hoy", () => {
+    movil(true);
+    const conOperacion = {
+      ...resumen,
+      productos: [{ producto: "PACA_AGUA", pedidas: 571, entregadas: 571 }],
+      operacionHoy: {
+        total: 581,
+        productos: [{
+          producto: "PACA_AGUA",
+          entregadasHoy: 581,
+          dePedidosHoy: 571,
+          dePedidosAnteriores: 10,
+          porConciliarOrigen: 0,
+        }],
+      },
+    };
+    render(<ResumenConsulta resumen={conOperacion} filtros={filtros} />);
+    expect(screen.getByTestId("consulta-total-fisico-hoy")).toHaveTextContent("581");
+    fireEvent.click(screen.getByTestId("consulta-resumen-alternar"));
+    expect(screen.getByTestId("consulta-resumen-operacion-hoy")).toHaveTextContent("581 productos");
+    expect(screen.getByTestId("consulta-resumen-operacion-hoy")).toHaveTextContent("571 de pedidos de hoy");
+    expect(screen.getByTestId("consulta-resumen-operacion-hoy")).toHaveTextContent("10 de pedidos anteriores");
+    expect(screen.getByTestId("consulta-productos-resumen")).toHaveTextContent("571 pedidas");
+  });
+
+  it("cuando falla la lectura física no muestra un cero ficticio", () => {
+    movil(true);
+    render(<ResumenConsulta resumen={{ ...resumen, operacionHoyError: true }} filtros={filtros} />);
+    expect(screen.getByText("Entregas de hoy por conciliar")).toBeInTheDocument();
+    expect(screen.queryByTestId("consulta-total-fisico-hoy")).toBeNull();
+  });
+
 });

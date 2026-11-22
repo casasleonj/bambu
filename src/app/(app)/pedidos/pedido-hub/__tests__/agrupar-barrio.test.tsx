@@ -207,13 +207,13 @@ describe("filtro «Agrupar por barrio»", () => {
 });
 
 describe("#909 — Recorrido ↔ FIFO", () => {
-  it("«FIFO» apaga el modo Recorrido aunque no haya prioridades en la URL", () => {
+  it("el mismo botón Recorrido apaga el modo y vuelve al orden General sin controles extra", () => {
     montar([fila("a", 1, CENTRO), fila("b", 2, VILLA)]);
     const recorrido = screen.getByRole("button", { name: "Recorrido" });
     fireEvent.click(recorrido);
     expect(recorrido).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("recorrido-barrio-select")).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText("Volver al orden FIFO"));
+    fireEvent.click(recorrido);
     expect(recorrido).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByTestId("recorrido-barrio-select")).toBeNull();
     expect(screen.queryByLabelText("Subir Centro")).toBeNull();
@@ -278,6 +278,7 @@ describe("#915 — arrastres y entregas anteriores dentro del grupo de su barrio
     pedidoId, numero, nombre: `Cliente ${numero}`, fechaPedido: "2026-10-28", estadoAlCorte: "PRIMERA_ENTREGA" as const,
     cantidadesDelRango: [{ producto: "PACA_AGUA", cantidad: 4 }], cantidadesAlCorte: [{ producto: "PACA_AGUA", cantidad: 4 }],
     fechaCompletado: "2026-10-29", hitos: [{ fecha: "2026-10-29", cantidades: [{ producto: "PACA_AGUA", cantidad: 4 }], completado: true, porConciliar: false }],
+    entregas: [{ instante: "2026-10-29T15:00:00.000Z", fecha: "2026-10-29", horaVerificable: true, cantidades: [{ producto: "PACA_AGUA", cantidad: 4 }], completa: true, faltante: [], porConciliar: false }],
     pedidoAnterior: true, grupoBarrio: g,
   });
   const SOLO = { clave: "b:solo", etiqueta: "Barrio Solo" };

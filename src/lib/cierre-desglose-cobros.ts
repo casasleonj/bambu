@@ -198,6 +198,9 @@ export interface GastoParaLista {
   fecha: Date
   responsable: string | null
   createdBy: { nombre: string; username: string } | null
+  embarqueId?: string | null
+  trabajadorId?: string | null
+  esPagoPersonal?: boolean
 }
 
 export interface GastoDelDia {
@@ -206,7 +209,13 @@ export interface GastoDelDia {
   descripcion: string
   monto: number
   fecha: string
+  /** Para registros nuevos es exclusivamente la persona que capturó. */
   registro: string | null
+  /** No confundir responsable del desembolso con quien registró. */
+  responsable?: string | null
+  /** Los cierres históricos anteriores carecen de esta garantía. */
+  registroConfiable?: boolean
+  origen?: 'NOMINA' | 'EMBARQUES' | 'GASTOS'
 }
 
 /** #646: los gastos del día uno por uno; su suma es «Gastos» del cierre. */
@@ -217,6 +226,11 @@ export function listarGastosDelDia(gastos: readonly GastoParaLista[]): GastoDelD
     descripcion: g.descripcion,
     monto: Number(g.monto),
     fecha: g.fecha.toISOString(),
-    registro: g.responsable?.trim() || (g.createdBy ? (g.createdBy.nombre.trim() || g.createdBy.username) : null),
+    registro: g.createdBy ? (g.createdBy.nombre.trim() || g.createdBy.username) : null,
+    responsable: g.responsable?.trim() || null,
+    registroConfiable: true,
+    origen: g.categoria === 'NOMINA' || g.esPagoPersonal || g.trabajadorId ||
+      g.descripcion.startsWith('Reversión nómina anulada -')
+      ? 'NOMINA' : g.embarqueId ? 'EMBARQUES' : 'GASTOS',
   }))
 }

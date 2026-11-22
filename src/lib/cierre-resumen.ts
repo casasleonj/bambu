@@ -171,7 +171,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
       // #646: cada gasto del día (descripción, categoría, hora, quién lo registró e importe) para el desplegable del cierre.
       prisma.gasto.findMany({
         where: { fecha: dateRange },
-        select: { id: true, categoria: true, descripcion: true, monto: true, fecha: true, responsable: true, createdBy: { select: { nombre: true, username: true } } },
+        select: { id: true, categoria: true, descripcion: true, monto: true, fecha: true, responsable: true, embarqueId: true, trabajadorId: true, esPagoPersonal: true, createdBy: { select: { nombre: true, username: true } } },
         orderBy: [{ fecha: 'asc' }, { id: 'asc' }],
       }),
     ])
