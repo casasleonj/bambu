@@ -1,5 +1,13 @@
 // @tests api/gasto
-import {test, expect, loginAs, goto, apiPost, apiGet,  resetDatabase} from './fixtures'
+import { test, expect, loginAs, goto, apiPost, apiGet, resetDatabase } from './fixtures'
+import type { Page } from '@playwright/test'
+
+async function elegirCategoria(page: Page, nombre: string) {
+  const selector = page.locator('#gasto-categoria')
+  await selector.fill(nombre)
+  await page.getByRole('option', { name: new RegExp(`^${nombre}// @tests api/gasto
+, 'i') }).click()
+}
 
 test.describe('Gastos', () => {
   test.describe.configure({ mode: 'serial' })
@@ -15,18 +23,17 @@ test.describe('Gastos', () => {
     await goto(page, '/gastos')
 
     await expect(page.locator('h1:has-text("Gastos")')).toBeVisible()
-    await expect(page.locator('button:has-text("Nuevo Gasto")')).toBeVisible()
+    await expect(page.locator('button:has-text("Nuevo gasto")')).toBeVisible()
   })
 
   test('crear gasto', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
 
-    await page.click('button:has-text("Nuevo Gasto")')
+    await page.click('button:has-text("Nuevo gasto")')
     await page.waitForTimeout(500)
 
-    const categoriaSelect = page.locator('select').first()
-    await categoriaSelect.selectOption('SERVICIOS')
+    await elegirCategoria(page, 'Servicios')
 
     await page.locator('#gasto-descripcion').fill('Gasto E2E test')
     await page.locator('#gasto-monto').fill('15000')
@@ -50,16 +57,15 @@ test.describe('Gastos', () => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
 
-    await page.click('button:has-text("Nuevo Gasto")')
+    await page.click('button:has-text("Nuevo gasto")')
     await page.waitForTimeout(500)
 
-    const categoriaSelect = page.locator('select').first()
-    await categoriaSelect.selectOption('TRANSPORTE')
+    await elegirCategoria(page, 'Transporte')
 
     await page.locator('#gasto-descripcion').fill('Gasto completo E2E')
     await page.locator('#gasto-monto').fill('25000')
 
-    const responsableInput = page.locator('input[placeholder="Quién paga"]')
+    const responsableInput = page.locator('#gasto-responsable')
     await responsableInput.fill('Admin Test')
 
     const [response] = await Promise.all([
@@ -78,38 +84,58 @@ test.describe('Gastos', () => {
     expect(bodyText).toContain('Admin Test')
   })
 
-  test('sin categoria elegida el gasto se registra como OTRO (categoria por defecto)', async ({ page }) => {
+  test('categoría obligatoria: no guarda hasta seleccionar', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
-
-    await page.click('button:has-text("Nuevo Gasto")')
-    await page.waitForTimeout(500)
-
-    // La categoría arranca en «OTRO»: ya no hay error por no elegir una.
-    await expect(page.locator('#gasto-categoria')).toHaveValue('OTRO')
-    await page.locator('#gasto-descripcion').fill('Test sin categoria')
+    await page.getByRole('button', { name: 'Nuevo gasto' }).click()
+    await page.locator('#gasto-descripcion').fill('Prueba categoría obligatoria')
     await page.locator('#gasto-monto').fill('5000')
-
+    const guardar = page.getByRole('button', { name: 'Guardar gasto' })
+    await expect(page.locator('#gasto-categoria')).toHaveValue('')
+    await expect(guardar).toBeDisabled()
+    await elegirCategoria(page, 'Otro')
+    await expect(guardar).toBeEnabled()
     const [response] = await Promise.all([
-      page.waitForResponse((r) => r.url().includes('/api/gastos') && r.request().method() === 'POST'),
-      page.locator('button:has-text("Guardar")').click(),
+      page.waitForResponse(r => r.url().endsWith('/api/gastos') && r.request().method() === 'POST'),
+      guardar.click(),
     ])
     expect(response.status()).toBe(201)
     expect((await response.json()).gasto.categoria).toBe('OTRO')
+  })
+
+  test('permite crear categoría nueva y reutilizarla', async ({ page }) => {
+    await loginAs(page, 'admin')
+    await goto(page, '/gastos')
+    await page.getByRole('button', { name: 'Nuevo gasto' }).click()
+    const categoria = page.locator('#gasto-categoria')
+    await categoria.fill('Repuestos menores')
+    await page.getByRole('option', { name: /Agregar categoría «Repuestos Menores»/ }).click()
+    await expect(categoria).toHaveValue('Repuestos Menores')
+    await page.locator('#gasto-descripcion').fill('Repuestos E2E categoría')
+    await page.locator('#gasto-monto').fill('9000')
+    const [alta] = await Promise.all([
+      page.waitForResponse(r => r.url().endsWith('/api/gastos') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: 'Guardar gasto' }).click(),
+    ])
+    expect(alta.status()).toBe(201)
+    expect((await alta.json()).gasto.categoria).toBe('REPUESTOS MENORES')
+    await page.getByRole('button', { name: 'Nuevo gasto' }).click()
+    await categoria.fill('repuestos')
+    await expect(page.getByRole('option', { name: 'Repuestos Menores' })).toBeVisible()
   })
 
   test('validacion: monto vacio', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
 
-    await page.click('button:has-text("Nuevo Gasto")')
+    await page.click('button:has-text("Nuevo gasto")')
     await page.waitForTimeout(500)
 
     await page.locator('#gasto-descripcion').fill('Sin monto')
 
     // Sin monto «Guardar» queda deshabilitado (no se puede ni hacer clic).
     await expect(page.locator('button:has-text("Guardar")')).toBeDisabled()
-    await expect(page.locator('h3:has-text("Registrar Gasto")')).toBeVisible()
+    await expect(page.locator('h2:has-text("Nuevo gasto")')).toBeVisible()
   })
 
   test('filtrar por fecha', async ({ page }) => {
@@ -151,15 +177,15 @@ test.describe('Gastos', () => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
 
-    await page.getByRole('button', { name: 'Nuevo Gasto' }).click()
+    await page.getByRole('button', { name: 'Nuevo gasto' }).click()
     const descripcion = 'Combustible JL #755 E2E'
-    await page.locator('#gasto-categoria').selectOption('TRANSPORTE')
+    await elegirCategoria(page, 'Transporte')
     await page.locator('#gasto-descripcion').fill(descripcion)
     await page.locator('#gasto-monto').fill('50000')
 
     const [alta] = await Promise.all([
       page.waitForResponse(res => res.url().endsWith('/api/gastos') && res.request().method() === 'POST'),
-      page.getByRole('button', { name: 'Guardar', exact: true }).click(),
+      page.getByRole('button', { name: 'Guardar gasto', exact: true }).click(),
     ])
     expect(alta.status()).toBe(201)
     const gastoId: string = (await alta.json()).gasto.id
@@ -171,7 +197,7 @@ test.describe('Gastos', () => {
     await expect(detalle).toContainText(descripcion)
     await expect(detalle).toContainText('50.000')
     await detalle.getByRole('button', { name: 'Corregir', exact: true }).click()
-    await detalle.locator('#editar-monto-gasto').fill('45000')
+    await detalle.locator('#editar-monto').fill('45000')
     await detalle.locator('#gasto-motivo-ajuste').fill('Comprobante inicial mal digitado')
 
     const [correccion] = await Promise.all([
@@ -191,7 +217,7 @@ test.describe('Gastos', () => {
       detalle.getByRole('button', { name: 'Confirmar anulación' }).click(),
     ])
     expect(anulacion.status()).toBe(200)
-    await expect(detalle).toContainText('fue anulado')
+    await expect(detalle).toContainText('Gasto anulado')
     await expect(detalle).toContainText('45.000')
     await expect(detalle.getByRole('button', { name: 'Corregir', exact: true })).toHaveCount(0)
 
@@ -205,7 +231,7 @@ test.describe('Gastos', () => {
     await goto(page, '/gastos')
     const tarjetaAnulada = page.getByTestId(`gasto-${gastoId}`)
     await expect(tarjetaAnulada).toContainText('Anulado')
-    await expect(tarjetaAnulada).toContainText('Original: ')
+    await expect(tarjetaAnulada).toContainText('Original')
     await expect(tarjetaAnulada).toContainText('45.000')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   })
