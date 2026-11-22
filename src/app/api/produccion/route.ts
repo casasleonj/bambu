@@ -1,18 +1,18 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
+import { Prisma, type Turno } from '@prisma/client'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ProduccionCreateSchema } from '@/lib/validators'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
-import { getVentasDelDia } from '@/lib/ventas'
+import { getVentasDelDia, type VentasDelDia } from '@/lib/ventas'
 import { calcComSellador, itemBotellon } from '@/lib/comisiones'
 import { getTodayRange, getDateRange } from '@/lib/dates'
 import { DIAS_MAX_PRODUCCION_ATRASADA, motivoFechaProduccionInvalida } from '@/lib/produccion-fecha'
-import { netoPrevioDelDia } from '@/lib/produccion-previas'
+import { netoPrevioDelDia, type ProduccionPrevia } from '@/lib/produccion-previas'
 import { startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
 import { publishRealtimeEvent } from '@/lib/realtime'
@@ -110,19 +110,12 @@ export async function POST(request: NextRequest) {
   // La comprobación de Cierre se realiza DENTRO de la transacción, bajo
   // CIERRE:fecha. El precheck externo permitía una carrera con Cierre.
 
-  // Re-leemos ventas adentro del handler para mayor fidelidad (pueden cambiar
-  // entre el preview y el POST)
-  const [ventas, previas] = await Promise.all([
-    getVentasDelDia(parsed.data.fecha ? new Date(fechaProduccion.getTime() + 12 * 3_600_000) : undefined),
-    // #645: varias producciones el mismo día (otro sellador u otro turno)
-    prisma.produccion.findMany({
-      where: { fecha: fechaProduccion },
-      select: { trabajadorId: true, turno: true, items: { select: { producto: true, producido: true, rotas: true, filtradas: true, consumoInterno: true } } },
-    }),
-  ])
+  // #630: no leer ventas ni producciones previas antes del lock; una entrega
+  // confirmada durante la espera debe reflejarse en el cuadre guardado.
+  type PreviaTurno = ProduccionPrevia & { trabajadorId: string; turno: Turno }
 
   // #645: «Jornada completa» no convive con otro turno del mismo sellador ese día.
-  const conflictoJornada = (prev: typeof previas) => prev
+  const conflictoJornada = (prev: PreviaTurno[]) => prev
     .filter((p) => p.trabajadorId === parsed.data.trabajadorId)
     .some((p) => (parsed.data.turno === 'JORNADA') !== (p.turno === 'JORNADA'))
   // FIX 1.5: validar server-side que obs esté presente si hay diferencia
@@ -133,7 +126,7 @@ export async function POST(request: NextRequest) {
   // pasa a ser parte del stock inicial de esta, para que el cuadre del día no cuente dos veces ni olvide nada.
   // #668: se calcula DOS veces — acá para avisar pronto, y otra vez dentro del lock con lo que haya en ese momento, que es lo
   // que se guarda. Si no, dos selladores a la vez guardarían el mismo inicial sin ver lo del otro.
-  const cuadrar = (prev: typeof previas, base: Awaited<ReturnType<typeof resolverStockInicial>>) => {
+  const cuadrar = (prev: PreviaTurno[], base: Awaited<ReturnType<typeof resolverStockInicial>>, ventas: VentasDelDia) => {
     const stockIniAgua = base.stockIniAgua + netoPrevioDelDia(prev, 'PACA_AGUA')
     const stockIniHielo = base.stockIniHielo + netoPrevioDelDia(prev, 'PACA_HIELO')
     // #618: botellones llenos (sin pérdidas): lo llenado por las producciones anteriores del día suma al inicial.
@@ -240,7 +233,8 @@ export async function POST(request: NextRequest) {
           })
           if (conflictoJornada(previasTx)) throw new Error('JORNADA_CON_OTRO_TURNO')
           const baseTx = await resolverStockInicial(tx, parsed.data.fecha ? fechaProduccion : undefined)
-          const cuadre = cuadrar(previasTx, baseTx)
+          const ventasTx = await getVentasDelDia(new Date(fechaProduccion.getTime() + 12 * 3_600_000), tx)
+          const cuadre = cuadrar(previasTx, baseTx, ventasTx)
           if (cuadre.hayDiferencia && obsTrim === '') throw new Error('OBS_REQUERIDA')
 
           const trabajador = await tx.trabajador.findUnique({
@@ -315,7 +309,7 @@ export async function POST(request: NextRequest) {
                     conteoB: itemAgua.conteoB,
                     producido: prodAgua,
                     stockIni: cuadre.stockIniAgua,
-                    ventas: ventas.aguaVendida,
+                    ventas: ventasTx.aguaVendida,
                     stockFinEsperado: cuadre.stockFinEsperadoAgua,
                     stockFinFisico: itemAgua.stockFinFisico,
                     diferencia: cuadre.diferenciaAgua,
@@ -330,7 +324,7 @@ export async function POST(request: NextRequest) {
                     conteoB: itemHielo.conteoB,
                     producido: prodHielo,
                     stockIni: cuadre.stockIniHielo,
-                    ventas: ventas.hieloVendido,
+                    ventas: ventasTx.hieloVendido,
                     stockFinEsperado: cuadre.stockFinEsperadoHielo,
                     stockFinFisico: itemHielo.stockFinFisico,
                     diferencia: cuadre.diferenciaHielo,
