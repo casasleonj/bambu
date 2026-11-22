@@ -6,7 +6,9 @@ Estado: **IMPLEMENTADO detrás de `COBRO_DIA_SIN_ESPEJO` (apagada por defecto).*
 `POST /api/pedidos/pagar-fiado` **no crea el `Abono` espejo** (`ESPEJO_PAGO`) cuando se cumplen **todas**:
 1. `COBRO_DIA_SIN_ESPEJO=true` **y** `CORRECCION_PAGO_SIN_ABONO=true` (sin el camino de corrección por pago, ese pago no se podría revertir; con la segunda apagada, la primera no tiene efecto).
 2. El cobro es de **un solo pedido** (`pedidoId`): el camino de «Registrar pago» de la lista de Pedidos, que el servidor ya valida (#597): entregado **hoy** (día de Bogotá), con saldo, de un cliente real, no vendido fiado a propósito, sin deuda anterior que el reparto pagaría antes y sin pasar su saldo.
-3. No es una recepción retroactiva de oficina (`recibioDinero`, `repartidorId` o `fechaRecepcion`): su día de caja puede no ser el de la entrega.
+3. Si lo registró la oficina («¿quién recibió el dinero?»), la recepción es de **hoy** (`ocurridoAt` nulo): su día de caja es el de la entrega, que este camino ya exigió. Una recepción con **fecha retroactiva** conserva su espejo, porque su día de caja puede no ser el de la entrega.
+
+> **Corrección del 21-nov-2026.** La primera versión excluía **toda** la oficina. Con la bandera activa desde el 18-nov, los 5 cobros del mismo día de un solo pedido que seguían creando espejo entraron todos por la oficina (la «gestión directa»), que es el camino habitual. Se acotó la exclusión a la fecha retroactiva (#796).
 
 **No cambia:** el cobro por Fiados (sin `pedidoId`), los pedidos de días anteriores, los abonos independientes, los 97 espejos históricos (no se borran ni se reclasifican), el `Pago`, el saldo del pedido, la factura, el libro (`ReceivableEntry`) ni la respuesta de la API salvo `abonoCreado: false`.
 
