@@ -82,7 +82,12 @@ export function CategoriaGastoSelect({ value, onChange, options, disabled = fals
           onFocus={() => { setConsulta(value ? etiquetaCategoriaGasto(value) : ''); setActivo(0); setAbierto(true) }}
           onKeyDown={tecla}
           onBlur={event => {
-            if (!container.current?.contains(event.relatedTarget as Node)) setAbierto(false)
+            // En móvil, al tocar una opción el navegador puede emitir blur con
+            // relatedTarget=null ANTES del click. No desmontar el menú en ese caso.
+            // El listener de pointerdown fuera del selector y Escape siguen cerrándolo.
+            if (event.relatedTarget && !container.current?.contains(event.relatedTarget as Node)) {
+              setAbierto(false)
+            }
           }}
           autoComplete="off" placeholder="Buscar o agregar categoría..."
           className="h-12 w-full rounded-xl border-2 border-blue-200 bg-blue-50/40 pl-10 pr-10 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-100 disabled:opacity-60"
