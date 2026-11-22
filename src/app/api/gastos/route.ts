@@ -14,6 +14,7 @@ import { NotificationEventType } from '@/lib/notifications/event-types'
 import { parseFechaGasto } from '@/lib/fecha-gasto'
 import { dayInBogota, startOfDayInBogota } from '@/lib/date-helpers'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
+import { esCategoriaPersonal } from '@/lib/gastos-categorias'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-4): Only ADMIN/CONTADOR can read gastos
@@ -103,7 +104,7 @@ export async function POST(request: NextRequest) {
 
     // #641: los pagos al personal se registran con «Pagar» en Nómina (con su medio de pago). Como gasto
     // manual se contarían dos veces en el cierre de caja.
-    if (categoria === 'NOMINA') {
+    if (esCategoriaPersonal(categoria)) {
       return apiError(
         'Los pagos al personal se registran con «Pagar» en Nómina, no como gasto.',
         422,
