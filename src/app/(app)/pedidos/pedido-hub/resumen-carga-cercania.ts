@@ -7,6 +7,7 @@
  * remanentesPorProducto, que respeta regalos y entregas parciales.
  */
 import { remanentesPorProducto } from "@/lib/barrios/remanentes-barrio";
+import { diaEntregaBogota } from "@/lib/pedidos-entregas-historial";
 import type { Pedido } from "./types";
 
 export interface ResumenCargaCercania {
@@ -44,6 +45,23 @@ function cantidadesPendientes(p: Pedido): Record<string, number> | null {
     // Datos físicos incompletos o inconciliables: nunca inventar carga.
     return null;
   }
+}
+
+/** Cercanía organiza reparto físico, NO pedidos entregados que solo deben dinero.
+ * Si el desglose es desconocido, conservar la fila para revisión en vez de
+ * inventar una entrega completa. El servidor valida de nuevo al calcular. */
+export function esVisitaPendienteCercania(p: Pedido, hoyBogota?: string): boolean {
+  if (p.canal !== "DOMICILIO" || p.embarqueId ||
+      ["ENTREGADO", "CANCELADO", "ANULADO"].includes(p.estadoEntrega)) return false;
+  // #930: la visita ya asignada y la promesa de mañana no pertenecen a la
+  // salida actual. El backend mantiene el filtro definitivo al calcular.
+  if (hoyBogota && p.fechaEntrega) {
+    const fecha = new Date(p.fechaEntrega);
+    if (Number.isFinite(fecha.getTime()) && diaEntregaBogota(fecha) > hoyBogota)
+      return false;
+  }
+  const pendientes = cantidadesPendientes(p);
+  return pendientes === null || Object.values(pendientes).some(cantidad => cantidad > 0);
 }
 
 export function resumirCargaCercania(seleccionados: readonly Pedido[]): ResumenCargaCercania {

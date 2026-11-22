@@ -24,6 +24,8 @@ import { remanentesPorProducto } from "./barrios/remanentes-barrio";
 import { ordenarBarriosFIFO } from "./barrios/fifo-barrio";
 import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
+import { detalleUnidadesEntregadasDelDia } from "./unidades-entregadas-dia";
+import { mostrarResumenOperativoHoy, resumirEntregasOperativasHoy } from "./pedidos-resumen-operativo-hoy";
 import { ordenarPorFranja } from "./pedidos-franja";
 import { ordenarPrioridadPedidos } from "./pedidos-prioridad-921";
 import { findPedidosEnRiesgo } from "./pedidos-sin-asignar";
@@ -38,6 +40,7 @@ import {
 } from "./cobros-periodo";
 import {
   leerEntregasConsulta,
+  requiereConciliacionEntrega,
   type EntregaConsulta,
 } from "./entregas-consulta";
 import {
@@ -221,9 +224,8 @@ const centavos = (v: unknown) => {
   return n;
 };
 const dec = (v: unknown) => centavos(v) / 100;
-// #939: los pagos en Prisma son DECIMAL(10,2). Sumar Number(monto) puede
-// dejar 1500.30 + 0.60 < 1500.90 por binario y perder prioridad de pago
-// CONFIRMADO. Acumular centavos exactos, igual que el resto de esta consulta.
+// #939: Prisma usa DECIMAL(10,2). Comparar pagos sumados en coma flotante
+// puede degradar visualmente un pedido 100% confirmado con centavos.
 const sumarConfirmados = (pagos: ReadonlyArray<{ monto: unknown }>): number => {
   let sumaCentavos = 0;
   for (const pago of pagos) {
@@ -334,7 +336,36 @@ export async function consultarPedidos(
   role: string | null,
   client = prisma,
 ): Promise<ResultadoConsultaPedidos> {
-  const resultado = await consultarPedidosSinAviso(f, role, client)
+  let resultado = await consultarPedidosSinAviso(f, role, client)
+  // #853: el balance físico global es una lectura opcional e independiente.
+  // Nunca comprometer la transacción de la consulta principal por un error
+  // en el detalle de entregas del día.
+  const resumenBase = resultado.resumen;
+  if (resumenBase && mostrarResumenOperativoHoy(f, todayStringBogota())) {
+    try {
+      const operacionHoy = await client.$transaction(async (tx) => {
+        const rango = rangoConsultaPedidos(f);
+        const { detalle } = await detalleUnidadesEntregadasDelDia(tx, rango);
+        const ids = [...new Set(detalle.map((d) => d.pedidoId))];
+        const pedidosOrigen = await tx.pedido.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, fecha: true },
+        });
+        return resumirEntregasOperativasHoy(
+          detalle,
+          new Map(pedidosOrigen.map((p) => [p.id, p.fecha])),
+          rango,
+        );
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        timeout: 15000,
+      });
+      resultado = { ...resultado, resumen: { ...resumenBase, operacionHoy } };
+    } catch (error) {
+      logger.warn({ err: error }, "No se pudo conciliar el resumen operativo del día (#853)");
+      resultado = { ...resultado, resumen: { ...resumenBase, operacionHoyError: true } };
+    }
+  }
   const visibles = [...resultado.pedidos, ...(resultado.arrastrados ?? [])]
   const clientes = [...new Set(visibles.map(p => p.clienteId))]
     .filter(id => !isConsumidorFinalCanonical(id))
@@ -813,7 +844,7 @@ async function leerConsultaPedidos(
             );
             entregasPorConciliar = new Set([
               ...hechos
-                .filter((e) => !e.cantidades || e.incompleto)
+                .filter(requiereConciliacionEntrega)
                 .map((e) => e.pedidoId),
               ...[...sinFechaEntrega].filter((id) => ids.has(id)),
             ]).size;
@@ -911,6 +942,11 @@ async function leerConsultaPedidos(
         const hechos = hechosPagina
           .filter((e) => e.pedidoId === raw.id)
           .sort((a, b) => +b.fecha - +a.fecha);
+        // #959: en mostrador un hecho HISTORICO con cantidades/fecha exactas
+        // sí es válido; no equiparar fuente histórica con evento incompleto.
+        const entregaEnRangoIncierta = diaOperativo && hechos.some((e) =>
+          e.fecha >= rango.desde && e.fecha < rango.hasta && requiereConciliacionEntrega(e),
+        );
         const ids = [
           ...new Set(
             hechos
@@ -973,14 +1009,8 @@ async function leerConsultaPedidos(
             e.fecha >= rango.desde && e.fecha < rango.hasta
           ) ? {
             entregaEnPeriodo: {
-              porConciliar: hechos.some((e) =>
-                e.fecha >= rango.desde && e.fecha < rango.hasta &&
-                (e.fuente === "HISTORICO" || e.incompleto || !e.cantidades)
-              ),
-              unidades: hechos.some((e) =>
-                e.fecha >= rango.desde && e.fecha < rango.hasta &&
-                (e.fuente === "HISTORICO" || e.incompleto || !e.cantidades)
-              ) ? null : hechos
+              porConciliar: entregaEnRangoIncierta,
+              unidades: entregaEnRangoIncierta ? null : hechos
                 .filter((e) => e.fecha >= rango.desde && e.fecha < rango.hasta)
                 .reduce((n, e) => n + (e.cantidades ?? []).reduce((subtotal, l) => subtotal + l.cantidad, 0), 0),
             },
