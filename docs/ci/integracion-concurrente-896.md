@@ -1,6 +1,6 @@
 # #896 · Integración concurrente de PR sin CI infinito
 
-Fecha de verificación: 2026-11-22. **Estado: PROPUESTA documentada; ningún mecanismo de merge ni ahorro en release está activado por este documento.** Revisión adversarial de tres rondas incorporada a continuación. Las restricciones nuevas de la auditoría **prevalecen sobre cualquier frase anterior** si hubiera tensión entre ellas.
+Fecha de verificación: 2026-11-22. **Estado: PROPUESTA documentada; ningún mecanismo de merge ni ahorro en release está activado por este documento.** Revisión adversarial iterada (cinco rondas, incluidas las pruebas de release y el contraataque a las barreras de producción). Las restricciones nuevas de la auditoría **prevalecen sobre cualquier frase anterior** si hubiera tensión entre ellas.
 
 ## Hallazgo P0: despliegue anticipado con migración fallida (verificado 22/11)
 
@@ -24,6 +24,34 @@ El merge PR #971 incluía `prisma/migrations/20261122_gasto_anulacion_auditada_7
 4. Mantener estrictamente `CI gate (resumen)` de los PR; **no** introducir bypass de merge, deduplicación PR→main ni promoción hasta que la barrera esté comprobada.
 
 Esta revisión no prueba daño real de datos, no modifica migraciones, esquema, deploy, variables ni reglas. **Estado: PENDIENTE crítico de mitigación y verificación.**
+
+### Iteración 5: intentar romper la nueva barrera de producción
+
+La evidencia del commit #971 obligó a **corregir el orden del plan**: la integridad del proceso de release precede a cualquier optimización que pueda reducir el tiempo de validación. El simple remedio «migrar primero y desplegar después» tampoco basta:
+
+| Adversarial sobre la barrera corregida | Regla necesaria |
+|---|---|
+| Migración aplica, pero rompe la versión actualmente viva mientras Vercel espera | Migraciones expand/contract compatibles hacia atrás; antes del despliegue ejecutar solo expansión segura, y contracción en etapa posterior |
+| Token corregido, pero el job apunta a otra cuenta/equipo/proyecto | Validar identidad team/proyecto, rama y commit exactos; secretos solo en entorno protegido. Nunca imprimir credenciales |
+| Falló `_prisma_migrations`, pero una persona aplicó SQL manualmente | Inspección read-only de historia y esquema real; conciliación explícita antes de ejecutar; jamás reejecutar DDL por suposición |
+| GitHub CI y migración pasan para commit A, pero Vercel va a promover B | Comprobar SHA de deployment, cabeza actual de `main`, resultado de CI, esquema requerido y contexto de entorno justo antes de dar alias |
+| Vercel omite un Deployment Check porque no encuentra su script o no llega señal | Configurar un check **realmente requerido** y probar falta, error, timeout y fallo con un candidato sintético; nunca confundir ausencia con success |
+| Vercel/GitHub emiten checks con el mismo nombre | Nombres/identidades únicos, revisar fuente de emisión para evitar colisiones y race conditions |
+| Llega un commit nuevo mientras la versión anterior espera promoción | Serialización de promociones y control de obsolescencia, no permitir que el deployment viejo sobreescriba el nuevo |
+| Una migración destructiva obliga a rollback de código | No dar por hecho rollback transaccional de DDL ni compatibilidad inversa; plan de recuperación y backup validado, sin DDL en pruebas aisladas |
+| Una fusión docs-only activa CI y Vercel innecesariamente | Se puede optimizar trabajo documental después de demostrar barrera de release; no convertir paths o ignoreCommand en bypass del gate |
+| Deployment Check bloqueante no está disponible/configurable para el proyecto | No simularlo con etiqueta o status informativo; mantener proceso manual de promoción con autorización y prueba verificable hasta resolver limitación |
+
+**Convergencia revisada tras cinco rondas (orden por dependencia y riesgo):**
+
+1. **R0 seguridad de producción:** analizar solo lectura la migración #971, verificar estado real de Deployment Checks/auto-alias en Vercel y diseñar barrera fail-closed que valide CI + esquema/migración + identidad del deployment. Sin tocar producción todavía.
+2. **R1 medición de rendimiento:** obtener baseline que separe latencia vs. consumo y muestras equivalentes.
+3. **R2 experimento de CI ligero:** build aislado por perfil, distribución segura entre shards en mismo run, sin menos tests y con rollback.
+4. **R3 impacto en modo sombra:** cerrar evidencia de falsos negativos y alcance de specs, sin alterar gate.
+5. **R4 concurrencia:** priorizar Merge Queue nativo sujeto a titularidad de organización e integraciones verificadas; si no, serialización strict y CI acelerado.
+6. **R5 reuso PR→main:** solo si la identidad de candidato, control de promoción y resultados de ejecución hacen verificable el ahorro sin liberar código no certificado.
+
+**Condición de parada:** nuevas hipótesis arquitectónicas no deben convertirse en requisitos sin experimentos de laboratorio y lecturas de configuración efectiva. Los escenarios restantes necesitan verificaciones empíricas: temporalidad real de checks de Vercel, `_prisma_migrations`, benchmarks comparables, activación nativa Merge Queue tras evaluación y fallos sintéticos. **La corrección de la barrera es P0 propuesto por exposición comprobada, no una prueba de incidente de datos.**
 
 ## Problema y objetivo
 
