@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { randomUUID } from 'node:crypto'
+import { Prisma } from '@prisma/client'
 
 vi.mock('next/cache', () => ({ unstable_cache: (fn: unknown) => fn, revalidateTag: vi.fn() }))
 const mockAuth = vi.fn()
@@ -100,4 +101,53 @@ describe('#630 F0 — no registrar Producción luego de confirmar Cierre', () =>
       where: { produccionId: existente.id, producto: 'PACA_AGUA' },
     })).toMatchObject({ producido: original })
   })
+
+  it('Serializable: tras esperar el lock de un productor, Cierre debe leer la última producción', async () => {
+    // Adversarial: el snapshot de Serializable puede haberse fijado al
+    // iniciar SELECT pg_advisory_xact_lock ANTES de esperar al productor.
+    // Si lee 0, el lock común no basta para garantizar cifras frescas.
+    const s = await sellador()
+    const fecha = dia(7)
+    const fechaInicio = startOfDayInBogota(fecha)
+
+    let avisoProductor: () => void = () => undefined
+    let liberarProductor: () => void = () => undefined
+    const productorListo = new Promise<void>(resolve => { avisoProductor = resolve })
+    const productorLiberado = new Promise<void>(resolve => { liberarProductor = resolve })
+
+    const productor = testPrisma.$transaction(async tx => {
+      await acquireAdvisoryLockTx(tx, 'CIERRE', fechaInicio.toISOString())
+      avisoProductor()
+      await productorLiberado
+      await tx.produccion.create({
+        data: {
+          fecha: fechaInicio, trabajadorId: s.id, turno: 'MANANA', comSellTotal: 0,
+          items: { create: [
+            { producto: 'PACA_AGUA', conteoA: 10, conteoB: 10, producido: 10 },
+            { producto: 'PACA_HIELO', conteoA: 0, conteoB: 0, producido: 0 },
+          ] },
+        },
+      })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 10000 })
+
+    await productorListo
+    let avisoCierre: () => void = () => undefined
+    const cierreArrancado = new Promise<void>(resolve => { avisoCierre = resolve })
+    const cierre = testPrisma.$transaction(async tx => {
+      avisoCierre()
+      await acquireAdvisoryLockTx(tx, 'CIERRE', fechaInicio.toISOString())
+      return tx.produccion.count({ where: { fecha: fechaInicio } })
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      timeout: 10000, maxWait: 5000,
+    })
+
+    await cierreArrancado
+    await new Promise<void>(resolve => setTimeout(resolve, 350))
+    liberarProductor()
+    await productor
+    const visibles = await cierre
+    expect(visibles).toBe(1)
+  })
+
 })
