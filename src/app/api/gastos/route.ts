@@ -38,6 +38,24 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // La vista de Gastos administra SOLO egresos operativos. Nómina y
+    // Embarques se gestionan en su módulo original, aunque Cierre continúe
+    // contabilizando todos los movimientos físicos/contables.
+    if (searchParams.get('origen') === 'OPERATIVO') {
+      where = {
+        ...where,
+        NOT: [
+          { categoria: 'NOMINA' },
+          { esPagoPersonal: true },
+          { trabajadorId: { not: null } },
+          { embarqueId: { not: null } },
+          // En registros anteriores la anulación de Nómina usó categoría OTRO
+          // y carece de vínculo: no ofrecerla como gasto operativo editable.
+          { descripcion: { startsWith: 'Reversión nómina anulada -' } },
+        ],
+      }
+    }
+
     const prismaPagination = getPrismaPagination(pagination)
 
     // #755: paginar filas NO debe paginar el importe total del período.
