@@ -430,7 +430,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             const signal = abortControllerRef.current?.signal
             if (signal) void fetchCierre(fecha, signal)
           }} />}
-        <CierreDesgloseCobros data={data} />
+        <CierreDesgloseCobros data={data} puedeVerGastos={userRole === 'ADMIN' || userRole === 'CONTADOR'} />
         {(post?.gastosRetroactivos?.length ?? 0) > 0 && (
           <section data-testid="cierre-gastos-retroactivos" className="rounded-xl border border-amber-300 bg-amber-50 p-4 sm:p-5">
             <h3 className="font-semibold text-amber-900">Movimientos registrados después del cierre</h3>
@@ -706,7 +706,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           />
         </div>
         <CierreKpiGrid data={data} onReintentarFiado={reintentarFiado} />
-        <CierreDesgloseCobros data={data} />
+        <CierreDesgloseCobros data={data} puedeVerGastos={userRole === 'ADMIN' || userRole === 'CONTADOR'} />
         <CierreDetalleVentas data={data} />
       </CierreSection>
 
