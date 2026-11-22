@@ -95,7 +95,7 @@ describe("ResumenConsulta colapsable", () => {
   it("cuando falla la lectura física no muestra un cero ficticio", () => {
     movil(true);
     render(<ResumenConsulta resumen={{ ...resumen, operacionDiaError: true }} filtros={filtros} />);
-    expect(screen.getByText("Entregas de hoy por conciliar")).toBeInTheDocument();
+    expect(screen.getByText("Entregas de la fecha consultada por conciliar")).toBeInTheDocument();
     expect(screen.queryByTestId("consulta-total-fisico-hoy")).toBeNull();
   });
 
