@@ -324,7 +324,36 @@ export async function consultarPedidos(
   role: string | null,
   client = prisma,
 ): Promise<ResultadoConsultaPedidos> {
-  const resultado = await consultarPedidosSinAviso(f, role, client)
+  let resultado = await consultarPedidosSinAviso(f, role, client)
+  // #853: el balance físico global es una lectura opcional e independiente.
+  // Nunca comprometer la transacción de la consulta principal por un error
+  // en el detalle de entregas del día.
+  const resumenBase = resultado.resumen;
+  if (resumenBase && mostrarResumenOperativoHoy(f, todayStringBogota())) {
+    try {
+      const operacionHoy = await client.$transaction(async (tx) => {
+        const rango = rangoConsultaPedidos(f);
+        const { detalle } = await detalleUnidadesEntregadasDelDia(tx, rango);
+        const ids = [...new Set(detalle.map((d) => d.pedidoId))];
+        const pedidosOrigen = await tx.pedido.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, fecha: true },
+        });
+        return resumirEntregasOperativasHoy(
+          detalle,
+          new Map(pedidosOrigen.map((p) => [p.id, p.fecha])),
+          rango,
+        );
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        timeout: 15000,
+      });
+      resultado = { ...resultado, resumen: { ...resumenBase, operacionHoy } };
+    } catch (error) {
+      logger.warn({ err: error }, "No se pudo conciliar el resumen operativo del día (#853)");
+      resultado = { ...resultado, resumen: { ...resumenBase, operacionHoyError: true } };
+    }
+  }
   const visibles = [...resultado.pedidos, ...(resultado.arrastrados ?? [])]
   const clientes = [...new Set(visibles.map(p => p.clienteId))]
     .filter(id => !isConsumidorFinalCanonical(id))
@@ -891,30 +920,6 @@ async function leerConsultaPedidos(
           productos = [...sums.values()];
         }
       }
-      // #853: la tarjeta de pedidos fechados hoy NO representa todas las
-      // entregas físicas de hoy. Mostrar el balance físico aparte, tomando
-      // exactamente el mismo lector que Dashboard y Cierre, sin alterar
-      // el significado de otros filtros ni los importes históricos.
-      let operacionHoy: ReturnType<typeof resumirEntregasOperativasHoy> | null = null;
-      let operacionHoyError = false;
-      if (mostrarResumenOperativoHoy(f, todayStringBogota())) {
-        try {
-          const { detalle } = await detalleUnidadesEntregadasDelDia(tx, rango);
-          const ids = [...new Set(detalle.map((d) => d.pedidoId))];
-          const pedidosOrigen = await tx.pedido.findMany({
-            where: { id: { in: ids } },
-            select: { id: true, fecha: true },
-          });
-          operacionHoy = resumirEntregasOperativasHoy(
-            detalle,
-            new Map(pedidosOrigen.map((p) => [p.id, p.fecha])),
-            rango,
-          );
-        } catch (error) {
-          logger.warn({ err: error }, "No se pudo conciliar el resumen operativo del día (#853)");
-          operacionHoyError = true;
-        }
-      }
       const nombres = new Map(repartidores.map((r) => [r.id, r.nombre]));
       // Usar el reloj de PostgreSQL que también se publica como leidoAt.
       const [{ ahora }] = await tx.$queryRaw<Array<{ ahora: Date }>>`SELECT transaction_timestamp() AS ahora`;
@@ -1103,8 +1108,6 @@ async function leerConsultaPedidos(
               saldo,
               fiado,
               pendienteEntrega: (centavos(saldo) - centavos(fiado)) / 100,
-              ...(operacionHoy ? { operacionHoy } : {}),
-              ...(operacionHoyError ? { operacionHoyError } : {}),
               productos: productos.sort((a, b) =>
                 a.producto.localeCompare(b.producto),
               ),
