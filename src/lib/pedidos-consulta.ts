@@ -2,6 +2,7 @@ import { getTodayString, parseDateParam } from "./dates";
 import { normalizeCanalFilter } from "./pedido-canal";
 import type { CobrosPeriodo } from "./cobros-periodo";
 import type { ResumenOperativoDia } from "./pedidos-resumen-operativo-hoy";
+import type { BalanceOperativoHoy } from "./pedidos-balance-operativo-hoy";
 import type { EntregaDestacada } from "./pedidos-entregas-historial";
 import type { Pedido } from "@/app/(app)/pedidos/pedidos-client/types";
 
@@ -20,6 +21,9 @@ export interface ResumenConsultaPedidos {
   /** Entregas físicas de la fecha consultada, solo en días completos sin filtros adicionales. */
   operacionDia?: ResumenOperativoDia;
   operacionDiaError?: boolean;
+  /** #853 Fase 1: balance por producto y origen. Solo HOY y sin filtros adicionales; aún sin UI. */
+  balanceOperativo?: BalanceOperativoHoy;
+  balanceOperativoError?: boolean;
   entregasPorConciliar: number;
   importesPorConciliar: boolean;
   exigiblesPorConciliar?: number;

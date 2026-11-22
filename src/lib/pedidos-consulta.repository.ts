@@ -25,7 +25,8 @@ import { ordenarBarriosFIFO } from "./barrios/fifo-barrio";
 import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
 import { detalleUnidadesEntregadasDelDia } from "./unidades-entregadas-dia";
-import { mostrarResumenOperativoDelDia, resumirEntregasOperativasDelDia } from "./pedidos-resumen-operativo-hoy";
+import { mostrarBalanceOperativoHoy, mostrarResumenOperativoDelDia, resumirEntregasOperativasDelDia } from "./pedidos-resumen-operativo-hoy";
+import { leerBalanceOperativoHoy } from "./pedidos-balance-operativo-hoy.repository";
 import { ordenarPorFranja } from "./pedidos-franja";
 import { ordenarPrioridadPedidos } from "./pedidos-prioridad-921";
 import { findPedidosEnRiesgo } from "./pedidos-sin-asignar";
@@ -343,7 +344,7 @@ export async function consultarPedidos(
   const resumenBase = resultado.resumen;
   if (resumenBase && mostrarResumenOperativoDelDia(f, todayStringBogota())) {
     try {
-      const operacionDia = await client.$transaction(async (tx) => {
+      const { operacionDia, balanceOperativo, balanceOperativoError } = await client.$transaction(async (tx) => {
         const rango = rangoConsultaPedidos(f);
         const { detalle } = await detalleUnidadesEntregadasDelDia(tx, rango);
         const ids = [...new Set(detalle.map((d) => d.pedidoId))];
@@ -351,16 +352,32 @@ export async function consultarPedidos(
           where: { id: { in: ids } },
           select: { id: true, fecha: true },
         });
-        return resumirEntregasOperativasDelDia(
+        const operacionDia = resumirEntregasOperativasDelDia(
           detalle,
           new Map(pedidosOrigen.map((p) => [p.id, p.fecha])),
           rango,
         );
+        // Mismo corte (RepeatableRead) que las entregas del día. Su fallo no invalida lo anterior.
+        if (!mostrarBalanceOperativoHoy(f, todayStringBogota())) return { operacionDia };
+        try {
+          return { operacionDia, balanceOperativo: await leerBalanceOperativoHoy(tx, rango) };
+        } catch (error) {
+          logger.warn({ err: error }, "No se pudo calcular el balance operativo de hoy (#853)");
+          return { operacionDia, balanceOperativoError: true };
+        }
       }, {
         isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
         timeout: 15000,
       });
-      resultado = { ...resultado, resumen: { ...resumenBase, operacionDia } };
+      resultado = {
+        ...resultado,
+        resumen: {
+          ...resumenBase,
+          operacionDia,
+          ...(balanceOperativo ? { balanceOperativo } : {}),
+          ...(balanceOperativoError ? { balanceOperativoError } : {}),
+        },
+      };
     } catch (error) {
       logger.warn({ err: error }, "No se pudo conciliar el resumen operativo de la fecha consultada (#853)");
       resultado = { ...resultado, resumen: { ...resumenBase, operacionDiaError: true } };
