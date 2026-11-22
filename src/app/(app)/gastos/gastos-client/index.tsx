@@ -464,7 +464,7 @@ export default function GastosPage() {
                   <Button type="button" variant="outline" className="flex-1"
                     onClick={cancelarCorreccion}>Cancelar</Button>
                   <Button type="submit" variant={modoDetalle === 'ANULAR' ? 'destructive' : 'default'}
-                    className="flex-1" disabled={guardandoDetalle || (modoDetalle === 'ANULAR' && !confirmarOperacionNoReal)}>
+                    className="flex-1" disabled={guardandoDetalle || (modoDetalle === 'EDITAR' && !editCategoria) || (modoDetalle === 'ANULAR' && !confirmarOperacionNoReal)}>
                     {guardandoDetalle ? 'Guardando…' : modoDetalle === 'ANULAR' ? 'Confirmar anulación' : 'Guardar corrección'}
                   </Button>
                 </div>
@@ -474,7 +474,7 @@ export default function GastosPage() {
         )}
       </Modal>
 
-      <section aria-label="Resumen de gastos" className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm sm:p-5">
+      {!errorGastos && !loadingGastos && <section aria-label="Resumen de gastos" className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm sm:p-5">
         <div className="flex items-center gap-2 text-sm font-medium text-blue-900">
           <Wallet aria-hidden="true" className="h-5 w-5" />
           Total de gastos operativos del período
@@ -484,7 +484,7 @@ export default function GastosPage() {
         <p className="mt-1 text-sm text-slate-600">
           {totalRegistros} registros en el período, incluidos anulados. No equivale al efectivo de caja.
         </p>
-      </section>
+      </section>}
 
       {errorGastos && (
         <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
