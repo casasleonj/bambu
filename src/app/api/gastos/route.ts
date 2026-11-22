@@ -40,19 +40,24 @@ export async function GET(request: NextRequest) {
 
     const prismaPagination = getPrismaPagination(pagination)
 
-    const [gastos, total] = await Promise.all([
+    // #755: paginar filas NO debe paginar el importe total del período.
+    // El mismo snapshot PostgreSQL garantiza que lista, cantidad e importe
+    // coincidan aunque se registre un gasto mientras se ejecuta la consulta.
+    const [gastos, total, importes] = await prisma.$transaction([
       prisma.gasto.findMany({
         where,
-        orderBy: { fecha: 'desc' },
+        orderBy: [{ fecha: 'desc' }, { id: 'desc' }],
         ...prismaPagination,
       }),
       prisma.gasto.count({ where }),
-    ])
+      prisma.gasto.aggregate({ where, _sum: { monto: true } }),
+    ], { isolationLevel: 'RepeatableRead' })
 
+    const montoTotal = Number(importes._sum.monto ?? 0)
     return apiSuccess(
       pagination.all
-        ? { gastos, total }
-        : buildPaginationResponse(gastos, total, pagination.page!, pagination.pageSize!)
+        ? { gastos, total, montoTotal }
+        : { ...buildPaginationResponse(gastos, total, pagination.page!, pagination.pageSize!), montoTotal }
     )
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching gastos:')
