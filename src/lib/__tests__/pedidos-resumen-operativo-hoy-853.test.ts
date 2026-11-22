@@ -11,8 +11,11 @@ const rango = {
   hasta: new Date("2026-11-22T00:00:00-05:00"),
 };
 const fecha = (d: string) => new Date(`${d}T12:00:00-05:00`);
-const filtros = (q = "") =>
-  leerFiltrosConsulta(new URLSearchParams(`desde=${D}&hasta=${D}&resumen=1&${q}`), D);
+const filtros = (q = "") => {
+  const params = new URLSearchParams(`desde=${D}&hasta=${D}&resumen=1`);
+  for (const [clave, valor] of new URLSearchParams(q)) params.set(clave, valor);
+  return leerFiltrosConsulta(params, D);
+};
 
 describe("#853: productos entregados hoy frente a productos de pedidos fechados hoy", () => {
   it("reconcilia 571 + 10 = 581 sin modificar la cohorte de pedidos del día", () => {
