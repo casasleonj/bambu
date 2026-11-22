@@ -141,8 +141,9 @@ export async function POST(request: NextRequest) {
 
       // #796 paso 3: el cobro de UN pedido entregado hoy (camino #597, ya validado arriba con `errorCobroPedido`) es venta del
       // día, no cartera: no se le crea el `Abono` espejo. Solo con ambas banderas (sin camino de corrección por pago no se
-      // omite nada) y sin recepción retroactiva de oficina (su día de caja puede no ser el de la entrega).
-      const sinEspejo = Boolean(pedidoId) && !oficina && cobroDelDiaSinEspejoActivo()
+      // omite nada). La recepción de oficina de HOY también carece de espejo (#961);
+      // la recepción retroactiva conserva el Abono por su fecha efectiva distinta.
+      const sinEspejo = Boolean(pedidoId) && ocurridoAt === null && cobroDelDiaSinEspejoActivo()
 
       // #772: BONO es saldo a favor ya recibido, no un nuevo pago.
       // Consumirlo ANTES de escribir Pago/Abono evita acreditar dinero inexistente.
