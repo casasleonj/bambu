@@ -439,7 +439,7 @@ export default function GastosPage() {
             Mostrando {gastos.length} de {totalRegistros} gastos operativos · página {pagina} de {totalPaginas}
           </p>
           {gastos.map((gasto) => (
-            <Card key={gasto.id}>
+            <Card key={gasto.id} data-testid={`gasto-${gasto.id}`}>
               <CardContent className="py-3">
                 <div className="flex justify-between items-start">
                   <div>
@@ -450,7 +450,16 @@ export default function GastosPage() {
                     )}
                   </div>
                   <div className="text-right">
-                    <div className="font-medium">{formatCurrency(Number(gasto.monto))}</div>
+                    {gasto.anuladoAt ? (
+                      <>
+                        <span className="inline-block rounded border px-2 py-0.5 text-xs font-semibold text-muted-foreground">Anulado</span>
+                        <div className="text-xs text-muted-foreground line-through">
+                          Original: {formatCurrency(Number(gasto.montoAntesAnular ?? 0))}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="font-medium">{formatCurrency(Number(gasto.monto))}</div>
+                    )}
                     <div className="text-xs text-muted-foreground">{new Date(gasto.fecha).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
                     <Button type="button" variant="outline" className="mt-2" onClick={() => void abrirDetalle(gasto.id)}>
                       Ver / Corregir
