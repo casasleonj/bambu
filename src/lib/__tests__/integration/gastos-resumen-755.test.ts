@@ -39,6 +39,25 @@ describe('#755 resumen de gastos completo con páginas', () => {
           monto: '-10.25',
         },
         {
+          fecha: new Date(`${DIA}T12:30:00-05:00`),
+          categoria: 'NOMINA',
+          descripcion: 'Pago nómina de prueba',
+          monto: '6000',
+        },
+        {
+          fecha: new Date(`${DIA}T12:40:00-05:00`),
+          categoria: 'OTRO',
+          descripcion: 'Reversión nómina anulada - prueba',
+          monto: '-6000',
+        },
+        {
+          fecha: new Date(`${DIA}T12:50:00-05:00`),
+          categoria: 'OTRO',
+          descripcion: 'Registro histórico de personal',
+          esPagoPersonal: true,
+          monto: '5000',
+        },
+        {
           fecha: new Date(`${OTRO_DIA}T12:00:00-05:00`),
           categoria: 'OTRO',
           descripcion: 'Fuera del filtro',
@@ -53,28 +72,38 @@ describe('#755 resumen de gastos completo con páginas', () => {
   it('devuelve 20 filas pero cantidad e importe de los 26 registros filtrados', async () => {
     const result = await consultar(`fecha=${DIA}`)
     expect(result.data).toHaveLength(20)
-    expect(result.total).toBe(26)
+    expect(result.total).toBe(29)
     expect(result.totalPages).toBe(2)
     expect(result.hasMore).toBe(true)
-    expect(result.montoTotal).toBe(24996)
+    expect(result.montoTotal).toBe(29996)
   })
 
   it('conserva el mismo importe en la segunda página sin duplicar ni truncar', async () => {
     const result = await consultar(`fecha=${DIA}&page=2`)
-    expect(result.data).toHaveLength(6)
-    expect(result.total).toBe(26)
+    expect(result.data).toHaveLength(9)
+    expect(result.total).toBe(29)
     expect(result.hasMore).toBe(false)
-    expect(result.montoTotal).toBe(24996)
+    expect(result.montoTotal).toBe(29996)
   })
 
   it('aplica el mismo filtro por rango a filas, cantidad e importe', async () => {
     const range = await consultar(`desde=${DIA}&hasta=${DIA}&pageSize=10`)
     expect(range.data).toHaveLength(10)
-    expect(range.total).toBe(26)
-    expect(range.montoTotal).toBe(24996)
+    expect(range.total).toBe(29)
+    expect(range.montoTotal).toBe(29996)
     const nextDay = await consultar(`fecha=${OTRO_DIA}`)
     expect(nextDay.total).toBe(1)
     expect(nextDay.montoTotal).toBe(80.5)
+  })
+
+
+  it('separa el resumen operativo de Nómina y reversas automáticas sin afectar el resumen contable global', async () => {
+    const operativos = await consultar(`fecha=${DIA}&origen=OPERATIVO`)
+    expect(operativos.total).toBe(26)
+    expect(operativos.montoTotal).toBe(24996)
+    const global = await consultar(`fecha=${DIA}`)
+    expect(global.total).toBe(29)
+    expect(global.montoTotal).toBe(29996)
   })
 
   it('mantiene el contrato all=true: sin fecha ni paginación y con monto global', async () => {
