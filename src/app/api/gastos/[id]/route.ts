@@ -16,7 +16,7 @@ const CategoriaOperativa = z.enum([
 
 const Concurrency = {
   version: z.number().int().min(0),
-  motivo: z.string().trim().min(5).max(500),
+  motivo: z.string().trim().min(5).max(450),
 }
 
 const EditarSchema = z.object({
@@ -56,6 +56,30 @@ function esMovimientoDeOtroModulo(gasto: {
     gasto.trabajadorId !== null ||
     gasto.embarqueId !== null ||
     gasto.descripcion.startsWith('Reversión nómina anulada -')
+}
+
+/** Consulta de un gasto operativo, también para enlaces ?openGasto=id. */
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const auth = await requireRole(['ADMIN', 'CONTADOR'])
+  if (auth instanceof Response) return auth
+  const { id } = await params
+  if (!id?.trim()) return apiError('Gasto no encontrado', 404)
+  try {
+    const gasto = await prisma.gasto.findUnique({ where: { id } })
+    if (!gasto) return apiError('Gasto no encontrado', 404)
+    if (esMovimientoDeOtroModulo(gasto)) {
+      return apiError('Este movimiento se consulta y administra en su módulo de origen.', 422, {
+        code: 'GASTO_OTRO_MODULO',
+      })
+    }
+    return apiSuccess({ gasto })
+  } catch (error) {
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error al consultar gasto')
+    return apiError('No fue posible consultar este gasto', 500)
+  }
 }
 
 /**
