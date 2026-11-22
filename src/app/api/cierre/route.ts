@@ -21,6 +21,7 @@ import { leerArqueoDeclarado } from '@/lib/cierre-arqueo'
 import { diasObligatoriosAntesDe, type DiaHueco } from '@/lib/cierre-huecos'
 import { exigirBaseVigente, BaseCambioError, BaseFaltanteError } from '@/lib/base-caja-dia'
 import { leerPagosComisionCaja, leerCorreccionesPosterioresAlCierre } from '@/lib/comision-pagada'
+import { leerGastosRetroactivosCierre } from '@/lib/cierre-gastos-retroactivos'
 
 /** #306: hay días anteriores sin cerrar que tuvieron operación (o son demasiados para revisarlos). */
 class HuecoConOperacionError extends Error {
@@ -86,11 +87,12 @@ export async function GET(request: NextRequest) {
         ...reporteGuardado,
       }
 
-      // Post-cierre: transactions after horaCierre
+      // Las novedades posteriores son lecturas, nunca modifican el cierre guardado.
+      // Para cierres antiguos sin horaCierre se usa el timestamp de creación.
       let postCierre = null
-      if (cierreExistente.horaCierre) {
-        const hc = cierreExistente.horaCierre
-        const [pedidosPost, embarquesPost, gastosPost] = await Promise.all([
+      if (cierreExistente.horaCierre || cierreExistente.createdAt) {
+        const hc = cierreExistente.horaCierre ?? cierreExistente.createdAt
+        const [pedidosPost, embarquesPost, gastosPost, gastosRetroactivos] = await Promise.all([
           prisma.pedido.findMany({
             where: {
               fecha: { gte: hc, lt: endOfDay },
@@ -111,6 +113,7 @@ export async function GET(request: NextRequest) {
           prisma.gasto.findMany({
             where: { fecha: { gte: hc, lt: endOfDay } },
           }),
+          leerGastosRetroactivosCierre(prisma, { inicio: startOfDay, fin: endOfDay, horaCierre: hc }),
         ])
         postCierre = {
           pedidos: pedidosPost.map(p => ({
@@ -137,6 +140,8 @@ export async function GET(request: NextRequest) {
             descripcion: g.descripcion,
             monto: Number(g.monto),
           })),
+          // Se informa aparte: NO forma parte del neto de ventas nocturnas.
+          gastosRetroactivos,
         }
       }
 
