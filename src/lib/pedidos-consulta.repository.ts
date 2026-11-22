@@ -3,6 +3,8 @@ import { prisma } from "./prisma";
 import { logger } from "./logger";
 import { condicionPalabra, palabrasDeBusqueda } from "./clientes-repo";
 import { leerExigibles } from "./entregas-exigibles-db";
+import { isConsumidorFinalCanonical } from "./cliente-canonical";
+import { resumirFiadosAnteriores } from "./fiados-anteriores-pedido";
 import { importesEntregaPedido } from "./valor-entregado-pedido";
 import { canReadFacturas } from "./permissions";
 import { getAnonymousClientDisplayName } from "./cliente-canonical";
@@ -22,6 +24,8 @@ import { remanentesPorProducto } from "./barrios/remanentes-barrio";
 import { ordenarBarriosFIFO } from "./barrios/fifo-barrio";
 import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
+import { detalleUnidadesEntregadasDelDia } from "./unidades-entregadas-dia";
+import { mostrarResumenOperativoHoy, resumirEntregasOperativasHoy } from "./pedidos-resumen-operativo-hoy";
 import { ordenarPorFranja } from "./pedidos-franja";
 import { ordenarPrioridadPedidos } from "./pedidos-prioridad-921";
 import { findPedidosEnRiesgo } from "./pedidos-sin-asignar";
@@ -36,6 +40,7 @@ import {
 } from "./cobros-periodo";
 import {
   leerEntregasConsulta,
+  requiereConciliacionEntrega,
   type EntregaConsulta,
 } from "./entregas-consulta";
 import {
@@ -228,7 +233,7 @@ const dec = (v: unknown) => centavos(v) / 100;
 /** #913: sin demanda FIFO, «Sin barrio» va tras los barrios y las ventas anónimas al final de todo. */
 const colaNoTerritorial = (clave: string) => (clave === CLAVE_VENTA_ANONIMA ? 2 : clave === "sin-barrio" ? 1 : 0);
 
-export async function consultarPedidos(
+async function consultarPedidosSinAviso(
   f: FiltrosConsultaPedidos,
   role: string | null,
   client = prisma,
@@ -306,6 +311,139 @@ export async function consultarPedidos(
   } catch (error) {
     logger.warn({ err: error }, "No se pudieron leer los pendientes de días anteriores");
     return { ...resultado, arrastradosError: true };
+  }
+}
+
+
+/**
+ * #932: enriquecer los Pedidos con datos de OTROS cobros pendientes del cliente.
+ * La lectura financiera es opcional y tiene su propia transacción consistente:
+ * un error de esa lectura nunca aborta la lista principal de Pedidos.
+ */
+export async function consultarPedidos(
+  f: FiltrosConsultaPedidos,
+  role: string | null,
+  client = prisma,
+): Promise<ResultadoConsultaPedidos> {
+  let resultado = await consultarPedidosSinAviso(f, role, client)
+  // #853: el balance físico global es una lectura opcional e independiente.
+  // Nunca comprometer la transacción de la consulta principal por un error
+  // en el detalle de entregas del día.
+  const resumenBase = resultado.resumen;
+  if (resumenBase && mostrarResumenOperativoHoy(f, todayStringBogota())) {
+    try {
+      const operacionHoy = await client.$transaction(async (tx) => {
+        const rango = rangoConsultaPedidos(f);
+        const { detalle } = await detalleUnidadesEntregadasDelDia(tx, rango);
+        const ids = [...new Set(detalle.map((d) => d.pedidoId))];
+        const pedidosOrigen = await tx.pedido.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, fecha: true },
+        });
+        return resumirEntregasOperativasHoy(
+          detalle,
+          new Map(pedidosOrigen.map((p) => [p.id, p.fecha])),
+          rango,
+        );
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        timeout: 15000,
+      });
+      resultado = { ...resultado, resumen: { ...resumenBase, operacionHoy } };
+    } catch (error) {
+      logger.warn({ err: error }, "No se pudo conciliar el resumen operativo del día (#853)");
+      resultado = { ...resultado, resumen: { ...resumenBase, operacionHoyError: true } };
+    }
+  }
+  const visibles = [...resultado.pedidos, ...(resultado.arrastrados ?? [])]
+  const clientes = [...new Set(visibles.map(p => p.clienteId))]
+    .filter(id => !isConsumidorFinalCanonical(id))
+  if (!visibles.length || !clientes.length) return resultado
+
+  try {
+    const avisos = await client.$transaction(async (tx) => {
+      // Primero leer solamente IDs; los productos/negocios se consultan
+      // después de establecer la deuda exigible positiva, sin límite temporal.
+      const candidatos = await tx.pedido.findMany({
+        where: {
+          clienteId: { in: clientes },
+          estadoEntrega: { notIn: ["ANULADO", "CANCELADO"] },
+          saldo: { gt: 0 },
+        },
+        select: { id: true, clienteId: true },
+      })
+      const montos = new Map<string, number>()
+      const lote = 500
+      for (let i = 0; i < candidatos.length; i += lote) {
+        const ids = candidatos.slice(i, i + lote).map(p => p.id)
+        const exigibles = await leerExigibles(tx, { id: { in: ids } })
+        for (const [id, monto] of exigibles) montos.set(id, monto)
+      }
+      const conDeuda = candidatos.filter(p => (montos.get(p.id) ?? 0) > 0)
+      const deudas = []
+      for (let i = 0; i < conDeuda.length; i += lote) {
+        const detalles = await tx.pedido.findMany({
+          where: { id: { in: conDeuda.slice(i, i + lote).map(p => p.id) } },
+          select: {
+            id: true, numero: true, clienteId: true,
+            negocio: { select: { nombre: true } },
+            items: { select: { producto: true, cantEntrega: true, cantRegaloEntrega: true } },
+            cPacaAguaEnt: true, cPacaHieloEnt: true,
+            cBotellonFabEnt: true, cBotellonDomEnt: true,
+            cBolsaAguaEnt: true, cBolsaHieloEnt: true,
+            pagos: { where: { confirmacion: "REPORTADO" }, select: { id: true }, take: 1 },
+          },
+        })
+        for (const p of detalles) {
+          deudas.push({
+            id: p.id, numero: p.numero, clienteId: p.clienteId,
+            exigible: montos.get(p.id) ?? 0,
+            negocioNombre: p.negocio?.nombre ?? null,
+            pagoPorConfirmar: p.pagos.length > 0,
+            productos: p.items.length
+              ? p.items.map(item => ({
+                  producto: item.producto,
+                  cantidadEntregada: item.cantEntrega + (item.cantRegaloEntrega ?? 0),
+                }))
+              : [
+                  { producto: "PACA_AGUA", cantidadEntregada: p.cPacaAguaEnt },
+                  { producto: "PACA_HIELO", cantidadEntregada: p.cPacaHieloEnt },
+                  { producto: "BOTELLON", cantidadEntregada: p.cBotellonFabEnt + p.cBotellonDomEnt },
+                  { producto: "BOLSA_AGUA", cantidadEntregada: p.cBolsaAguaEnt },
+                  { producto: "BOLSA_HIELO", cantidadEntregada: p.cBolsaHieloEnt },
+                ],
+          })
+        }
+      }
+      return resumirFiadosAnteriores(
+        visibles.map(p => ({ id: p.id, clienteId: p.clienteId })),
+        deudas,
+      )
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      timeout: 15000,
+    })
+
+    const incluir = (pedidos: typeof resultado.pedidos) =>
+      pedidos.map(p => avisos.has(p.id)
+        ? { ...p, fiadosAnteriores: avisos.get(p.id) }
+        : p)
+    return {
+      ...resultado,
+      pedidos: incluir(resultado.pedidos),
+      ...(resultado.arrastrados ? { arrastrados: incluir(resultado.arrastrados) } : {}),
+    }
+  } catch (error) {
+    // Una consulta de badge que falle no invalida pedidos ni finge saldo cero.
+    logger.warn({ err: error }, "No fue posible verificar los cobros pendientes de clientes de Pedidos (#932)")
+    const sinVerificar = (pedidos: typeof resultado.pedidos) =>
+      pedidos.map(p => isConsumidorFinalCanonical(p.clienteId)
+        ? p : { ...p, fiadosConsultaError: true })
+    return {
+      ...resultado,
+      pedidos: sinVerificar(resultado.pedidos),
+      ...(resultado.arrastrados ? { arrastrados: sinVerificar(resultado.arrastrados) } : {}),
+    }
   }
 }
 
@@ -695,7 +833,7 @@ async function leerConsultaPedidos(
             );
             entregasPorConciliar = new Set([
               ...hechos
-                .filter((e) => !e.cantidades || e.incompleto)
+                .filter(requiereConciliacionEntrega)
                 .map((e) => e.pedidoId),
               ...[...sinFechaEntrega].filter((id) => ids.has(id)),
             ]).size;
@@ -793,6 +931,11 @@ async function leerConsultaPedidos(
         const hechos = hechosPagina
           .filter((e) => e.pedidoId === raw.id)
           .sort((a, b) => +b.fecha - +a.fecha);
+        // #959: en mostrador un hecho HISTORICO con cantidades/fecha exactas
+        // sí es válido; no equiparar fuente histórica con evento incompleto.
+        const entregaEnRangoIncierta = diaOperativo && hechos.some((e) =>
+          e.fecha >= rango.desde && e.fecha < rango.hasta && requiereConciliacionEntrega(e),
+        );
         const ids = [
           ...new Set(
             hechos
@@ -855,14 +998,8 @@ async function leerConsultaPedidos(
             e.fecha >= rango.desde && e.fecha < rango.hasta
           ) ? {
             entregaEnPeriodo: {
-              porConciliar: hechos.some((e) =>
-                e.fecha >= rango.desde && e.fecha < rango.hasta &&
-                (e.fuente === "HISTORICO" || e.incompleto || !e.cantidades)
-              ),
-              unidades: hechos.some((e) =>
-                e.fecha >= rango.desde && e.fecha < rango.hasta &&
-                (e.fuente === "HISTORICO" || e.incompleto || !e.cantidades)
-              ) ? null : hechos
+              porConciliar: entregaEnRangoIncierta,
+              unidades: entregaEnRangoIncierta ? null : hechos
                 .filter((e) => e.fecha >= rango.desde && e.fecha < rango.hasta)
                 .reduce((n, e) => n + (e.cantidades ?? []).reduce((subtotal, l) => subtotal + l.cantidad, 0), 0),
             },

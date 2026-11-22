@@ -106,3 +106,33 @@ test('CLI real publica outputs y no concede verde a borrador diferido', () => {
     assert.equal(spawnSync(process.execPath, [script, 'plan'], { env: { ...env, GITHUB_OUTPUT: '' } }).status, 1)
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
+
+// Integración estática del enrutamiento. Protege contra una regresión como
+// #955: sin ready_for_review, el gate del draft no se puede certificar.
+test('workflow progresivo preserva transición, gate estable y cancelación separada', () => {
+  const fs = readFileSync(fileURLToPath(new URL('../../../.github/workflows/ci.yml', import.meta.url)), 'utf8')
+  assert.match(fs, /types: \[opened, synchronize, reopened, ready_for_review\]/)
+  assert.match(fs, /CI_FAST_DRAFT: \$\{\{ vars\.BAMBU_CI_896_DRAFT_PILOT != 'false' && 'true' \|\| 'false' \}\}/)
+  assert.equal((fs.match(/CI_FAST_DRAFT: /g) ?? []).length, 2)
+  assert.match(fs, /CI_DRAFT: \$\{\{ github\.event\.pull_request\.draft \}\}/)
+  assert.match(fs, /group: ci-.*github\.event\.pull_request\.draft.*-draft/)
+  assert.match(fs, /if: always\(\)\s*\n\s*needs: \[detect-changes, quality, e2e, e2e-hub, lint, integration\]/)
+  assert.match(fs, /scripts\/ci\/politica-ci\.mjs gate/)
+  assert.match(fs, /node --test scripts\/ci\/__tests__\/clasificar-cambios\.node\.test\.mjs scripts\/ci\/__tests__\/politica-ci\.node\.test\.mjs/)
+  const shadow = readFileSync(fileURLToPath(new URL('../../../.github/workflows/ci-impact-shadow.yml', import.meta.url)), 'utf8')
+  assert.doesNotMatch(shadow, /types: \[[^\]]*ready_for_review/)
+})
+
+test('activar por defecto solo difiere borradores aptos; desactivar restaura full', () => {
+  for (const action of ['opened', 'synchronize', 'reopened']) {
+    assert.equal(planCI({ ...pr, action, fastDraft: 'true' }).draft_deferred, 'true')
+    assert.equal(planCI({ ...pr, action, fastDraft: 'false' }).e2e_run, 'true')
+  }
+  for (const action of ['ready_for_review']) {
+    assert.equal(planCI({ ...pr, action, draft: 'false', fastDraft: 'true' }).e2e_run, 'true')
+  }
+  for (const diffOk of ['false', '', undefined]) {
+    assert.equal(planCI({ ...pr, diffOk, fastDraft: 'true' }).e2e_run, 'true')
+  }
+  assert.equal(revisarGate(pr, { ...saltado, deferred: 'true' }).ok, false)
+})
