@@ -198,9 +198,14 @@ export async function POST(request: NextRequest) {
                   // Historial legado inválido: comparar los campos persistidos.
                 }
               }
+              // Sin fecha explícita, el primer intento fijó la fecha en el
+              // servidor. Un reintento tras medianoche sigue siendo el MISMO
+              // alta; no debe compararse con la fecha actual del segundo envío.
+              const fechaOriginalParaReplay = parsed.data.fecha ? fechaProduccion : existente.fecha
+              const huellaReplay = huellaCreacionProduccion(parsed.data, fechaOriginalParaReplay)
               const coincide = huellaOriginal !== null
-                ? huellaOriginal === huellaEntrada
-                : coincideProduccionPersistida(existente, parsed.data, fechaProduccion)
+                ? huellaOriginal === huellaReplay
+                : coincideProduccionPersistida(existente, parsed.data, fechaOriginalParaReplay)
               if (!coincide) throw new Error('OFFLINE_ID_CONFLICTO')
               return { deduped: true as const, produccion: existente }
             }
