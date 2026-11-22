@@ -7,9 +7,10 @@ on:
   pull_request:
     branches:
       - main
-    # Salir de draft no cambia el código: reutilizar los checks del mismo SHA.
-    # Nuevos commits (synchronize), apertura y reapertura siguen ejecutando CI.
-    types: [opened, synchronize, reopened]
+    # Con CI progresivo: no repetir E2E en cada commit apto de borrador;
+    # al salir del draft certificamos la suite completa del candidato actual.
+    # Apertura, actualización y reapertura también conservan su validación.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_call:
     inputs:
       nightly_full:
@@ -45,6 +46,8 @@ concurrency:
   # corrida de push a `main` (validación de cambio) NO deben cancelarse
   # entre sí — son señales distintas y ambas deben quedar registradas.
   # El PR draft antiguo no debe cancelar la validación de un PR listo.
+  # CI progresivo #896: la certificación al salir de borrador es distinta de
+  # la retroalimentación rápida. Nunca cancelar el candidato listo con un draft.
   group: ci-${{ github.event_name }}-${{ github.ref }}${{ inputs.nightly_full && '-nightly' || '' }}${{ github.event_name == 'pull_request' && github.event.pull_request.draft && '-draft' || '' }}
   cancel-in-progress: ${{ !inputs.nightly_full }}
 
@@ -188,7 +191,9 @@ jobs:
           CI_EVENT: ${{ github.event_name }}
           CI_ACTION: ${{ github.event.action }}
           CI_DRAFT: ${{ github.event.pull_request.draft }}
-          CI_FAST_DRAFT: ${{ vars.BAMBU_CI_896_DRAFT_PILOT }}
+          # Interruptor de emergencia: BAMBU_CI_896_DRAFT_PILOT=false obliga full.
+          # El rollout solo debe llegar a main con el gate requerido y protección comprobada.
+          CI_FAST_DRAFT: ${{ vars.BAMBU_CI_896_DRAFT_PILOT != 'false' && 'true' || 'false' }}
           CI_DIFF_OK: ${{ steps.classify.outputs.diff_ok }}
           E2E_REQUIRED: ${{ steps.classify.outputs.e2e_required }}
           NIGHTLY_FULL: ${{ inputs.nightly_full }}
@@ -813,7 +818,9 @@ jobs:
           CI_EVENT: ${{ github.event_name }}
           CI_ACTION: ${{ github.event.action }}
           CI_DRAFT: ${{ github.event.pull_request.draft }}
-          CI_FAST_DRAFT: ${{ vars.BAMBU_CI_896_DRAFT_PILOT }}
+          # Interruptor de emergencia: BAMBU_CI_896_DRAFT_PILOT=false obliga full.
+          # El rollout solo debe llegar a main con el gate requerido y protección comprobada.
+          CI_FAST_DRAFT: ${{ vars.BAMBU_CI_896_DRAFT_PILOT != 'false' && 'true' || 'false' }}
           CI_DIFF_OK: ${{ needs.detect-changes.outputs.diff_ok }}
           NIGHTLY_FULL: ${{ inputs.nightly_full }}
           E2E_REQUIRED: ${{ needs.detect-changes.outputs.e2e_required }}

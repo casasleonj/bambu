@@ -71,6 +71,51 @@ describe("#763 — tarjeta de entrega con histórico al corte", () => {
     expect(tarjeta.textContent?.match(/Completado/g)).toHaveLength(1);
     expect(tarjeta).not.toHaveTextContent("Completado el");
   });
+  it("#852: completado tras parcial el mismo día lista cada entrega con su hora de Colombia", () => {
+    const mismoDia = [
+      { id: "a", fecha: new Date("2026-11-11T14:40:00Z"), cantidades: [{ producto: "PACA_AGUA", cantidad: 4 }] },
+      { id: "b", fecha: new Date("2026-11-11T19:15:00Z"), cantidades: [{ producto: "PACA_AGUA", cantidad: 2 }] },
+    ];
+    const datos = proyectarEntregaHistorial(pedido, mismoDia, rango(11));
+    if (!datos) throw new Error("Proyección no disponible");
+    render(
+      <EntregasDestacadas entregas={[datos]} total={1} rangoAmplio={false}
+        hasta="2026-11-11" onVerPedido={vi.fn()} onVerTodas={vi.fn()} />,
+    );
+    const filas = screen.getByTestId("entrega-historica-901").querySelectorAll("ol li");
+    expect(filas).toHaveLength(2);
+    expect(filas[0].textContent).toMatch(/9:40\s*a\.\s*m\./);
+    expect(filas[0]).toHaveTextContent("4 pacas de agua");
+    expect(filas[0]).toHaveTextContent("Parcial · faltaban 2 pacas de agua");
+    expect(filas[1].textContent).toMatch(/2:15\s*p\.\s*m\./);
+    expect(filas[1]).toHaveTextContent("2 pacas de agua");
+    expect(filas[1]).toHaveTextContent("✓ Completado");
+    expect(screen.getByTestId("entrega-historica-901")).toHaveTextContent("Momentos de entrega (2 entregas)");
+  });
+  it("#852: hecho sin hora verificable muestra «hora no registrada»", () => {
+    const datos = proyectarEntregaHistorial(pedido, [
+      { id: "a", fecha: new Date("2026-11-11T17:00:00Z"), precisionDia: true, cantidades: [{ producto: "PACA_AGUA", cantidad: 3 }] },
+      { id: "b", fecha: new Date("2026-11-11T19:15:00Z"), cantidades: [{ producto: "PACA_AGUA", cantidad: 3 }] },
+    ], rango(11));
+    if (!datos) throw new Error("Proyección no disponible");
+    render(
+      <EntregasDestacadas entregas={[datos]} total={1} rangoAmplio={false}
+        hasta="2026-11-11" onVerPedido={vi.fn()} onVerTodas={vi.fn()} />,
+    );
+    expect(screen.getByTestId("entrega-historica-901")).toHaveTextContent("hora no registrada");
+  });
+  it("#852: con más de 2 entregas pliega el resto bajo «Ver las N entregas»", () => {
+    const tres = [1, 2, 3].map((n) => ({
+      id: "e" + n, fecha: new Date("2026-11-11T1" + n + ":00:00Z"), cantidades: [{ producto: "PACA_AGUA", cantidad: 2 }],
+    }));
+    const datos = proyectarEntregaHistorial(pedido, tres, rango(11));
+    if (!datos) throw new Error("Proyección no disponible");
+    render(
+      <EntregasDestacadas entregas={[datos]} total={1} rangoAmplio={false}
+        hasta="2026-11-11" onVerPedido={vi.fn()} onVerTodas={vi.fn()} />,
+    );
+    expect(screen.getByText("Ver las 3 entregas")).toBeInTheDocument();
+  });
   it("rangos demasiado amplios indican limitación sin inventar resultados", () => {
     render(
       <EntregasDestacadas entregas={[]} total={0} rangoAmplio={true}

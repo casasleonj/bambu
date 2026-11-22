@@ -4,6 +4,9 @@ import { useState, useEffect, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
+import { getTodayString } from '@/lib/dates'
+import { mostrarInstanteBogota } from '@/lib/fecha-local'
+import { FechaColombia } from '@/components/ui/fecha-colombia'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -18,8 +21,13 @@ type SortOption = 'fecha-desc' | 'fecha-asc' | 'nombre' | 'total-desc'
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
 function mesLabel(dateStr: string): string {
-  const d = new Date(dateStr)
-  return `${MESES[d.getMonth()]} ${d.getFullYear()}`
+  const fecha = new Date(dateStr)
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Bogota', month: 'numeric', year: 'numeric',
+  }).formatToParts(fecha)
+  const mes = Number(partes.find(p => p.type === 'month')?.value ?? 1)
+  const anno = partes.find(p => p.type === 'year')?.value ?? ''
+  return `${MESES[mes - 1]} ${anno}`
 }
 
 function iniciales(nombre: string): string {
@@ -53,7 +61,6 @@ function avatarColor(estado: string): string {
   }
 }
 
-const todayISO = () => new Date().toISOString().split('T')[0]
 
 export default function NominaPage() {
   const { data: session } = useSession()
@@ -312,8 +319,8 @@ export default function NominaPage() {
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div><Label htmlFor="nomina-fechaInicio">Fecha Inicio</Label><Input id="nomina-fechaInicio" type="date" max={todayISO()} required value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} /></div>
-                <div><Label htmlFor="nomina-fechaFin">Fecha Fin</Label><Input id="nomina-fechaFin" type="date" max={todayISO()} required value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} /></div>
+                <div><Label htmlFor="nomina-fechaInicio">Fecha Inicio</Label><FechaColombia id="nomina-fechaInicio" max={getTodayString()} required value={fechaInicio} onChange={setFechaInicio} /></div>
+                <div><Label htmlFor="nomina-fechaFin">Fecha Fin</Label><FechaColombia id="nomina-fechaFin" max={getTodayString()} required value={fechaFin} onChange={setFechaFin} /></div>
               </div>
               <div className="flex gap-2">
                 <Button type="submit" disabled={submitting || !trabajadorId}>📊 Calcular Automático</Button>
@@ -337,7 +344,7 @@ export default function NominaPage() {
               </span>
             </div>
             <div className="text-sm text-muted-foreground">
-              Período: {new Date(selectedNomina.fechaInicio).toLocaleDateString()} — {new Date(selectedNomina.fechaFin).toLocaleDateString()}
+              Período: {mostrarInstanteBogota(selectedNomina.fechaInicio)} — {mostrarInstanteBogota(selectedNomina.fechaFin)}
             </div>
 
             <div>
@@ -408,7 +415,7 @@ export default function NominaPage() {
             <div><h2 className="text-xl font-bold">Confirmar pago</h2><p className="text-muted-foreground mt-1">¿Marcar como pagada la siguiente nómina?</p></div>
             <div className="bg-muted rounded-lg p-4 space-y-2">
               <div className="flex justify-between text-sm"><span className="text-muted-foreground">Trabajador</span><span className="font-medium">{confirmPayNomina.trabajador?.nombre}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Período</span><span>{new Date(confirmPayNomina.fechaInicio).toLocaleDateString()} — {new Date(confirmPayNomina.fechaFin).toLocaleDateString()}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Período</span><span>{mostrarInstanteBogota(confirmPayNomina.fechaInicio)} — {mostrarInstanteBogota(confirmPayNomina.fechaFin)}</span></div>
               <div className="flex justify-between text-sm"><span className="text-muted-foreground">Total a pagar</span><span className="font-bold text-lg">${formatCOP(Number(confirmPayNomina.total))}</span></div>
             </div>
             <div>
@@ -446,7 +453,7 @@ export default function NominaPage() {
             <div><h2 className="text-xl font-bold">Confirmar anulación</h2><p className="text-muted-foreground mt-1">¿Anular la siguiente nómina?</p></div>
             <div className="bg-muted rounded-lg p-4 space-y-2">
               <div className="flex justify-between text-sm"><span className="text-muted-foreground">Trabajador</span><span className="font-medium">{confirmAnularNomina.trabajador?.nombre}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Período</span><span>{new Date(confirmAnularNomina.fechaInicio).toLocaleDateString()} — {new Date(confirmAnularNomina.fechaFin).toLocaleDateString()}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Período</span><span>{mostrarInstanteBogota(confirmAnularNomina.fechaInicio)} — {mostrarInstanteBogota(confirmAnularNomina.fechaFin)}</span></div>
               <div className="flex justify-between text-sm"><span className="text-muted-foreground">Total</span><span className="font-bold text-lg">${formatCOP(Number(confirmAnularNomina.total))}</span></div>
             </div>
             {confirmAnularNomina.estado === 'PAGADA' && (
@@ -554,7 +561,7 @@ export default function NominaPage() {
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <span>{nom.trabajador?.rol}</span>
                             <span>·</span>
-                            <span>{new Date(nom.fechaInicio).toLocaleDateString()} — {new Date(nom.fechaFin).toLocaleDateString()}</span>
+                            <span>{mostrarInstanteBogota(nom.fechaInicio)} — {mostrarInstanteBogota(nom.fechaFin)}</span>
                           </div>
                           <div className="text-xs text-muted-foreground mt-0.5">
                             Comisiones ${formatCOP(Number(nom.totalComisiones))}

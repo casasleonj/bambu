@@ -3,7 +3,8 @@ name: CI impact shadow
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    # La transición no altera el diff; la observación ya se calculó al abrir/sincronizar.
+    types: [opened, synchronize, reopened]
     # Shadow instrumentation should not charge runner time to declarative-only PRs.
     # This check is intentionally NOT required for branch protection.
     paths:

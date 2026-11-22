@@ -199,6 +199,61 @@ test.describe('Facturas — experiencia de usuario', () => {
     await expect(page.getByText('No se pudo cargar el resumen')).toHaveCount(0)
   })
 
+  test('el encabezado del documento no se encima: apilado en móvil, en fila en escritorio y al imprimir (#873)', async ({ page }) => {
+    await loginAs(page, 'admin')
+    await goto(page, `/resumen-facturas?clienteId=${sandraId}`)
+    const titulo = page.getByTestId('resumen-doc-titulo')
+    await expect(titulo).toBeVisible()
+    await expect(page.getByTestId('resumen-estado')).toBeVisible()
+
+    // Las dos cajas se leen en UNA sola llamada: si se pidieran por separado, la página puede
+    // reacomodarse entre una y otra (p. ej. al pasar a impresión) y dar un solape falso.
+    const medir = () =>
+      page.evaluate(() => {
+        const caja = (id: string) => {
+          const r = document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect()
+          if (!r) throw new Error(`no se encontró ${id}`)
+          return { x: r.x, y: r.y, width: r.width, height: r.height }
+        }
+        return { e: caja('resumen-doc-empresa'), t: caja('resumen-doc-titulo') }
+      })
+    // Espera a que el encabezado deje de moverse (dos lecturas seguidas iguales).
+    const estable = async () => {
+      let previa = JSON.stringify(await medir())
+      for (let i = 0; i < 20; i++) {
+        await page.waitForTimeout(150)
+        const actual = JSON.stringify(await medir())
+        if (actual === previa) return
+        previa = actual
+      }
+    }
+    const sinDesbordamiento = () =>
+      page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)
+
+    const ancho = page.viewportSize()?.width ?? 1280
+    await estable()
+    const { e, t } = await medir()
+    expect(await sinDesbordamiento()).toBe(true)
+    if (ancho < 1024) {
+      // Móvil y tableta (donde la fila no cabe): el título queda debajo del bloque de la empresa.
+      expect(t.y).toBeGreaterThanOrEqual(e.y + e.height - 1)
+    } else {
+      // Escritorio: el título queda a la derecha del bloque de la empresa.
+      expect(t.x).toBeGreaterThanOrEqual(e.x + e.width - 1)
+    }
+    // El título cabe completo dentro de la pantalla.
+    expect(t.x).toBeGreaterThanOrEqual(0)
+    expect(t.x + t.width).toBeLessThanOrEqual(ancho + 1)
+
+    // Impresión (hoja A4 ≈ 794 px): siempre en fila, igual que antes del cambio.
+    await page.setViewportSize({ width: 794, height: 1123 })
+    await page.emulateMedia({ media: 'print' })
+    await estable()
+    const imp = await medir()
+    expect(imp.t.x).toBeGreaterThanOrEqual(imp.e.x + imp.e.width - 1)
+    await page.emulateMedia({ media: null })
+  })
+
   test('un repartidor no puede leer el resumen consolidado', async ({ page }) => {
     await loginAs(page, 'repartidor')
     const res = await apiGet(page, `/api/clientes/${sandraId}/resumen-facturas`)
