@@ -48,7 +48,7 @@ jobs:
 
       - name: Dependencias y Prisma
         run: |
-          npm install
+          npm ci
           npx prisma generate
           npx prisma db push
           bash scripts/aplicar-migraciones-sql-crudas.sh
