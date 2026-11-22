@@ -231,7 +231,7 @@ test.describe('Gastos', () => {
     await goto(page, '/gastos')
     const tarjetaAnulada = page.getByTestId(`gasto-${gastoId}`)
     await expect(tarjetaAnulada).toContainText('Anulado')
-    await expect(tarjetaAnulada).toContainText('Original')
+    await expect(tarjetaAnulada).toContainText('Importe original')
     await expect(tarjetaAnulada).toContainText('45.000')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   })
@@ -255,16 +255,94 @@ test.describe('Gastos', () => {
     await expect(modal.locator('#editar-descripcion')).toHaveValue('Corregir desde lista #973')
     await expect(modal.locator('#editar-monto')).toHaveValue('13000')
     await modal.locator('#editar-descripcion').fill('Cambio todavía no guardado')
-    // Al descartar, conserva la trazabilidad y no persiste una edición accidental.
-    page.once('dialog', async confirmacion => {
-      expect(confirmacion.message()).toContain('Descartar')
-      await confirmacion.accept()
+    // #979: un modal de la aplicación, nunca window.confirm del navegador.
+    let dialogosNativos = 0
+    page.on('dialog', async aviso => {
+      dialogosNativos += 1
+      await aviso.dismiss()
     })
     await modal.getByRole('button', { name: 'Cancelar' }).click()
+    const descartar = page.getByTestId('gastos-confirmar-descarte')
+    await expect(descartar).toBeVisible()
+    await descartar.getByRole('button', { name: 'Seguir editando' }).click()
+    await expect(modal.locator('#editar-descripcion')).toHaveValue('Cambio todavía no guardado')
+    await modal.getByRole('button', { name: 'Cancelar' }).click()
+    await expect(descartar).toBeVisible()
+    await descartar.getByRole('button', { name: 'Descartar cambios' }).click()
     await expect(page.getByRole('dialog', { name: 'Detalle del gasto' })).toBeVisible()
+    expect(dialogosNativos).toBe(0)
     const detalle = await apiGet(page, `/api/gastos/${gasto.id}`)
     expect((await detalle.json()).gasto.descripcion).toBe('Corregir desde lista #973')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  })
+
+  test('#979: tarjeta móvil legible y acciones visibles en 320 px', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 740 })
+    await loginAs(page, 'admin')
+    const creado = await apiPost(page, '/api/gastos', {
+      categoria: 'OTRO', descripcion: 'Cuota motocarro nuevo', monto: 100000,
+      responsable: 'Administración',
+    })
+    expect(creado.status()).toBe(201)
+    const { gasto } = await creado.json()
+    await goto(page, '/gastos')
+    const tarjeta = page.getByTestId(`gasto-${gasto.id}`)
+    await expect(tarjeta).toBeVisible()
+    const titulo = tarjeta.locator('h3')
+    await expect(titulo).toHaveText('Cuota motocarro nuevo')
+    const cajaTitulo = await titulo.boundingBox()
+    const cajaTarjeta = await tarjeta.boundingBox()
+    expect(cajaTitulo).not.toBeNull()
+    expect(cajaTarjeta).not.toBeNull()
+    expect(cajaTitulo!.width).toBeGreaterThan(125)
+    expect(cajaTitulo!.height).toBeLessThan(100)
+    expect(cajaTarjeta!.height).toBeLessThan(330)
+    await expect(tarjeta.getByText('$ 100.000')).toBeVisible()
+    await expect(tarjeta.getByRole('button', { name: 'Ver detalle' })).toBeVisible()
+    await expect(tarjeta.getByRole('button', { name: 'Corregir' })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  })
+
+  test('#979: cancelar sin cambios no pide confirmación y descartar creación usa modal propio', async ({ page }) => {
+    await loginAs(page, 'admin')
+    const creado = await apiPost(page, '/api/gastos', {
+      categoria: 'INSUMOS', descripcion: 'Prueba cancelar sin cambios', monto: 4000,
+    })
+    expect(creado.status()).toBe(201)
+    const { gasto } = await creado.json()
+    await goto(page, '/gastos')
+    await page.getByTestId(`gasto-${gasto.id}`).getByRole('button', { name: 'Corregir' }).click()
+    const editar = page.getByRole('dialog', { name: 'Corregir gasto' })
+    await expect(editar).toBeVisible()
+    await editar.getByRole('button', { name: 'Cancelar' }).click()
+    await expect(page.getByTestId('gastos-confirmar-descarte')).toHaveCount(0)
+    await expect(page.getByRole('dialog', { name: 'Detalle del gasto' })).toBeVisible()
+    await page.getByRole('button', { name: 'Cerrar detalle' }).click()
+    await page.getByRole('button', { name: 'Nuevo gasto', exact: true }).click()
+    await page.locator('#gasto-descripcion').fill('Borrador que no se debe guardar')
+    await page.getByRole('button', { name: 'Cerrar formulario' }).click()
+    const confirmar = page.getByTestId('gastos-confirmar-descarte')
+    await expect(confirmar).toBeVisible()
+    await confirmar.getByRole('button', { name: 'Seguir editando' }).click()
+    await expect(page.locator('#gasto-descripcion')).toHaveValue('Borrador que no se debe guardar')
+    await page.getByRole('button', { name: 'Cerrar formulario' }).click()
+    await confirmar.getByRole('button', { name: 'Descartar cambios' }).click()
+    await expect(page.getByRole('dialog', { name: 'Nuevo gasto operativo' })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Nuevo gasto', exact: true }).click()
+    await expect(page.locator('#gasto-descripcion')).toHaveValue('')
+  })
+
+  test('#979: catálogo se consulta al abrir formulario, no al listar gastos', async ({ page }) => {
+    await loginAs(page, 'admin')
+    let consultados = 0
+    page.on('request', request => {
+      if (request.url().includes('/api/gastos/categorias') && request.method() === 'GET') consultados += 1
+    })
+    await goto(page, '/gastos')
+    await expect(page.getByRole('heading', { name: 'Gastos operativos' })).toBeVisible()
+    expect(consultados).toBe(0)
+    await page.getByRole('button', { name: 'Nuevo gasto', exact: true }).click()
+    await expect.poll(() => consultados).toBe(1)
   })
 
   test('API crear gasto', async ({ page }) => {
