@@ -84,7 +84,7 @@ function GrupoPorConfirmar({ titulo, filas, confirmaPagos, testid }: {
   )
 }
 
-export default function CierreDesgloseCobros({ data }: { data: CierreData | null }) {
+export default function CierreDesgloseCobros({ data, puedeVerGastos = false }: { data: CierreData | null; puedeVerGastos?: boolean }) {
   if (!data) return null
   const d = data.desgloseCobros
   if (!d) {
@@ -221,7 +221,7 @@ export default function CierreDesgloseCobros({ data }: { data: CierreData | null
                   g.origen === 'NOMINA' || g.categoria === 'NOMINA' || g.descripcion.startsWith('Reversión nómina anulada -')
                     ? '/nomina'
                     : g.origen === 'EMBARQUES' ? '/embarques'
-                      : `/gastos?openGasto=${encodeURIComponent(g.id)}`
+                      : puedeVerGastos ? `/gastos?openGasto=${encodeURIComponent(g.id)}` : null
                 }>{g.descripcion}</Enlace>}
                 detalle={<>
                   {g.categoria} · {soloHora(g.fecha)}
