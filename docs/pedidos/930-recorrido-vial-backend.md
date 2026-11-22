@@ -97,3 +97,10 @@ Fuentes:
 - **No se ha unido al botón Cercanía ni a las listas paginadas**: UI necesita su aprobación y QA.
 - Para converger, realizar prueba piloto con puntos públicos/anonimizados verificando circulación real en Agustín Codazzi (sentidos, giros, cierres, acceso motocarga), comparar orden y tiempos frente a Google y recorrido operativo; no inventar una mejora porcentual sin datos.
 - Resultado esperado en UI: una secuencia de visitas de reparto/cobro, sin mapa, igual bajo ambos proveedores.
+
+
+## Decisión posterior del PO · #959 (21 nov 2026)
+
+En el **modo Cercanía de Pedidos** solo aparecen visitas con **mercancía todavía por entregar**. Se excluyen pedidos con entrega completada aunque quede saldo fiado, las ventas de punto, cancelados/anulados y pedidos sin remanente físico. Las entregas parciales y regalos pendientes sí cuentan. Esta decisión reemplaza **solo para Cercanía** la inclusión de paradas de COBRO puro descrita arriba; no elimina el concepto de COBRO del clasificador genérico, ni modifica Cartera, fiados o pagos.
+
+La UI filtra con remanentes por producto y preserva selección entre páginas, pero invalida seleccionados cuya entrega se completa cuando llega el estado actualizado. El POST de recorrido vial también exige unidades pendientes, con rechazo 409 ante una selección obsoleta, sin introducir datos/llamadas de proveedor. Otros contratos vigentes de GPS, disponibilidad, privacidad y optimización no cambian. Pruebas y CI documentados en PR vinculado a #959.
