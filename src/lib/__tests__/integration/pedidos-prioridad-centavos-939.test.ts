@@ -22,7 +22,10 @@ async function crear(
   const estadoPago = totalPagado >= 1500.90 ? 'ANTICIPADO' : totalPagado > 0 ? 'PARCIAL' : 'PENDIENTE'
   const pedido = await testPrisma.pedido.create({
     data: {
-      clienteId, createdById: admin.id, fecha, fechaEntrega: fecha,
+      // Hora prometida vencida: no mezclar la regla de programados futuros con #939.
+      // El filtro Hoy usa `fecha`, la prioridad usa la promesa por separado.
+      clienteId, createdById: admin.id, fecha,
+      fechaEntrega: new Date(fecha.getTime() - 24 * 60 * 60 * 1000),
       createdAt: new Date(Date.now() - antiguedadHoras * 3600000),
       estadoEntrega: 'PENDIENTE', estadoPago,
       canal: 'DOMICILIO', total: 1500.90,
