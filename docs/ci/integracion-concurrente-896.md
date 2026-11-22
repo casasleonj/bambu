@@ -2,6 +2,29 @@
 
 Fecha de verificación: 2026-11-22. **Estado: PROPUESTA documentada; ningún mecanismo de merge ni ahorro en release está activado por este documento.** Revisión adversarial de tres rondas incorporada a continuación. Las restricciones nuevas de la auditoría **prevalecen sobre cualquier frase anterior** si hubiera tensión entre ellas.
 
+## Hallazgo P0: despliegue anticipado con migración fallida (verificado 22/11)
+
+**HECHO TÉCNICO ACTUAL, evidencia cruzada GitHub + Vercel:** para el mismo commit `ff4b20a95905b0ca9c8ff75d174613af5026f83f` (merge PR #971), se verificó:
+
+| Evento | Momento UTC, 22/11/2026 | Evidencia |
+|---|---|---|
+| Inicio Vercel producción | 12:20:27.492 | Deployment `dpl_6rKEMDLZL4S5XEv8BtAW5Ycrbg7U` |
+| Vercel READY con alias `portal.aguabambu.com` | **12:21:56.791** | mismo deployment |
+| GitHub Prisma migrate falla | **12:22:16** (fin del run; error en `vercel whoami` 12:22:13.905) | [run 45021765496](https://github.com/casasleonj/bambu/actions/runs/45021765496) |
+| CI de main concluye success | **12:40:09** | [run 45021765405](https://github.com/casasleonj/bambu/actions/runs/45021765405) |
+
+El merge PR #971 incluía `prisma/migrations/20261122_gasto_anulacion_auditada_755/migration.sql` y `prisma/schema.prisma`. El job de migraciones **falló antes de aplicar una migración desde ese workflow** porque `VERCEL_TOKEN` no era válido. No se ha demostrado si el cambio de esquema se aplicó previamente por otra vía; no afirmar corrupción/inconsistencia de datos sin consulta de solo lectura.
+
+**BRECHA CRÍTICA:** ese candidato fue declarado READY y asociado al dominio de producción **antes** de que el CI completo finalizara y aunque el workflow de migración falló posteriormente. La configuración efectiva de Deployment Checks de Vercel **no es visible en los datos del proyecto consultados**: no inferir `enabled=false` por su ausencia en la API ni por `vercel.json`. Sin embargo la cronología + alias revelan que no hubo una barrera que detuviera esta liberación frente a aquel fallo de migración.
+
+**CAMBIO DE PRIORIDAD SUSTANCIAL TRAS CUARTA AUDITORÍA:** antes de experimentar con omitir checks de release, hay que:
+1. Diagnosticar con lectura segura el estado real de la migración de #971 en `_prisma_migrations` y el esquema efectivo, sin ejecutar migraciones ni correcciones automáticas.
+2. Revisar Vercel Deployment Checks/auto-assignment/entornos y la protección del dominio de producción, con acceso al dashboard/administración cuando corresponda. Diseñar una barrera de **promoción** que dependa del CI y de la migración correspondiente, y comprobarla con fallo inducido **solo en entorno aislado**.
+3. Recuperar de forma segura el flujo de credenciales del job de migración (rotar token por la persona autorizada, sin compartirlo por chat), revisar pinning de Vercel CLI y el orden/schema drift. Una migración fallida nunca debe quedar disfrazada de éxito de deploy.
+4. Mantener estrictamente `CI gate (resumen)` de los PR; **no** introducir bypass de merge, deduplicación PR→main ni promoción hasta que la barrera esté comprobada.
+
+Esta revisión no prueba daño real de datos, no modifica migraciones, esquema, deploy, variables ni reglas. **Estado: PENDIENTE crítico de mitigación y verificación.**
+
 ## Problema y objetivo
 
 El usuario reporta un ciclo en el que los PR A y B completan CI en verde, A se fusiona y B vuelve a ejecutar toda la suite porque `main` avanzó. El objetivo es disminuir **latencia de fusión, runner-minutos y revalidaciones redundantes**, conservando la detección de incompatibilidades y sin permitir código no certificado en producción.
