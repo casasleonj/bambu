@@ -333,6 +333,11 @@ jobs:
             sleep 1
           done
 
+      # #992: exercise the old schema before prisma db push creates these columns.
+      # The script uses disposable databases in the ephemeral CI PostgreSQL container.
+      - name: Verify payroll debt migration on legacy PostgreSQL (#992)
+        run: bash scripts/ci/test-migration-992.sh
+
       - name: Install dependencies
         run: npm install
 
