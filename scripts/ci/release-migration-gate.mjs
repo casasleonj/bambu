@@ -2,6 +2,7 @@
 // No aplica DDL, no usa secretos de base de datos y no autoriza un despliegue por sí sola.
 // Debe utilizarse JUNTO al GitHub check "CI gate (resumen)" en Vercel Deployment Checks.
 import { pathToFileURL } from 'node:url'
+import { execFileSync } from 'node:child_process'
 
 export const POLL_INTERVAL_MS = 15000
 export const APPEARANCE_TIMEOUT_MS = 3 * 60_000
@@ -70,7 +71,44 @@ export async function waitForMigration({
   }
 }
 
-export async function main(env=process.env,{verify=waitForMigration,log=console.log}={}) {
+
+export function commitIsAncestor(before,after){
+  if (![before,after].every(s=>SHA_PATTERN.test(s||''))) throw Error('SHA inválido')
+  try { execFileSync('git',['merge-base','--is-ancestor',before,after],{stdio:'ignore',timeout:5000});return true }
+  catch(e){if(e.status===1)return false;throw Error('No se pudo comprobar ancestralidad Git')}
+}
+
+// Los workflows push se crean para el SHA FINAL del push, no necesariamente
+// para el commit intermedio que añadió la migración. Encontramos un workflow
+// de push sobre la cadena ancestral que cubra la última revisión del esquema.
+export async function findEffectiveMigrationSha({
+  candidateSha,schemaSha,token,fetchFn=fetch,isAncestor=commitIsAncestor,maxPages=5,
+}={}){
+  if (![candidateSha,schemaSha].every(s=>SHA_PATTERN.test(s||'')) ||
+      !token || !Number.isSafeInteger(maxPages) || maxPages<1 || maxPages>10)
+    throw Error('Datos de búsqueda inválidos')
+  if(!isAncestor(schemaSha,candidateSha))throw Error('Esquema no es ancestro de candidato')
+  for(let page=1;page<=maxPages;page++){
+    const url='https://api.github.com/repos/'+REPO+'/actions/workflows/'+WORKFLOW+
+      '/runs?branch=main&event=push&per_page=100&page='+page
+    const res=await fetchFn(url,{method:'GET',redirect:'error',
+      headers:{Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',
+        Authorization:'Bearer '+token},signal:AbortSignal.timeout(12000)})
+    if(!res?.ok)throw Error('No fue posible leer historial de migraciones: HTTP '+(res?.status||'desconocido'))
+    const data=await res.json()
+    if(!Array.isArray(data?.workflow_runs))throw Error('Respuesta del historial inválida')
+    const entries=data.workflow_runs.filter(x=>x?.event==='push'&&x.head_branch==='main'&&
+      SHA_PATTERN.test(x.head_sha||'')&&Number.isSafeInteger(x.id)&&x.id>0&&
+      Number.isSafeInteger(x.run_attempt)&&x.run_attempt>0).sort((a,b)=>b.id-a.id)
+    for(const e of entries){
+      if(isAncestor(schemaSha,e.head_sha)&&isAncestor(e.head_sha,candidateSha))return e.head_sha
+    }
+    if(data.workflow_runs.length<100)break
+  }
+  throw Error('No se encontró una ejecución ancestral de migraciones que cubra el esquema')
+}
+
+export async function main(env=process.env,{verify=waitForMigration,find=findEffectiveMigrationSha,log=console.log}={}) {
   if (env.GITHUB_EVENT_NAME!=='push' || env.GITHUB_REF!=='refs/heads/main')
     throw new Error('Solo el evento push de main puede emitir este check')
   // El manifiesto SQL crudo se aplica a bases locales/CI; no se usa en Supabase.
@@ -89,12 +127,13 @@ export async function main(env=process.env,{verify=waitForMigration,log=console.
   const latestSchemaSha=env.LAST_SCHEMA_SHA
   if (!SHA_PATTERN.test(env.GITHUB_SHA || '') || !SHA_PATTERN.test(latestSchemaSha || ''))
     throw new Error('Identidad SHA del candidato o del último esquema inválida')
-  if ((env.SCHEMA_CHANGED === 'true' || newMigrations > 0) &&
-      latestSchemaSha !== env.GITHUB_SHA)
-    throw new Error('La revisión de esquema reciente no coincide con el commit actual')
-  const result=await verify({sha:latestSchemaSha,token:env.GITHUB_TOKEN})
-  log('Migración heredada del esquema '+latestSchemaSha.slice(0,12)+
-    ' verificada; run '+result.runId+', intento '+result.runAttempt)
+  const changesPrisma = env.SCHEMA_CHANGED === 'true' || newMigrations > 0
+  const effectiveSha=changesPrisma ? env.GITHUB_SHA :
+    await find({candidateSha:env.GITHUB_SHA,schemaSha:latestSchemaSha,token:env.GITHUB_TOKEN})
+  if(!SHA_PATTERN.test(effectiveSha||''))throw Error('SHA efectivo de migración inválido')
+  const result=await verify({sha:effectiveSha,token:env.GITHUB_TOKEN})
+  log('Esquema '+latestSchemaSha.slice(0,12)+' cubierto por push '+
+    effectiveSha.slice(0,12)+'; run '+result.runId+', intento '+result.runAttempt)
 }
 if (process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
   main().catch(error=>{console.error('Production migration gate: '+error.message);process.exitCode=1})

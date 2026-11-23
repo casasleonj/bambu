@@ -1,7 +1,7 @@
 import {test} from 'node:test'
 import {readFileSync} from 'node:fs'
 import {strict as assert} from 'node:assert'
-import {chooseRun,evaluateRun,waitForMigration,main} from '../release-migration-gate.mjs'
+import {chooseRun,evaluateRun,waitForMigration,findEffectiveMigrationSha,main} from '../release-migration-gate.mjs'
 
 const sha='a'.repeat(40), other='b'.repeat(40)
 const run=(x={})=>({
@@ -96,7 +96,7 @@ test('push sin cambios Prisma exige salud de la última migración heredada',asy
   await main({
     GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',SCHEMA_CHANGED:'false',
     NEW_MIGRATIONS:'0',GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,GITHUB_TOKEN:'synthetic-only',
-  },{verify:async ({sha:check})=>{
+  },{find:async()=>sha,verify:async ({sha:check})=>{
     verifiedSha=check
     return {ok:true,runId:7,runAttempt:1}
   },log:()=>{logCount++}})
@@ -139,15 +139,21 @@ test('rechaza un fallo heredado aunque el commit actual sea solo código o docum
     SCHEMA_CHANGED:'false',NEW_MIGRATIONS:'0',
     GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,GITHUB_TOKEN:'synthetic-only',
   }
-  await assert.rejects(main(env,{verify:async()=>{throw Error('migración anterior fallida')}}),
+  await assert.rejects(main(env,{find:async()=>sha,verify:async()=>{throw Error('migración anterior fallida')}}),
     /migración anterior fallida/)
 })
-test('un commit con esquema nuevo no puede certificar una revisión histórica distinta',async()=>{
-  await assert.rejects(main({
+test('push multicommit se certifica por SHA final del push (no por SHA intermedio)',async()=>{
+  let used
+  await main({
     GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
     SCHEMA_CHANGED:'true',NEW_MIGRATIONS:'1',
     GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,GITHUB_TOKEN:'synthetic-only',
-  },{verify:async()=>{throw Error('No debe consultar GitHub')}}), /no coincide/)
+  },{
+    find:async()=>{throw Error('No debe buscar el historial')},
+    verify:async ({sha:check})=>{used=check;return {runId:42,runAttempt:1}},
+    log:()=>{},
+  })
+  assert.equal(used,other)
 })
 test('sin SHA de esquema válido nunca declara verde, incluso en docs-only',async()=>{
   for(const bad of [undefined,'','HEAD', '0'.repeat(39)]){
@@ -165,4 +171,45 @@ test('el workflow valida la revisión histórica por primer padre y transmite el
   assert.ok(workflow.includes('last_new_count="$(node scripts/ci/release-migration-policy.mjs'))
   assert.ok(workflow.includes('LAST_SCHEMA_SHA: ${{ steps.schema-diff.outputs.last_schema_sha }}'))
   assert.ok(workflow.includes('last_schema_sha=$last_schema_sha'))
+})
+
+test('busca el último run push main ancestral que cubre la última migración',async()=>{
+ const middle='c'.repeat(40),foreign='d'.repeat(40)
+ let url
+ const result=await findEffectiveMigrationSha({
+  candidateSha:other,schemaSha:sha,token:'synthetic-token',
+  isAncestor:(a,b)=>a===b||(a===sha&&b===middle)||(a===middle&&b===other)||(a===sha&&b===other),
+  fetchFn:async(u,opts)=>{
+    url=u;assert.equal(opts.method,'GET')
+    return {ok:true,json:async()=>({workflow_runs:[
+      run({id:20,head_sha:foreign}),run({id:19,head_sha:middle}),run({id:18,head_sha:sha})
+    ]})}
+  }
+ })
+ assert.equal(result,middle)
+ assert.ok(url.includes('branch=main&event=push'))
+})
+test('run de rama ajena, fuera de ancestralidad o manual no certifica',async()=>{
+ const attempts=[run({head_sha:'c'.repeat(40)}),run({event:'workflow_dispatch'}),run({head_branch:'other'})]
+ await assert.rejects(findEffectiveMigrationSha({
+  candidateSha:other,schemaSha:sha,token:'synthetic-token',
+  isAncestor:(a,b)=>a===b||(a===sha&&b===other),
+  fetchFn:async()=>({ok:true,json:async()=>({workflow_runs:attempts})}),
+ }),/No se encontró/)
+})
+test('historial inaccesible 403 y respuesta malformada son fallo cerrado',async()=>{
+ for(const response of [{ok:false,status:403},{ok:true,json:async()=>({error:'bad'})}]){
+  await assert.rejects(findEffectiveMigrationSha({
+   candidateSha:other,schemaSha:sha,token:'synthetic-token',
+   isAncestor:(a,b)=>a===b||(a===sha&&b===other),
+   fetchFn:async()=>response,
+  }))
+ }
+})
+test('esquema que no es ancestro bloquea antes de consultar API',async()=>{
+ await assert.rejects(findEffectiveMigrationSha({
+  candidateSha:other,schemaSha:sha,token:'synthetic-token',
+  isAncestor:(a,b)=>a===b,
+  fetchFn:async()=>{throw Error('No debe consultar API')},
+ }),/no es ancestro/)
 })
