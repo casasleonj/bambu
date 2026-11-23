@@ -253,3 +253,12 @@ test('el SHA de confianza del pipeline no puede faltar ni ser arbitrario',async(
   },{find:async()=>sha,verify:async()=>({runId:1,runAttempt:1})}),/SHA/)
  }
 })
+
+test('modificar el orquestador obliga a ejecutarlo nuevamente en main',()=>{
+ const migrate=readFileSync(new URL('../../../.github/workflows/migrate-deploy.yml',import.meta.url),'utf8')
+ const policy=readFileSync(new URL('../../../.github/workflows/release-migration-policy-tests.yml',import.meta.url),'utf8')
+ assert.ok(migrate.includes("- '.github/workflows/migrate-deploy.yml'"))
+ assert.ok(migrate.includes("- 'prisma/migrations/**'"))
+ assert.ok(migrate.includes("- 'prisma/schema.prisma'"))
+ assert.ok(policy.includes("- '.github/workflows/migrate-deploy.yml'"))
+})

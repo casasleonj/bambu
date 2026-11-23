@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/release-migration-gate.yml'
       - '.github/workflows/release-migration-policy-tests.yml'
+      - '.github/workflows/migrate-deploy.yml'
       - 'scripts/ci/release-migration-gate.mjs'
       - 'scripts/ci/release-migration-policy.mjs'
       - 'scripts/ci/__tests__/release-migration-gate.node.test.mjs'

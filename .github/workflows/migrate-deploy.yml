@@ -7,6 +7,9 @@ on:
     paths:
       - 'prisma/schema.prisma'
       - 'prisma/migrations/**'
+      # Si cambia el orquestador, debe ejecutarse para certificar el SHA.
+      # El release gate invalida el éxito anterior del pipeline.
+      - '.github/workflows/migrate-deploy.yml'
   workflow_dispatch:
 
 permissions:
