@@ -10,6 +10,7 @@ const files=new Map([['20260101_a',h('SELECT 1;')],['20260201_b',h('SELECT 2;')]
 const done=(name='20260101_a',extra={})=>({migration_name:name,checksum:files.get(name),
  finished_at:new Date(),rolled_back_at:null,...extra})
 const diff=(...pairs)=>Buffer.from(pairs.flat().join('\0')+'\0')
+const older=new Date('2026-01-01T00:00:00Z'),newer=new Date('2026-01-02T00:00:00Z')
 test('historial íntegro',()=>{assert.deepEqual(verifyLedger(files,[done(),done('20260201_b')]),{completed:2,pending:[]})})
 test('pendiente permitido solo si fue agregado en este push',()=>{
  assert.deepEqual(verifyLedger(files,[done()],new Set(['20260201_b'])),{completed:1,pending:['20260201_b']})
@@ -24,13 +25,39 @@ test('migración aplicada fuera del árbol local rechazada',()=>{
 test('migración incompleta sin rollback bloqueada',()=>{
  assert.throws(()=>verifyLedger(files,[done('20260101_a',{finished_at:null})]),/incompleta/)
 })
-test('rollback seguido de éxito pasa',()=>{
- assert.equal(verifyLedger(files,[done('20260101_a',{finished_at:null,rolled_back_at:new Date()}),
- done(),done('20260201_b')]).completed,2)
+test('rollback histórico anterior a la aplicación exitosa pasa aunque las filas estén invertidas',()=>{
+ const ledger=[
+  done('20260101_a',{finished_at:newer}),
+  done('20260201_b'),
+  done('20260101_a',{finished_at:null,rolled_back_at:older}),
+ ]
+ assert.equal(verifyLedger(files,ledger).completed,2)
 })
 test('rollback sin re-aplicación exitosa bloqueado',()=>{
  assert.throws(()=>verifyLedger(files,[done('20260101_a',{finished_at:null,rolled_back_at:new Date()}),
  done('20260201_b')]),/Rollback/)
+})
+test('aplicación anterior seguida de rollback posterior se bloquea',()=>{
+ const ledger=[
+  done('20260101_a',{finished_at:older}),
+  done('20260201_b'),
+  done('20260101_a',{finished_at:null,rolled_back_at:newer}),
+ ]
+ assert.throws(()=>verifyLedger(files,ledger),/Rollback sin posterior éxito/)
+})
+test('rollback con la misma marca de tiempo de aplicación no se certifica',()=>{
+ const ledger=[
+  done('20260101_a',{finished_at:newer}),
+  done('20260101_a',{finished_at:null,rolled_back_at:newer}),
+  done('20260201_b'),
+ ]
+ assert.throws(()=>verifyLedger(files,ledger),/Rollback sin posterior éxito/)
+})
+test('fecha faltante o ilegible no certifica un éxito ni un rollback',()=>{
+ assert.throws(()=>verifyLedger(files,[done('20260101_a',{finished_at:'no-fecha'}),
+  done('20260201_b')]),/Fecha inválida/)
+ assert.throws(()=>verifyLedger(files,[done('20260101_a',{finished_at:null,rolled_back_at:'no-fecha'}),
+  done('20260101_a'),done('20260201_b')]),/Fecha inválida/)
 })
 test('duplicación y estado contradictorio bloqueados',()=>{
  assert.throws(()=>verifyLedger(files,[done(),done()]),/duplicada/)

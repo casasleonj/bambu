@@ -34,22 +34,35 @@ export function verifyLedger(files,history,allowedPending=new Set()){
  if(!(files instanceof Map)||!(allowedPending instanceof Set)||!Array.isArray(history)||!files.size){
   throw Error('Entradas de conciliación no válidas')
  }
- const completed=new Set(),rolled=new Set()
+ const completed=new Set(),rolled=new Map(),successfulTimes=new Map()
+ const timestamp=(value,name)=>{
+  const ms=value instanceof Date?value.getTime():Date.parse(value)
+  if(!Number.isFinite(ms))throw Error('Fecha inválida en historial: '+name)
+  return ms
+ }
  for(const row of history){
   const name=row?.migration_name
   if(typeof name!=='string'||!NAME.test(name))throw Error('Nombre de migración inválido')
   if(row.finished_at && row.rolled_back_at)throw Error('Estado contradictorio: '+name)
   if(!row.finished_at&&!row.rolled_back_at)throw Error('Ejecución incompleta: '+name)
-  if(row.rolled_back_at){rolled.add(name);continue}
+  if(row.rolled_back_at){
+   const at=timestamp(row.rolled_back_at,name)
+   rolled.set(name,Math.max(rolled.get(name)??-Infinity,at))
+   continue
+  }
   if(completed.has(name))throw Error('Migración completada duplicada: '+name)
   if(!files.has(name))throw Error('Migración en DB ausente en Git: '+name)
   if(typeof row.checksum!=='string'||row.checksum!==files.get(name)){
    throw Error('Checksum modificado: '+name)
   }
   completed.add(name)
+  successfulTimes.set(name,timestamp(row.finished_at,name))
  }
- for(const name of rolled){
-  if(!completed.has(name))throw Error('Rollback sin posterior éxito: '+name)
+ for(const [name,lastRollback] of rolled){
+  // Una aplicación anterior NO subsana un rollback posterior.
+  if(!completed.has(name)||successfulTimes.get(name)<=lastRollback){
+   throw Error('Rollback sin posterior éxito: '+name)
+  }
  }
  const pending=[]
  for(const name of files.keys()){
