@@ -12,7 +12,7 @@ La referencia técnica anterior es `5418ba9172b0866bb494342c062fe4437e419f4f`. N
 | CONTADOR, SELLADOR | 1 | 30 minutos |
 | REPARTIDOR | 1 | 6 horas |
 
-`SESSION_LIMITS_JSON` permite overrides enteros positivos. La sesión menos recientemente activa se expulsa al superar la capacidad. El polling técnico cuenta como actividad: estas ventanas no son una medición de inactividad humana. La cookie tiene una envoltura máxima de seis horas; la fila vigente en PostgreSQL determina el acceso y la ventana efectiva de cada rol.
+`SESSION_LIMITS_JSON` permite overrides enteros positivos. Al iniciar otra sesión y superar la capacidad se expulsa la menos recientemente activa. Al reconciliar un cambio de rol se conserva la asociación que está verificándose y se ajustan las otras al nuevo límite, como en el mecanismo previo. El polling técnico cuenta como actividad: estas ventanas no son una medición de inactividad humana. La cookie tiene una envoltura máxima de seis horas; la fila vigente en PostgreSQL determina el acceso y la ventana efectiva de cada rol.
 
 ## Tres resultados diferentes
 
@@ -54,3 +54,9 @@ La base local necesita `prisma db push` y las migraciones de `scripts/migracione
 - La reproducción técnica identifica mecanismos de fallo; no demuestra que todos los cierres históricos reportados tengan la misma causa ni modifica registros de producción.
 
 Fuentes de biblioteca verificadas: `next-auth@5.0.0-beta.31`, `@auth/core` instalado (`lib/actions/session`, `lib/actions/signout`), Next.js 16.2.4 y [Web Locks API de MDN](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API). La investigación previa, sus límites y la aprobación de la fase quedan trazados en #760 y en el PR.
+
+## Alternativas refutadas y cierre de la iteración
+
+Ampliar la duración no corrige la pérdida de identidad al fallar una consulta. Tratar la ausencia de tabla como autorización permite acceso sin verificación. Borrar el JWT ante cualquier error impide recuperar una sesión legítima. Un 403 no demuestra expiración. Un contador JavaScript aislado no controla cuándo el navegador aplica una cookie HTTP. Estas alternativas se descartaron a partir del código de Auth.js instalado y las reproducciones registradas en #760; las pruebas actuales fijan sus contratos negativos.
+
+La refutación posterior añadió la recuperación automática del aviso, el regreso al mismo origen y la intención de cierre ligada al SID original. Las pruebas antes/después y el recorrido de producción C15 verifican este último caso; C16 verifica un corte real de conexiones PostgreSQL y recuperación sin reinicio. La convergencia se limita a los flujos y navegadores comprobados, con los límites de Web Locks y los alcances #323/#988 ya indicados. La auditoría independiente sigue siendo un control de liberación pendiente, no una prueba supuestamente realizada por el implementador.

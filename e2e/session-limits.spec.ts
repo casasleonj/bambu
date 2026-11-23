@@ -131,8 +131,7 @@ test('revocación actualiza la interfaz y no conserva el Provider antiguo', asyn
   await expect(page.getByText('Tu sesión expiró. Vuelve a iniciar sesión para continuar.')).toBeVisible()
 })
 
-test('un fallo de verificación no destruye la sesión y permite reintentar en móvil', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
+test('un fallo de verificación conserva la sesión incluso al recargar', async ({ page }, testInfo) => {
   await skipBaseCaja(page)
   await login(page, 'admin', 'admin123')
   await page.goto('/mi-perfil')
@@ -144,6 +143,13 @@ test('un fallo de verificación no destruye la sesión y permite reintentar en m
     expect((await readSession(page)).authStatus).toBe('unavailable')
     await expect(page.getByText('No pudimos comprobar tu sesión', { exact: true })).toBeVisible()
     await expect(page).toHaveURL(/\/mi-perfil/)
+    // A production reload must retain the custom recovery digest even though
+    // Next.js sanitizes server error messages and the layout cannot mount.
+    await page.reload()
+    await expect(page.getByText('No pudimos comprobar tu sesión', { exact: true })).toBeVisible()
+    const screenshot = testInfo.outputPath('recuperacion-servidor.png')
+    await page.screenshot({ path: screenshot })
+    await testInfo.attach('recuperacion-servidor', { path: screenshot, contentType: 'image/png' })
   } finally {
     await db.$executeRaw`ALTER TABLE "SesionActiva_760_e2e" RENAME TO "SesionActiva"`
   }
