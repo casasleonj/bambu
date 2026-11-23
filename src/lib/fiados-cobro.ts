@@ -56,3 +56,20 @@ export function repartirCobroFiado(pedidos: DeudaFiado[], monto: number) {
 export function sumarCobroFiado(pagos: LineaCobroFiado[]): number {
   return pagos.reduce((sum, pago) => sum + Math.round(pago.monto * 100), 0) / 100
 }
+
+/**
+ * #634: criterio ÚNICO de «monto legible» para lista, encabezado y detalle.
+ *
+ * Un historial legado o manipulado puede traer el campo ausente o corrupto. Se exige número
+ * finito de verdad (`typeof`), no coerción: `Number(null)`, `Number('')` y `Number([])` son 0,
+ * y tratar eso como monto haría que la pantalla afirmara «$ 0» donde no hay dato. Un único
+ * predicado evita que la lista diga «sin monto legible» y el detalle muestre otra cosa.
+ */
+export function esMontoLegible(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+/** Suma exacta en centavos de los montos legibles; los ilegibles se cuentan aparte. */
+export function sumarMontosLegibles(valores: readonly unknown[]): { total: number; ilegibles: number } {
+  const legibles = valores.filter(esMontoLegible)
+  return { total: legibles.reduce((s, m) => s + Math.round(m * 100), 0) / 100, ilegibles: valores.length - legibles.length }
+}

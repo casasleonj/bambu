@@ -9,7 +9,7 @@ import { fetchResilient } from '@/lib/fetch-resilient'
 import { offlineDb } from '@/lib/db/offline'
 import { syncWithServer, SYNC_ITEM_DONE_EVENT } from '@/lib/db/sync'
 import { importeFiadoSchema, metodoFiadoSchema, repartirCobroFiado, sumarCobroFiado,
-  type LineaCobroFiado, type PreparacionCobroFiado, type ResultadoCobroFiado } from '@/lib/fiados-cobro'
+  type LineaCobroFiado, type PreparacionCobroFiado, type ResultadoCobroFiado, esMontoLegible, sumarMontosLegibles } from '@/lib/fiados-cobro'
 import { CobroOficinaCampos } from '../registrar-entrega/cobro-oficina-campos'
 import { camposCobro, datosCobroIniciales, validarCobro, hayErroresCobro, type DatosCobroOficina } from '../registrar-entrega/logica-cobro'
 import { PedidoDocumentLinks, type AccesoDocumentosPedido } from './pedido-document-links'
@@ -264,14 +264,17 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
   /** #634: total exacto en centavos de lo que muestra el desplegable cerrado.
    * Un monto ilegible (ausente o no numérico en un historial legado) no puede convertirse en
    * «NaN»: suma lo que se puede leer y el resumen avisa de cuántos quedaron fuera. */
-  const montosLegibles = recientes.map(r => r.montoRecibido).filter((m): m is number => typeof m === 'number' && Number.isFinite(m))
-  const sinMonto = recientes.length - montosLegibles.length
-  const totalRecientes = montosLegibles.reduce((s, m) => s + Math.round(m * 100), 0) / 100
+  /** #634: criterio único de «monto legible» (ver `esMontoLegible`): lista, encabezado y detalle. */
+  const totales = sumarMontosLegibles(recientes.map(r => r.montoRecibido))
+  const totalRecientes = totales.total
+  const sinMonto = totales.ilegibles
   const cuentaPagos = `${recientes.length} pago${recientes.length === 1 ? '' : 's'}`
   /** Si no hay ningún monto legible, mostrar «$ 0» se lee como «no se cobró nada»: se omite el total. */
-  const resumenRecientes = montosLegibles.length === 0
+  const resumenRecientes = sinMonto === recientes.length
     ? `${cuentaPagos} · ${sinMonto} sin monto legible`
     : `${cuentaPagos} · ${dinero(totalRecientes)}${sinMonto > 0 ? ` · ${sinMonto} sin monto legible` : ''}`
+  /** #634: un monto corrupto nunca se imprime como «NaN» ni se disfraza de «$ 0». */
+  const montoFmt = (v: unknown) => esMontoLegible(v) ? dinero(v) : 'Sin monto legible'
   const delPedido = (resultado ? null : draft?.cliente.pedido) ?? null
   const returnLabel = resultado ? 'Volver al resultado del pago' : 'Volver a la revisión del pago'
   const docs = (p: { pedidoId: string; numero: number; facturaId?: string; facturaNumero?: string }) => <PedidoDocumentLinks
@@ -289,7 +292,7 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
       {recientes.length > 0 && <div className="[&_summary]:min-h-11">
         <Desplegable testid="pagos-recientes" icono="🧾" titulo="Pagos recientes" tono="azul"
           resumen={resumenRecientes}>
-          {recientes.map((r, i) => <div key={r.referencia || `${r.registradoAt}:${i}`} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 py-1 text-sm last:border-0"><p>{r.clienteNombre} · {typeof r.montoRecibido === 'number' && Number.isFinite(r.montoRecibido) ? `Registrado ${dinero(r.montoRecibido)}` : 'Registrado sin monto legible'}</p><button className="min-h-11 underline" onClick={() => abrirResultado(r)}>Ver resultado y documentos</button></div>)}
+          {recientes.map((r, i) => <div key={r.referencia || `${r.registradoAt}:${i}`} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 py-1 text-sm last:border-0"><p>{r.clienteNombre} · {esMontoLegible(r.montoRecibido) ? `Registrado ${dinero(r.montoRecibido)}` : 'Registrado sin monto legible'}</p><button className="min-h-11 underline" onClick={() => abrirResultado(r)}>Ver resultado y documentos</button></div>)}
         </Desplegable>
       </div>}
     </section>}
@@ -302,11 +305,11 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
         {error && <p role="alert" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">{error}</p>}
         {busy && <p role="status" className="mb-3 text-sm text-gray-500">{pendiente ? 'Verificando el registro…' : 'Consultando la deuda…'}</p>}
         {resultado ? <>
-          <div className="grid gap-3 sm:grid-cols-3">{[['Registrado', resultado.montoRecibido], ['Aplicado a deuda', resultado.montoAplicado], ['Saldo a favor', resultado.saldoFavorAcreditado]].map(([label, value]) => <div className="rounded-lg bg-gray-50 p-3" key={label}><p className="text-sm">{label}</p><strong className="text-lg">{Number.isFinite(Number(value)) ? dinero(Number(value)) : 'Sin monto legible'}</strong></div>)}</div>
+          <div className="grid gap-3 sm:grid-cols-3">{[['Registrado', resultado.montoRecibido], ['Aplicado a deuda', resultado.montoAplicado], ['Saldo a favor', resultado.saldoFavorAcreditado]].map(([label, value]) => <div className="rounded-lg bg-gray-50 p-3" key={label}><p className="text-sm">{label}</p><strong className="text-lg">{montoFmt(value)}</strong></div>)}</div>
           <p className="my-3 break-all text-xs text-gray-500">Referencia: {resultado.referencia} · {new Date(resultado.registradoAt).toLocaleString('es-CO', { timeZone: 'America/Bogota' })}</p>
           {resultado.recepcion && <p className="mb-3 text-sm">Recibió: {resultado.recepcion.nombre} · Fecha de recepción: {new Date(resultado.recepcion.fecha).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}</p>}
-          {resultado.pagosAplicados.map(p => <div className="border-t py-3" key={p.pedidoId}><h3 className="font-semibold">Pedido #{p.numero}: aplicado {dinero(p.montoAplicado)}</h3><p className="text-sm">Saldo después del registro: {dinero(p.saldoRestante)}</p>{docs(p)}</div>)}
-          {resultado.medios.map((m, i) => <div key={i} className={`mt-2 rounded-lg p-3 text-sm ${m.confirmacion === 'REPORTADO' ? 'bg-amber-50 text-amber-900' : 'bg-gray-50'}`}><p>{METODOS[m.metodo]}: {dinero(m.monto)} · Aplicado {dinero(m.montoAplicado)}{m.saldoFavor > 0 ? ` · Saldo a favor ${dinero(m.saldoFavor)}` : ''}</p><p>Estado al registrar: {m.confirmacion === 'REPORTADO' ? 'reportado, pendiente de confirmación por la persona autorizada.' : m.confirmacion === 'CONFIRMADO' ? 'pago aplicado confirmado según la regla de este medio.' : 'saldo a favor, sin aplicación a pedidos.'}</p></div>)}
+          {(resultado.pagosAplicados ?? []).map(p => <div className="border-t py-3" key={p.pedidoId}><h3 className="font-semibold">Pedido #{p.numero}: aplicado {montoFmt(p.montoAplicado)}</h3><p className="text-sm">Saldo después del registro: {montoFmt(p.saldoRestante)}</p>{docs(p)}</div>)}
+          {(resultado.medios ?? []).map((m, i) => <div key={i} className={`mt-2 rounded-lg p-3 text-sm ${m.confirmacion === 'REPORTADO' ? 'bg-amber-50 text-amber-900' : 'bg-gray-50'}`}><p>{METODOS[m.metodo] ?? 'Medio no reconocido'}: {montoFmt(m.monto)} · Aplicado {montoFmt(m.montoAplicado)}{esMontoLegible(m.saldoFavor) && m.saldoFavor > 0 ? ` · Saldo a favor ${dinero(m.saldoFavor)}` : ''}</p><p>Estado al registrar: {m.confirmacion === 'REPORTADO' ? 'reportado, pendiente de confirmación por la persona autorizada.' : m.confirmacion === 'CONFIRMADO' ? 'pago aplicado confirmado según la regla de este medio.' : 'saldo a favor, sin aplicación a pedidos.'}</p></div>)}
           <p className="mt-3 text-xs text-gray-500">Este es el resultado del registro. El estado actual de cada pedido y sus pagos se consulta en sus detalles.</p>
         </> : pendiente ? <>
           <p className="rounded-lg bg-amber-50 p-3 text-sm">{draft.motivo === 'network' ? 'Falta conexión para enviar y verificar el pago.' : 'No tenemos una respuesta confirmada. El servidor pudo haber registrado el pago.'} No lo registres como un cobro nuevo.</p>

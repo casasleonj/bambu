@@ -172,4 +172,35 @@ describe('#634 residuales — monto ilegible y claves repetidas', () => {
     expect(texto).not.toContain('NaN')
     expect(texto).toContain('Sin monto legible')
   })
+
+  it('el detalle cubre también pagos aplicados y medios corruptos, sin NaN ni caída', async () => {
+    const roto = {
+      ...reciente('Tienda Rota', 0, 'r1'),
+      montoRecibido: undefined, montoAplicado: undefined, saldoFavorAcreditado: undefined,
+      pagosAplicados: [{ pedidoId: 'p1', numero: 351, montoAplicado: undefined, saldoRestante: Number.NaN }],
+      medios: [{ metodo: 'NEQUI', monto: undefined, montoAplicado: 'x', saldoFavor: undefined, confirmacion: 'CONFIRMADO' }],
+    }
+    servir([roto])
+    montar()
+    await screen.findByTestId('pagos-recientes')
+    fireEvent.click(screen.getByRole('button', { name: 'Ver resultado y documentos' }))
+    const modal = await screen.findByTestId('cobro-fiado-dialog')
+    const texto = modal.textContent || ''
+    expect(texto).not.toContain('NaN')
+    expect(texto).not.toContain('undefined')
+    // los cuatro puntos que antes imprimían NaN se declaran
+    expect(texto).toMatch(/Pedido #351: aplicado Sin monto legible/)
+    expect(texto).toMatch(/Saldo después del registro: Sin monto legible/)
+    expect(texto).toMatch(/Nequi: Sin monto legible · Aplicado Sin monto legible/)
+  })
+
+  it('un resultado con «pagosAplicados» o «medios» ausentes no tumba el detalle', async () => {
+    const sinListas = { ...reciente('Tienda Rota', 5000, 'r1'), pagosAplicados: undefined, medios: undefined }
+    servir([sinListas])
+    montar()
+    await screen.findByTestId('pagos-recientes')
+    fireEvent.click(screen.getByRole('button', { name: 'Ver resultado y documentos' }))
+    const modal = await screen.findByTestId('cobro-fiado-dialog')
+    expect(modal.textContent).toContain('Pago registrado')
+  })
 })
