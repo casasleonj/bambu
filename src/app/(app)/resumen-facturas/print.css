@@ -65,21 +65,6 @@
     page-break-after: avoid !important;
   }
 
-  /* Totales: no separar entre páginas */
-  .doc-totales {
-    page-break-inside: avoid !important;
-  }
-
-  /* Firma: no separar entre páginas */
-  .doc-firma {
-    page-break-inside: avoid !important;
-  }
-
-  /* Nota legal: no separar */
-  .doc-nota {
-    page-break-inside: avoid !important;
-  }
-
   /* Links: sin color azul ni subrayado en impresión */
   a[href] {
     color: inherit !important;
@@ -101,5 +86,10 @@
   /* Body sin fondo gris */
   body {
     background: white !important;
+  }
+
+  /* El contenedor de la app pinta gris la hoja: en papel/PDF va en blanco (#977). */
+  .min-h-\[100dvh\] {
+    background-color: white !important;
   }
 }
