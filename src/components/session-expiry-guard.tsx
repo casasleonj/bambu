@@ -54,14 +54,14 @@ export function SessionExpiryGuard() {
   }, [])
   useEffect(() => { updateRef.current = update }, [update])
   useEffect(() => {
-    if (!session?.user?.id || session.authStatus === 'unavailable') return
+    if (logout?.pending || !session?.user?.id || session.authStatus === 'unavailable') return
     const identity = `${session.user.id}:${session.user.sessionId ?? ''}:${session.user.role ?? ''}`
     if (initialIdentity.current && initialIdentity.current !== identity) {
       // Context alone cannot replace server-rendered props or another user's drafts.
       window.location.reload()
     }
     initialIdentity.current = identity
-  }, [session])
+  }, [session, logout])
 
   const verify = useCallback(async () => {
     if (pending.current || hasRedirected.current || PUBLIC_PATHS.includes(pathname) || isIntentionalSignOut) return

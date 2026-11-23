@@ -197,3 +197,43 @@ test('respuestas de negocio no pueden sobrescribir cookies de otra cuenta', asyn
   expect(response.headersArray().filter(header => header.name.toLowerCase() === 'set-cookie')
     .some(header => /authjs\.session-token/.test(header.value))).toBe(false)
 })
+
+test('un cierre de A que esperaba su turno no cierra una cuenta B posterior', async ({ page, context }) => {
+  await skipBaseCaja(page)
+  await login(page, 'admin', 'admin123')
+  await page.goto('/mi-perfil')
+  await expect(page.getByTestId('user-menu')).toBeVisible()
+  const original = await readSession(page)
+  const other = await context.newPage()
+  await skipBaseCaja(other)
+  await login(other, 'contador', 'cont123')
+  const replacement = await readSession(other)
+  expect(replacement.user?.id).not.toBe(original.user?.id)
+
+  let release!: () => void
+  let arrived!: () => void
+  const barrier = new Promise<void>(resolve => { release = resolve })
+  const started = new Promise<void>(resolve => { arrived = resolve })
+  await page.route('**/api/auth/session', async route => {
+    const response = await route.fetch()
+    arrived()
+    await barrier
+    await route.fulfill({ response })
+  }, { times: 1 })
+  // Hold a real background SDK verification so A's UI still has the original intent
+  // when it queues logout behind this cookie lock.
+  await page.bringToFront()
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+  await started
+  const checked = page.waitForResponse(response => response.url().endsWith('/api/auth/logout-session') && response.status() === 409)
+  try {
+    await page.getByTestId('user-menu').click()
+    await page.getByTestId('logout-button').click()
+  } finally {
+    release()
+  }
+  await checked
+  await expect(page.getByTestId('user-menu')).toBeVisible()
+  expect((await readSession(other)).user?.sessionId).toBe(replacement.user?.sessionId)
+  expect((await other.request.get('/api/config')).status()).toBe(200)
+})

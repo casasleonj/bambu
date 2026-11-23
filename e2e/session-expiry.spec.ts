@@ -27,12 +27,8 @@ test.describe('Session expiry client-side redirect', () => {
   })
 
   test('a revoked session plus auth:expired event redirects with an expired banner', async ({ page }) => {
-    // Login
-    await page.goto('/login')
-    await page.fill('input[type="text"]', 'admin')
-    await page.fill('input[type="password"]', 'admin123')
-    await page.click('button:has-text("Ingresar")')
-    await expect(page).toHaveURL('/dashboard', { timeout: 5000 })
+    await skipBaseCaja(page)
+    await login(page, 'admin', 'admin123')
 
     // Navegar a página protegida
     await page.goto('/pedidos')
@@ -57,19 +53,19 @@ test.describe('Session expiry client-side redirect', () => {
   })
 
   test('a stale inline 401 does not log out a currently valid session', async ({ page }) => {
-    // Login
-    await page.goto('/login')
-    await page.fill('input[type="text"]', 'admin')
-    await page.fill('input[type="password"]', 'admin123')
-    await page.click('button:has-text("Ingresar")')
-    await expect(page).toHaveURL('/dashboard', { timeout: 5000 })
+    await skipBaseCaja(page)
+    await login(page, 'admin', 'admin123')
 
     // Interceptar el fetch inicial de clientes para devolver 401
     await page.route('/api/clientes?all=true', async (route) => {
       await route.fulfill({ status: 401, body: JSON.stringify({ error: 'No autorizado' }) })
     })
 
-    const verified = page.waitForResponse('/api/auth/session')
+    let sawDeniedResponse = false
+    page.on('response', response => {
+      if (response.url().includes('/api/clientes?all=true') && response.status() === 401) sawDeniedResponse = true
+    })
+    const verified = page.waitForResponse(response => sawDeniedResponse && response.url().endsWith('/api/auth/session'))
     await page.goto('/pedidos')
     const session = await (await verified).json()
     expect(session.user.id).toBeTruthy()

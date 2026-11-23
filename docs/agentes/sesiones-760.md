@@ -34,6 +34,10 @@ Las respuestas normales del proxy no rotan cookies de sesión. Las consultas del
 
 El cierre explícito confirma primero la revocación remota, conserva la limpieza existente de push/caché y luego solicita el cierre al SDK. Ante error se muestra «No se pudo confirmar el cierre», con reintento. El aviso de cierre confirmado solo aparece tras el regreso al login.
 
+El cliente conserva el identificador de la sesión que inició el cierre, incluso mientras espera el lock o reintenta. El servidor compara esa intención con la asociación actual: si cambió la cuenta devuelve 409 sin revocarla, y la vista vuelve a comprobar la identidad mediante una recarga. El header es opcional para compatibilidad con clientes anteriores; esta protección de intención requiere el cliente actualizado. La revocación confirmada registra el evento existente `FORCE_LOGOUT` con razón `USER_LOGOUT`, solo cuando se eliminó la fila; el evento posterior del SDK no duplica el registro. La auditoría conserva el patrón best effort existente.
+
+El destino exitoso del cierre se devuelve como la ruta relativa fija `/login?reason=signedout`: no debe cambiar de origen por el nombre interno del servidor o un proxy inverso. Los errores de Auth.js no se convierten en confirmaciones.
+
 ## Validación reproducible
 
 - Unitarias: callbacks, límites, transporte/cuerpo incompleto, exclusión, cookies, guards, 401/403 y limpieza de logout.

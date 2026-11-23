@@ -11,8 +11,9 @@ import { withAuthCookieLock } from './auth-cookie-lock'
 import { markIntentionalSignOut, resetIntentionalSignOut } from './auth-events'
 import { purgeSWCache } from './purge-sw-cache'
 import { unsubscribePushOnLogout } from './push-cleanup'
+import { SessionChangedError } from './session-status'
 
-export async function revokeSessionOnLogout(): Promise<void> {
+export async function revokeSessionOnLogout(expectedSessionId?: string): Promise<void> {
   if (typeof window === 'undefined') return
 
   const controller = new AbortController()
@@ -20,20 +21,21 @@ export async function revokeSessionOnLogout(): Promise<void> {
   try {
     const response = await fetch('/api/auth/logout-session', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(expectedSessionId ? { 'x-session-id': expectedSessionId } : {}) },
       signal: controller.signal,
     })
+    if (response.status === 409) throw new SessionChangedError()
     if (!response.ok) throw new Error('No se pudo confirmar el cierre de sesión')
   } finally {
     clearTimeout(timer)
   }
 }
 
-export async function logoutSafely(): Promise<void> {
+export async function logoutSafely(expectedSessionId?: string): Promise<void> {
   await withAuthCookieLock(async () => {
     markIntentionalSignOut()
     try {
-      await revokeSessionOnLogout()
+      await revokeSessionOnLogout(expectedSessionId)
       await unsubscribePushOnLogout()
       await purgeSWCache()
       await signOut({ redirectTo: '/login?reason=signedout' })
