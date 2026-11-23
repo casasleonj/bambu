@@ -106,7 +106,7 @@ test('logout desde un dispositivo no cierra las otras sesiones del mismo usuario
     await skipBaseCaja(page1)
     await page1.goto('/mi-perfil')
     await page1.getByTestId('user-menu').click()
-    await page1.getByRole('button', { name: /Cerrar sesión/ }).first().click()
+    await page1.getByTestId('logout-button').click()
     await page1.waitForURL(/\/login/, { timeout: 15000 })
     await expect(page1.getByText('Cerraste la sesión en este navegador.')).toBeVisible()
 

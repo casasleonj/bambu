@@ -18,7 +18,8 @@ async function handleSession(request: NextRequest) {
 export const GET = handleSession
 
 export async function POST(request: NextRequest) {
-  if (new URL(request.url).pathname.endsWith('/signout')) {
+  const signingOut = new URL(request.url).pathname.endsWith('/signout')
+  if (signingOut) {
     // Auth.js always clears the cookie on signout, even if its revoke event fails.
     // Check availability first so the UI cannot certify an unconfirmed remote logout.
     const url = new URL('/api/auth/session', request.url)
@@ -28,5 +29,21 @@ export async function POST(request: NextRequest) {
       return sessionUnavailableResponse()
     }
   }
-  return handleSession(request)
+  const response = await handleSession(request)
+  if (signingOut && response.ok && request.headers.get('x-auth-return-redirect') === '1') {
+    const result: unknown = await response.clone().json().catch(() => null)
+    if (result && typeof result === 'object' && 'url' in result && typeof result.url === 'string') {
+      const destination = new URL(result.url, request.url)
+      if (destination.pathname === '/login' && destination.search === '?reason=signedout') {
+        // The SDK resolves relative redirects using the server URL, which can
+        // differ from the browser's public origin (e.g. behind a reverse proxy).
+        // Keep our fixed, approved logout destination on the current site.
+        return new Response(JSON.stringify({ ...result, url: '/login?reason=signedout' }), {
+          status: response.status,
+          headers: response.headers,
+        })
+      }
+    }
+  }
+  return response
 }

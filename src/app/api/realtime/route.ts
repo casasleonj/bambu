@@ -21,7 +21,10 @@ const HEARTBEAT_INTERVAL_MS = 45_000
  */
 export async function GET(request: Request) {
   const session = await requireAuth()
-  if (session instanceof Response) return session
+  if (session instanceof Response) {
+    // Keep the SSE endpoint's existing anonymous-response contract.
+    return session.status === 401 ? new Response('Unauthorized', { status: 401 }) : session
+  }
   if (!session?.user?.id) {
     return new Response('Unauthorized', { status: 401 })
   }

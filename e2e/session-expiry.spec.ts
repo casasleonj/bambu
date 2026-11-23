@@ -3,6 +3,11 @@
 // a /login con un banner informativo (no se queda congelado en la app).
 
 import { test, expect } from '@playwright/test'
+import { PrismaClient } from '@prisma/client'
+import { login, skipBaseCaja } from './fixtures'
+
+const db = new PrismaClient()
+test.afterAll(() => db.$disconnect())
 
 // Nombre hardcodeado para evitar importar TS en Playwright. Debe coincidir
 // con AUTH_EXPIRED_EVENT en src/lib/auth-events.ts.
@@ -21,7 +26,7 @@ test.describe('Session expiry client-side redirect', () => {
     expect(className).toContain('amber')
   })
 
-  test('auth:expired event redirects to login with expired banner', async ({ page }) => {
+  test('a revoked session plus auth:expired event redirects with an expired banner', async ({ page }) => {
     // Login
     await page.goto('/login')
     await page.fill('input[type="text"]', 'admin')
@@ -35,8 +40,10 @@ test.describe('Session expiry client-side redirect', () => {
     // ver appMain en fixtures.ts) hace que el texto resuelva a 2 elementos.
     await expect(page.locator('main').locator('text=Lista de Pedidos')).toBeVisible()
 
-    // Simular que un fetch recibió 401/403 y disparó el evento. Esto evita
-    // esperar 60s de polling en CI.
+    // Revoke the real server association: an event alone is not evidence of expiry.
+    const session = await (await page.request.get('/api/auth/session')).json()
+    expect(session.user.sessionId).toBeTruthy()
+    await db.sesionActiva.deleteMany({ where: { sessionId: session.user.sessionId } })
     await page.evaluate((eventName) => {
       window.dispatchEvent(new CustomEvent(eventName, { detail: { statusCode: 401, url: '/api/pedidos' } }))
     }, AUTH_EXPIRED_EVENT)
@@ -49,7 +56,7 @@ test.describe('Session expiry client-side redirect', () => {
     await expect(banner).toContainText('Tu sesión expiró')
   })
 
-  test('inline 401 check in pedidos initial load redirects to login', async ({ page }) => {
+  test('a stale inline 401 does not log out a currently valid session', async ({ page }) => {
     // Login
     await page.goto('/login')
     await page.fill('input[type="text"]', 'admin')
@@ -62,10 +69,25 @@ test.describe('Session expiry client-side redirect', () => {
       await route.fulfill({ status: 401, body: JSON.stringify({ error: 'No autorizado' }) })
     })
 
-    // Navegar a pedidos: el fetch directo detecta 401 y redirige
+    const verified = page.waitForResponse('/api/auth/session')
     await page.goto('/pedidos')
+    const session = await (await verified).json()
+    expect(session.user.id).toBeTruthy()
+    await expect(page).toHaveURL(/\/pedidos/)
+    expect((await page.request.get('/api/config')).status()).toBe(200)
+  })
 
-    await expect(page).toHaveURL(/\/login\?reason=expired/, { timeout: 5000 })
+  test('initial pedidos 401 after real revocation redirects to login', async ({ page }) => {
+    await skipBaseCaja(page)
+    await login(page, 'admin', 'admin123')
+    const session = await (await page.request.get('/api/auth/session')).json()
+    expect(session.user.sessionId).toBeTruthy()
+    await page.route('/api/clientes?all=true', async route => {
+      await db.sesionActiva.deleteMany({ where: { sessionId: session.user.sessionId } })
+      await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'No autorizado' }) })
+    })
+    await page.goto('/pedidos')
+    await expect(page).toHaveURL(/\/login\?reason=expired/)
   })
 
   test('login form remains focusable after Suspense refactor', async ({ page }) => {
