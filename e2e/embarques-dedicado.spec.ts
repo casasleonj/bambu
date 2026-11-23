@@ -4,8 +4,42 @@ import { test, expect, loginAs, apiPost, createTrabajador, createCliente, BASE }
 
 test.describe('Embarques — Detail Page Actions', () => {
 
-  test('ADMIN puede asignar pedidos desde embarque ABIERTO', async ({ page }) => {
+  // Los tests E2E del mismo shard comparten BD: otras specs fijan el stock
+  // estimado en 50 pacas y cargan embarques antes de llegar a esta suite.
+  // Estas pruebas cubren acciones de UI, no disponibilidad de inventario.
+  // Proporcionar stock sintético por test y restaurarlo al terminar evita
+  // una dependencia del orden de ejecución sin desactivar la validación real.
+  let stockAnterior: { agua: number; hielo: number; botellon?: number } | null | undefined
+
+  test.beforeEach(async ({ page }) => {
     await loginAs(page, 'admin')
+    stockAnterior = undefined
+    const lectura = await page.request.get(`${BASE}/api/stock-estimado`)
+    expect(lectura.ok(), `GET stock estimado: HTTP ${lectura.status()} ${await lectura.text()}`).toBe(true)
+    const anterior = (await lectura.json()) as { estimado: typeof stockAnterior }
+    stockAnterior = anterior.estimado
+    const preparacion = await apiPost(page, '/api/stock-estimado', {
+      agua: 10000, hielo: 1000, botellon: 100,
+    })
+    expect(preparacion.ok(), `Preparar stock E2E: HTTP ${preparacion.status()} ${await preparacion.text()}`).toBe(true)
+  })
+
+  test.afterEach(async ({ page }) => {
+    if (stockAnterior === undefined) return
+    const restauracion = stockAnterior === null
+      ? await page.request.delete(`${BASE}/api/stock-estimado`)
+      : await apiPost(page, '/api/stock-estimado', {
+          agua: stockAnterior.agua,
+          hielo: stockAnterior.hielo,
+          botellon: stockAnterior.botellon ?? 0,
+        })
+    expect(restauracion.ok(), `Restaurar stock E2E: HTTP ${restauracion.status()} ${await restauracion.text()}`).toBe(true)
+    stockAnterior = undefined
+  })
+
+
+  test('ADMIN puede asignar pedidos desde embarque ABIERTO', async ({ page }) => {
+
 
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
@@ -16,7 +50,7 @@ test.describe('Embarques — Detail Page Actions', () => {
       horaSalida: '08:00',
       carga: [{ producto: 'PACA_AGUA', cargadas: 5 }],
     })
-    expect(eRes.ok()).toBe(true)
+    expect(eRes.ok(), `POST embarque: HTTP ${eRes.status()} ${await eRes.text()}`).toBe(true)
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     expect(embarqueId).toBeTruthy()
@@ -57,7 +91,7 @@ test.describe('Embarques — Detail Page Actions', () => {
   })
 
   test('ADMIN puede enviar embarque ABIERTO en ruta', async ({ page }) => {
-    await loginAs(page, 'admin')
+
 
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
@@ -68,7 +102,7 @@ test.describe('Embarques — Detail Page Actions', () => {
       horaSalida: '08:00',
       carga: [{ producto: 'PACA_AGUA', cargadas: 5 }],
     })
-    expect(eRes.ok()).toBe(true)
+    expect(eRes.ok(), `POST embarque: HTTP ${eRes.status()} ${await eRes.text()}`).toBe(true)
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     expect(embarqueId).toBeTruthy()
@@ -86,7 +120,7 @@ test.describe('Embarques — Detail Page Actions', () => {
   })
 
   test('ADMIN puede cancelar embarque ABIERTO', async ({ page }) => {
-    await loginAs(page, 'admin')
+
 
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
@@ -97,7 +131,7 @@ test.describe('Embarques — Detail Page Actions', () => {
       horaSalida: '08:00',
       carga: [{ producto: 'PACA_AGUA', cargadas: 5 }],
     })
-    expect(eRes.ok()).toBe(true)
+    expect(eRes.ok(), `POST embarque: HTTP ${eRes.status()} ${await eRes.text()}`).toBe(true)
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     expect(embarqueId).toBeTruthy()
@@ -116,7 +150,7 @@ test.describe('Embarques — Detail Page Actions', () => {
   })
 
   test('embarque EN_RUTA muestra Cerrar y Cuadrar y Asignar pedidos', async ({ page }) => {
-    await loginAs(page, 'admin')
+
 
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
@@ -127,7 +161,7 @@ test.describe('Embarques — Detail Page Actions', () => {
       horaSalida: '08:00',
       carga: [{ producto: 'PACA_AGUA', cargadas: 5 }],
     })
-    expect(eRes.ok()).toBe(true)
+    expect(eRes.ok(), `POST embarque: HTTP ${eRes.status()} ${await eRes.text()}`).toBe(true)
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     expect(embarqueId).toBeTruthy()
@@ -145,7 +179,7 @@ test.describe('Embarques — Detail Page Actions', () => {
   })
 
   test('embarque CERRADO muestra resumen y link a cierre', async ({ page }) => {
-    await loginAs(page, 'admin')
+
 
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
@@ -162,7 +196,7 @@ test.describe('Embarques — Detail Page Actions', () => {
         { producto: 'BOLSA_HIELO', cargadas: 0 },
       ],
     })
-    expect(eRes.ok()).toBe(true)
+    expect(eRes.ok(), `POST embarque: HTTP ${eRes.status()} ${await eRes.text()}`).toBe(true)
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     expect(embarqueId).toBeTruthy()
