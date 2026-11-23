@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { revokeSession } from '@/lib/session-store'
 import { logger } from '@/lib/logger'
+import { sessionUnavailableResponse } from '@/lib/session-status'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,7 +31,7 @@ export async function DELETE() {
       { err: error instanceof Error ? error.message : 'Unknown error' },
       'Error revoking session via /api/auth/logout-session',
     )
-    // Fail-open: do not block logout because of a tracking error
-    return NextResponse.json({ ok: false }, { status: 500 })
+    // Do not certify a remote logout that could not be verified.
+    return sessionUnavailableResponse()
   }
 }

@@ -175,6 +175,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         throw new Error('USER_MODIFICADO_POR_OTRO_USUARIO')
       }
 
+      if (activo === false) await tx.sesionActiva.deleteMany({ where: { usuarioId: id } })
+
       // Re-leer para devolver el estado final
       return tx.user.findUnique({
         where: { id },
@@ -258,6 +260,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       const resultado = resolverCambioAutorizador(user, { activo: false }, otros)
       if (resultado.error) throw new Error(`AUTORIZADOR_${resultado.error}`)
       await tx.user.update({ where: { id }, data: { activo: false } })
+      await tx.sesionActiva.deleteMany({ where: { usuarioId: id } })
     })
 
     logAudit({

@@ -96,6 +96,8 @@ public/swe-worker*
 # QA artifacts
 reports/
 screenshots/
+playwright-report-sessions/
+test-results-sessions/
 
 # PWA screenshots referenced by manifest.json
 !public/screenshots/

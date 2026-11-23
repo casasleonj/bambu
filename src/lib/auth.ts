@@ -1,4 +1,4 @@
-import NextAuth, { type NextAuthConfig } from 'next-auth'
+import NextAuth, { CredentialsSignin, type NextAuthConfig } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { randomUUID } from 'crypto'
@@ -9,18 +9,20 @@ import { logger } from '@/lib/logger'
 import { logAudit } from '@/lib/audit'
 import { getRequestHeadersSafe } from '@/lib/request-headers-safe'
 import { parseDeviceName } from '@/lib/user-agent'
-import { isLoginCapableRole } from '@/lib/session-limits'
+import { getSessionMaxAgeMs, isLoginCapableRole } from '@/lib/session-limits'
+import { SessionUnavailableError } from '@/lib/session-status'
 import {
   enforceSessionLimit,
-  touchSession,
   revokeSession,
-  sessionExists,
-  reconcileSessionsAfterRoleChange,
+  verifyActiveSession,
 } from '@/lib/session-store'
-import type { Role } from '@/lib/constants'
 import { esUsuarioSistema } from '@/lib/usuario-sistema'
 
 const DUMMY_HASH = '$2b$12$3efHSCLxFTFy3/JJefgSmeHE/A.YexA51FcSccHtb8u0UvLR7mTWm'
+
+class TemporarySigninError extends CredentialsSignin {
+  code = 'temporarily_unavailable'
+}
 
 const authOptions: NextAuthConfig = {
   providers: [
@@ -49,6 +51,7 @@ const authOptions: NextAuthConfig = {
           }
         } catch (error) {
           logger.error({ err: error instanceof Error ? error.message : 'Unknown error' }, 'Auth error:')
+          throw new TemporarySigninError()
         }
 
         const valid = await bcrypt.compare(
@@ -56,14 +59,14 @@ const authOptions: NextAuthConfig = {
           hashToCompare
         )
 
-        if (dbUser && dbUser.activo && !esUsuarioSistema(dbUser.username) && valid) {
+        if (dbUser && dbUser.activo && !esUsuarioSistema(dbUser.username) && valid && isLoginCapableRole(dbUser.rol)) {
           const displayName = dbUser.nombre || dbUser.apellido
             ? `${dbUser.nombre} ${dbUser.apellido}`.trim()
             : dbUser.username
           // S-3 fix: log successful login for audit trail
           logger.info(
             { userId: dbUser.id, username: dbUser.username, role: dbUser.rol },
-            'Auth: login exitoso',
+            'Auth: credenciales verificadas',
           )
           return {
             id: dbUser.id,
@@ -92,7 +95,7 @@ const authOptions: NextAuthConfig = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user, trigger }: { token: JWT; user?: User; trigger?: string }) {
+    async jwt({ token, user }: { token: JWT; user?: User }) {
       // Initial sign-in: persist user data and register active session
       if (user) {
         token.sub = user.id
@@ -100,17 +103,10 @@ const authOptions: NextAuthConfig = {
         token.displayName = (user as User & { name?: string }).name
         token.mustChangePassword = (user as User & { mustChangePassword?: boolean }).mustChangePassword
         token.lastVerified = Date.now()
-        // FIX Fase 4 §4.3 + Sprint 6: REPARTIDOR tiene sesión extendida (6h)
-        // porque su flujo de trabajo es offline-first en campo con 2G/3G y
-        // no puede re-loguear a mitad de un embarque. El resto de roles
-        // mantiene 30 min por seguridad. Los permisos de REPARTIDOR ya
-        // están recortados (solo lectura + sus propios embarques), lo
-        // que mitiga el riesgo de un token robado.
         const role = (user as User & { role?: string }).role
-        const sessionSeconds = role === 'REPARTIDOR' ? 6 * 60 * 60 : 30 * 60
-        const maxAgeMs = sessionSeconds * 1000
+        if (!user.id || !isLoginCapableRole(role)) throw new CredentialsSignin()
+        const maxAgeMs = getSessionMaxAgeMs(role)
         token.sessionMaxAgeMs = maxAgeMs
-        token.sessionExpiresAt = Date.now() + maxAgeMs
 
         // Register server-side session for device limit tracking.
         const newSessionId = randomUUID()
@@ -124,13 +120,18 @@ const authOptions: NextAuthConfig = {
           if (isLoginCapableRole(role)) {
             const result = await enforceSessionLimit({
               usuarioId: userId,
-              rol: role as Role,
+              rol: role,
               newSessionId,
               userAgent,
               ip,
               dispositivo,
               slidingMaxAgeMs: maxAgeMs,
             })
+
+            token.role = result.role
+            token.sessionMaxAgeMs = result.maxAgeMs
+            token.sessionExpiresAt = result.expiresAt.getTime()
+            token.authStatus = 'valid'
 
             // Audit login
             await logAudit({
@@ -160,117 +161,41 @@ const authOptions: NextAuthConfig = {
             { err: error instanceof Error ? error.message : 'Unknown error', userId },
             'Error registering active session at sign-in:',
           )
-          // Fail-open: allow login even if session tracking fails
+          throw new TemporarySigninError()
         }
 
         return token
       }
 
-      // SLIDING SESSION (Sprint 6): si hay actividad reciente y la sesión
-      // aún no expiró, extender automáticamente. Patrón custom porque
-      // Auth.js v5 NO renueva exp automáticamente con uso online
-      // (https://authjs.dev/reference/core#updateage). Esto da UX
-      // "infinite session" mientras el usuario esté activo.
-      //
-      // Ventana de actividad: 15 min. Si el último request fue hace menos
-      // de 15 min, extender. Si pasaron más, no extender (usuario idle
-      // o app cerrada) — pero la sesión sigue vigente hasta sessionExpiresAt.
-      const FIVE_MIN = 5 * 60 * 1000
-      const lastVerified = (token.lastVerified as number) || 0
-      const SLIDING_WINDOW_MS = 15 * 60 * 1000
-      const sessionExpiresAt = (token.sessionExpiresAt as number) || 0
-      const maxAgeMs = (token.sessionMaxAgeMs as number) || 0
-      let didExtend = false
-
-      if (
-        maxAgeMs > 0 &&
-        sessionExpiresAt > 0 &&
-        Date.now() - lastVerified < SLIDING_WINDOW_MS &&
-        Date.now() < sessionExpiresAt
-      ) {
-        // Hay actividad reciente y aún no expiró → extender
-        token.sessionExpiresAt = Date.now() + maxAgeMs
-        didExtend = true
+      if (!token.sub || !token.sessionId) return { ...token, authStatus: 'invalid' }
+      const result = await verifyActiveSession(token.sessionId, token.sub)
+      if (result.status !== 'valid') {
+        // Preserve the signed credential on outages; it grants no access until verified.
+        return { ...token, authStatus: result.status }
       }
-
-      // If the session was evicted/revoked or lacks a sessionId, invalidate.
-      // This check runs on every request so that device-limit evictions take
-      // effect immediately, even though the JWT itself is stateless.
-      const currentSessionId = token.sessionId as string | undefined
-      if (currentSessionId) {
-        const stillValid = await sessionExists(currentSessionId).catch(() => false)
-        if (!stillValid) {
-          logger.info({ userId: token.sub, sessionId: currentSessionId }, 'Sesión invalidada: no existe o expiró')
-          return { ...token, role: undefined, sub: undefined, sessionId: undefined }
-        }
+      return {
+        ...token,
+        authStatus: 'valid',
+        role: result.user.role,
+        displayName: result.user.name,
+        mustChangePassword: result.user.mustChangePassword,
+        sessionMaxAgeMs: result.maxAgeMs,
+        sessionExpiresAt: result.expiresAt,
       }
-
-      // Re-verify user state from DB every 5 minutes
-      // Protects against: role demotion, account deactivation with stale JWT
-      if ((trigger === 'update' || Date.now() - lastVerified > FIVE_MIN) && token.sub) {
-        try {
-          const dbUser = await prisma.user.findUnique({
-            where: { id: token.sub as string },
-            select: { rol: true, activo: true, nombre: true, apellido: true, username: true, mustChangePassword: true },
-          })
-          if (!dbUser || !dbUser.activo || esUsuarioSistema(dbUser.username)) {
-            // Invalidate token by returning empty — forces re-login (#410: también el usuario técnico)
-            return { ...token, role: undefined, sub: undefined, sessionId: undefined }
-          }
-
-          // Reconcile device limits when role changes
-          const newRole = dbUser.rol as Role
-          const oldRole = token.role as Role | undefined
-          if (oldRole && oldRole !== newRole && currentSessionId) {
-            const evictedIds = await reconcileSessionsAfterRoleChange(token.sub as string, newRole, currentSessionId)
-            if (evictedIds.length > 0) {
-              logger.info({ userId: token.sub, evictedCount: evictedIds.length, oldRole, newRole }, 'Sesiones evictadas por cambio de rol')
-            }
-          }
-
-          token.role = newRole
-          token.mustChangePassword = dbUser.mustChangePassword
-          const displayName = dbUser.nombre || dbUser.apellido
-            ? `${dbUser.nombre} ${dbUser.apellido}`.trim()
-            : dbUser.username
-          token.displayName = displayName
-          token.lastVerified = Date.now()
-
-          // Touch DB only when sliding session was extended; reduces write load
-          if (didExtend && currentSessionId) {
-            await touchSession({ sessionId: currentSessionId, slidingMaxAgeMs: maxAgeMs })
-          }
-        } catch (error) {
-          logger.error({ err: error instanceof Error ? error.message : 'Unknown error' }, 'JWT refresh error:')
-        }
-      }
-
-      return token
     },
     async session({ session, token }: { session: Session; token: JWT }) {
-      // FIX C-9: solo poblar session.user si hay un token.sub válido.
-      // Cuando el usuario es desactivado, el jwt callback (líneas 82-85)
-      // pone sub:undefined. Si propagamos session.user con defaults de
-      // NextAuth, el proxy.ts NO puede detectar la desactivación vía
-      // \`if (!session?.user)\`. Por eso validamos token.sub aquí también.
-      //
-      // Con este cambio, session.user queda con sus defaults de NextAuth
-      // (que NO incluyen un id real) cuando el usuario está desactivado,
-      // y el proxy.ts:59 check \`!session?.user?.id\` correctamente lo
-      // redirige a /login.
-      if (session.user && token.sub) {
-        const extendedUser = session.user as Session['user'] & {
-          id?: string
-          role?: string
-          name?: string
-          mustChangePassword?: boolean
-          sessionId?: string
+      // Never leak stale privileges through Auth.js's default user object.
+      session.user = {}
+      session.authStatus = token.authStatus ?? 'invalid'
+      if (session.authStatus === 'valid' && token.sub && token.sessionId) {
+        session.user = {
+          id: token.sub,
+          role: token.role,
+          name: token.displayName,
+          mustChangePassword: token.mustChangePassword,
+          sessionId: token.sessionId,
         }
-        extendedUser.id = token.sub as string
-        extendedUser.role = token.role as string | undefined
-        extendedUser.name = token.displayName as string | undefined
-        extendedUser.mustChangePassword = token.mustChangePassword as boolean | undefined
-        extendedUser.sessionId = token.sessionId as string | undefined
+        if (token.sessionExpiresAt) session.expires = new Date(token.sessionExpiresAt).toISOString()
       }
       return session
     },
@@ -278,7 +203,7 @@ const authOptions: NextAuthConfig = {
       // This callback is invoked when using `export { auth as proxy }` pattern.
       // Currently we use auth() wrapper in proxy.ts, so this serves as a fallback.
       // All auth logic (redirects, role checks, mustChangePassword) lives in proxy.ts.
-      return !!auth?.user
+      return !!auth?.user?.id
     },
   },
   pages: {
@@ -286,11 +211,7 @@ const authOptions: NextAuthConfig = {
   },
   session: {
     strategy: 'jwt' as const,
-    // FIX Fase 4 §4.3 + Sprint 6: maxAge global = 6h (REPARTIDOR con
-    // sliding session). El resto de roles respeta su propio
-    // sessionExpiresAt (30 min) seteado en el callback jwt() de arriba.
-    // updateAge=5min mantiene el refresh transparente mientras hay
-    // actividad online.
+    // Cookie envelope; the verified server row controls the role's renewable window.
     maxAge: 6 * 60 * 60, // 6 hours (REPARTIDOR case); otros roles respetan su sessionExpiresAt propio
     updateAge: 5 * 60,
   },
@@ -324,6 +245,16 @@ const authOptions: NextAuthConfig = {
   },
 }
 
-const { handlers, signIn, signOut, auth } = NextAuth(authOptions)
+const instance = NextAuth(authOptions)
 
-export { handlers, signIn, signOut, auth, authOptions }
+/** Server-only consumers fail closed without throwing inside Auth.js's cookie machinery. */
+async function auth(): Promise<Session | null> {
+  const session = await instance.auth()
+  if (session?.authStatus === 'unavailable') throw new SessionUnavailableError()
+  return session
+}
+
+const { handlers, signIn, signOut } = instance
+// Only the proxy uses the SDK's request wrapper; it checks authStatus explicitly.
+const authProxy = instance.auth
+export { handlers, signIn, signOut, auth, authProxy, authOptions }

@@ -1,8 +1,10 @@
 import 'next-auth'
 import 'next-auth/jwt'
+import type { SessionAuthStatus } from '@/lib/session-status'
 
 declare module 'next-auth' {
   interface Session {
+    authStatus?: SessionAuthStatus
     user: {
       id?: string | null
       name?: string | null
@@ -17,6 +19,7 @@ declare module 'next-auth' {
 
 declare module 'next-auth/jwt' {
   interface JWT {
+    authStatus?: SessionAuthStatus
     role?: string
     displayName?: string
     mustChangePassword?: boolean

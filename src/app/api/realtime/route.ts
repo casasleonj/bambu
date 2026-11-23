@@ -1,5 +1,5 @@
 import { logger } from '@/lib/logger'
-import { auth } from '@/lib/auth'
+import { requireAuth } from '@/lib/auth-check'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getRealtimeChannel, type RealtimeEvent } from '@/lib/realtime'
 
@@ -20,7 +20,8 @@ const HEARTBEAT_INTERVAL_MS = 45_000
  * the connection open.
  */
 export async function GET(request: Request) {
-  const session = await auth()
+  const session = await requireAuth()
+  if (session instanceof Response) return session
   if (!session?.user?.id) {
     return new Response('Unauthorized', { status: 401 })
   }

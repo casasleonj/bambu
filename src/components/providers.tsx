@@ -2,7 +2,8 @@
 
 import { SessionProvider } from 'next-auth/react'
 import type { Session } from 'next-auth'
-import { ReactNode } from 'react'
+import { ReactNode, useLayoutEffect } from 'react'
+import { installSessionTransport } from '@/lib/session-transport'
 
 export function Providers({
   children,
@@ -11,6 +12,7 @@ export function Providers({
   children: ReactNode
   session?: Session | null
 }) {
+  useLayoutEffect(() => installSessionTransport(), [])
   // FIX REGRESION mobile 2026-06-10: pasar la sesion del server como prop
   // al SessionProvider. Sin esto, useSession() arranca con data: null,
   // status: 'loading' y todos los componentes cliente que dependen de la

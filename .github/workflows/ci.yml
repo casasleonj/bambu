@@ -756,6 +756,9 @@ jobs:
           e2e/pedidos-cobro-pendiente-932.spec.ts
           e2e/pedidos-prioridad-936.spec.ts
 
+      - name: Run Playwright with real session limits
+        run: npx playwright test --config=playwright.sessions.config.ts --project=chromium
+
       - name: Dump Postgres/Redis container logs and resource usage
         if: always()
         run: |
@@ -777,7 +780,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-hub
-          path: playwright-report/
+          path: |
+            playwright-report/
+            playwright-report-sessions/
           retention-days: 7
 
       - name: Upload Playwright traces on failure
@@ -785,7 +790,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces-hub
-          path: test-results/
+          path: |
+            test-results/
+            test-results-sessions/
           retention-days: 7
 
   # ───────────────────────────────────────────────────────────────────────────

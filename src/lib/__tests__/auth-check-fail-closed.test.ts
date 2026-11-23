@@ -19,6 +19,7 @@ import {
   requireRole,
   requirePermission,
 } from '../auth-check'
+import { SessionUnavailableError } from '../session-status'
 
 /** Sesión "fantasma": user con defaults de NextAuth pero sin id (token.sub undefined). */
 const sesionFantasma = { user: { name: 'x', email: 'x@x.com', image: null } }
@@ -32,6 +33,19 @@ async function status(r: unknown): Promise<number | 'ok'> {
 
 beforeEach(() => {
   mockAuth.mockReset()
+})
+
+it.each([
+  () => requireAuth(),
+  () => requireAuthWithoutMustChangePassword(),
+  () => requireRole('ADMIN'),
+  () => requirePermission('view:pedidos'),
+])('responde 503, nunca 401 ni autorización, si no se puede verificar la sesión', async (guard) => {
+  mockAuth.mockRejectedValue(new SessionUnavailableError())
+  const response = await guard()
+  expect(response).toBeInstanceOf(Response)
+  expect((response as Response).status).toBe(503)
+  expect((response as Response).headers.get('cache-control')).toContain('no-store')
 })
 
 describe('requireAuth — fail-closed', () => {

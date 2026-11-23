@@ -1,16 +1,14 @@
 'use client'
 
+import { LogoutButton } from '@/components/logout-button'
+
 import { PushOptInBell } from '@/components/push-opt-in-bell'
 import { usePushOptInContext } from '@/components/push-opt-in-provider'
 import { useState, useRef } from 'react'
-import { useSession, signOut } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 
-import { purgeSWCache } from '@/lib/purge-sw-cache'
-import { unsubscribePushOnLogout } from '@/lib/push-cleanup'
-import { revokeSessionOnLogout } from '@/lib/session-cleanup'
 import { ConnectivityIndicator } from '@/components/connectivity-indicator'
-import { markIntentionalSignOut } from '@/lib/auth-events'
 import { useAppStore } from '@/stores/app-store'
 import { useIsDesktop } from '@/hooks/use-is-desktop'
 
@@ -188,22 +186,15 @@ export function Header({ fechaLarga, fechaCorta }: HeaderProps) {
                   Mi Perfil
                 </Link>
                 <hr className="border-gray-100" />
-                <button
+                <LogoutButton
                   data-testid="logout-button"
-                  onClick={async () => {
-                    markIntentionalSignOut()
-                    await revokeSessionOnLogout()
-                    await unsubscribePushOnLogout()
-                    await purgeSWCache()
-                    signOut({ redirectTo: '/login' })
-                  }}
                   className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                   </svg>
                   Cerrar Sesión
-                </button>
+                </LogoutButton>
               </div>
             </>
           )}

@@ -65,4 +65,15 @@ describe('session-limits', () => {
     process.env.SESSION_LIMITS_JSON = JSON.stringify({ ADMIN: 50, HACKER: 9999 })
     expect(getSessionLimit(ROLES.ADMIN)).toBe(50)
   })
+
+  it.each([-1, 0, 1.5, 1e100])('ignores invalid session limit %s', (value) => {
+    process.env.SESSION_LIMITS_JSON = JSON.stringify({ ADMIN: value })
+    expect(getSessionLimit(ROLES.ADMIN)).toBe(2)
+  })
+
+  it('never treats prototype properties as supported roles', () => {
+    expect(isLoginCapableRole('constructor')).toBe(false)
+    expect(isLoginCapableRole('__proto__')).toBe(false)
+    expect(getSessionLimit('__proto__' as never)).toBe(1)
+  })
 })
