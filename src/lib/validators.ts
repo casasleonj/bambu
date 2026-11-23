@@ -1,3 +1,4 @@
+import { categoriaGastoValida, normalizarCategoriaGasto } from '@/lib/gastos-categorias'
 import { UnitPrice, MAX_UNIT_PRICE } from '@/shared/domain/unit-price'
 import { cantidadesRegaloValidas } from '@/shared/domain/cantidades-regalo'
 import { z } from "zod";
@@ -659,7 +660,8 @@ export const AbonoCreateSchema = z.object({
 });
 
 export const GastoCreateSchema = z.object({
-  categoria: z.enum(['ARRIENDO', 'SERVICIOS', 'INSUMOS', 'MANTENIMIENTO', 'TRANSPORTE', 'NOMINA', 'OTRO']),
+  // #973: clave canónica de categorías operativas; NÓMINA conserva rechazo 422 en la API.
+  categoria: z.string().refine(categoriaGastoValida, 'Categoría inválida').transform(normalizarCategoriaGasto),
   descripcion: z.string().min(1).max(200),
   monto: z.coerce.number().positive(),
   responsable: z.string().max(100).optional(),
