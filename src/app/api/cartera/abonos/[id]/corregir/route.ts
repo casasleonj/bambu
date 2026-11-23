@@ -11,6 +11,7 @@ import { logger } from '@/lib/logger'
 import { aplicarReversionMonetaria } from '@/lib/correccion-monetaria'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { prisma } from '@/lib/prisma'
+import { verificarConsumoBonoAbono } from '@/lib/bono-saldo-favor'
 
 /**
  * POST /api/cartera/abonos/[id]/corregir — ADR-CORRECCION-MONETARIA-001.
@@ -102,6 +103,12 @@ export async function POST(
       if (revertir <= 0) throw new Error('MONTO_INVALIDO')
       if (yaRevertido + revertir > montoAbono + 1e-6) throw new Error('EXCEDE_ABONO')
 
+      // #772: la corrección de un BONO real devuelve crédito ya consumido.
+      // Un Abono BONO legado sin marcador NO prueba que alguna vez descontó
+      // saldo a favor: devolverle crédito fabricaría un saldo inexistente.
+      const creditoBonoRestituible =
+        (await verificarConsumoBonoAbono(tx, abono)) ? revertir : 0
+
       // Número COR-NNNNN — serializado por SECUENCIA:correccionAbono para no
       // colisionar entre correcciones de clientes distintos (MAX+1).
       await acquireAdvisoryLockTx(tx, 'SECUENCIA', 'correccionAbono')
@@ -149,6 +156,15 @@ export async function POST(
         correccionOfflineId: correccionOfflineId || null,
       })
 
+      if (creditoBonoRestituible > 0) {
+        // Misma transacción que la reversión de Factura/Pedido y el historial.
+        // Reintentos deduplicados retornan antes de esta línea.
+        await tx.cliente.update({
+          where: { id: abono.clienteId },
+          data: { saldoFavor: { increment: creditoBonoRestituible } },
+        })
+      }
+
       await logAudit(
         {
           entidad: 'Abono',
@@ -159,6 +175,7 @@ export async function POST(
             correccionNumero: correccion.numero,
             tipo,
             montoRevertido: revertir,
+            creditoBonoRestituido: creditoBonoRestituible,
             motivo,
             responsibilityCaseId,
             // Condición 3 del PO: valores anteriores y posteriores de lo que cambió.
@@ -197,6 +214,7 @@ export async function POST(
     if (msg === 'PEDIDO_ANULADO') {
       return apiError('El pedido/factura está anulado: la reversión va por el flujo de anulación', 409)
     }
+    if (msg === 'BONO_AUDITORIA_INVALIDA') return apiError('La procedencia del BONO requiere conciliación; no se modificó el abono.', 409, { code: 'BONO_AUDITORIA_INVALIDA' })
     if (msg === 'MONTO_INVALIDO') return apiError('El monto a revertir debe ser mayor a 0', 400)
     if (msg === 'EXCEDE_ABONO') return apiError('El monto a revertir excede el saldo no revertido del abono', 400)
     if (msg === 'OFFLINE_ID_REUSADO') {

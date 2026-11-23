@@ -12,6 +12,7 @@ import { publishRealtimeEvent } from '@/lib/realtime'
 import { aplicarReversionMonetaria } from '@/lib/correccion-monetaria'
 import { correccionPagoActiva } from '@/lib/correccion-pago-flag'
 import { prisma } from '@/lib/prisma'
+import { verificarConsumoBonoPago } from '@/lib/bono-saldo-favor'
 
 /**
  * POST /api/pagos/[id]/corregir — ADR-CORRECCION-MONETARIA-002.
@@ -89,6 +90,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (revertir <= 0) throw new Error('MONTO_INVALIDO')
       if (yaRevertido + revertir > montoPago + 1e-6) throw new Error('EXCEDE_PAGO')
 
+      // Una corrección de BONO sin Abono debe devolver únicamente el crédito
+      // efectivamente consumido, nunca crédito de pagos históricos sin marcador.
+      const creditoBonoRestituible = await verificarConsumoBonoPago(tx, {
+        id: pago.id, clienteId: pago.pedido.clienteId, metodo: pago.metodo, monto: pago.monto,
+      }) ? revertir : 0
+
       // La factura del pedido puede no existir (decisión #840: crear pedido no implica facturar).
       const factura = await tx.factura.findFirst({
         where: { pedidoId: pago.pedido.id },
@@ -134,6 +141,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         correccionOfflineId: correccionOfflineId || null,
       })
 
+      if (creditoBonoRestituible > 0) {
+        await tx.cliente.update({
+          where: { id: pago.pedido.clienteId },
+          data: { saldoFavor: { increment: creditoBonoRestituible } },
+        })
+      }
+
       await logAudit(
         {
           entidad: 'Pago',
@@ -144,6 +158,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             correccionNumero: correccion.numero,
             tipo,
             montoRevertido: revertir,
+            creditoBonoRestituido: creditoBonoRestituible,
             motivo,
             responsibilityCaseId,
             antes: { pedido: efecto.pedido?.antes ?? null, factura: efecto.factura?.antes ?? null },
@@ -167,6 +182,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     )
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown'
+    if (msg === 'BONO_AUDITORIA_INVALIDA') return apiError('La procedencia del BONO requiere conciliación; no se modificó el pago.', 409, { code: msg })
     if (msg === 'PAGO_NOT_FOUND') return apiError('Pago no encontrado', 404)
     if (msg === 'PAGO_CON_ABONO') return apiError('Este pago tiene un abono: corrígelo desde su abono para no revertir el mismo dinero dos veces', 409, { code: 'PAGO_CON_ABONO' })
     if (msg === 'PEDIDO_CERRADO') return apiError('El pedido o la factura está anulado o cancelado: la reversión va por ese flujo', 409, { code: 'PEDIDO_CERRADO' })
