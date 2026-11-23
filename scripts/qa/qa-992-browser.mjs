@@ -59,10 +59,10 @@ async function recorrido(viewport, label) {
     // no guardar una base y no forzar clicks: usar la opción visible «Ahora no».
     // Este descarte solo afecta sessionStorage en el navegador sintético.
     const omitirBaseHoy = page.getByTestId('base-caja-modal-skip')
-    if (await omitirBaseHoy.isVisible({ timeout: 6000 }).catch(() => false)) {
+    if (await omitirBaseHoy.waitFor({ state: 'visible', timeout: 6000 }).then(() => true).catch(() => false)) {
       await omitirBaseHoy.click()
       await omitirBaseHoy.waitFor({ state: 'hidden', timeout: 5000 })
-      process.stdout.write('QA #992 ' + label + ': descartó modal global de base de hoy sin guardar dinero\\n')
+      process.stdout.write('QA #992 ' + label + ': descartó modal global de base de hoy sin guardar dinero\n')
     }
 
     await page.getByTestId('sueldo-otro-dia-' + trabajador.id + '-' + fechaSueldo).click()
