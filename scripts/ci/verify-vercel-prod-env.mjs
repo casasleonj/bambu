@@ -44,7 +44,7 @@ export function validateEnv(content,ref=EXPECTED_SUPABASE_REF){
 
 export function exportEnv(vars,output,write=appendFileSync,random=()=>randomBytes(24).toString('hex')){
   if(!output)throw Error('GITHUB_ENV no disponible')
-  // Validar TODO antes de escribir, incluso si lo recibió de otro módulo.
+  // Validar las dos URLs antes de escribir, incluso si vienen de otro módulo.
   for(const key of DATABASE_KEYS)validateDbUrl(vars?.[key],key)
   const text=DATABASE_KEYS.map(key=>{
     const marker='GH_ENV_'+random()
