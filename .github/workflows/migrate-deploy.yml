@@ -28,6 +28,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -106,6 +109,11 @@ jobs:
       # decide si hay un problema real es el paso siguiente.
       - name: Check pending migrations (informativo, no bloqueante)
         run: npx prisma migrate status || true
+
+      - name: Conciliar checksum e historial de migraciones ANTES de DDL
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: node scripts/ci/migration-ledger-preflight.mjs
 
       - name: Apply pending migrations
         run: npx prisma migrate deploy

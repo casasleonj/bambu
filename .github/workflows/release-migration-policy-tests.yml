@@ -12,6 +12,8 @@ on:
       - 'scripts/ci/release-migration-gate.mjs'
       - 'scripts/ci/release-migration-policy.mjs'
       - 'scripts/ci/verify-vercel-prod-env.mjs'
+      - 'scripts/ci/migration-ledger-preflight.mjs'
+      - 'scripts/ci/__tests__/migration-ledger-preflight.node.test.mjs'
       - 'scripts/ci/__tests__/verify-vercel-prod-env.node.test.mjs'
       - 'scripts/ci/__tests__/release-migration-gate.node.test.mjs'
       - 'scripts/ci/__tests__/release-migration-policy.node.test.mjs'
@@ -36,3 +38,20 @@ jobs:
           node --test scripts/ci/__tests__/release-migration-gate.node.test.mjs
           scripts/ci/__tests__/release-migration-policy.node.test.mjs
           scripts/ci/__tests__/verify-vercel-prod-env.node.test.mjs
+          scripts/ci/__tests__/migration-ledger-preflight.node.test.mjs
+
+  cli-smoke:
+    name: Vercel CLI pin smoke (sin credenciales)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validar CLI fijada, sin cuenta ni token
+        run: |
+          set -euo pipefail
+          npm i -g vercel@66.6.0
+          vercel --version
+          vercel whoami --help >/dev/null
+          vercel env pull --help >/dev/null
