@@ -54,6 +54,17 @@ async function recorrido(viewport, label) {
     await tarjeta.waitFor({ state: 'visible', timeout: 20000 })
     assert.ok((await tarjeta.textContent())?.includes(trabajador.nombre))
 
+    // El modal global «Base de Caja» aparece cuando falta la base de HOY,
+    // aunque el recorrido revisa una fecha histórica. No inventar efectivo,
+    // no guardar una base y no forzar clicks: usar la opción visible «Ahora no».
+    // Este descarte solo afecta sessionStorage en el navegador sintético.
+    const omitirBaseHoy = page.getByTestId('base-caja-modal-skip')
+    if (await omitirBaseHoy.isVisible({ timeout: 6000 }).catch(() => false)) {
+      await omitirBaseHoy.click()
+      await omitirBaseHoy.waitFor({ state: 'hidden', timeout: 5000 })
+      process.stdout.write('QA #992 ' + label + ': descartó modal global de base de hoy sin guardar dinero\\n')
+    }
+
     await page.getByTestId('sueldo-otro-dia-' + trabajador.id + '-' + fechaSueldo).click()
     await page.getByTestId('sueldo-fecha-' + trabajador.id + '-' + fechaSueldo).fill(fechaReal)
     await page.getByTestId('sueldo-motivo-' + trabajador.id + '-' + fechaSueldo)
