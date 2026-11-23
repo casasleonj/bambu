@@ -95,7 +95,7 @@ test('push sin cambios Prisma exige salud de la última migración heredada',asy
   let verifiedSha, logCount=0
   await main({
     GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',SCHEMA_CHANGED:'false',
-    NEW_MIGRATIONS:'0',GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,GITHUB_TOKEN:'synthetic-only',
+    NEW_MIGRATIONS:'0',GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,LAST_TRUST_SHA:sha,GITHUB_TOKEN:'synthetic-only',
   },{find:async()=>sha,verify:async ({sha:check})=>{
     verifiedSha=check
     return {ok:true,runId:7,runAttempt:1}
@@ -137,7 +137,7 @@ test('rechaza un fallo heredado aunque el commit actual sea solo código o docum
   const env={
     GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
     SCHEMA_CHANGED:'false',NEW_MIGRATIONS:'0',
-    GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,GITHUB_TOKEN:'synthetic-only',
+    GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,LAST_TRUST_SHA:sha,GITHUB_TOKEN:'synthetic-only',
   }
   await assert.rejects(main(env,{find:async()=>sha,verify:async()=>{throw Error('migración anterior fallida')}}),
     /migración anterior fallida/)
@@ -147,7 +147,7 @@ test('push multicommit se certifica por SHA final del push (no por SHA intermedi
   await main({
     GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
     SCHEMA_CHANGED:'true',NEW_MIGRATIONS:'1',
-    GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,GITHUB_TOKEN:'synthetic-only',
+    GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,LAST_TRUST_SHA:sha,GITHUB_TOKEN:'synthetic-only',
   },{
     find:async()=>{throw Error('No debe buscar el historial')},
     verify:async ({sha:check})=>{used=check;return {runId:42,runAttempt:1}},
@@ -160,7 +160,7 @@ test('sin SHA de esquema válido nunca declara verde, incluso en docs-only',asyn
     await assert.rejects(main({
       GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
       SCHEMA_CHANGED:'false',NEW_MIGRATIONS:'0',
-      GITHUB_SHA:other,LAST_SCHEMA_SHA:bad,GITHUB_TOKEN:'synthetic-only',
+      GITHUB_SHA:other,LAST_SCHEMA_SHA:bad,LAST_TRUST_SHA:sha,GITHUB_TOKEN:'synthetic-only',
     }), /SHA/)
   }
 })
@@ -171,6 +171,10 @@ test('el workflow valida la revisión histórica por primer padre y transmite el
   assert.ok(workflow.includes('last_new_count="$(node scripts/ci/release-migration-policy.mjs'))
   assert.ok(workflow.includes('LAST_SCHEMA_SHA: ${{ steps.schema-diff.outputs.last_schema_sha }}'))
   assert.ok(workflow.includes('last_schema_sha=$last_schema_sha'))
+  assert.ok(workflow.includes('last_trust_sha=$last_trust_sha'))
+  assert.ok(workflow.includes('LAST_TRUST_SHA: ${{ steps.schema-diff.outputs.last_trust_sha }}'))
+  assert.ok(!workflow.includes('pull_request:'))
+  assert.ok(!workflow.includes('if: github.event_name'))
 })
 
 test('busca el último run push main ancestral que cubre la última migración',async()=>{
@@ -212,4 +216,40 @@ test('esquema que no es ancestro bloquea antes de consultar API',async()=>{
   isAncestor:(a,b)=>a===b,
   fetchFn:async()=>{throw Error('No debe consultar API')},
  }),/no es ancestro/)
+})
+
+test('los checks de PR y producción son workflows diferentes, sin collision de skipped',()=>{
+ const release=readFileSync(new URL('../../../.github/workflows/release-migration-gate.yml',import.meta.url),'utf8')
+ const policy=readFileSync(new URL('../../../.github/workflows/release-migration-policy-tests.yml',import.meta.url),'utf8')
+ assert.ok(release.includes('name: Production migration gate'))
+ assert.ok(release.includes('name: Production migration gate\n'))
+ assert.ok(!release.includes('pull_request:'))
+ assert.ok(!release.includes('workflow_dispatch:'))
+ assert.ok(!release.includes('policy-tests:'))
+ assert.ok(policy.includes('pull_request:'))
+ assert.ok(policy.includes('name: Release migration policy tests (PR)'))
+ assert.ok(!policy.includes('name: Production migration gate'))
+})
+test('si cambia solo el workflow de migraciones, no hereda el certificado anterior',async()=>{
+ let searchedSha
+ await main({
+   GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
+   SCHEMA_CHANGED:'false',NEW_MIGRATIONS:'0',
+   GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,LAST_TRUST_SHA:other,
+   GITHUB_TOKEN:'synthetic-only'
+ },{
+   find:async ({schemaSha})=>{searchedSha=schemaSha;throw Error('No hay certificación posterior al cambio del workflow')},
+   verify:async()=>{throw Error('No se debe consultar un run viejo')}
+ }).then(()=>{throw Error('No debió aprobar')},err=>{assert.match(err.message,/No hay certificación/)})
+ assert.equal(searchedSha,other)
+})
+test('el SHA de confianza del pipeline no puede faltar ni ser arbitrario',async()=>{
+ for(const bad of [undefined,'','main','0'.repeat(40)]){
+  await assert.rejects(main({
+   GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
+   SCHEMA_CHANGED:'false',NEW_MIGRATIONS:'0',
+   GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,LAST_TRUST_SHA:bad,
+   GITHUB_TOKEN:'synthetic-only'
+  },{find:async()=>sha,verify:async()=>({runId:1,runAttempt:1})}),/SHA/)
+ }
 })

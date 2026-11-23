@@ -125,15 +125,18 @@ export async function main(env=process.env,{verify=waitForMigration,find=findEff
   // El último commit de esquema es relevante incluso cuando este push
   // no cambia Prisma. Así, un fallo anterior no queda oculto por merges nuevos.
   const latestSchemaSha=env.LAST_SCHEMA_SHA
-  if (!SHA_PATTERN.test(env.GITHUB_SHA || '') || !SHA_PATTERN.test(latestSchemaSha || ''))
-    throw new Error('Identidad SHA del candidato o del último esquema inválida')
+  const latestTrustSha=env.LAST_TRUST_SHA
+  if (!SHA_PATTERN.test(env.GITHUB_SHA || '') || !SHA_PATTERN.test(latestSchemaSha || '') ||
+      !SHA_PATTERN.test(latestTrustSha || ''))
+    throw new Error('Identidad SHA del candidato, esquema o pipeline inválida')
   const changesPrisma = env.SCHEMA_CHANGED === 'true' || newMigrations > 0
   const effectiveSha=changesPrisma ? env.GITHUB_SHA :
-    await find({candidateSha:env.GITHUB_SHA,schemaSha:latestSchemaSha,token:env.GITHUB_TOKEN})
+    await find({candidateSha:env.GITHUB_SHA,schemaSha:latestTrustSha,token:env.GITHUB_TOKEN})
   if(!SHA_PATTERN.test(effectiveSha||''))throw Error('SHA efectivo de migración inválido')
   const result=await verify({sha:effectiveSha,token:env.GITHUB_TOKEN})
-  log('Esquema '+latestSchemaSha.slice(0,12)+' cubierto por push '+
-    effectiveSha.slice(0,12)+'; run '+result.runId+', intento '+result.runAttempt)
+  log('Esquema '+latestSchemaSha.slice(0,12)+' y pipeline '+latestTrustSha.slice(0,12)+
+    ' cubiertos por push '+effectiveSha.slice(0,12)+
+    '; run '+result.runId+', intento '+result.runAttempt)
 }
 if (process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
   main().catch(error=>{console.error('Production migration gate: '+error.message);process.exitCode=1})

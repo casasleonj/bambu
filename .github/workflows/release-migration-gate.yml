@@ -1,45 +1,19 @@
 # #703 R0: produce el check único "Production migration gate" para CADA push a main.
-# Este check NO se exige en Vercel hasta validar el PR y activarlo explícitamente
-# en Deployment Checks junto a "CI gate (resumen)". Sin escritura en BD ni deploy.
+# Se ejecuta solo en push main; ninguna ejecución PR genera un check skipped
+# con su mismo nombre. Activación Vercel pendiente. Solo lectura, sin DDL.
 name: Production migration gate
 
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/release-migration-gate.yml'
-      - 'scripts/ci/release-migration-gate.mjs'
-      - 'scripts/ci/release-migration-policy.mjs'
-      - 'scripts/ci/__tests__/release-migration-gate.node.test.mjs'
-      - 'scripts/ci/__tests__/release-migration-policy.node.test.mjs'
-  workflow_dispatch:
 
 permissions:
   contents: read
   actions: read
 
 jobs:
-  policy-tests:
-    name: Production migration policy tests
-    if: github.event_name != 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: >-
-          node --test scripts/ci/__tests__/release-migration-gate.node.test.mjs
-          scripts/ci/__tests__/release-migration-policy.node.test.mjs
-
   release-migration:
     name: Production migration gate
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -119,10 +93,25 @@ jobs:
             exit 1
           fi
           echo "last_schema_sha=$last_schema_sha" >> "$GITHUB_OUTPUT"
+          # La propia lógica de migración es parte del perímetro de confianza.
+          # Si alguien modifica migrate-deploy.yml, un certificado ANTERIOR
+          # no alcanza para aprobar la publicación posterior.
+          last_trust_sha="$(git log --first-parent -1 --format=%H "$AFTER" -- \
+            prisma/schema.prisma prisma/migrations/ .github/workflows/migrate-deploy.yml)"
+          if ! [[ "$last_trust_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::No se encontró revisión de confianza de migraciones"
+            exit 1
+          fi
+          git merge-base --is-ancestor "$last_trust_sha" "$AFTER" || {
+            echo "::error::Revisión de confianza no pertenece al release"
+            exit 1
+          }
+          echo "last_trust_sha=$last_trust_sha" >> "$GITHUB_OUTPUT"
       - name: Comprobar resultado de migrate-deploy.yml para el SHA exacto
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SCHEMA_CHANGED: ${{ steps.schema-diff.outputs.schema_changed }}
           NEW_MIGRATIONS: ${{ steps.schema-diff.outputs.new_migrations }}
           LAST_SCHEMA_SHA: ${{ steps.schema-diff.outputs.last_schema_sha }}
+          LAST_TRUST_SHA: ${{ steps.schema-diff.outputs.last_trust_sha }}
         run: node scripts/ci/release-migration-gate.mjs
