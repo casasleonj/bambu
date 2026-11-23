@@ -267,7 +267,11 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
   const montosLegibles = recientes.map(r => r.montoRecibido).filter((m): m is number => typeof m === 'number' && Number.isFinite(m))
   const sinMonto = recientes.length - montosLegibles.length
   const totalRecientes = montosLegibles.reduce((s, m) => s + Math.round(m * 100), 0) / 100
-  const resumenRecientes = `${recientes.length} pago${recientes.length === 1 ? '' : 's'} · ${dinero(totalRecientes)}${sinMonto > 0 ? ` · ${sinMonto} sin monto legible` : ''}`
+  const cuentaPagos = `${recientes.length} pago${recientes.length === 1 ? '' : 's'}`
+  /** Si no hay ningún monto legible, mostrar «$ 0» se lee como «no se cobró nada»: se omite el total. */
+  const resumenRecientes = montosLegibles.length === 0
+    ? `${cuentaPagos} · ${sinMonto} sin monto legible`
+    : `${cuentaPagos} · ${dinero(totalRecientes)}${sinMonto > 0 ? ` · ${sinMonto} sin monto legible` : ''}`
   const delPedido = (resultado ? null : draft?.cliente.pedido) ?? null
   const returnLabel = resultado ? 'Volver al resultado del pago' : 'Volver a la revisión del pago'
   const docs = (p: { pedidoId: string; numero: number; facturaId?: string; facturaNumero?: string }) => <PedidoDocumentLinks
@@ -298,7 +302,7 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
         {error && <p role="alert" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">{error}</p>}
         {busy && <p role="status" className="mb-3 text-sm text-gray-500">{pendiente ? 'Verificando el registro…' : 'Consultando la deuda…'}</p>}
         {resultado ? <>
-          <div className="grid gap-3 sm:grid-cols-3">{[['Registrado', resultado.montoRecibido], ['Aplicado a deuda', resultado.montoAplicado], ['Saldo a favor', resultado.saldoFavorAcreditado]].map(([label, value]) => <div className="rounded-lg bg-gray-50 p-3" key={label}><p className="text-sm">{label}</p><strong className="text-lg">{dinero(Number(value))}</strong></div>)}</div>
+          <div className="grid gap-3 sm:grid-cols-3">{[['Registrado', resultado.montoRecibido], ['Aplicado a deuda', resultado.montoAplicado], ['Saldo a favor', resultado.saldoFavorAcreditado]].map(([label, value]) => <div className="rounded-lg bg-gray-50 p-3" key={label}><p className="text-sm">{label}</p><strong className="text-lg">{Number.isFinite(Number(value)) ? dinero(Number(value)) : 'Sin monto legible'}</strong></div>)}</div>
           <p className="my-3 break-all text-xs text-gray-500">Referencia: {resultado.referencia} · {new Date(resultado.registradoAt).toLocaleString('es-CO', { timeZone: 'America/Bogota' })}</p>
           {resultado.recepcion && <p className="mb-3 text-sm">Recibió: {resultado.recepcion.nombre} · Fecha de recepción: {new Date(resultado.recepcion.fecha).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}</p>}
           {resultado.pagosAplicados.map(p => <div className="border-t py-3" key={p.pedidoId}><h3 className="font-semibold">Pedido #{p.numero}: aplicado {dinero(p.montoAplicado)}</h3><p className="text-sm">Saldo después del registro: {dinero(p.saldoRestante)}</p>{docs(p)}</div>)}

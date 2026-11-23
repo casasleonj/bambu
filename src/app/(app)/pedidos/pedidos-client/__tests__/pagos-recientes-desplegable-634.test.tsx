@@ -148,4 +148,28 @@ describe('#634 residuales — monto ilegible y claves repetidas', () => {
       expect(errores.join(' ')).not.toMatch(/same key|duplicate key|keys/i)
     } finally { console.error = original }
   })
+
+  it('si ningún monto es legible se omite el total en vez de afirmar «$ 0»', async () => {
+    servir([
+      { ...reciente('Tienda Rota', 0, 'r1'), montoRecibido: undefined },
+      { ...reciente('Tienda Corrupta', 0, 'r2'), montoRecibido: Number.NaN },
+    ])
+    montar()
+    await screen.findByTestId('pagos-recientes')
+    const texto = resumen()
+    expect(texto).toContain('2 pagos · 2 sin monto legible')
+    expect(texto).not.toContain('$')
+    expect(texto).not.toContain('NaN')
+  })
+
+  it('el detalle del resultado tampoco muestra «NaN» cuando falta el monto', async () => {
+    servir([{ ...reciente('Tienda Rota', 0, 'r1'), montoRecibido: undefined, montoAplicado: undefined, saldoFavorAcreditado: undefined }])
+    montar()
+    await screen.findByTestId('pagos-recientes')
+    fireEvent.click(screen.getByRole('button', { name: 'Ver resultado y documentos' }))
+    const modal = await screen.findByTestId('cobro-fiado-dialog')
+    const texto = modal.textContent || ''
+    expect(texto).not.toContain('NaN')
+    expect(texto).toContain('Sin monto legible')
+  })
 })
