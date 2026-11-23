@@ -105,9 +105,14 @@ export async function POST(request: NextRequest) {
     })
     // #630 F1-B1a: declarar fecha física sólo si la captura es consistente.
     // La hora de sincronización nunca sustituye una entrega offline histórica.
-    const entregadoAt = resolverFechaEntregaVentaLibre({
-      entregarAhora, occurredAt, capturedAt, serverReceivedAt, clasificacionTemporal,
-    })
+    // Rollout seguro: entregadoAt ya interviene en cobros/fechas y comisiones.
+    // Capturamos occurredAt/capturedAt aun con flag OFF; sin permiso de
+    // conmutación, no alteramos las métricas ni el histórico oficial.
+    const entregadoAt = process.env.VENTA_LIBRE_FECHA_ENTREGA_B1A === 'true'
+      ? resolverFechaEntregaVentaLibre({
+          entregarAhora, occurredAt, capturedAt, serverReceivedAt, clasificacionTemporal,
+        })
+      : null
 
     // Métricas de observabilidad (§24): no bloquean la venta, solo la señalan.
     if (clasificacionTemporal === 'TARDIA') incrementMetric('venta_libre_tardia_count')

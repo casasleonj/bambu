@@ -524,6 +524,12 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
 
 
   describe('#630 F1-B1a / #602: fechas al crear venta libre', () => {
+    const anterior = process.env.VENTA_LIBRE_FECHA_ENTREGA_B1A
+    beforeEach(() => { process.env.VENTA_LIBRE_FECHA_ENTREGA_B1A = 'true' })
+    afterEach(() => {
+      if (anterior === undefined) delete process.env.VENTA_LIBRE_FECHA_ENTREGA_B1A
+      else process.env.VENTA_LIBRE_FECHA_ENTREGA_B1A = anterior
+    })
     it('inmediata con evento confiable persiste la hora declarada sin inventar repartidor', async () => {
       const occurredAt = new Date(Date.now() - 60_000).toISOString()
       const res = await POST(makeRequest({ ...validBody, occurredAt, capturedAt: occurredAt }))
@@ -548,6 +554,16 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
       const data = mockPrismaPedido.create.mock.calls[0][0].data
       expect(data.clasificacionTemporal).toBe('SOSPECHOSA')
       expect(data.entregadoAt).toBeNull()
+    })
+    it('flag apagado por defecto preserva contrato anterior incluso con fecha creíble', async () => {
+      delete process.env.VENTA_LIBRE_FECHA_ENTREGA_B1A
+      const occurredAt = new Date().toISOString()
+      const res = await POST(makeRequest({ ...validBody, occurredAt, capturedAt: occurredAt }))
+      expect(res.status).toBe(201)
+      const data = mockPrismaPedido.create.mock.calls[0][0].data
+      expect(data.entregadoAt).toBeNull()
+      expect(data.occurredAt).toEqual(new Date(occurredAt))
+      expect(data.capturedAt).toEqual(new Date(occurredAt))
     })
     it('venta legacy sin timestamps no falsifica entregadoAt', async () => {
       const res = await POST(makeRequest(validBody))
