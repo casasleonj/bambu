@@ -754,6 +754,7 @@ jobs:
           e2e/pedidos-pendientes-anteriores-797.spec.ts
           e2e/pedidos-alerta-riesgo-929.spec.ts
           e2e/pedidos-cobro-pendiente-932.spec.ts
+          e2e/pedidos-prioridad-936.spec.ts
 
       - name: Dump Postgres/Redis container logs and resource usage
         if: always()
