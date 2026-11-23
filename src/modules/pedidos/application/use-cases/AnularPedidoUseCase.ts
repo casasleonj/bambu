@@ -5,6 +5,7 @@
 import { getNextNumero } from '@/lib/sequence'
 import { revertirCreditoDelPedido } from '../services/saldo-favor-excedente.service'
 import { logAudit } from '@/lib/audit'
+import { evidenciaDemanda } from '@/lib/pedidos-cambios-demanda'
 import { registrarReversionPedido } from '@/lib/receivable-entry'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
 import type { IPedidoRepository } from '../../domain/repositories/IPedidoRepository'
@@ -114,6 +115,9 @@ export class AnularPedidoUseCase {
     offlineId?: string,
     actorId?: string,
   ) {
+    // #853: demanda pendiente que retira una cancelación en cascada (anular no retira demanda: ya estaba entregado).
+    const demandaAntes = pedido.items.map((i) => ({ producto: i.producto as string, cantidad: i.cantPedido + i.cantRegaloPedido }))
+    const demandaDespues = pedido.items.map((i) => ({ producto: i.producto as string, cantidad: i.cantidadFisicaEntregada }))
     const { tuvoPagos, totalPagado } = modo === 'ANULAR' ? pedido.anular(offlineId) : pedido.cancelar()
 
     const updated = await this.pedidoRepo.update(pedido, tx)
@@ -158,7 +162,7 @@ export class AnularPedidoUseCase {
       entidad: 'Pedido',
       registroId: pedido.id.get(),
       accion: 'UPDATE',
-      datos: { motivo, modo, notaCredito: tuvoPagos, reversion: montoRevertido, ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}), ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}) },
+      datos: { motivo, modo, ...(modo === 'ANULAR' ? evidenciaDemanda('ANULACION') : evidenciaDemanda('CANCELACION', { antes: demandaAntes, despues: demandaDespues })), notaCredito: tuvoPagos, reversion: montoRevertido, ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}), ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}) },
     }, tx)
 
     return { updated, revertido, yaUsado }

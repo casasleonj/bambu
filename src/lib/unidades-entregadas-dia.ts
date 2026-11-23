@@ -64,6 +64,17 @@ export function unidadesFisicasEntregadas(p: {
     bolsaAgua: p.cBolsaAguaEnt, bolsaHielo: p.cBolsaHieloEnt }
 }
 
+/**
+ * Las entregas de un pedido permiten repartir por día solo si TODAS traen cantidades y
+ * precisión de instante. Es el mismo criterio que usan Dashboard, Producción, Cierre y
+ * el balance operativo de Pedidos (#853): no debe copiarse en otro lugar.
+ */
+export function entregasConDesgloseConfiable(
+  eventos: ReadonlyArray<{ incompleto?: boolean; cantidades: unknown; precisionDia?: boolean }>,
+): boolean {
+  return eventos.length > 0 && eventos.every((e) => !e.incompleto && !!e.cantidades && !e.precisionDia)
+}
+
 export async function unidadesEntregadasDelDia(db: Db, rango: RangoDia): Promise<UnidadesEntregadasDelDia> {
   return (await detalleUnidadesEntregadasDelDia(db, rango)).unidades
 }
@@ -102,7 +113,7 @@ export async function detalleUnidadesEntregadasDelDia(db: Db, rango: RangoDia) {
     const acumulado = unidadesFisicasEntregadas(p)
     if (total(acumulado) === 0) continue
     const eventos = porPedido.get(p.id) ?? []
-    const seguro = eventos.length > 0 && eventos.every((e) => !e.incompleto && e.cantidades && !e.precisionDia)
+    const seguro = entregasConDesgloseConfiable(eventos)
     if (seguro) {
       const entra = delDia.filter((e) => e.pedidoId === p.id).map((e) => e.id)
       const entraIds = new Set(entra)
