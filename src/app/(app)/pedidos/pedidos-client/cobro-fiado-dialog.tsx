@@ -33,6 +33,8 @@ interface Props extends AccesoDocumentosPedido {
 }
 const dinero = (n: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP',
   minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 }).format(n)
+/** #634: un monto corrupto nunca se imprime como «NaN» ni se disfraza de «$ 0». */
+const montoFmt = (v: unknown) => esMontoLegible(v) ? dinero(v) : 'Sin monto legible'
 const METODOS = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', NEQUI: 'Nequi', DAVIPLATA: 'Daviplata', BONO: 'Bono' }
 const storageKey = (actor: string) => `bambu:fiados:borradores:${actor}`
 function leerBorradores(actor: string): Borrador[] {
@@ -218,7 +220,7 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
       }
       if (prep.clienteId !== actual.cliente.id) throw new Error('La consulta no corresponde al cliente elegido.')
       if (!prep.pedidos.length) throw new Error(actual.cliente.pedido ? 'Este pedido ya no tiene deuda exigible por cobrar.' : 'El cliente no tiene deuda exigible por entregas. Actualiza Fiados.')
-      if (actual.cliente.pedido && sumarCobroFiado(pagos) > (prep.pedidos[0].exigible ?? prep.pedidos[0].saldo)) throw new Error(`El monto supera el saldo del pedido (${dinero(prep.pedidos[0].exigible ?? prep.pedidos[0].saldo)}). Registra como máximo el saldo pendiente.`)
+      if (actual.cliente.pedido && sumarCobroFiado(pagos) > (prep.pedidos[0].exigible ?? prep.pedidos[0].saldo)) throw new Error(`El monto supera el saldo del pedido (${montoFmt(prep.pedidos[0].exigible ?? prep.pedidos[0].saldo)}). Registra como máximo el saldo pendiente.`)
       const cuerpo: Payload = { clienteId: actual.cliente.id, ...(actual.cliente.pedido ? { pedidoId: actual.cliente.pedido.id } : {}), pagos, offlineId: actual.referencia,
         versionDeuda: prep.version, ...(gestion.activa ? camposCobro(actual.cobro) : {}) }
       if (draftRef.current?.referencia !== actual.referencia) return
@@ -273,8 +275,6 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
   const resumenRecientes = sinMonto === recientes.length
     ? `${cuentaPagos} · ${sinMonto} sin monto legible`
     : `${cuentaPagos} · ${dinero(totalRecientes)}${sinMonto > 0 ? ` · ${sinMonto} sin monto legible` : ''}`
-  /** #634: un monto corrupto nunca se imprime como «NaN» ni se disfraza de «$ 0». */
-  const montoFmt = (v: unknown) => esMontoLegible(v) ? dinero(v) : 'Sin monto legible'
   const delPedido = (resultado ? null : draft?.cliente.pedido) ?? null
   const returnLabel = resultado ? 'Volver al resultado del pago' : 'Volver a la revisión del pago'
   const docs = (p: { pedidoId: string; numero: number; facturaId?: string; facturaNumero?: string }) => <PedidoDocumentLinks
@@ -317,16 +317,16 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
         </> : draft?.etapa === 'revisar' && preparacion && reparto ? <>
           {delPedido ? <p className="mb-3 text-sm text-blue-900">El pago se aplica solo al pedido #{delPedido.numero}. No toca otras deudas del cliente.</p> : <p className="mb-3 text-sm text-blue-900">El cobro considera toda la deuda entregada de este cliente, aunque la lista tenga un filtro de fecha.</p>}
           {!navigator.onLine && <p className="mb-3 rounded-lg bg-amber-50 p-3 text-sm">Sin conexión. Usamos la deuda consultada {draft.consultadoAt ? new Date(draft.consultadoAt).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : 'anteriormente'}. El servidor la verificará al sincronizar; si cambió, tendrás que revisar el reparto.</p>}
-          <div className="grid gap-3 sm:grid-cols-3">{[['Monto a registrar', monto], ['A deuda entregada', monto - reparto.sobrante], ['Saldo a favor', reparto.sobrante]].map(([label, value]) => <div className="rounded-lg bg-gray-50 p-3" key={label}><p className="text-sm">{label}</p><strong className="text-lg">{dinero(Number(value))}</strong></div>)}</div>
+          <div className="grid gap-3 sm:grid-cols-3">{[['Monto a registrar', monto], ['A deuda entregada', monto - reparto.sobrante], ['Saldo a favor', reparto.sobrante]].map(([label, value]) => <div className="rounded-lg bg-gray-50 p-3" key={label}><p className="text-sm">{label}</p><strong className="text-lg">{montoFmt(value)}</strong></div>)}</div>
           <p className="my-3 font-semibold">{delPedido ? 'Se aplicará a este pedido:' : 'Se aplicará del pedido entregado más antiguo al más reciente:'}</p>
-          {reparto.aplicaciones.map(p => <div key={p.pedidoId} className="border-t py-3"><h3 className="font-semibold">Pedido #{p.numero}{p.facturaNumero ? ` · Factura ${p.facturaNumero}` : ''}</h3><p className="mt-1 text-sm">Se aplica {dinero(p.montoAplicado)} · Queda {dinero(p.saldoRestante)}</p>{docs(p)}</div>)}
+          {reparto.aplicaciones.map(p => <div key={p.pedidoId} className="border-t py-3"><h3 className="font-semibold">Pedido #{p.numero}{p.facturaNumero ? ` · Factura ${p.facturaNumero}` : ''}</h3><p className="mt-1 text-sm">Se aplica {montoFmt(p.montoAplicado)} · Queda {montoFmt(p.saldoRestante)}</p>{docs(p)}</div>)}
           <div className="my-3 rounded-lg bg-gray-50 p-3 text-sm">{pagos.map((p, i) => <p key={i}>{METODOS[p.metodo]}: {dinero(p.monto)}{preparacion.metodosPorConfirmar.includes(p.metodo) ? ' · por confirmar al registrar' : ''}</p>)}<p className="mt-2">{gestion.activa ? `Recepción: ${draft.cobro.fecha} · ${draft.cobro.quien === 'OFICINA' ? 'Oficina' : gestion.repartidores.find(r => r.id === draft.cobro.repartidorId)?.nombre || 'Repartidor'}` : 'Fecha de registro: el servidor la asignará al registrar.'}</p></div>
           {reparto.sobrante > 0 && <p className="my-3 rounded-lg bg-amber-50 p-3 text-sm">El excedente quedará como saldo a favor del cliente. No se aplicará a pedidos sin entregar.</p>}
           <p className="text-sm text-gray-600">Registrar un medio digital y verificar que el dinero llegó son pasos diferentes. El servidor volverá a comprobar el reparto antes de registrar.</p>
         </> : draft && !enFiados && <>
-          {delPedido ? <p className="mb-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-950" data-testid="cobro-solo-pedido">Saldo del pedido #{delPedido.numero}{preparacion?.pedidos[0] ? `: ${dinero(preparacion.pedidos[0].saldo)}` : ''}. El pago se aplica solo a este pedido.</p> : <p className="mb-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-950">El pago se aplica a la deuda entregada más antigua del cliente, de todas las fechas. Los filtros de Fiados solo cambian la consulta.</p>}
+          {delPedido ? <p className="mb-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-950" data-testid="cobro-solo-pedido">Saldo del pedido #{delPedido.numero}{preparacion?.pedidos[0] ? `: ${montoFmt(preparacion.pedidos[0].saldo)}` : ''}. El pago se aplica solo a este pedido.</p> : <p className="mb-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-950">El pago se aplica a la deuda entregada más antigua del cliente, de todas las fechas. Los filtros de Fiados solo cambian la consulta.</p>}
           <p className="mb-3 text-sm">Registra el dinero recibido por cada medio. Puedes abonar una parte de la deuda.</p>
-          {preparacion && !delPedido && <p className="mb-3 text-sm font-semibold" data-testid="deuda-cliente-preparada">Deuda entregada consultada: {dinero(preparacion.deudaTotal)}</p>}
+          {preparacion && !delPedido && <p className="mb-3 text-sm font-semibold" data-testid="deuda-cliente-preparada">Deuda entregada consultada: {montoFmt(preparacion.deudaTotal)}</p>}
           {draft.lineas.map((l, i) => <div key={i} className="mb-3 grid grid-cols-[1fr_1fr_auto] items-start gap-2"><div className="min-w-0 text-sm"><label htmlFor={`metodo-${i}`}>Medio {i + 1}</label><select id={`metodo-${i}`} value={l.metodo} onChange={e => editarLinea(i, 'metodo', e.target.value)} aria-invalid={!!errores[`metodo-${i}`]} className={bodyClass}><option value="">Seleccionar…</option>{Object.entries(METODOS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>{errores[`metodo-${i}`] && <small className="text-red-700">{errores[`metodo-${i}`]}</small>}</div><div className="min-w-0 text-sm"><label htmlFor={`monto-${i}`}>Monto {i + 1}</label><input id={`monto-${i}`} placeholder="Monto a pagar" inputMode="decimal" type="number" min="0.01" step="0.01" value={l.monto} onChange={e => editarLinea(i, 'monto', e.target.value)} aria-invalid={!!errores[`monto-${i}`]} className={bodyClass} />{errores[`monto-${i}`] && <small className="text-red-700">{errores[`monto-${i}`]}</small>}</div><button className="mt-5 min-h-11 min-w-11 rounded border" aria-label={`Quitar medio ${i + 1}`} disabled={draft.lineas.length === 1} onClick={() => guardar({ ...draft, lineas: draft.lineas.filter((_, index) => i !== index) })}>×</button></div>)}
           <button className="mb-4 min-h-11 rounded-lg border px-4 text-sm" disabled={draft.lineas.length >= 10} onClick={() => guardar({ ...draft, lineas: [...draft.lineas, { metodo: '', monto: '' }] })}>Añadir otro medio</button>
           {gestion.activa && <CobroOficinaCampos datos={draft.cobro} errores={validarCobro(draft.cobro)} intento={Object.keys(errores).length > 0} repartidores={gestion.repartidores} onChange={patch => guardar({ ...draft, cobro: { ...draft.cobro, ...patch } })} />}

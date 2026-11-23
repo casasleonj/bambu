@@ -65,9 +65,12 @@ describe('#634 — «Pagos recientes» desplegable', () => {
     montar()
     const pendientes = await screen.findByTestId('cobros-por-verificar')
     expect(pendientes.textContent).toContain('Tienda La Esquina')
-    // lo que exige acción no vive dentro del <details>: cerrar el histórico no puede ocultarlo
-    expect(screen.getByTestId('pagos-recientes').contains(pendientes)).toBe(false)
-    expect(pendientes.contains(document.querySelector('[data-testid="pagos-recientes"]'))).toBe(false)
+    // lo que exige acción no vive dentro del <details>: cerrar el histórico no puede ocultarlo.
+    // Se espera al desplegable (llega con el fetch) en vez de leerlo síncrono: comparar antes
+    // de que exista daría un falso verde y hacía el test intermitente.
+    const historico = await screen.findByTestId('pagos-recientes')
+    expect(historico.contains(pendientes)).toBe(false)
+    expect(pendientes.contains(historico)).toBe(false)
     fireEvent.click(screen.getByRole('button', { name: 'Ver estado del cobro' }))
     expect(await screen.findByText(/Estado del registro por verificar/)).toBeTruthy()
   })
@@ -202,5 +205,21 @@ describe('#634 residuales — monto ilegible y claves repetidas', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ver resultado y documentos' }))
     const modal = await screen.findByTestId('cobro-fiado-dialog')
     expect(modal.textContent).toContain('Pago registrado')
+  })
+
+  it('la pantalla de revisión tampoco imprime «NaN» si la consulta llega incompleta', async () => {
+    // La preparación puede venir de un borrador offline en sessionStorage, sin revalidar.
+    global.fetch = vi.fn().mockImplementation(async (url: string) => ({ ok: true, json: async () =>
+      url.includes('recientes') ? { resultados: [] }
+        : { preparacion: { ...preparacion, deudaTotal: undefined,
+            pedidos: [{ ...preparacion.pedidos[0], saldo: undefined, exigible: undefined }] } } })) as unknown as typeof fetch
+    montar()
+    await screen.findByLabelText('Medio 1')
+    fireEvent.change(screen.getByLabelText('Medio 1'), { target: { value: 'EFECTIVO' } })
+    fireEvent.change(screen.getByLabelText('Monto 1'), { target: { value: '5000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar reparto' }))
+    const modal = await screen.findByTestId('cobro-fiado-dialog')
+    await waitFor(() => expect(modal.textContent).not.toContain('NaN'))
+    expect(modal.textContent).not.toContain('NaN')
   })
 })
