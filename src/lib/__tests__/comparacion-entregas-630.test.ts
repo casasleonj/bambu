@@ -100,6 +100,7 @@ describe('#630 F1-B0 · comparación diagnóstica no contable', () => {
     const c = consulta(martes, p, [e], 0)
     expect(agua(c).conFechaAtribuible).toBe(0)
     expect(c.pedidosConAlertas).toBe(1)
+    expect(agua(c).calidad).toBe('REQUIERE_REVISION')
   })
 
   it('exceso de cobertura conocida no se interpreta como comparación completa', () => {
@@ -108,6 +109,28 @@ describe('#630 F1-B0 · comparación diagnóstica no contable', () => {
     const r = resumirComparacionEntregas630(totales(10), d)
     expect(r.pedidosNoEncontrados).toBe(1)
     expect(r.porProducto[0].calidad).toBe('REQUIERE_REVISION')
+  })
+
+  it('una aproximación oficial exige revisión aun si coincide el total', () => {
+    const p = pedido()
+    const d: DiagnosticoEntregasSombra = { fecha: martes, modo: 'SOLO_LECTURA',
+      pedidosNoEncontrados: 0, pedidos: [diagnosticarPedidoEntregasSombra(p, [hecho('e', martes, 10)], martes)] }
+    const oficial = totales(10)
+    oficial.aproximados.push({ pedidoId: 'legacy', numero: 123, fechaCreacion: dia(lunes),
+      unidades: { agua: 10, hielo: 0, botellon: 0, bolsaAgua: 0, bolsaHielo: 0 } })
+    const c = resumirComparacionEntregas630(oficial, d)
+    expect(c.pedidosAproximadosOficial).toBe(1)
+    expect(c.porProducto[0]).toMatchObject({
+      oficial: 10, conFechaAtribuible: 10, calidad: 'REQUIERE_REVISION',
+    })
+  })
+
+  it('un número oficial inválido queda en revisión, nunca se normaliza a cero', () => {
+    const p = pedido({ cPacaAguaEnt: 0 })
+    const d: DiagnosticoEntregasSombra = { fecha: martes, modo: 'SOLO_LECTURA',
+      pedidosNoEncontrados: 0, pedidos: [diagnosticarPedidoEntregasSombra(p, [], martes)] }
+    const c = resumirComparacionEntregas630(totales(-2), d)
+    expect(c.porProducto[0]).toMatchObject({ oficial: -2, calidad: 'REQUIERE_REVISION' })
   })
 
   it('no modifica ni la evidencia ni los valores oficiales', () => {

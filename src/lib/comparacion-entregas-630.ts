@@ -39,6 +39,7 @@ export interface ComparacionEntregas630 {
   pedidosExaminados: number
   pedidosNoEncontrados: number
   pedidosConAlertas: number
+  pedidosAproximadosOficial: number
   porProducto: LineaComparacion630[]
   // Mantener diagnóstico desglosado para rastrear cada pedido/producto/fecha.
   diagnostico: DiagnosticoEntregasSombra
@@ -59,6 +60,8 @@ export function resumirComparacionEntregas630(
   oficial: UnidadesEntregadasDelDia,
   diagnostico: DiagnosticoEntregasSombra,
 ): ComparacionEntregas630 {
+  const alertaGlobal = diagnostico.pedidos.some(p => p.alertasPedido.length > 0)
+  const aproximacionesOficiales = oficial.aproximados.length
   const porProducto: LineaComparacion630[] = PRODUCTOS.map(([producto, clave]) => {
     let conFechaAtribuible = 0
     let conFechaEnRevision = 0
@@ -75,7 +78,8 @@ export function resumirComparacionEntregas630(
     const cantidadOficial = oficial[clave]
     const diferenciaOficialMenosAtribuible = cantidadOficial - conFechaAtribuible
     const calidad: CalidadComparacion630 =
-      conFechaEnRevision > 0 || pedidosConIncidencia > 0 || diagnostico.pedidosNoEncontrados > 0
+      conFechaEnRevision > 0 || pedidosConIncidencia > 0 || diagnostico.pedidosNoEncontrados > 0 ||
+      alertaGlobal || aproximacionesOficiales > 0 || !Number.isSafeInteger(cantidadOficial) || cantidadOficial < 0
         ? 'REQUIERE_REVISION'
         : diferenciaOficialMenosAtribuible !== 0 ? 'DIFERENCIA' : 'COINCIDENCIA_NUMERICA_NO_CERTIFICADA'
     return {
@@ -92,6 +96,7 @@ export function resumirComparacionEntregas630(
     pedidosNoEncontrados: diagnostico.pedidosNoEncontrados,
     pedidosConAlertas: diagnostico.pedidos.filter(p =>
       p.alertasPedido.length > 0 || p.lineas.some(l => l.estado !== 'CONCILIADO')).length,
+    pedidosAproximadosOficial: aproximacionesOficiales,
     porProducto,
     diagnostico,
     advertencias: [
