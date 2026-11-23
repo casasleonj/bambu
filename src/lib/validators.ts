@@ -1004,9 +1004,10 @@ export const ResumenFacturasQuerySchema = z.object({
   clienteId: z.string().min(1),
   desde: FechaResumenSchema.optional(),
   hasta: FechaResumenSchema.optional(),
-  // Ausente o TODAS = todas las facturas del cliente/período (#758).
-  estado: z.enum(['TODAS', 'EMITIDA', 'PARCIAL', 'PAGADA', 'ANULADA']).optional(),
-  // Solo aplica con TODAS. Ausente = se muestran (atenuadas, sin sumar).
+  // Ausente o TODAS = facturas vigentes del cliente/período; POR_COBRAR = EMITIDA + PARCIAL (#977).
+  // EMITIDA y PARCIAL sueltas se aceptan por enlaces anteriores.
+  estado: z.enum(['TODAS', 'POR_COBRAR', 'EMITIDA', 'PARCIAL', 'PAGADA', 'ANULADA']).optional(),
+  // Obsoleto (#977): las anuladas ya no se mezclan con «Todas»; se acepta por enlaces anteriores y se ignora.
   incluirAnuladas: z.enum(['true', 'false']).optional(),
 }).refine((data) => !data.desde || !data.hasta || data.hasta >= data.desde, {
   message: 'La fecha hasta debe ser posterior o igual a la fecha desde',
