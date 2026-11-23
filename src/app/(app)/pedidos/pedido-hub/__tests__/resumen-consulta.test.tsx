@@ -257,3 +257,117 @@ describe("ResumenConsulta · Operación de hoy (#853 Fase 2)", () => {
     expect(screen.queryByText(/Entregas físicas del/)).toBeNull();
   });
 });
+
+describe("ResumenConsulta · Dinero de lo entregado hoy (#853 Fase 3)", () => {
+  beforeEach(() => window.localStorage.clear());
+  afterEach(() => vi.unstubAllGlobals());
+  const dia = { ...filtros, all: false, desde: "2026-11-22", hasta: "2026-11-22", canal: [] } as FiltrosConsultaPedidos;
+  const c = (porGestionar: number, ajustes: number, entregadasHoy: number, faltan: number) => ({ porGestionar, ajustes, entregadasHoy, faltan });
+  const balance = {
+    productos: [{ producto: "PACA_AGUA", grupos: { pedidosHoy: c(10, 0, 8, 2), pendientesAnteriores: c(0, 0, 0, 0), parcialesAnteriores: c(0, 0, 0, 0) }, total: c(10, 0, 8, 2) }],
+    pedidosUnicos: { pedidosHoy: 1, pendientesAnteriores: 0, parcialesAnteriores: 0, total: 1 },
+    porConciliar: { pedidosSinDesglose: 0, pedidosInconsistentes: 0, edicionesSinCantidades: 0 },
+  };
+  const economia = (extra: Record<string, unknown> = {}) => ({
+    entregadoHoy: 1_250_000, pagadoDeEso: 900_000, porCobrarDeEso: 350_000,
+    porConciliar: { pedidos: 0, valor: 0 }, unidadesSinPrecio: 0,
+    cobrosHoy: { neto: 600_000, porConciliar: false }, ...extra,
+  });
+  const montar = (extra: Record<string, unknown>) => {
+    movil(false);
+    render(
+      <ResumenConsulta
+        resumen={{ ...resumen, operacionDia: { total: 8, productos: [] }, balanceOperativo: balance, ...extra } as unknown as ResumenConsultaPedidos}
+        filtros={dia}
+        onReintentar={vi.fn()}
+      />,
+    );
+  };
+
+  it("muestra entregado, pagado de eso y por cobrar de eso, y los cobros recibidos aparte", () => {
+    montar({ economiaHoy: economia() });
+    const e = screen.getByTestId("economia-hoy");
+    expect(e).toHaveTextContent("Dinero de lo entregado hoy");
+    expect(screen.getByTestId("economia-entregado")).toHaveTextContent(/1\.250\.000/);
+    expect(screen.getByTestId("economia-pagado")).toHaveTextContent(/900\.000/);
+    expect(screen.getByTestId("economia-por-cobrar")).toHaveTextContent(/350\.000/);
+    const cobros = screen.getByTestId("economia-cobros-hoy");
+    expect(cobros).toHaveTextContent("Cobros recibidos hoy");
+    expect(cobros).toHaveTextContent(/600\.000/);
+    expect(cobros).toHaveTextContent("no se suma a lo de arriba");
+    expect(screen.queryByTestId("economia-hoy-aviso")).toBeNull();
+  });
+
+  it("con entregas sin reparto verificable: «Por conciliar», subtotales identificados y nada inventado", () => {
+    montar({ economiaHoy: economia({ porConciliar: { pedidos: 2, valor: 19_000 }, unidadesSinPrecio: 8 }) });
+    expect(screen.getByTestId("economia-por-cobrar")).toHaveTextContent("Por conciliar");
+    const aviso = screen.getByTestId("economia-hoy-aviso");
+    expect(aviso).toHaveTextContent("Subtotales identificados");
+    expect(aviso).toHaveTextContent("2 pedidos");
+    expect(aviso).toHaveTextContent("8 unidades sin precio verificable");
+    expect(aviso).toHaveTextContent("No se inventa un total");
+    // El entregado y el pagado identificado siguen siendo cifras firmes.
+    expect(screen.getByTestId("economia-entregado")).toHaveTextContent(/1\.250\.000/);
+  });
+
+  it("un solo pedido por conciliar usa el singular", () => {
+    montar({ economiaHoy: economia({ porConciliar: { pedidos: 1, valor: 7_000 } }) });
+    expect(screen.getByTestId("economia-hoy-aviso")).toHaveTextContent("1 pedido (");
+  });
+
+  it("sin entregas hoy: lo dice, y los cobros recibidos siguen visibles aparte", () => {
+    montar({ economiaHoy: economia({ entregadoHoy: 0, pagadoDeEso: 0, porCobrarDeEso: 0, cobrosHoy: { neto: 150_000, porConciliar: false } }) });
+    expect(screen.getByTestId("economia-hoy-sin-entregas")).toHaveTextContent("Aún no hay entregas hoy.");
+    expect(screen.queryByTestId("economia-entregado")).toBeNull();
+    expect(screen.getByTestId("economia-cobros-hoy")).toHaveTextContent(/150\.000/);
+  });
+
+  it("cobros por conciliar: no muestra un total, solo el identificado", () => {
+    montar({ economiaHoy: economia({ cobrosHoy: { neto: 40_000, porConciliar: true } }) });
+    const cobros = screen.getByTestId("economia-cobros-hoy");
+    expect(cobros).toHaveTextContent("Por conciliar");
+    expect(cobros).toHaveTextContent(/identificado/);
+  });
+
+  it("si falla el dinero: error con «Reintentar» y ninguna cifra inventada", () => {
+    movil(false);
+    const reintentar = vi.fn();
+    render(
+      <ResumenConsulta
+        resumen={{ ...resumen, operacionDia: { total: 8, productos: [] }, balanceOperativo: balance, economiaHoyError: true } as unknown as ResumenConsultaPedidos}
+        filtros={dia}
+        onReintentar={reintentar}
+      />,
+    );
+    expect(screen.getByTestId("economia-hoy-error")).toHaveTextContent("No se pudo calcular el dinero de hoy");
+    expect(screen.queryByTestId("economia-entregado")).toBeNull();
+    // El balance de productos sigue disponible: el fallo del dinero no lo tumba.
+    expect(screen.getByTestId("faltan-PACA_AGUA")).toHaveTextContent("faltan 2");
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(reintentar).toHaveBeenCalledTimes(1);
+  });
+
+  it("si falla el balance pero el dinero existe: el dinero se muestra en su propio bloque", () => {
+    movil(false);
+    render(
+      <ResumenConsulta
+        resumen={{ ...resumen, operacionDia: { total: 8, productos: [] }, balanceOperativoError: true, economiaHoy: economia() } as unknown as ResumenConsultaPedidos}
+        filtros={dia}
+      />,
+    );
+    expect(screen.getByTestId("consulta-resumen-economia-sola")).toBeInTheDocument();
+    expect(screen.getByTestId("economia-entregado")).toHaveTextContent(/1\.250\.000/);
+  });
+
+  it("sin dinero ni error (filtros adicionales o día pasado): el bloque no existe", () => {
+    montar({});
+    expect(screen.queryByTestId("economia-hoy")).toBeNull();
+  });
+
+  it("«Cómo leerlo» explica que el pagado incluye pagos por confirmar y que los cobros van aparte", () => {
+    montar({ economiaHoy: economia() });
+    fireEvent.click(screen.getByText("ⓘ Cómo leerlo"));
+    expect(screen.getByText(/incluso los que aún están por confirmar/)).toBeInTheDocument();
+    expect(screen.getByText(/no se suma a lo anterior/)).toBeInTheDocument();
+  });
+});
