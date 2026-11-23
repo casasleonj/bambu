@@ -220,6 +220,21 @@ describe('#499 — comisión del repartidor por día (Postgres real)', () => {
     expect((await comisionRepartidoresDelDia(testPrisma, DIA)).find(r => r.trabajadorId === id)?.total).toBe(0)
   })
 
+  it('#853: un embarque que sale antes de medianoche y entrega después paga en el día del embarque, una sola vez', async () => {
+    const id = await repartidor('Embarque cruza medianoche')
+    const diaSiguiente = '2026-03-11'
+    const e = await embarqueCerrado(id, bogota('22:00:00'))
+    await testPrisma.embarqueMovimiento.create({
+      data: { embarqueId: e.id, tipo: 'ENTREGA', producto: 'PACA_AGUA', cantidad: 3, createdAt: bogota('00:20:00', diaSiguiente), metadata: { captura: 'CIERRE' } },
+    })
+    const delEmbarque = (await comisionRepartidoresDelDia(testPrisma, DIA)).find(r => r.trabajadorId === id)
+    const delSiguiente = (await comisionRepartidoresDelDia(testPrisma, diaSiguiente)).find(r => r.trabajadorId === id)
+    expect(delEmbarque?.entregasAgua).toBe(3)
+    expect(delEmbarque?.total).toBe(3 * TARIFA_AGUA)
+    expect(delSiguiente?.entregasAgua ?? 0).toBe(0)
+    expect(delSiguiente?.total ?? 0).toBe(0)
+  })
+
   it('cuenta delta y venta de ruta una vez; excluye promoción, sustitución y entrega tardía', async () => {
     const id = await repartidor('Fuentes físicas distintas')
     const e = await embarqueCerrado(id, bogota('09:00:00'))

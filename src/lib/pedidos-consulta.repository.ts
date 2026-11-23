@@ -27,6 +27,7 @@ import { endOfDayBogota, todayStringBogota } from "./dates";
 import { detalleUnidadesEntregadasDelDia } from "./unidades-entregadas-dia";
 import { mostrarBalanceOperativoHoy, mostrarResumenOperativoDelDia, resumirEntregasOperativasDelDia } from "./pedidos-resumen-operativo-hoy";
 import { leerBalanceOperativoHoy } from "./pedidos-balance-operativo-hoy.repository";
+import { leerEconomiaOperativaHoy } from "./pedidos-economia-operativa-hoy.repository";
 import { ordenarPorFranja } from "./pedidos-franja";
 import { ordenarPrioridadPedidos } from "./pedidos-prioridad-921";
 import { findPedidosEnRiesgo } from "./pedidos-sin-asignar";
@@ -344,9 +345,11 @@ export async function consultarPedidos(
   const resumenBase = resultado.resumen;
   if (resumenBase && mostrarResumenOperativoDelDia(f, todayStringBogota())) {
     try {
-      const { operacionDia, balanceOperativo, balanceOperativoError } = await client.$transaction(async (tx) => {
+      const { operacionDia, balanceOperativo, balanceOperativoError, economiaHoy, economiaHoyError } = await client.$transaction(async (tx) => {
         const rango = rangoConsultaPedidos(f);
-        const { detalle } = await detalleUnidadesEntregadasDelDia(tx, rango);
+        // Una sola lectura de las entregas del día, compartida por las tres vistas (#853).
+        const base = await detalleUnidadesEntregadasDelDia(tx, rango);
+        const { detalle } = base;
         const ids = [...new Set(detalle.map((d) => d.pedidoId))];
         const pedidosOrigen = await tx.pedido.findMany({
           where: { id: { in: ids } },
@@ -357,14 +360,28 @@ export async function consultarPedidos(
           new Map(pedidosOrigen.map((p) => [p.id, p.fecha])),
           rango,
         );
-        // Mismo corte (RepeatableRead) que las entregas del día. Su fallo no invalida lo anterior.
+        // Mismo corte (RepeatableRead) que las entregas del día. El fallo de una lectura opcional no
+        // invalida lo anterior; cada una declara su propio error y ninguna muestra ceros inventados.
         if (!mostrarBalanceOperativoHoy(f, todayStringBogota())) return { operacionDia };
+        const opcionales: {
+          balanceOperativo?: Awaited<ReturnType<typeof leerBalanceOperativoHoy>>;
+          balanceOperativoError?: boolean;
+          economiaHoy?: Awaited<ReturnType<typeof leerEconomiaOperativaHoy>>;
+          economiaHoyError?: boolean;
+        } = {};
         try {
-          return { operacionDia, balanceOperativo: await leerBalanceOperativoHoy(tx, rango) };
+          opcionales.balanceOperativo = await leerBalanceOperativoHoy(tx, rango, base);
         } catch (error) {
           logger.warn({ err: error }, "No se pudo calcular el balance operativo de hoy (#853)");
-          return { operacionDia, balanceOperativoError: true };
+          opcionales.balanceOperativoError = true;
         }
+        try {
+          opcionales.economiaHoy = await leerEconomiaOperativaHoy(tx, rango, base);
+        } catch (error) {
+          logger.warn({ err: error }, "No se pudo calcular el dinero de lo entregado hoy (#853)");
+          opcionales.economiaHoyError = true;
+        }
+        return { operacionDia, ...opcionales };
       }, {
         isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
         timeout: 15000,
@@ -376,6 +393,8 @@ export async function consultarPedidos(
           operacionDia,
           ...(balanceOperativo ? { balanceOperativo } : {}),
           ...(balanceOperativoError ? { balanceOperativoError } : {}),
+          ...(economiaHoy ? { economiaHoy } : {}),
+          ...(economiaHoyError ? { economiaHoyError } : {}),
         },
       };
     } catch (error) {

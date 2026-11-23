@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import { Modal } from "@/components/modal";
 import { getProductoIconConfig } from "@/lib/producto-iconos";
 import { formatCurrency } from "@/lib/utils";
+import { EconomiaHoy } from "./economia-hoy";
 import {
   ETIQUETA_GRUPO,
   filaProductoHoy,
@@ -291,6 +292,7 @@ export function ResumenConsulta({
                 </div>
               );
             })}
+            <EconomiaHoy economia={r.economiaHoy} error={r.economiaHoyError} onReintentar={onReintentar} />
             {pedidosPorConciliar(r.balanceOperativo) > 0 && (
               <p
                 role="status"
@@ -337,6 +339,11 @@ export function ResumenConsulta({
               </div>
             </div>
           )
+        )}
+        {!r.balanceOperativo && (r.economiaHoy || r.economiaHoyError) && (
+          <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3" data-testid="consulta-resumen-economia-sola">
+            <EconomiaHoy economia={r.economiaHoy} error={r.economiaHoyError} onReintentar={onReintentar} />
+          </div>
         )}
         {r.balanceOperativoError && (
           <div
@@ -553,6 +560,12 @@ export function ResumenConsulta({
             Entrega registrada selecciona los pedidos con evidencia de entrega
             en el intervalo. Solo las cantidades del intervalo se suman como
             entregadas en ese horario.
+          </p>
+          <p>
+            Dinero de lo entregado hoy es el valor de lo que salió hoy (el mismo de «Ventas» del Dashboard). Los pagos
+            cubren primero las entregas más antiguas, así que lo que falta por pagar de un pedido es lo más reciente.
+            «Pagado de eso» cuenta los pagos registrados, incluso los que aún están por confirmar, y el crédito aplicado.
+            «Cobros recibidos hoy» es el dinero que entró hoy, incluye deudas anteriores y no se suma a lo anterior.
           </p>
           <p>
             Cobro registrado suma pagos y abonos identificados en ese horario,
