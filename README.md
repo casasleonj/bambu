@@ -59,6 +59,8 @@ Abrir [http://localhost:3000](http://localhost:3000).
 | `contador`   | `cont123`   | CONTADOR     |
 | `repartidor` | `rep123`    | REPARTIDOR   |
 
+> **Solo para una base local.** Estas contraseñas están en un repositorio público: **nunca** deben existir en una base real (producción, Supabase ni ninguna remota). Los seeds (`prisma/seed*.ts`) se niegan a correr contra una base que no sea local (`prisma/seed-guard.ts`). Si una cuenta real usa una de estas contraseñas, cámbiala de inmediato.
+
 ---
 
 ## Comportamiento offline (importante)
