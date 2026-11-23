@@ -1,6 +1,6 @@
 // @tests Seguridad — los seeds (contraseñas conocidas, repositorio público) solo corren contra una base local
 import { describe, it, expect } from 'vitest'
-import { baseEsLocal, exigirBaseLocal, CONFIRMAR_SEED_REMOTO } from '../../../prisma/seed-guard'
+import { baseEsLocal, exigirBaseLocal, CONFIRMAR_SEED_REMOTO, urlObjetivoSeedVolumen } from '../../../prisma/seed-guard'
 
 describe('seed-guard · baseEsLocal', () => {
   it.each([
@@ -42,5 +42,29 @@ describe('seed-guard · exigirBaseLocal', () => {
   it('solo la confirmación exacta «1» lo permite; cualquier otra cosa no', () => {
     expect(() => exigirBaseLocal(remota, '1')).not.toThrow()
     for (const valor of ['true', 'si', '0', '', 'yes']) expect(() => exigirBaseLocal(remota, valor)).toThrow()
+  })
+})
+
+describe('seed-large: comprobar el origen EFECTIVO de PrismaClient', () => {
+  const local = 'postgresql://bambu:x@localhost:5432/bambu'
+  const remoto = 'postgresql://postgres:x@db.abcdefghijklmnop.supabase.co:5432/postgres'
+
+  it('DIRECT_URL remota prevalece sobre DATABASE_URL local y BLOQUEA el seed', () => {
+    const destino = urlObjetivoSeedVolumen(local, remoto)
+    expect(destino).toBe(remoto)
+    expect(() => exigirBaseLocal(destino, undefined)).toThrow(/se niega a correr/)
+  })
+
+  it('si no hay DIRECT_URL, usa DATABASE_URL y respeta guardia local', () => {
+    expect(urlObjetivoSeedVolumen(local, undefined)).toBe(local)
+    expect(() => exigirBaseLocal(urlObjetivoSeedVolumen(local, undefined), undefined)).not.toThrow()
+  })
+
+  it('DATABASE_URL remota sin DIRECT_URL también se bloquea', () => {
+    expect(() => exigirBaseLocal(urlObjetivoSeedVolumen(remoto, undefined), undefined)).toThrow()
+  })
+
+  it('sin ambas URLs falla cerrado incluso con fallback ausente', () => {
+    expect(() => exigirBaseLocal(urlObjetivoSeedVolumen(undefined, undefined), undefined)).toThrow()
   })
 })

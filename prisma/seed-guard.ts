@@ -19,6 +19,11 @@ export function baseEsLocal(url: string | undefined): boolean {
 /** Variable que confirma, a propósito, que se quiere sembrar una base remota (p. ej. una base de demostración desechable). */
 export const CONFIRMAR_SEED_REMOTO = 'SEED_PERMITIR_BASE_REMOTA'
 
+/** #981: seed-large conecta usando DIRECT_URL si existe; comprobar EXACTAMENTE el destino real. */
+export function urlObjetivoSeedVolumen(databaseUrl: string | undefined, directUrl: string | undefined): string | undefined {
+  return directUrl || databaseUrl
+}
+
 export function exigirBaseLocal(
   url: string | undefined = process.env.DATABASE_URL,
   confirmacion: string | undefined = process.env[CONFIRMAR_SEED_REMOTO],
