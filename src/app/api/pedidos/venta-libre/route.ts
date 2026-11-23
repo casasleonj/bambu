@@ -24,6 +24,7 @@ import { getConfigBool, getConfig } from '@/lib/config'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
 import { clasificarVentaLibre } from '@/lib/venta-libre-clasificacion'
+import { resolverFechaEntregaVentaLibre } from '@/lib/venta-libre-fecha-entrega'
 import { incrementMetric } from '@/lib/metrics'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
 import { datosConfirmacionInicial, parseMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
@@ -102,6 +103,12 @@ export async function POST(request: NextRequest) {
       capturedAt,
       serverReceivedAt,
     })
+    // #630 F1-B1a: declarar fecha física sólo si la captura es consistente.
+    // La hora de sincronización nunca sustituye una entrega offline histórica.
+    const entregadoAt = resolverFechaEntregaVentaLibre({
+      entregarAhora, occurredAt, capturedAt, serverReceivedAt, clasificacionTemporal,
+    })
+
     // Métricas de observabilidad (§24): no bloquean la venta, solo la señalan.
     if (clasificacionTemporal === 'TARDIA') incrementMetric('venta_libre_tardia_count')
     if (clasificacionTemporal === 'SOSPECHOSA') incrementMetric('venta_libre_sospechosa_count')
@@ -310,6 +317,8 @@ export async function POST(request: NextRequest) {
           estadoEntrega: estadoEntregaFinal,
           estadoPago,
           estado: estadoEntregaFinal, // legacy
+          // Mismo commit que pedido/items, sin inferir entregador del embarque.
+          entregadoAt,
           // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: si se entrega después, el pedido
           // NO queda asignado a un embarque (queda planificable); pero el embarque
           // de origen se conserva para conciliar el `Pago` en su cierre (§0).

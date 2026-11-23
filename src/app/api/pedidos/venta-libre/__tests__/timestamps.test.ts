@@ -27,6 +27,15 @@ describe('FASE 7: timestamps de venta libre en el endpoint', () => {
     expect(source).toMatch(/clasificacionTemporal,/)
   })
 
+  it('la pantalla y la cola offline capturan la hora antes de la sincronización', () => {
+    const ui = readFileSync(join(process.cwd(), 'src/app/(app)/repartidor/repartidor-client.tsx'), 'utf-8')
+    const queue = readFileSync(join(process.cwd(), 'src/lib/db/offline.ts'), 'utf-8')
+    expect(ui).toMatch(/occurredAt:\s*instanteCaptura/)
+    expect(ui).toMatch(/capturedAt:\s*instanteCaptura/)
+    expect(queue).toMatch(/occurredAt:\s*now\.toISOString\(\)/)
+    expect(queue).toMatch(/capturedAt:\s*now\.toISOString\(\)/)
+  })
+
   it('incrementa las métricas de observabilidad (§24)', () => {
     expect(source).toMatch(/venta_libre_tardia_count/)
     expect(source).toMatch(/venta_libre_sospechosa_count/)

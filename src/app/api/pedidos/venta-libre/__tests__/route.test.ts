@@ -522,6 +522,59 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
     })
   })
 
+
+  describe('#630 F1-B1a / #602: fechas al crear venta libre', () => {
+    it('inmediata con evento confiable persiste la hora declarada sin inventar repartidor', async () => {
+      const occurredAt = new Date(Date.now() - 60_000).toISOString()
+      const res = await POST(makeRequest({ ...validBody, occurredAt, capturedAt: occurredAt }))
+      expect(res.status).toBe(201)
+      const data = mockPrismaPedido.create.mock.calls[0][0].data
+      expect(data.estadoEntrega).toBe('ENTREGADO')
+      expect(data.entregadoAt).toEqual(new Date(occurredAt))
+      expect(data.entregadoPorId).toBeUndefined()
+    })
+    it('offline de dos horas mantiene su instante original', async () => {
+      const occurredAt = new Date(Date.now() - 2 * 3600_000).toISOString()
+      const res = await POST(makeRequest({ ...validBody, occurredAt, capturedAt: occurredAt }))
+      expect(res.status).toBe(201)
+      const data = mockPrismaPedido.create.mock.calls[0][0].data
+      expect(data.clasificacionTemporal).toBe('TARDIA')
+      expect(data.entregadoAt?.toISOString()).toBe(occurredAt)
+    })
+    it('captura sospechosa no bloquea pedido ni inventa fecha', async () => {
+      const occurredAt = new Date(Date.now() - 30 * 3600_000).toISOString()
+      const res = await POST(makeRequest({ ...validBody, occurredAt, capturedAt: occurredAt }))
+      expect(res.status).toBe(201)
+      const data = mockPrismaPedido.create.mock.calls[0][0].data
+      expect(data.clasificacionTemporal).toBe('SOSPECHOSA')
+      expect(data.entregadoAt).toBeNull()
+    })
+    it('venta legacy sin timestamps no falsifica entregadoAt', async () => {
+      const res = await POST(makeRequest(validBody))
+      expect(res.status).toBe(201)
+      expect(mockPrismaPedido.create.mock.calls[0][0].data.entregadoAt).toBeNull()
+    })
+    it('entrega posterior conserva cero entregado y sin fecha', async () => {
+      const old = process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR
+      process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR = 'true'
+      try {
+        const occurredAt = new Date().toISOString()
+        const res = await POST(makeRequest({
+          ...validBody, entregado: false, fotoEntrega: undefined,
+          direccionEntrega: 'Carrera 10 #1', occurredAt, capturedAt: occurredAt,
+        }))
+        expect(res.status).toBe(201)
+        const data = mockPrismaPedido.create.mock.calls[0][0].data
+        expect(data.estadoEntrega).toBe('PENDIENTE')
+        expect(data.entregadoAt).toBeNull()
+        expect(data.items.create[0].cantEntrega).toBe(0)
+      } finally {
+        if (old === undefined) delete process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR
+        else process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR = old
+      }
+    })
+  })
+
   describe('FIX venta-libre-sobrepago: pago > total no debe violar constraints de DB', () => {
     beforeEach(() => {
       mockAuth.mockResolvedValue({ user: { id: 'u-asis', role: 'ASISTENTE' } })
