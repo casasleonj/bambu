@@ -261,8 +261,13 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
   const pendiente = draft?.etapa === 'pendiente'
   /** #634: lo que exige acción del usuario (pendiente o requiere revisión) nunca se oculta. */
   const pendientesCobro = locales.filter(d => d.etapa === 'pendiente' || d.etapa === 'revisar-cambio')
-  /** #634: total exacto en centavos de lo que muestra el desplegable cerrado. */
-  const totalRecientes = recientes.reduce((s, r) => s + Math.round(r.montoRecibido * 100), 0) / 100
+  /** #634: total exacto en centavos de lo que muestra el desplegable cerrado.
+   * Un monto ilegible (ausente o no numérico en un historial legado) no puede convertirse en
+   * «NaN»: suma lo que se puede leer y el resumen avisa de cuántos quedaron fuera. */
+  const montosLegibles = recientes.map(r => r.montoRecibido).filter((m): m is number => typeof m === 'number' && Number.isFinite(m))
+  const sinMonto = recientes.length - montosLegibles.length
+  const totalRecientes = montosLegibles.reduce((s, m) => s + Math.round(m * 100), 0) / 100
+  const resumenRecientes = `${recientes.length} pago${recientes.length === 1 ? '' : 's'} · ${dinero(totalRecientes)}${sinMonto > 0 ? ` · ${sinMonto} sin monto legible` : ''}`
   const delPedido = (resultado ? null : draft?.cliente.pedido) ?? null
   const returnLabel = resultado ? 'Volver al resultado del pago' : 'Volver a la revisión del pago'
   const docs = (p: { pedidoId: string; numero: number; facturaId?: string; facturaNumero?: string }) => <PedidoDocumentLinks
@@ -279,8 +284,8 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
       </div>}
       {recientes.length > 0 && <div className="[&_summary]:min-h-11">
         <Desplegable testid="pagos-recientes" icono="🧾" titulo="Pagos recientes" tono="azul"
-          resumen={`${recientes.length} pago${recientes.length === 1 ? '' : 's'} · ${dinero(totalRecientes)}`}>
-          {recientes.map(r => <div key={r.referencia || r.registradoAt} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 py-1 text-sm last:border-0"><p>{r.clienteNombre} · Registrado {dinero(r.montoRecibido)}</p><button className="min-h-11 underline" onClick={() => abrirResultado(r)}>Ver resultado y documentos</button></div>)}
+          resumen={resumenRecientes}>
+          {recientes.map((r, i) => <div key={r.referencia || `${r.registradoAt}:${i}`} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 py-1 text-sm last:border-0"><p>{r.clienteNombre} · {typeof r.montoRecibido === 'number' && Number.isFinite(r.montoRecibido) ? `Registrado ${dinero(r.montoRecibido)}` : 'Registrado sin monto legible'}</p><button className="min-h-11 underline" onClick={() => abrirResultado(r)}>Ver resultado y documentos</button></div>)}
         </Desplegable>
       </div>}
     </section>}

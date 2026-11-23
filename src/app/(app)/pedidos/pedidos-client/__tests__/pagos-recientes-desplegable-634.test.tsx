@@ -100,3 +100,52 @@ describe('#634 — «Pagos recientes» desplegable', () => {
     expect(screen.queryByRole('region', { name: 'Estado de cobros' })).toBeNull()
   })
 })
+
+describe('#634 residuales — monto ilegible y claves repetidas', () => {
+  /** Historial legado: el campo puede faltar o venir corrupto. No puede producir «NaN». */
+  const servir = (resultados: unknown[]) => {
+    global.fetch = vi.fn().mockImplementation(async (url: string) => ({ ok: true,
+      json: async () => url.includes('recientes') ? { resultados } : { preparacion } })) as unknown as typeof fetch
+  }
+  const resumen = () => screen.getByTestId('pagos-recientes').querySelector('summary')!.textContent!.replace(/\u00a0/g, ' ')
+
+  it('un pago sin monto legible no convierte el total en «NaN» y se declara en el resumen', async () => {
+    servir([
+      reciente('Panadería Doña Luz', 12500, 'r1'),
+      { ...reciente('Tienda Rota', 0, 'r2'), montoRecibido: undefined },
+      { ...reciente('Tienda Corrupta', 0, 'r3'), montoRecibido: 'no-es-un-numero' },
+      reciente('Minimercado San José', 24500.5, 'r4'),
+    ])
+    montar()
+    await screen.findByTestId('pagos-recientes')
+    const texto = resumen()
+    expect(texto).not.toContain('NaN')
+    expect(texto).toContain('37.000,50') // 12.500 + 24.500,50: sólo lo legible
+    expect(texto).toContain('2 sin monto legible')
+    // la fila tampoco miente con un importe inventado
+    expect(screen.getByText(/Tienda Rota · Registrado sin monto legible/)).toBeTruthy()
+  })
+
+  it('con todos los montos legibles el resumen no menciona montos ilegibles', async () => {
+    servir(RECIENTES); montar()
+    await screen.findByTestId('pagos-recientes')
+    expect(resumen()).toContain('45.000,50')
+    expect(resumen()).not.toContain('sin monto legible')
+  })
+
+  it('dos recientes con referencia nula y el mismo instante no comparten clave de React', async () => {
+    const base = { ...reciente('Tienda A', 1000, ''), referencia: null, registradoAt: '2026-11-20T15:00:00.000Z' }
+    servir([{ ...base, clienteNombre: 'Tienda A' }, { ...base, clienteNombre: 'Tienda B' }])
+    const errores: string[] = []
+    const original = console.error
+    console.error = (...a: unknown[]) => { errores.push(a.map(String).join(' ')) }
+    try {
+      montar()
+      await screen.findByTestId('pagos-recientes')
+      // las dos filas se pintan y no hay aviso de clave duplicada
+      expect(screen.getByText(/Tienda A · Registrado/)).toBeTruthy()
+      expect(screen.getByText(/Tienda B · Registrado/)).toBeTruthy()
+      expect(errores.join(' ')).not.toMatch(/same key|duplicate key|keys/i)
+    } finally { console.error = original }
+  })
+})
