@@ -11,6 +11,8 @@ on:
       - '.github/workflows/migrate-deploy.yml'
       - 'scripts/ci/release-migration-gate.mjs'
       - 'scripts/ci/release-migration-policy.mjs'
+      - 'scripts/ci/verify-vercel-prod-env.mjs'
+      - 'scripts/ci/__tests__/verify-vercel-prod-env.node.test.mjs'
       - 'scripts/ci/__tests__/release-migration-gate.node.test.mjs'
       - 'scripts/ci/__tests__/release-migration-policy.node.test.mjs'
   workflow_dispatch:
@@ -33,3 +35,4 @@ jobs:
       - run: >-
           node --test scripts/ci/__tests__/release-migration-gate.node.test.mjs
           scripts/ci/__tests__/release-migration-policy.node.test.mjs
+          scripts/ci/__tests__/verify-vercel-prod-env.node.test.mjs
