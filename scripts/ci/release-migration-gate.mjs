@@ -9,7 +9,7 @@ export const APPEARANCE_TIMEOUT_MS = 3 * 60_000
 export const TOTAL_TIMEOUT_MS = 20 * 60_000
 export const REPO = 'casasleonj/bambu'
 export const WORKFLOW = 'migrate-deploy.yml'
-const SHA_PATTERN = /^[0-9a-f]{40}$/
+const SHA_PATTERN = /^(?!0{40}$)[0-9a-f]{40}$/
 
 export function chooseRun(runs, sha) {
   if (!SHA_PATTERN.test(sha) || !Array.isArray(runs)) throw new Error('Invalid SHA or runs')
