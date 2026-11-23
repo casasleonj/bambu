@@ -119,13 +119,13 @@ describe("#853 Fase 1 · balance operativo de hoy en PostgreSQL", () => {
     const cancelV1 = await pedido({ demanda: 8, entregado: 0, fechaPedido: ayer, estadoEntrega: "CANCELADO" });
     await audit(cancelV1.id, "09:40", {
       motivo: "prueba", modo: "CANCELAR",
-      ...evidenciaDemanda("CANCELACION", fecha(dia, "09:40"), {
+      ...evidenciaDemanda("CANCELACION", {
         antes: [{ producto: PRODUCTO, cantidad: 8 }], despues: [{ producto: PRODUCTO, cantidad: 0 }],
       }),
     });
     // Anulación de un pedido ya entregado: no retira demanda pendiente ni cambia el balance.
     const anuladoEntregado = await pedido({ demanda: 4, entregado: 4, fechaPedido: ayer, estadoEntrega: "ANULADO" });
-    await audit(anuladoEntregado.id, "09:50", { motivo: "prueba", modo: "ANULAR", ...evidenciaDemanda("ANULACION", fecha(dia, "09:50")) });
+    await audit(anuladoEntregado.id, "09:50", { motivo: "prueba", modo: "ANULAR", ...evidenciaDemanda("ANULACION") });
     // Reducción comercial APLICADA hoy (tabla tipada): 20 → 15.
     const reducido = await pedido({ demanda: 15, entregado: 0, fechaPedido: ayer });
     await testPrisma.pedidoReduccionComercial.create({
@@ -139,7 +139,7 @@ describe("#853 Fase 1 · balance operativo de hoy en PostgreSQL", () => {
     const editado = await pedido({ demanda: 6, entregado: 0, fechaPedido: ayer });
     await audit(editado.id, "10:20", {
       numero: 1, estado: "PENDIENTE", campos: ["items"], antes: {}, despues: {},
-      ...evidenciaDemanda("EDICION", fecha(dia, "10:20"), {
+      ...evidenciaDemanda("EDICION", {
         antes: [{ producto: PRODUCTO, cantidad: 9 }], despues: [{ producto: PRODUCTO, cantidad: 6 }],
       }),
     });

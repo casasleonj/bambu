@@ -23,11 +23,11 @@ const linea = z.object({
   producto: z.string().min(1),
   cantidad: z.number().int().nonnegative(),
 });
-const fechaIso = z.string().refine((s) => Number.isFinite(Date.parse(s)), "fecha inválida");
+// Sin `fecha` propia: el momento del cambio es la columna `fecha` de la fila de Historial, escrita en la
+// misma transacción. Una fecha dentro del JSON haría distinta la fila de dos ediciones idénticas.
 const consultaDemandaV1 = z.object({
   version: z.literal(1),
   tipo: z.enum(TIPOS_CAMBIO_DEMANDA),
-  fecha: fechaIso,
   antes: z.array(linea).optional(),
   despues: z.array(linea).optional(),
 });
@@ -35,14 +35,12 @@ const consultaDemandaV1 = z.object({
 /** Fragmento para mezclar en `datos` del audit del pedido. */
 export function evidenciaDemanda(
   tipo: TipoCambioDemanda,
-  fecha: Date,
   lineas: { antes?: readonly LineaDemanda[]; despues?: readonly LineaDemanda[] } = {},
 ): { consultaDemanda: z.infer<typeof consultaDemandaV1> } {
   return {
     consultaDemanda: {
       version: 1,
       tipo,
-      fecha: fecha.toISOString(),
       ...(lineas.antes ? { antes: lineas.antes.map((l) => ({ producto: l.producto, cantidad: l.cantidad })) } : {}),
       ...(lineas.despues ? { despues: lineas.despues.map((l) => ({ producto: l.producto, cantidad: l.cantidad })) } : {}),
     },
@@ -87,7 +85,7 @@ export function interpretarEvidenciaDemanda(datos: unknown, fechaEvento: Date): 
     if (!v1.success) return { tipo: "EDICION", fecha: fechaEvento, neto: {}, sinCantidades: true };
     return {
       tipo: v1.data.tipo,
-      fecha: new Date(v1.data.fecha),
+      fecha: fechaEvento,
       neto: netoDe(v1.data.antes, v1.data.despues),
       sinCantidades: false,
     };

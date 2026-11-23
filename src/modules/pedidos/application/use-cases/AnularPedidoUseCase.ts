@@ -162,7 +162,7 @@ export class AnularPedidoUseCase {
       entidad: 'Pedido',
       registroId: pedido.id.get(),
       accion: 'UPDATE',
-      datos: { motivo, modo, ...(modo === 'ANULAR' ? evidenciaDemanda('ANULACION', new Date()) : evidenciaDemanda('CANCELACION', new Date(), { antes: demandaAntes, despues: demandaDespues })), notaCredito: tuvoPagos, reversion: montoRevertido, ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}), ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}) },
+      datos: { motivo, modo, ...(modo === 'ANULAR' ? evidenciaDemanda('ANULACION') : evidenciaDemanda('CANCELACION', { antes: demandaAntes, despues: demandaDespues })), notaCredito: tuvoPagos, reversion: montoRevertido, ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}), ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}) },
     }, tx)
 
     return { updated, revertido, yaUsado }

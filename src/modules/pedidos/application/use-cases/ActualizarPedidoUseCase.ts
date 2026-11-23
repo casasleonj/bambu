@@ -236,7 +236,7 @@ export class ActualizarPedidoUseCase {
             registrar('items', { items: lineasAntes, total: totalAnterior }, { items: lineasDespues, total: nuevoTotal })
             const demandaFisica = (items: readonly PedidoItem[]): LineaDemanda[] =>
               items.map((i) => ({ producto: i.producto as string, cantidad: i.cantPedido + i.cantRegaloPedido }))
-            cambioDemanda = evidenciaDemanda('EDICION', new Date(), {
+            cambioDemanda = evidenciaDemanda('EDICION', {
               antes: demandaFisica(pedido.items),
               despues: demandaFisica(nuevosItems),
             })

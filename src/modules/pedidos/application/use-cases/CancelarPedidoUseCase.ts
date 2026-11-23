@@ -108,7 +108,7 @@ export class CancelarPedidoUseCase {
         entidad: 'Pedido',
         registroId: pedido.id.get(),
         accion: 'UPDATE',
-        datos: { motivo: input.motivo, estado: updated.estadoEntrega.get(), ...evidenciaDemanda('CANCELACION', new Date(), { antes: demandaAntes, despues: demandaDespues }), notaCredito: tuvoPagos, reversion: montoRevertido, ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}), ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}) },
+        datos: { motivo: input.motivo, estado: updated.estadoEntrega.get(), ...evidenciaDemanda('CANCELACION', { antes: demandaAntes, despues: demandaDespues }), notaCredito: tuvoPagos, reversion: montoRevertido, ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}), ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}) },
       }, tx)
 
       const saldoFavorCliente = revertido > 0 || yaUsado > 0

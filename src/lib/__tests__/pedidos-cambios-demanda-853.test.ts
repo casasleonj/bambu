@@ -12,17 +12,17 @@ const fecha = new Date("2026-11-22T15:00:00Z");
 
 describe("#853 · contrato de evidencia de cambios de demanda", () => {
   it("ida y vuelta: lo que escribe el constructor lo interpreta el lector", () => {
-    const e = evidenciaDemanda("EDICION", fecha, {
+    const e = evidenciaDemanda("EDICION", {
       antes: [{ producto: "PACA_AGUA", cantidad: 20 }, { producto: "PACA_HIELO", cantidad: 4 }],
       despues: [{ producto: "PACA_AGUA", cantidad: 15 }, { producto: "BOTELLON", cantidad: 2 }],
     });
-    expect(interpretarEvidenciaDemanda(e, new Date(0))).toEqual({
+    expect(interpretarEvidenciaDemanda(e, fecha)).toEqual({
       tipo: "EDICION", fecha, neto: { PACA_AGUA: -5, PACA_HIELO: -4, BOTELLON: 2 }, sinCantidades: false,
     });
   });
 
   it("cancelación v1: neto = entregado − pedido (lo pendiente que se retira)", () => {
-    const e = evidenciaDemanda("CANCELACION", fecha, {
+    const e = evidenciaDemanda("CANCELACION", {
       antes: [{ producto: "PACA_AGUA", cantidad: 20 }],
       despues: [{ producto: "PACA_AGUA", cantidad: 6 }],
     });
@@ -30,7 +30,7 @@ describe("#853 · contrato de evidencia de cambios de demanda", () => {
   });
 
   it("anulación v1 no retira demanda", () => {
-    const e = interpretarEvidenciaDemanda(evidenciaDemanda("ANULACION", fecha), new Date(0));
+    const e = interpretarEvidenciaDemanda(evidenciaDemanda("ANULACION"), fecha);
     expect(e).toEqual({ tipo: "ANULACION", fecha, neto: {}, sinCantidades: false });
   });
 
@@ -45,6 +45,16 @@ describe("#853 · contrato de evidencia de cambios de demanda", () => {
       .toEqual({ tipo: "EDICION", fecha: f, neto: {}, sinCantidades: true });
   });
 
+  it("la misma edición deja siempre la misma evidencia: no lleva hora propia (paridad entre orígenes)", () => {
+    const lineas = { antes: [{ producto: "PACA_AGUA", cantidad: 10 }], despues: [{ producto: "PACA_AGUA", cantidad: 6 }] };
+    const a = evidenciaDemanda("EDICION", lineas);
+    const b = evidenciaDemanda("EDICION", lineas);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+    expect(JSON.stringify(a)).not.toMatch(/fecha|\d{4}-\d{2}-\d{2}T/);
+    // La hora la aporta la fila de Historial, no el JSON.
+    expect(interpretarEvidenciaDemanda(a, new Date("2026-01-01T00:00:00Z"))?.fecha).toEqual(new Date("2026-01-01T00:00:00Z"));
+  });
+
   it("una edición de otros campos con estado cancelado NO es una cancelación", () => {
     expect(interpretarEvidenciaDemanda({ estado: "CANCELADO", campos: ["obs"], antes: {}, despues: {} }, fecha)).toBeNull();
   });
@@ -57,9 +67,9 @@ describe("#853 · contrato de evidencia de cambios de demanda", () => {
 
   it("evidencia presente pero ilegible no se descarta: queda sin cantidades (por conciliar)", () => {
     for (const rota of [
-      { consultaDemanda: { version: 2, tipo: "EDICION", fecha: fecha.toISOString() } },
-      { consultaDemanda: { version: 1, tipo: "EDICION", fecha: "no es fecha" } },
-      { consultaDemanda: { version: 1, tipo: "EDICION", fecha: fecha.toISOString(), antes: [{ producto: "X", cantidad: -1 }] } },
+      { consultaDemanda: { version: 2, tipo: "EDICION" } },
+      { consultaDemanda: { version: 1, tipo: "OTRO_TIPO" } },
+      { consultaDemanda: { version: 1, tipo: "EDICION", antes: [{ producto: "X", cantidad: -1 }] } },
       { consultaDemanda: "roto" },
     ]) {
       expect(interpretarEvidenciaDemanda(rota, fecha)).toMatchObject({ sinCantidades: true });
