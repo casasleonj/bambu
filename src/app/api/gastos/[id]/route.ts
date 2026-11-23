@@ -9,10 +9,9 @@ import { publishRealtimeEvent } from '@/lib/realtime'
 import { formatZodError } from '@/lib/utils'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { dayInBogota, startOfDayInBogota } from '@/lib/date-helpers'
+import { categoriaGastoValida, normalizarCategoriaGasto, esCategoriaPersonal } from '@/lib/gastos-categorias'
 
-const CategoriaOperativa = z.enum([
-  'ARRIENDO', 'SERVICIOS', 'INSUMOS', 'MANTENIMIENTO', 'TRANSPORTE', 'OTRO',
-])
+const CategoriaOperativa = z.string().refine(categoriaGastoValida, 'Categoría inválida').transform(normalizarCategoriaGasto)
 
 const Concurrency = {
   version: z.number().int().min(0),
@@ -112,6 +111,9 @@ export async function PATCH(
 
   const { id } = await params
   if (!id?.trim()) return apiError('Gasto no encontrado', 404)
+  if (input.accion === 'EDITAR' && esCategoriaPersonal(input.categoria)) {
+    return apiError('Los pagos al personal se administran en Nómina.', 422, { code: 'NOMINA_NO_ES_GASTO' })
+  }
 
   try {
     const result = await prisma.$transaction(async tx => {

@@ -14,8 +14,10 @@ import { NotificationEventType } from '@/lib/notifications/event-types'
 import { parseFechaGasto } from '@/lib/fecha-gasto'
 import { dayInBogota, startOfDayInBogota } from '@/lib/date-helpers'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
+import { esCategoriaPersonal } from '@/lib/gastos-categorias'
 
 export async function GET(request: NextRequest) {
+  const peticionInicio = performance.now()
   // FIX CRITICAL (C-SEC-4): Only ADMIN/CONTADOR can read gastos
   // Previously: requireAuth() only — any user could read internal cost data
   const authResult = await requireRole(['ADMIN', 'CONTADOR'])
@@ -60,6 +62,7 @@ export async function GET(request: NextRequest) {
     }
 
     const prismaPagination = getPrismaPagination(pagination)
+    const consultaInicio = performance.now()
 
     // #755: paginar filas NO debe paginar el importe total del período.
     // El mismo snapshot PostgreSQL garantiza que lista, cantidad e importe
@@ -74,12 +77,23 @@ export async function GET(request: NextRequest) {
       prisma.gasto.aggregate({ where, _sum: { monto: true } }),
     ], { isolationLevel: 'RepeatableRead' })
 
+    const consultaMs = Math.round(performance.now() - consultaInicio)
+    const peticionMs = Math.round(performance.now() - peticionInicio)
+    if (consultaMs > 1000 || peticionMs > 1500) {
+      // Diagnóstico de latencia sin registrar importes, conceptos ni identidades.
+      // La API mantiene la transacción que concilia filas, conteo y suma.
+      logger.warn({ consultaMs, peticionMs, filas: gastos.length, pagina: pagination.page, origenOperativo: searchParams.get('origen') === 'OPERATIVO' }, 'Consulta de Gastos lenta')
+    }
     const montoTotal = Number(importes._sum.monto ?? 0)
-    return apiSuccess(
+    const respuesta = apiSuccess(
       pagination.all
         ? { gastos, total, montoTotal }
         : { ...buildPaginationResponse(gastos, total, pagination.page!, pagination.pageSize!), montoTotal }
     )
+    // Permite distinguir tiempo de PostgreSQL/Prisma de red, autenticación
+    // y renderizado en herramientas de desarrollo sin alterar el JSON.
+    respuesta.headers.set('Server-Timing', `gastos-db;dur=${consultaMs}, gastos-api;dur=${peticionMs}`)
+    return respuesta
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching gastos:')
     return apiError('Error fetching gastos', 500)
@@ -103,7 +117,7 @@ export async function POST(request: NextRequest) {
 
     // #641: los pagos al personal se registran con «Pagar» en Nómina (con su medio de pago). Como gasto
     // manual se contarían dos veces en el cierre de caja.
-    if (categoria === 'NOMINA') {
+    if (esCategoriaPersonal(categoria)) {
       return apiError(
         'Los pagos al personal se registran con «Pagar» en Nómina, no como gasto.',
         422,

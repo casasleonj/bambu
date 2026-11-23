@@ -13,7 +13,7 @@ interface Props {
   clienteNombre: string
   telefono: string
   /** Estado elegido en las pestañas. «ANULADA» no se comparte con el cliente. */
-  estado: 'TODAS' | 'EMITIDA' | 'PARCIAL' | 'PAGADA' | 'ANULADA'
+  estado: 'TODAS' | 'POR_COBRAR' | 'EMITIDA' | 'PARCIAL' | 'PAGADA' | 'ANULADA'
   desde: string | null
   hasta: string | null
   /** Facturas vigentes que irían en el PDF. */

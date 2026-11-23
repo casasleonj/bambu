@@ -122,7 +122,15 @@ test('pago mixto revisado: reparto, documentos desde la revisión y resultado re
   expect(Number((await db.pedido.findUniqueOrThrow({ where: { id: pendiente.pedido.id } })).saldo)).toBe(40000)
   await pagoDialog(page).getByRole('button', { name: 'Volver a Fiados', exact: true }).click()
   await page.reload()
-  await appMain(page).getByRole('button', { name: 'Ver resultado y documentos', exact: true }).click()
+  // #634: el histórico vive en un desplegable cerrado por defecto; hay que abrirlo antes de
+  // entrar a un resultado. Se comprueba que el conteo está a la vista con el plegable cerrado.
+  const historico = appMain(page).getByTestId('pagos-recientes')
+  await expect(historico).toBeVisible()
+  await expect(historico.getByTestId('desplegable-resumen')).toContainText('pago')
+  await historico.locator('summary').click()
+  const resultados = appMain(page).getByRole('button', { name: 'Ver resultado y documentos', exact: true })
+  await expect(resultados).toHaveCount(1)
+  await resultados.click()
   await expect(pagoDialog(page).getByRole('link', { name: `Ver factura ${hoy.factura.numero}`, exact: true })).toBeVisible()
 })
 
