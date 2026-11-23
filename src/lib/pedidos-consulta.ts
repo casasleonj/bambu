@@ -3,6 +3,7 @@ import { normalizeCanalFilter } from "./pedido-canal";
 import type { CobrosPeriodo } from "./cobros-periodo";
 import type { ResumenOperativoDia } from "./pedidos-resumen-operativo-hoy";
 import type { BalanceOperativoHoy } from "./pedidos-balance-operativo-hoy";
+import type { EconomiaHoyResultado } from "./pedidos-economia-operativa-hoy.repository";
 import type { EntregaDestacada } from "./pedidos-entregas-historial";
 import type { Pedido } from "@/app/(app)/pedidos/pedidos-client/types";
 
@@ -24,6 +25,9 @@ export interface ResumenConsultaPedidos {
   /** #853 Fase 1: balance por producto y origen. Solo HOY y sin filtros adicionales; aún sin UI. */
   balanceOperativo?: BalanceOperativoHoy;
   balanceOperativoError?: boolean;
+  /** #853 Fase 3: dinero de lo entregado hoy (entregado, pagado de eso, por cobrar de eso) y cobros de hoy aparte. */
+  economiaHoy?: EconomiaHoyResultado;
+  economiaHoyError?: boolean;
   entregasPorConciliar: number;
   importesPorConciliar: boolean;
   exigiblesPorConciliar?: number;

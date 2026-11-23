@@ -35,6 +35,22 @@ export function valorarEntregasDia(
   detalle: UnidadEntregadaDetalle[],
   pedidos: PedidoPrecio[],
 ): Pick<VentasEntregadasDia, 'desglose' | 'total' | 'sinPrecio'> {
+  const { desglose, total, sinPrecio } = valorarEntregasDiaPorPedido(detalle, pedidos)
+  return { desglose, total, sinPrecio }
+}
+
+/** Valoración con su desglose por pedido (#853): el total es exactamente la suma de `porPedidoCentavos`. */
+export interface ValoracionEntregasDia extends Pick<VentasEntregadasDia, 'desglose' | 'total' | 'sinPrecio'> {
+  /** Valor comercial de lo entregado en el periodo, por pedido, en centavos. */
+  porPedidoCentavos: Map<string, number>
+  /** Pedidos con unidades del periodo que no pudieron valorarse (sin precio verificable o sin desglose). */
+  pedidosSinPrecio: Set<string>
+}
+
+export function valorarEntregasDiaPorPedido(
+  detalle: UnidadEntregadaDetalle[],
+  pedidos: PedidoPrecio[],
+): ValoracionEntregasDia {
   const porPedido = new Map(pedidos.map(p => [p.id, p]))
   const entregas = new Map<string, UnidadEntregadaDetalle[]>()
   for (const l of detalle) {
@@ -47,6 +63,8 @@ export function valorarEntregasDia(
   const grupos = new Map<string, VentaPorPrecio>()
   const valorPorPedido = new Map<string, number>()
   let sinPrecio = 0
+  const pedidosSinPrecio = new Set<string>()
+  const marcarSinPrecio = (id: string, n: number) => { sinPrecio += n; pedidosSinPrecio.add(id) }
 
   function agregar(pedido: PedidoPrecio, producto: string, precio: number, cantidad: number, previa: number, regalos = 0) {
     const canal = pedido.canal === 'PUNTO' ? 'PUNTO' : 'DOMICILIO'
@@ -68,13 +86,13 @@ export function valorarEntregasDia(
     const pedido = porPedido.get(pedidoId)
     const items = pedido?.items.filter(i => i.producto === producto) ?? []
     if (!pedido || !items.length) {
-      sinPrecio += cantidad
+      marcarSinPrecio(pedidoId, cantidad)
       continue
     }
     if (items.length === 1) {
       const precio = numeroPrecio(items[0].precio)
       if (!precioValido(precio)) {
-        sinPrecio += cantidad
+        marcarSinPrecio(pedidoId, cantidad)
         continue
       }
       // El evento físico debe separar las unidades cobradas de los regalos.
@@ -82,11 +100,11 @@ export function valorarEntregasDia(
       // conservar las unidades, sin atribuirle ingresos no demostrados.
       const tieneRegalos = (items[0].cantRegaloEntrega ?? 0) > 0
       if (tieneRegalos && delProducto.some(l => l.cantidadRegalo === undefined)) {
-        sinPrecio += cantidad
+        marcarSinPrecio(pedidoId, cantidad)
         continue
       }
       if (delProducto.some(l => (l.cantidadRegalo ?? 0) > l.cantidad || l.cantidadRegaloPrevia > l.cantidadPrevia)) {
-        sinPrecio += cantidad
+        marcarSinPrecio(pedidoId, cantidad)
         continue
       }
       for (const l of delProducto) {
@@ -106,7 +124,7 @@ export function valorarEntregasDia(
         precioValido(numeroPrecio(i.precio))) &&
       items.reduce((s, i) => s + (i.cantEntrega ?? 0) + (i.cantRegaloEntrega ?? 0), 0) === cantidad
     if (!completoEnRango) {
-      sinPrecio += cantidad
+      marcarSinPrecio(pedidoId, cantidad)
       continue
     }
     for (const item of items) {
@@ -119,19 +137,37 @@ export function valorarEntregasDia(
   // en el periodo, incluso si su desglose legado falta. No distribuir descuentos
   // ni un total contractual de varios días entre días sin evidencia.
   let totalCents = 0
+  const porPedidoCentavos = new Map<string, number>()
   for (const pedido of pedidos) {
     const completo = pedido.totalCompleto
-    totalCents += completo !== undefined && Number.isSafeInteger(Math.round(completo * 100)) && completo >= 0
+    const cents = completo !== undefined && Number.isSafeInteger(Math.round(completo * 100)) && completo >= 0
       ? Math.round(completo * 100)
       : valorPorPedido.get(pedido.id) ?? 0
+    totalCents += cents
+    porPedidoCentavos.set(pedido.id, (porPedidoCentavos.get(pedido.id) ?? 0) + cents)
   }
   const desglose = [...grupos.values()].sort((a, b) =>
     b.subtotal - a.subtotal || a.producto.localeCompare(b.producto) || a.canal.localeCompare(b.canal))
-  return { desglose, total: totalCents / 100, sinPrecio }
+  return { desglose, total: totalCents / 100, sinPrecio, porPedidoCentavos, pedidosSinPrecio }
 }
 
 export async function leerVentasEntregadasDia(db: Db, rango: { start: Date; end: Date }): Promise<VentasEntregadasDia> {
-  const { unidades, detalle } = await detalleUnidadesEntregadasDelDia(db, {
+  const { unidades, desglose, total, sinPrecio } = await leerVentasEntregadasDiaPorPedido(db, rango)
+  return { unidades, desglose, total, sinPrecio }
+}
+
+export interface VentasEntregadasDiaPorPedido extends VentasEntregadasDia, Pick<ValoracionEntregasDia, 'porPedidoCentavos' | 'pedidosSinPrecio'> {
+  /** Pedidos del periodo que ya tenían entregas anteriores (el valor del periodo no es el total del pedido). */
+  conEntregasAnteriores: Set<string>
+}
+
+export async function leerVentasEntregadasDiaPorPedido(
+  db: Db,
+  rango: { start: Date; end: Date },
+  /** #853: la lectura de entregas del día ya hecha en la misma transacción; evita repetir la consulta pesada. */
+  base?: Awaited<ReturnType<typeof detalleUnidadesEntregadasDelDia>>,
+): Promise<VentasEntregadasDiaPorPedido> {
+  const { unidades, detalle } = base ?? await detalleUnidadesEntregadasDelDia(db, {
     desde: rango.start, hasta: rango.end,
   })
   const cantidades = new Map<string, Map<string, number>>()
@@ -163,5 +199,5 @@ export async function leerVentasEntregadasDia(db: Db, rango: { start: Date; end:
       Object.entries(acumulado).every(([producto, cantidad]) => cantidad === (delDia?.get(producto) ?? 0))
     return { ...p, totalCompleto: completo ? Number(p.total) : undefined }
   })
-  return { unidades, ...valorarEntregasDia(detalle, conPrecio) }
+  return { unidades, conEntregasAnteriores, ...valorarEntregasDiaPorPedido(detalle, conPrecio) }
 }

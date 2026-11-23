@@ -98,8 +98,13 @@ export async function leerCambiosDemandaDelDia(tx: Tx, rango: RangoDia): Promise
   return cambios;
 }
 
-export async function leerBalanceOperativoHoy(tx: Tx, rango: RangoDia): Promise<BalanceOperativoHoy> {
-  const { detalle } = await detalleUnidadesEntregadasDelDia(tx, rango);
+export async function leerBalanceOperativoHoy(
+  tx: Tx,
+  rango: RangoDia,
+  /** Entregas del día ya leídas en la misma transacción (evita repetir la consulta más pesada). */
+  base?: Awaited<ReturnType<typeof detalleUnidadesEntregadasDelDia>>,
+): Promise<BalanceOperativoHoy> {
+  const { detalle } = base ?? await detalleUnidadesEntregadasDelDia(tx, rango);
   const idsEntregadosHoy = [...new Set(detalle.map((d) => d.pedidoId))];
   const cambios = await leerCambiosDemandaDelDia(tx, rango);
   const idsCanceladosHoy = [...cambios].filter(([, c]) => c.canceladoHoy).map(([id]) => id);
