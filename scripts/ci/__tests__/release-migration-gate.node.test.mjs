@@ -91,13 +91,17 @@ test('solo permite emitir gate en push main',async()=>{
   await assert.rejects(main({GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
     SCHEMA_CHANGED:'unknown',NEW_MIGRATIONS:'0'}),/Clasificación/)
 })
-test('sin cambios Prisma en main aprueba sin red ni secretos',async()=>{
-  const previous=console.log;let count=0
-  try{console.log=()=>count++;await main({
+test('push sin cambios Prisma exige salud de la última migración heredada',async()=>{
+  let verifiedSha, logCount=0
+  await main({
     GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',SCHEMA_CHANGED:'false',
-    NEW_MIGRATIONS:'0',
-  })}finally{console.log=previous}
-  assert.equal(count,1)
+    NEW_MIGRATIONS:'0',GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,GITHUB_TOKEN:'synthetic-only',
+  },{verify:async ({sha:check})=>{
+    verifiedSha=check
+    return {ok:true,runId:7,runAttempt:1}
+  },log:()=>{logCount++}})
+  assert.equal(verifiedSha,sha)
+  assert.equal(logCount,1)
 })
 
 test('schema Prisma modificado sin migración nueva bloquea el falso verde',async()=>{
@@ -127,4 +131,38 @@ test('el workflow cuenta migraciones nuevas y NO trata el manifiesto de tests co
   assert.ok(workflow.includes('NEW_MIGRATIONS: ${{ steps.schema-diff.outputs.new_migrations }}'))
   assert.ok(!workflow.includes('RAW_SQL_CHANGED:'))
   assert.ok(!workflow.includes('raw_sql_changed='))
+})
+
+test('rechaza un fallo heredado aunque el commit actual sea solo código o documentación',async()=>{
+  const env={
+    GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
+    SCHEMA_CHANGED:'false',NEW_MIGRATIONS:'0',
+    GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,GITHUB_TOKEN:'synthetic-only',
+  }
+  await assert.rejects(main(env,{verify:async()=>{throw Error('migración anterior fallida')}}),
+    /migración anterior fallida/)
+})
+test('un commit con esquema nuevo no puede certificar una revisión histórica distinta',async()=>{
+  await assert.rejects(main({
+    GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
+    SCHEMA_CHANGED:'true',NEW_MIGRATIONS:'1',
+    GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,GITHUB_TOKEN:'synthetic-only',
+  },{verify:async()=>{throw Error('No debe consultar GitHub')}}), /no coincide/)
+})
+test('sin SHA de esquema válido nunca declara verde, incluso en docs-only',async()=>{
+  for(const bad of [undefined,'','HEAD', '0'.repeat(39)]){
+    await assert.rejects(main({
+      GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
+      SCHEMA_CHANGED:'false',NEW_MIGRATIONS:'0',
+      GITHUB_SHA:other,LAST_SCHEMA_SHA:bad,GITHUB_TOKEN:'synthetic-only',
+    }), /SHA/)
+  }
+})
+test('el workflow valida la revisión histórica por primer padre y transmite el SHA',()=>{
+  const workflow=readFileSync(new URL('../../../.github/workflows/release-migration-gate.yml',import.meta.url),'utf8')
+  assert.ok(workflow.includes('git log --first-parent -1 --format=%H'))
+  assert.ok(workflow.includes('git merge-base --is-ancestor'))
+  assert.ok(workflow.includes('last_new_count="$(node scripts/ci/release-migration-policy.mjs'))
+  assert.ok(workflow.includes('LAST_SCHEMA_SHA: ${{ steps.schema-diff.outputs.last_schema_sha }}'))
+  assert.ok(workflow.includes('last_schema_sha=$last_schema_sha'))
 })

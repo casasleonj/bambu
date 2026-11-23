@@ -87,9 +87,42 @@ jobs:
           # eliminar o renombrar migraciones ya presentes no certifica esquema.
           new_count="$(node scripts/ci/release-migration-policy.mjs < "$RUNNER_TEMP/prisma-migrations.diff")"
           echo "new_migrations=$new_count" >> "$GITHUB_OUTPUT"
+          # Una versión que no toca Prisma también debe heredar la salud
+          # de la última modificación del esquema. Evita que un push
+          # posterior de solo código obtenga verde tras una migración fallida.
+          last_schema_sha="$(git log --first-parent -1 --format=%H "$AFTER" -- \
+            prisma/schema.prisma prisma/migrations/)"
+          if ! [[ "$last_schema_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::No se encontró una revisión de esquema válida en el historial main"
+            exit 1
+          fi
+          git merge-base --is-ancestor "$last_schema_sha" "$AFTER" || {
+            echo "::error::SHA histórico de esquema no es ancestro del commit"
+            exit 1
+          }
+          # Certificar que la última revisión NO cambió el esquema sin una
+          # migración nueva, ni modificó/renombró una migración histórica.
+          last_parent="$(git rev-parse --verify "$last_schema_sha^1")"
+          set +e
+          git diff --quiet "$last_parent" "$last_schema_sha" -- prisma/schema.prisma
+          last_schema_rc=$?
+          set -e
+          case "$last_schema_rc" in
+            0|1) ;;
+            *) echo "::error::Error clasificando revisión histórica ($last_schema_rc)"; exit 1 ;;
+          esac
+          git diff --name-status --no-renames -z "$last_parent" "$last_schema_sha" -- \
+            prisma/migrations/ > "$RUNNER_TEMP/last-schema.diff"
+          last_new_count="$(node scripts/ci/release-migration-policy.mjs < "$RUNNER_TEMP/last-schema.diff")"
+          if [[ "$last_schema_rc" -eq 1 && "$last_new_count" -eq 0 ]]; then
+            echo "::error::Última modificación del esquema carece de migración nueva"
+            exit 1
+          fi
+          echo "last_schema_sha=$last_schema_sha" >> "$GITHUB_OUTPUT"
       - name: Comprobar resultado de migrate-deploy.yml para el SHA exacto
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SCHEMA_CHANGED: ${{ steps.schema-diff.outputs.schema_changed }}
           NEW_MIGRATIONS: ${{ steps.schema-diff.outputs.new_migrations }}
+          LAST_SCHEMA_SHA: ${{ steps.schema-diff.outputs.last_schema_sha }}
         run: node scripts/ci/release-migration-gate.mjs

@@ -70,7 +70,7 @@ export async function waitForMigration({
   }
 }
 
-export async function main(env=process.env) {
+export async function main(env=process.env,{verify=waitForMigration,log=console.log}={}) {
   if (env.GITHUB_EVENT_NAME!=='push' || env.GITHUB_REF!=='refs/heads/main')
     throw new Error('Solo el evento push de main puede emitir este check')
   // El manifiesto SQL crudo se aplica a bases locales/CI; no se usa en Supabase.
@@ -84,12 +84,17 @@ export async function main(env=process.env) {
     throw new Error('Conteo de migraciones nuevas fuera de límite')
   if (env.SCHEMA_CHANGED === 'true' && newMigrations === 0)
     throw new Error('schema.prisma cambió sin migración nueva: no certificar un migrate deploy vacío')
-  if (env.SCHEMA_CHANGED === 'false' && newMigrations === 0) {
-    console.log('Sin cambios de esquema ni migraciones de producción: gate no requiere migración.')
-    return
-  }
-  const result=await waitForMigration({sha:env.GITHUB_SHA,token:env.GITHUB_TOKEN})
-  console.log('Migración del mismo SHA verificada; run '+result.runId+', intento '+result.runAttempt)
+  // El último commit de esquema es relevante incluso cuando este push
+  // no cambia Prisma. Así, un fallo anterior no queda oculto por merges nuevos.
+  const latestSchemaSha=env.LAST_SCHEMA_SHA
+  if (!SHA_PATTERN.test(env.GITHUB_SHA || '') || !SHA_PATTERN.test(latestSchemaSha || ''))
+    throw new Error('Identidad SHA del candidato o del último esquema inválida')
+  if ((env.SCHEMA_CHANGED === 'true' || newMigrations > 0) &&
+      latestSchemaSha !== env.GITHUB_SHA)
+    throw new Error('La revisión de esquema reciente no coincide con el commit actual')
+  const result=await verify({sha:latestSchemaSha,token:env.GITHUB_TOKEN})
+  log('Migración heredada del esquema '+latestSchemaSha.slice(0,12)+
+    ' verificada; run '+result.runId+', intento '+result.runAttempt)
 }
 if (process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
   main().catch(error=>{console.error('Production migration gate: '+error.message);process.exitCode=1})
