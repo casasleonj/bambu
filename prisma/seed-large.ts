@@ -1,4 +1,5 @@
 import { PrismaClient, RolUsuario, OrigenPedido, EstadoEntrega, EstadoPago } from '@prisma/client'
+import { exigirBaseLocal, urlObjetivoSeedVolumen } from './seed-guard'
 
 /**
  * Seed de volumen para pruebas de performance (Módulo 12 QA Paranoico).
@@ -13,9 +14,12 @@ import { PrismaClient, RolUsuario, OrigenPedido, EstadoEntrega, EstadoPago } fro
  *   CLIENTES=500 PEDIDOS=1000 npx tsx prisma/seed-large.ts
  */
 
-const prisma = new PrismaClient({
-  datasourceUrl: process.env.DIRECT_URL || process.env.DATABASE_URL,
-})
+// Este seed crea y elimina registros: validar la URL EFECTIVA, no solo DATABASE_URL.
+// Si DIRECT_URL apunta a otro servidor, ese es el destino que se protegerá.
+const datasourceUrl = urlObjetivoSeedVolumen(process.env.DATABASE_URL, process.env.DIRECT_URL)
+exigirBaseLocal(datasourceUrl)
+
+const prisma = new PrismaClient({ datasourceUrl })
 
 const NOMBRES = [
   'Maria', 'Jose', 'Luis', 'Carmen', 'Pedro', 'Ana', 'Rosa', 'Juan', 'Diana', 'Carlos',

@@ -1,7 +1,7 @@
 import { getTodayString, parseDateParam } from "./dates";
 import { normalizeCanalFilter } from "./pedido-canal";
 import type { CobrosPeriodo } from "./cobros-periodo";
-import type { ResumenOperativoHoy } from "./pedidos-resumen-operativo-hoy";
+import type { ResumenOperativoDia } from "./pedidos-resumen-operativo-hoy";
 import type { EntregaDestacada } from "./pedidos-entregas-historial";
 import type { Pedido } from "@/app/(app)/pedidos/pedidos-client/types";
 
@@ -17,9 +17,9 @@ export interface ResumenConsultaPedidos {
   fiado: number;
   pendienteEntrega: number;
   productos: ProductoConsulta[];
-  /** Entregas físicas del día, solo en la vista general de Hoy, independiente de la fecha del pedido. */
-  operacionHoy?: ResumenOperativoHoy;
-  operacionHoyError?: boolean;
+  /** Entregas físicas de la fecha consultada, solo en días completos sin filtros adicionales. */
+  operacionDia?: ResumenOperativoDia;
+  operacionDiaError?: boolean;
   entregasPorConciliar: number;
   importesPorConciliar: boolean;
   exigiblesPorConciliar?: number;

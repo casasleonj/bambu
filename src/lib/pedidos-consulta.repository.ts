@@ -25,7 +25,7 @@ import { ordenarBarriosFIFO } from "./barrios/fifo-barrio";
 import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
 import { detalleUnidadesEntregadasDelDia } from "./unidades-entregadas-dia";
-import { mostrarResumenOperativoHoy, resumirEntregasOperativasHoy } from "./pedidos-resumen-operativo-hoy";
+import { mostrarResumenOperativoDelDia, resumirEntregasOperativasDelDia } from "./pedidos-resumen-operativo-hoy";
 import { ordenarPorFranja } from "./pedidos-franja";
 import { ordenarPrioridadPedidos } from "./pedidos-prioridad-921";
 import { findPedidosEnRiesgo } from "./pedidos-sin-asignar";
@@ -224,6 +224,17 @@ const centavos = (v: unknown) => {
   return n;
 };
 const dec = (v: unknown) => centavos(v) / 100;
+// #939: Prisma usa DECIMAL(10,2). Comparar pagos sumados en coma flotante
+// puede degradar visualmente un pedido 100% confirmado con centavos.
+const sumarConfirmados = (pagos: ReadonlyArray<{ monto: unknown }>): number => {
+  let sumaCentavos = 0;
+  for (const pago of pagos) {
+    sumaCentavos += centavos(pago.monto);
+    if (!Number.isSafeInteger(sumaCentavos))
+      throw new Error("Suma de pagos confirmados no verificable");
+  }
+  return sumaCentavos / 100;
+};
 
 /**
  * Una foto de la consulta completa, independiente de la página visible.
@@ -326,13 +337,13 @@ export async function consultarPedidos(
   client = prisma,
 ): Promise<ResultadoConsultaPedidos> {
   let resultado = await consultarPedidosSinAviso(f, role, client)
-  // #853: el balance físico global es una lectura opcional e independiente.
+  // #853: el balance físico de la fecha consultada es una lectura opcional e independiente.
   // Nunca comprometer la transacción de la consulta principal por un error
   // en el detalle de entregas del día.
   const resumenBase = resultado.resumen;
-  if (resumenBase && mostrarResumenOperativoHoy(f, todayStringBogota())) {
+  if (resumenBase && mostrarResumenOperativoDelDia(f, todayStringBogota())) {
     try {
-      const operacionHoy = await client.$transaction(async (tx) => {
+      const operacionDia = await client.$transaction(async (tx) => {
         const rango = rangoConsultaPedidos(f);
         const { detalle } = await detalleUnidadesEntregadasDelDia(tx, rango);
         const ids = [...new Set(detalle.map((d) => d.pedidoId))];
@@ -340,7 +351,7 @@ export async function consultarPedidos(
           where: { id: { in: ids } },
           select: { id: true, fecha: true },
         });
-        return resumirEntregasOperativasHoy(
+        return resumirEntregasOperativasDelDia(
           detalle,
           new Map(pedidosOrigen.map((p) => [p.id, p.fecha])),
           rango,
@@ -349,10 +360,10 @@ export async function consultarPedidos(
         isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
         timeout: 15000,
       });
-      resultado = { ...resultado, resumen: { ...resumenBase, operacionHoy } };
+      resultado = { ...resultado, resumen: { ...resumenBase, operacionDia } };
     } catch (error) {
-      logger.warn({ err: error }, "No se pudo conciliar el resumen operativo del día (#853)");
-      resultado = { ...resultado, resumen: { ...resumenBase, operacionHoyError: true } };
+      logger.warn({ err: error }, "No se pudo conciliar el resumen operativo de la fecha consultada (#853)");
+      resultado = { ...resultado, resumen: { ...resumenBase, operacionDiaError: true } };
     }
   }
   const visibles = [...resultado.pedidos, ...(resultado.arrastrados ?? [])]
@@ -703,7 +714,7 @@ async function leerConsultaPedidos(
           total: Number(p.total),
           totalPagado: Number(p.totalPagado),
           saldo: Number(p.saldo),
-          confirmado: p.pagos.reduce((n, pago) => n + Number(pago.monto), 0),
+          confirmado: sumarConfirmados(p.pagos),
         })), new Date())
           .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
           .map(p => p.id);
@@ -726,7 +737,7 @@ async function leerConsultaPedidos(
           ...p,
           total: Number(p.total), totalPagado: Number(p.totalPagado),
           saldo: Number(p.saldo),
-          confirmado: p.pagos.reduce((n, pago) => n + Number(pago.monto), 0),
+          confirmado: sumarConfirmados(p.pagos),
         })), ahora);
         ordenPagina = ordenarPorFranja(priorizados, ahora, p => p)
           .slice((f.page - 1) * f.pageSize, f.page * f.pageSize)
