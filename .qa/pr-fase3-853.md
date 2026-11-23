@@ -1,0 +1,16 @@
+### QA en navegador · #853 Fase 3 (Dinero de lo entregado hoy)
+- Estado: PASÓ (con las limitaciones de abajo). Al abrir el PR apilado este archivo pasa a `.qa/pr-<N>.md`.
+- Build/SHA y entorno: rama `ccr-817197b8-2tz0ij-fase3` @ f0e6894 (apilada sobre #984). `next dev` local con Turbopack; PostgreSQL 16 con el esquema del CI (`db push` + migraciones SQL crudas) en una base aparte (`bambu_qa`) con datos sintéticos; `NEXT_PUBLIC_PEDIDOS_V2=true` solo en el `.env` local (ignorado por git); sin Redis.
+- Herramienta: Playwright 1.61.1 con Chromium preinstalado (agent-browser no está instalado). No es una prueba con personas ni en un teléfono real.
+- Modos: la proyección de fiados `FIADO_ENTREGA_PARCIAL` se probó **encendida y apagada** (se desconoce su valor en producción: existe la variable, cifrada, no se descifró).
+- Rol y datos: ADMIN (escritorio y móvil), ASISTENTE y CONTADOR (ven el bloque), REPARTIDOR y SELLADOR (bloqueados, sin fuga de cifras). 12 pedidos sintéticos con precios $2.500 (agua) y $1.500 (hielo): fiado del mismo día, anticipo, pedido anterior con pago parcial, parcial con y sin hecho de entrega, pedido antiguo «aproximado», anulado, deuda anterior cobrada hoy, hielo.
+- Viewports: escritorio 1280×900 y móvil emulado 390×844.
+- Recorridos: 8 (escritorio, recarga, filtro adverso, día pasado, estados forzados, móvil, roles, cancelar por la UI).
+- Resultado: encendida 26/26, apagada 26/26, cancelar por la interfaz 9/9.
+- Esperado (calculado a mano, antes de mirar el sistema) y observado, con la proyección ENCENDIDA: Entregado hoy $505.500; Pagado de eso $200.000; Por cobrar «Por conciliar» con subtotales identificados pagado $200.000 y por cobrar $258.000, 2 pedidos ($47.500); Cobros recibidos hoy $180.000 (distinto de lo pagado). APAGADA: 4 pedidos ($230.500) por conciliar, por cobrar identificado $75.000. La identidad pagado + por cobrar + por conciliar = entregado se comprueba **en pantalla**.
+- Estados: error forzado (se intercepta la respuesta real con `economiaHoyError`): aviso sin cifras inventadas, el balance de productos sigue disponible, «Reintentar» recupera. El estado de carga lo cubre el indicador general de la consulta (el dinero llega en la misma respuesta).
+- Adverso: filtro de canal oculta el bloque y lo restaura al quitarlo; día pasado no lo muestra; recarga conserva las cifras; sin errores de JavaScript.
+- Cancelar con el botón real: sin motivo la pantalla lo bloquea («Debes indicar el motivo de cancelación») y no envía nada; con motivo se envía; luego «de 247 por gestionar · 13 cancelados o reducidos», columna «Ajus.» con −13 y «–» donde no hubo ajuste, entregas reales sin cambio (189), dinero entregado sin cambio ($505.500). Verifica en navegador el «–» de la Fase 2.
+- Incidencia: la insignia «1 Issue» del overlay de Next aparece en el entorno local; los errores de consola son de sesión, caja, clientes y embarques por falta de Redis y compilación bajo carga, ninguno menciona el resumen.
+- No cubierto: un teléfono real; personas reales; el estado de carga con un retardo real de red; la suite Playwright de `e2e/` (la corre el CI); producción.
+- Evidencia: capturas en el directorio temporal con datos sintéticos (`qa853f3-*.png`).
