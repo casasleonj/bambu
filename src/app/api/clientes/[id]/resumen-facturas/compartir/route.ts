@@ -8,7 +8,7 @@ import { formatZodError } from '@/lib/utils'
 
 const BodySchema = z.object({
   canal: z.literal('whatsapp'),
-  estado: z.enum(['TODAS', 'EMITIDA', 'PARCIAL', 'PAGADA']).optional(),
+  estado: z.enum(['TODAS', 'POR_COBRAR', 'EMITIDA', 'PARCIAL', 'PAGADA']).optional(),
   desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   facturas: z.number().int().min(0).max(10_000).optional(),
