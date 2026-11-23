@@ -11,6 +11,7 @@ import type { Gasto } from './types'
 import { categorias } from './types'
 import { Modal } from '@/components/modal'
 import { CamposGasto, type DatosFormularioGasto } from './campos-gasto'
+import { ConfirmarDescarte } from './confirmar-descarte'
 import { categoriasGastoDisponibles, etiquetaCategoriaGasto } from '@/lib/gastos-categorias'
 import { AlertTriangle, Eye, Pencil, Plus, ReceiptText, Tag, Wallet, X } from 'lucide-react'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
@@ -18,9 +19,11 @@ import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 export default function GastosPage() {
   const [gastos, setGastos] = useState<Gasto[]>([])
   const [showCrear, setShowCrear] = useState(false)
+  const [descartePendiente, setDescartePendiente] = useState<'CREAR' | 'CANCELAR_EDICION' | 'CERRAR_DETALLE' | null>(null)
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
   const [categoria, setCategoria] = useState('')
   const [categoriasRemotas, setCategoriasRemotas] = useState<string[]>([])
+  const [categoriasCargadas, setCategoriasCargadas] = useState(false)
   const [notas, setNotas] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [monto, setMonto] = useState('')
@@ -32,6 +35,7 @@ export default function GastosPage() {
   const [montoTotal, setMontoTotal] = useState(0)
   const [loadingGastos, setLoadingGastos] = useState(true)
   const [errorGastos, setErrorGastos] = useState<string | null>(null)
+  const [errorActualizacion, setErrorActualizacion] = useState<string | null>(null)
   const requestSequence = useRef(0)
   const detalleSequence = useRef(0)
   const [detalle, setDetalle] = useState<Gasto | null>(null)
@@ -49,11 +53,15 @@ export default function GastosPage() {
   const [confirmarOperacionNoReal, setConfirmarOperacionNoReal] = useState(false)
   const [guardandoDetalle, setGuardandoDetalle] = useState(false)
 
-  const fetchGastos = useCallback(async () => {
-    // Descartar respuestas de filtros/páginas anteriores, incluido polling.
+  const fetchGastos = useCallback(async (mostrarCarga = false) => {
+    // Cada filtro/página invalida respuestas antiguas, incluso las del polling.
+    // En segundo plano mantenemos los gastos visibles: la lista no parpadea
+    // ni parece vacía cada 60 segundos.
     const sequence = ++requestSequence.current
-    setLoadingGastos(true)
-    setErrorGastos(null)
+    if (mostrarCarga) {
+      setLoadingGastos(true)
+      setErrorGastos(null)
+    }
     try {
       const params = new URLSearchParams()
       if (dateRange.desde) params.set('desde', dateRange.desde)
@@ -72,32 +80,43 @@ export default function GastosPage() {
       setMontoTotal(data.montoTotal)
       setTotalRegistros(data.total)
       setTotalPaginas(Math.max(1, data.totalPages))
+      setErrorGastos(null)
+      setErrorActualizacion(null)
     } catch (e) {
       if (sequence !== requestSequence.current) return
-      setErrorGastos(e instanceof Error ? e.message : 'No se pudieron cargar los gastos.')
-      setGastos([])
-      setMontoTotal(0)
-      setTotalRegistros(0)
-      setTotalPaginas(1)
+      const mensaje = e instanceof Error ? e.message : 'No se pudieron cargar los gastos.'
+      if (mostrarCarga) {
+        setErrorGastos(mensaje)
+        setGastos([])
+        setMontoTotal(0)
+        setTotalRegistros(0)
+        setTotalPaginas(1)
+      } else {
+        // Una falla de actualización NO borra registros previamente consultados.
+        setErrorActualizacion('No se pudo actualizar. Se muestran los últimos datos cargados.')
+      }
     } finally {
       if (sequence === requestSequence.current) setLoadingGastos(false)
     }
   }, [dateRange, pagina])
 
   const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
-    setPagina(1)
-    setDateRange({ desde, hasta })
+    // DateRangeFilter emite al montar. Si el valor no cambió, no ejecutar
+    // una segunda consulta idéntica ni reiniciar los resultados.
+    setDateRange(actual => actual.desde === desde && actual.hasta === hasta
+      ? actual : { desde, hasta })
+    setPagina(actual => actual === 1 ? actual : 1)
   }, [])
 
   useEffect(() => {
-    // Fetch de datos al montar / cambiar dateRange — side effect de red
-    // real, no derivable durante el render.
+    // Cambiar fecha/página requiere carga visible, no es estado derivable
+    // del render. Se inicia una petición asíncrona y se protege su respuesta
+    // con requestSequence; el polling revalida sin ocultar la lista.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchGastos()
+    void fetchGastos(true)
   }, [fetchGastos])
 
-  // Polling: refresh gastos every 60s.
-  usePollingRefetch(fetchGastos, 60_000)
+  usePollingRefetch(() => fetchGastos(false), 60_000)
 
   const abrirDetalle = useCallback(async (id: string, modo: 'VER' | 'EDITAR' = 'VER') => {
     const sequence = ++detalleSequence.current
@@ -151,16 +170,24 @@ export default function GastosPage() {
   ])
 
   useEffect(() => {
-    let mounted = true
-    fetch('/api/gastos/categorias')
+    // El listado no necesita consultar TODAS las categorías históricas.
+    // Cargar el catálogo solo cuando el usuario abre un formulario.
+    if ((!showCrear && modoDetalle !== 'EDITAR') || categoriasCargadas) return
+    const abort = new AbortController()
+    fetch('/api/gastos/categorias', { signal: abort.signal })
       .then(response => {
         if (!response.ok) throw new Error('Catálogo no disponible')
         return response.json()
       })
-      .then(json => { if (mounted && json.success && Array.isArray(json.categorias)) setCategoriasRemotas(json.categorias) })
-      .catch(() => { /* Conservamos las opciones base si el catálogo no está disponible. */ })
-    return () => { mounted = false }
-  }, [])
+      .then(json => {
+        if (!abort.signal.aborted && json.success && Array.isArray(json.categorias)) {
+          setCategoriasRemotas(json.categorias)
+          setCategoriasCargadas(true)
+        }
+      })
+      .catch(() => { /* Conservar categorías base; reintentar al abrir el siguiente formulario. */ })
+    return () => abort.abort()
+  }, [showCrear, modoDetalle, categoriasCargadas])
 
   function cambiarNuevo(clave: keyof DatosFormularioGasto, valor: string) {
     if (clave === 'categoria') setCategoria(valor)
@@ -178,10 +205,20 @@ export default function GastosPage() {
     else if (clave === 'notas') setEditNotas(valor)
   }
 
+  function limpiarNuevoGasto() {
+    setCategoria('')
+    setDescripcion('')
+    setMonto('')
+    setResponsable('')
+    setNotas('')
+  }
+
   function cerrarCrear() {
     if (submitting) return
-    if ((categoria || descripcion || monto || responsable || notas) &&
-      !window.confirm('¿Descartar el gasto sin guardar?')) return
+    if (categoria || descripcion || monto || responsable || notas) {
+      setDescartePendiente('CREAR')
+      return
+    }
     setShowCrear(false)
   }
 
@@ -191,10 +228,7 @@ export default function GastosPage() {
     editNotas !== (detalle.notas ?? '') || motivo.trim().length > 0
   )
 
-  function cancelarCorreccion() {
-    if (guardandoDetalle) return
-    if ((detalleModificado || (modoDetalle === 'ANULAR' && (motivo || confirmarOperacionNoReal))) &&
-      !window.confirm('¿Descartar los cambios sin guardar?')) return
+  function volverAlDetalle() {
     if (detalle) {
       setEditCategoria(detalle.categoria)
       setEditDescripcion(detalle.descripcion)
@@ -208,10 +242,16 @@ export default function GastosPage() {
     setDetalleError(null)
   }
 
-  function cerrarDetalle() {
+  function cancelarCorreccion() {
     if (guardandoDetalle) return
-    if ((detalleModificado || (modoDetalle === 'ANULAR' && (motivo || confirmarOperacionNoReal))) &&
-      !window.confirm('¿Descartar los cambios sin guardar?')) return
+    if (detalleModificado || (modoDetalle === 'ANULAR' && (motivo || confirmarOperacionNoReal))) {
+      setDescartePendiente('CANCELAR_EDICION')
+      return
+    }
+    volverAlDetalle()
+  }
+
+  function cerrarDetalleDirecto() {
     ++detalleSequence.current
     setDetalle(null)
     setDetalleCargando(false)
@@ -220,6 +260,28 @@ export default function GastosPage() {
     const url = new URL(window.location.href)
     url.searchParams.delete('openGasto')
     window.history.replaceState(window.history.state, '', url)
+  }
+
+  function cerrarDetalle() {
+    if (guardandoDetalle) return
+    if (detalleModificado || (modoDetalle === 'ANULAR' && (motivo || confirmarOperacionNoReal))) {
+      setDescartePendiente('CERRAR_DETALLE')
+      return
+    }
+    cerrarDetalleDirecto()
+  }
+
+  function confirmarDescarte() {
+    const accion = descartePendiente
+    setDescartePendiente(null)
+    if (accion === 'CREAR') {
+      limpiarNuevoGasto()
+      setShowCrear(false)
+    } else if (accion === 'CANCELAR_EDICION') {
+      volverAlDetalle()
+    } else if (accion === 'CERRAR_DETALLE') {
+      cerrarDetalleDirecto()
+    }
   }
 
   async function guardarCorreccion(event?: React.FormEvent) {
@@ -299,8 +361,8 @@ export default function GastosPage() {
         setResponsable('')
         setNotas('')
         setCategoriasRemotas(actual => categoriasGastoDisponibles([...actual, categoria]))
-        setPagina(1)
-        void fetchGastos()
+        if (pagina !== 1) setPagina(1)
+        else void fetchGastos(false)
         toast.success('Gasto registrado')
       } else {
         const json = await res.json().catch(() => null)
@@ -477,6 +539,12 @@ export default function GastosPage() {
         </button>
       </Modal>
 
+      <ConfirmarDescarte
+        open={descartePendiente !== null}
+        onSeguirEditando={() => setDescartePendiente(null)}
+        onDescartar={confirmarDescarte}
+      />
+
       {!errorGastos && !loadingGastos && <section aria-label="Resumen de gastos" className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm sm:p-5">
         <div className="flex items-center gap-2 text-sm font-medium text-blue-900">
           <Wallet aria-hidden="true" className="h-5 w-5" />
@@ -492,7 +560,15 @@ export default function GastosPage() {
       {errorGastos && (
         <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <p>{errorGastos}</p>
-          <Button className="mt-3" variant="outline" onClick={() => void fetchGastos()}>Reintentar</Button>
+          <Button className="mt-3" variant="outline" onClick={() => void fetchGastos(true)}>Reintentar</Button>
+        </div>
+      )}
+      {errorActualizacion && !errorGastos && (
+        <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          {errorActualizacion}
+          <button type="button" className="ml-2 font-semibold underline" onClick={() => void fetchGastos(false)}>
+            Reintentar
+          </button>
         </div>
       )}
       {loadingGastos ? (
@@ -514,53 +590,58 @@ export default function GastosPage() {
           </p>
           {gastos.map(gasto => (
             <article key={gasto.id} data-testid={'gasto-' + gasto.id}
-              className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start gap-2.5">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-lg" aria-hidden="true">
-                      {iconoCategoria[gasto.categoria] ?? <Tag className="h-5 w-5 text-blue-700" />}
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="break-words font-semibold text-slate-900">{gasto.descripcion}</h3>
-                      <p className="mt-0.5 text-xs text-slate-600">
-                        {etiquetaCategoriaGasto(gasto.categoria)} · {fechaGasto(gasto.fecha)}
-                      </p>
-                      {gasto.anuladoAt && (
-                        <span className="mt-1 inline-flex rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                          Anulado
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {gasto.responsable && <p className="mt-2 text-xs text-slate-600">
-                    Persona asociada (dato registrado): {gasto.responsable}
-                  </p>}
+              className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
+              {/* La descripción siempre dispone del ancho completo en móvil.
+                  El importe y las acciones ocupan su propia fila, no la comprimen. */}
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-lg" aria-hidden="true">
+                  {iconoCategoria[gasto.categoria] ?? <Tag className="h-5 w-5 text-blue-700" />}
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  {gasto.anuladoAt ? (
-                    <div className="text-right">
-                      <p className="text-xs font-semibold text-slate-600">Original</p>
-                      <p className="text-base font-semibold tabular-nums text-slate-500 line-through">
-                        {formatCurrency(Number(gasto.montoAntesAnular ?? 0))}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-xl font-bold tabular-nums text-slate-900">
-                      {formatCurrency(Number(gasto.monto))}
+                <div className="min-w-0 flex-1">
+                  <h3 className="whitespace-normal break-words text-base font-semibold leading-snug text-slate-900 [overflow-wrap:anywhere]">
+                    {gasto.descripcion}
+                  </h3>
+                  <p className="mt-1 break-words text-xs text-slate-600">
+                    {etiquetaCategoriaGasto(gasto.categoria)} · {fechaGasto(gasto.fecha)}
+                  </p>
+                  {gasto.anuladoAt && (
+                    <span className="mt-2 inline-flex rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                      Anulado
+                    </span>
+                  )}
+                  {gasto.responsable && (
+                    <p className="mt-2 break-words text-xs text-slate-600 [overflow-wrap:anywhere]">
+                      Persona asociada (dato registrado): {gasto.responsable}
                     </p>
                   )}
-                  <div className="flex flex-wrap justify-end gap-1.5">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => void abrirDetalle(gasto.id)}>
-                      <Eye aria-hidden="true" className="mr-1 h-4 w-4" /> Ver detalle
-                    </Button>
-                    {!gasto.anuladoAt && (
-                      <Button type="button" variant="outline" size="sm"
-                        onClick={() => void abrirDetalle(gasto.id, 'EDITAR')}>
-                        <Pencil aria-hidden="true" className="mr-1 h-4 w-4" /> Corregir
-                      </Button>
-                    )}
+                </div>
+              </div>
+              <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                {gasto.anuladoAt ? (
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-slate-600">Importe original (anulado)</p>
+                    <p className="break-words text-xl font-semibold tabular-nums text-slate-500 line-through">
+                      {formatCurrency(Number(gasto.montoAntesAnular ?? 0))}
+                    </p>
                   </div>
+                ) : (
+                  <p className="min-w-0 break-words text-xl font-bold tabular-nums text-slate-900">
+                    {formatCurrency(Number(gasto.monto))}
+                  </p>
+                )}
+                <div className={`grid w-full gap-2 sm:flex sm:w-auto sm:shrink-0 sm:flex-wrap sm:justify-end ${gasto.anuladoAt ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                  <Button type="button" variant="outline" size="sm"
+                    className="min-h-11 min-w-0 whitespace-nowrap px-2 sm:px-3"
+                    onClick={() => void abrirDetalle(gasto.id)}>
+                    <Eye aria-hidden="true" className="mr-1 h-4 w-4 shrink-0" /> Ver detalle
+                  </Button>
+                  {!gasto.anuladoAt && (
+                    <Button type="button" variant="outline" size="sm"
+                      className="min-h-11 min-w-0 whitespace-nowrap px-2 sm:px-3"
+                      onClick={() => void abrirDetalle(gasto.id, 'EDITAR')}>
+                      <Pencil aria-hidden="true" className="mr-1 h-4 w-4 shrink-0" /> Corregir
+                    </Button>
+                  )}
                 </div>
               </div>
             </article>
