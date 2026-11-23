@@ -2,13 +2,17 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth-check'
 import { ResumenFacturasQuerySchema } from '@/lib/validators'
+import { buildFacturasBaseWhere, type FacturasFiltros } from '@/lib/facturas-filtros'
 import {
-  buildFacturasBaseWhere,
-  buildFacturasListWhere,
-  type FacturaEstado,
-  type FacturasFiltros,
-} from '@/lib/facturas-filtros'
-import { conteosPorEstado, detalleItemsFactura, totalizarResumen } from '@/lib/resumen-facturas'
+  abonosNetosFactura,
+  conteosPorEstado,
+  detalleItemsFactura,
+  encabezadoResumen,
+  estadosDeResumen,
+  fechaMasAntigua,
+  totalizarResumen,
+} from '@/lib/resumen-facturas'
+import { leerExigibles } from '@/lib/entregas-exigibles-db'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 
@@ -39,28 +43,29 @@ export async function GET(
       return apiError('Datos inválidos', 400)
     }
 
-    // Sin `estado` (enlaces antiguos) = TODAS, con las anuladas visibles pero
-    // sin sumar. Sin fechas = historial completo; el rango es el único límite.
-    const estado: FacturaEstado | null =
-      parsed.data.estado && parsed.data.estado !== 'TODAS' ? parsed.data.estado : null
+    // Sin `estado` = TODAS = solo vigentes (#977): las anuladas no se mezclan con la
+    // lista; se informan aparte y nunca suman. Sin fechas = historial completo.
+    const estadoPedido = parsed.data.estado ?? 'TODAS'
+    const estados = estadosDeResumen(estadoPedido)
     const filtros: FacturasFiltros = {
       desde: desde ?? null,
       hasta: hasta ?? null,
       clienteId,
       facturaId: null,
-      estado,
+      estado: null,
       pendiente: false,
-      incluirAnuladas: parsed.data.incluirAnuladas !== 'false',
+      incluirAnuladas: true,
     }
+    const baseWhere = buildFacturasBaseWhere(filtros)
 
-    const [cliente, facturas, porEstado, empresaConfigs] = await Promise.all([
+    const [cliente, facturas, porEstado, anuladasAgg, empresaConfigs] = await Promise.all([
       prisma.cliente.findUnique({
         where: { id: clienteId },
         select: { id: true, nombre: true, apellido: true, telefono: true, direccion: true, barrio: true },
       }),
       prisma.factura.findMany({
-        where: buildFacturasListWhere(filtros),
-        orderBy: { fecha: 'asc' },
+        where: { ...baseWhere, estado: { in: estados } },
+        orderBy: [{ fecha: 'asc' }, { numero: 'asc' }],
         include: {
           pedido: {
             select: {
@@ -68,13 +73,22 @@ export async function GET(
               items: { select: { producto: true, cantPedido: true, cantEntrega: true, precio: true, subtotal: true } },
             },
           },
+          abonos: {
+            select: { fecha: true, monto: true, correcciones: { select: { montoRevertido: true } } },
+          },
         },
       }),
       // Conteos para las pestañas: mismo cliente y período, sin filtrar por estado.
       prisma.factura.groupBy({
         by: ['estado'],
-        where: buildFacturasBaseWhere(filtros),
+        where: baseWhere,
         _count: { _all: true },
+      }),
+      // Anuladas del cliente/período: se informan aparte y nunca suman (#977).
+      prisma.factura.aggregate({
+        where: { ...baseWhere, estado: 'ANULADA' },
+        _count: { _all: true },
+        _sum: { total: true },
       }),
       prisma.config.findMany({
         where: {
@@ -90,23 +104,40 @@ export async function GET(
     const empresaMap: Record<string, string> = {}
     empresaConfigs.forEach((c) => { empresaMap[c.clave] = c.valor })
 
+    const fmtFechaCorta = (d: Date): string =>
+      d.toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: '2-digit', year: 'numeric' })
+
     function formatFechaISO(d: Date): string {
       return d.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
     }
+
+    // Lo que se debe AHORA es la deuda exigible (lo entregado menos lo pagado), la
+    // misma que usan Fiados, Dashboard y Cartera (#656): el resumen no cobra lo
+    // que aún no se entregó. Sin pedido enlazado se usa el saldo de la factura.
+    const pedidoIds = facturas.map((f) => f.pedido?.id).filter((id): id is string => Boolean(id))
+    const exigibles = pedidoIds.length > 0 ? await leerExigibles(prisma, { id: { in: pedidoIds } }) : new Map<string, number>()
+    const debeDe = (f: (typeof facturas)[number]): number =>
+      f.estado === 'ANULADA' ? 0 : f.pedido ? exigibles.get(f.pedido.id) ?? 0 : Number(f.saldo)
 
     const filas = facturas.map((f) => ({
       estado: f.estado,
       total: Number(f.total),
       montoPagado: Number(f.montoPagado || 0),
-      saldo: Number(f.saldo),
+      saldo: debeDe(f),
     }))
-    const { totales, anuladas } = totalizarResumen(filas)
+    const { totales } = totalizarResumen(filas)
+    const anuladas = { count: anuladasAgg._count._all, totalHistorico: Number(anuladasAgg._sum.total ?? 0) }
+    const masAntigua = fechaMasAntigua(
+      facturas.map((f) => ({ fecha: formatFechaISO(f.fecha), estado: f.estado, saldo: debeDe(f) })),
+    )
     const conteos = conteosPorEstado(porEstado.map((g) => ({ estado: g.estado, count: g._count._all })))
 
     return apiSuccess({
       cliente,
       periodo: { desde: desde ?? null, hasta: hasta ?? null },
-      filtro: { estado: estado ?? 'TODAS', incluirAnuladas: filtros.incluirAnuladas },
+      filtro: { estado: estadoPedido },
+      // Cifra principal según la pestaña: la misma lógica que usa el PDF (#977).
+      encabezado: encabezadoResumen(estadoPedido, totales, anuladas, masAntigua),
       conteos,
         facturas: facturas.map((f) => {
           const saldo = Number(f.saldo)
@@ -117,6 +148,15 @@ export async function GET(
           const tieneDesfase = (pedidoSaldo !== null && pedidoSaldo !== saldo) ||
                                (pedidoPagado !== null && pedidoPagado !== montoPagado)
 
+          const abonos = abonosNetosFactura(
+            f.abonos.map((a) => ({
+              fecha: a.fecha,
+              monto: Number(a.monto),
+              revertido: a.correcciones.reduce((acc, x) => acc + Number(x.montoRevertido), 0),
+            })),
+            montoPagado,
+          )
+
           return {
             id: f.id,
             numero: f.numero,
@@ -124,6 +164,7 @@ export async function GET(
             total: Number(f.total),
             montoPagado,
             saldo,
+            debe: debeDe(f),
             // Estado guardado: el mismo que usa la lista y el filtro (#758).
             estado: f.estado,
             ...detalleItemsFactura(
@@ -136,6 +177,7 @@ export async function GET(
               })),
               Number(f.total),
             ),
+            abonos: abonos ? abonos.map((a) => ({ fechaTxt: fmtFechaCorta(a.fecha), monto: a.monto })) : null,
             pedidoNumero: f.pedido?.numero ?? null,
             pedidoId: f.pedido?.id ?? null,
             desfase: tieneDesfase ? {

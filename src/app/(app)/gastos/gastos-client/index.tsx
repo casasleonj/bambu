@@ -5,20 +5,26 @@ import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { getTodayString } from '@/lib/dates'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/empty-state'
 import { DateRangeFilter } from '@/components/date-range-filter'
 import type { Gasto } from './types'
-import { categorias, PARECE_PAGO_PERSONAL } from './types'
+import { categorias } from './types'
+import { Modal } from '@/components/modal'
+import { CamposGasto, type DatosFormularioGasto } from './campos-gasto'
+import { ConfirmarDescarte } from './confirmar-descarte'
+import { categoriasGastoDisponibles, etiquetaCategoriaGasto } from '@/lib/gastos-categorias'
+import { AlertTriangle, Eye, Pencil, Plus, ReceiptText, Tag, Wallet, X } from 'lucide-react'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
 export default function GastosPage() {
   const [gastos, setGastos] = useState<Gasto[]>([])
   const [showCrear, setShowCrear] = useState(false)
+  const [descartePendiente, setDescartePendiente] = useState<'CREAR' | 'CANCELAR_EDICION' | 'CERRAR_DETALLE' | null>(null)
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
-  const [categoria, setCategoria] = useState('OTRO')
+  const [categoria, setCategoria] = useState('')
+  const [categoriasRemotas, setCategoriasRemotas] = useState<string[]>([])
+  const [categoriasCargadas, setCategoriasCargadas] = useState(false)
+  const [notas, setNotas] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [monto, setMonto] = useState('')
   const [responsable, setResponsable] = useState('')
@@ -29,7 +35,9 @@ export default function GastosPage() {
   const [montoTotal, setMontoTotal] = useState(0)
   const [loadingGastos, setLoadingGastos] = useState(true)
   const [errorGastos, setErrorGastos] = useState<string | null>(null)
+  const [errorActualizacion, setErrorActualizacion] = useState<string | null>(null)
   const requestSequence = useRef(0)
+  const detalleSequence = useRef(0)
   const [detalle, setDetalle] = useState<Gasto | null>(null)
   const [detalleCerrado, setDetalleCerrado] = useState(false)
   const [detalleCargando, setDetalleCargando] = useState(false)
@@ -45,11 +53,15 @@ export default function GastosPage() {
   const [confirmarOperacionNoReal, setConfirmarOperacionNoReal] = useState(false)
   const [guardandoDetalle, setGuardandoDetalle] = useState(false)
 
-  const fetchGastos = useCallback(async () => {
-    // Descartar respuestas de filtros/páginas anteriores, incluido polling.
+  const fetchGastos = useCallback(async (mostrarCarga = false) => {
+    // Cada filtro/página invalida respuestas antiguas, incluso las del polling.
+    // En segundo plano mantenemos los gastos visibles: la lista no parpadea
+    // ni parece vacía cada 60 segundos.
     const sequence = ++requestSequence.current
-    setLoadingGastos(true)
-    setErrorGastos(null)
+    if (mostrarCarga) {
+      setLoadingGastos(true)
+      setErrorGastos(null)
+    }
     try {
       const params = new URLSearchParams()
       if (dateRange.desde) params.set('desde', dateRange.desde)
@@ -68,34 +80,46 @@ export default function GastosPage() {
       setMontoTotal(data.montoTotal)
       setTotalRegistros(data.total)
       setTotalPaginas(Math.max(1, data.totalPages))
+      setErrorGastos(null)
+      setErrorActualizacion(null)
     } catch (e) {
       if (sequence !== requestSequence.current) return
-      setErrorGastos(e instanceof Error ? e.message : 'No se pudieron cargar los gastos.')
-      setGastos([])
-      setMontoTotal(0)
-      setTotalRegistros(0)
-      setTotalPaginas(1)
+      const mensaje = e instanceof Error ? e.message : 'No se pudieron cargar los gastos.'
+      if (mostrarCarga) {
+        setErrorGastos(mensaje)
+        setGastos([])
+        setMontoTotal(0)
+        setTotalRegistros(0)
+        setTotalPaginas(1)
+      } else {
+        // Una falla de actualización NO borra registros previamente consultados.
+        setErrorActualizacion('No se pudo actualizar. Se muestran los últimos datos cargados.')
+      }
     } finally {
       if (sequence === requestSequence.current) setLoadingGastos(false)
     }
   }, [dateRange, pagina])
 
   const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
-    setPagina(1)
-    setDateRange({ desde, hasta })
+    // DateRangeFilter emite al montar. Si el valor no cambió, no ejecutar
+    // una segunda consulta idéntica ni reiniciar los resultados.
+    setDateRange(actual => actual.desde === desde && actual.hasta === hasta
+      ? actual : { desde, hasta })
+    setPagina(actual => actual === 1 ? actual : 1)
   }, [])
 
   useEffect(() => {
-    // Fetch de datos al montar / cambiar dateRange — side effect de red
-    // real, no derivable durante el render.
+    // Cambiar fecha/página requiere carga visible, no es estado derivable
+    // del render. Se inicia una petición asíncrona y se protege su respuesta
+    // con requestSequence; el polling revalida sin ocultar la lista.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchGastos()
+    void fetchGastos(true)
   }, [fetchGastos])
 
-  // Polling: refresh gastos every 60s.
-  usePollingRefetch(fetchGastos, 60_000)
+  usePollingRefetch(() => fetchGastos(false), 60_000)
 
-  const abrirDetalle = useCallback(async (id: string) => {
+  const abrirDetalle = useCallback(async (id: string, modo: 'VER' | 'EDITAR' = 'VER') => {
+    const sequence = ++detalleSequence.current
     setDetalleCargando(true)
     setDetalleError(null)
     setModoDetalle('VER')
@@ -106,8 +130,10 @@ export default function GastosPage() {
       if (!response.ok || !json.success || !json.gasto) {
         throw new Error(json.error?.message || 'No fue posible abrir este gasto.')
       }
+      if (sequence !== detalleSequence.current) return
       const gasto: Gasto = json.gasto
       setDetalle(gasto)
+      setModoDetalle(json.diaCerrado === true || gasto.anuladoAt ? 'VER' : modo)
       setDetalleCerrado(json.diaCerrado === true)
       setEditCategoria(gasto.categoria)
       setEditDescripcion(gasto.descripcion)
@@ -118,9 +144,9 @@ export default function GastosPage() {
       setConfirmarOperacionNoReal(false)
       setMotivoOrigen('REGISTRO_DUPLICADO')
     } catch (error) {
-      setDetalleError(error instanceof Error ? error.message : 'No fue posible abrir este gasto.')
+      if (sequence === detalleSequence.current) setDetalleError(error instanceof Error ? error.message : 'No fue posible abrir este gasto.')
     } finally {
-      setDetalleCargando(false)
+      if (sequence === detalleSequence.current) setDetalleCargando(false)
     }
   }, [])
 
@@ -139,13 +165,123 @@ export default function GastosPage() {
     return () => { cancelled = true }
   }, [abrirDetalle])
 
-  function cerrarDetalle() {
+  const opcionesCategoria = categoriasGastoDisponibles([
+    ...categorias, ...categoriasRemotas, categoria, editCategoria,
+  ])
+
+  useEffect(() => {
+    // El listado no necesita consultar TODAS las categorías históricas.
+    // Cargar el catálogo solo cuando el usuario abre un formulario.
+    if ((!showCrear && modoDetalle !== 'EDITAR') || categoriasCargadas) return
+    const abort = new AbortController()
+    fetch('/api/gastos/categorias', { signal: abort.signal })
+      .then(response => {
+        if (!response.ok) throw new Error('Catálogo no disponible')
+        return response.json()
+      })
+      .then(json => {
+        if (!abort.signal.aborted && json.success && Array.isArray(json.categorias)) {
+          setCategoriasRemotas(json.categorias)
+          setCategoriasCargadas(true)
+        }
+      })
+      .catch(() => { /* Conservar categorías base; reintentar al abrir el siguiente formulario. */ })
+    return () => abort.abort()
+  }, [showCrear, modoDetalle, categoriasCargadas])
+
+  function cambiarNuevo(clave: keyof DatosFormularioGasto, valor: string) {
+    if (clave === 'categoria') setCategoria(valor)
+    else if (clave === 'descripcion') setDescripcion(valor)
+    else if (clave === 'monto') setMonto(valor)
+    else if (clave === 'responsable') setResponsable(valor)
+    else if (clave === 'notas') setNotas(valor)
+  }
+
+  function cambiarEdit(clave: keyof DatosFormularioGasto, valor: string) {
+    if (clave === 'categoria') setEditCategoria(valor)
+    else if (clave === 'descripcion') setEditDescripcion(valor)
+    else if (clave === 'monto') setEditMonto(valor)
+    else if (clave === 'responsable') setEditResponsable(valor)
+    else if (clave === 'notas') setEditNotas(valor)
+  }
+
+  function limpiarNuevoGasto() {
+    setCategoria('')
+    setDescripcion('')
+    setMonto('')
+    setResponsable('')
+    setNotas('')
+  }
+
+  function cerrarCrear() {
+    if (submitting) return
+    if (categoria || descripcion || monto || responsable || notas) {
+      setDescartePendiente('CREAR')
+      return
+    }
+    setShowCrear(false)
+  }
+
+  const detalleModificado = detalle && modoDetalle === 'EDITAR' && (
+    editCategoria !== detalle.categoria || editDescripcion !== detalle.descripcion ||
+    editMonto !== String(detalle.monto) || editResponsable !== (detalle.responsable ?? '') ||
+    editNotas !== (detalle.notas ?? '') || motivo.trim().length > 0
+  )
+
+  function volverAlDetalle() {
+    if (detalle) {
+      setEditCategoria(detalle.categoria)
+      setEditDescripcion(detalle.descripcion)
+      setEditMonto(String(detalle.monto))
+      setEditResponsable(detalle.responsable ?? '')
+      setEditNotas(detalle.notas ?? '')
+    }
+    setMotivo('')
+    setConfirmarOperacionNoReal(false)
+    setModoDetalle('VER')
+    setDetalleError(null)
+  }
+
+  function cancelarCorreccion() {
+    if (guardandoDetalle) return
+    if (detalleModificado || (modoDetalle === 'ANULAR' && (motivo || confirmarOperacionNoReal))) {
+      setDescartePendiente('CANCELAR_EDICION')
+      return
+    }
+    volverAlDetalle()
+  }
+
+  function cerrarDetalleDirecto() {
+    ++detalleSequence.current
     setDetalle(null)
+    setDetalleCargando(false)
     setDetalleError(null)
     setModoDetalle('VER')
     const url = new URL(window.location.href)
     url.searchParams.delete('openGasto')
     window.history.replaceState(window.history.state, '', url)
+  }
+
+  function cerrarDetalle() {
+    if (guardandoDetalle) return
+    if (detalleModificado || (modoDetalle === 'ANULAR' && (motivo || confirmarOperacionNoReal))) {
+      setDescartePendiente('CERRAR_DETALLE')
+      return
+    }
+    cerrarDetalleDirecto()
+  }
+
+  function confirmarDescarte() {
+    const accion = descartePendiente
+    setDescartePendiente(null)
+    if (accion === 'CREAR') {
+      limpiarNuevoGasto()
+      setShowCrear(false)
+    } else if (accion === 'CANCELAR_EDICION') {
+      volverAlDetalle()
+    } else if (accion === 'CERRAR_DETALLE') {
+      cerrarDetalleDirecto()
+    }
   }
 
   async function guardarCorreccion(event?: React.FormEvent) {
@@ -201,8 +337,8 @@ export default function GastosPage() {
 
   const crearGasto = async (e?: React.FormEvent) => {
     e?.preventDefault()
-    if (!descripcion.trim() || !monto) {
-      toast.error('Descripción y monto son obligatorios')
+    if (!categoria || !descripcion.trim() || !monto) {
+      toast.error('Selecciona categoría, concepto y valor del gasto')
       return
     }
     const montoNum = parseFloat(monto)
@@ -215,18 +351,22 @@ export default function GastosPage() {
       const res = await fetch('/api/gastos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ categoria, descripcion, monto: montoNum, responsable }),
+        body: JSON.stringify({ categoria, descripcion: descripcion.trim(), monto: montoNum, responsable: responsable.trim(), notas: notas.trim() }),
       })
       if (res.ok) {
         setShowCrear(false)
+        setCategoria('')
         setDescripcion('')
         setMonto('')
         setResponsable('')
-        setPagina(1)
-        void fetchGastos()
+        setNotas('')
+        setCategoriasRemotas(actual => categoriasGastoDisponibles([...actual, categoria]))
+        if (pagina !== 1) setPagina(1)
+        else void fetchGastos(false)
         toast.success('Gasto registrado')
       } else {
-        toast.error('Error registrando gasto')
+        const json = await res.json().catch(() => null)
+        toast.error(json?.error?.message || 'No se pudo registrar el gasto')
       }
     } catch (e) {
       console.error(e)
@@ -236,247 +376,284 @@ export default function GastosPage() {
   }
 
 
-  const cats = {
-    ARRIENDO: '🏠',
-    SERVICIOS: '💡',
-    INSUMOS: '📦',
-    MANTENIMIENTO: '🔧',
-    TRANSPORTE: '🚛',
-    NOMINA: '💰',
-    OTRO: '📝',
+  const iconoCategoria: Record<string, string> = {
+    ARRIENDO: '🏠', SERVICIOS: '💡', INSUMOS: '📦',
+    MANTENIMIENTO: '🔧', TRANSPORTE: '🚚', OTRO: '🧾',
   }
+  const fechaGasto = (fecha: string) => new Date(fecha).toLocaleDateString('es-CO', {
+    timeZone: 'America/Bogota', day: '2-digit', month: '2-digit', year: 'numeric',
+  })
 
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-2xl font-bold tracking-tight">📝 Gastos operativos</h1>
-      <p className="text-sm text-muted-foreground">Los pagos al personal se administran desde Nómina. Cierre consolida esos movimientos por separado.</p>
-
-      <div className="bg-white p-4 rounded-xl shadow space-y-3">
-        <DateRangeFilter onDateChange={handleDateChange} formatoColombia soloHistorico />
-      </div>
-
-      <div className="flex gap-2">
-        <Button onClick={() => setShowCrear(!showCrear)}>
-          Nuevo Gasto
+    <div className="mx-auto max-w-6xl space-y-5 p-4 sm:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <ReceiptText className="h-7 w-7 text-blue-600" aria-hidden="true" />
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Gastos operativos</h1>
+          </div>
+          <p className="mt-1 text-sm text-slate-600">Los pagos al personal se administran en Nómina.</p>
+        </div>
+        <Button className="gap-2 rounded-xl font-semibold shadow-sm" onClick={() => setShowCrear(true)}>
+          <Plus className="h-4 w-4" aria-hidden="true" /> Nuevo gasto
         </Button>
-      </div>
+      </header>
 
-      {showCrear && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Registrar Gasto</CardTitle>
-          </CardHeader>
-          <form onSubmit={crearGasto}>
-            <CardContent className="space-y-3">
-              <div>
-                <Label htmlFor="gasto-categoria">Categoría</Label>
-                <select
-                  id="gasto-categoria"
-                  className="w-full h-10 rounded-md border border-input bg-background px-3 py-2"
-                  value={categoria}
-                  onChange={(e) => setCategoria(e.target.value)}
-                >
-                  {categorias.map((c) => (
-                    <option key={c} value={c}>{cats[c as keyof typeof cats]} {c}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label htmlFor="gasto-descripcion">Descripción <span className="text-red-500">*</span></Label>
-                <Input id="gasto-descripcion" required value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Detalle del gasto" />
-                {PARECE_PAGO_PERSONAL.test(descripcion) && (
-                  <p className="mt-1 text-sm text-amber-700" data-testid="aviso-pago-personal">
-                    Si es un pago a una persona del equipo, regístralo con «Pagar» en Nómina para que no se cuente dos veces en el cierre.
+      <section aria-label="Filtrar gastos" className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <DateRangeFilter onDateChange={handleDateChange} formatoColombia soloHistorico />
+      </section>
+
+      <Modal open={showCrear} onClose={cerrarCrear} title="Nuevo gasto operativo"
+        className="relative mx-auto my-2 max-h-[94dvh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl sm:my-6">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 pr-16 sm:px-6 sm:pr-16">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">Nuevo gasto</h2>
+            <p className="text-xs text-slate-600">Completa los datos de la salida operativa.</p>
+          </div>
+          {/* El cierre va después del formulario en el orden de teclado: así el foco inicial
+              del modal permanece en Categoría y no desmonta sus opciones durante la selección. */}
+        </div>
+        <form onSubmit={crearGasto}>
+          <div className="px-4 py-4 sm:px-6">
+            <CamposGasto prefijo="gasto" datos={{ categoria, descripcion, monto, responsable, notas }}
+              cambiar={cambiarNuevo} categorias={opcionesCategoria} bloqueado={submitting} />
+          </div>
+          <div className="sticky bottom-0 flex gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+            <Button type="button" variant="outline" className="flex-1" onClick={cerrarCrear}>Cancelar</Button>
+            <Button type="submit" className="flex-1" disabled={submitting || !categoria || !descripcion.trim() || !monto}>
+              {submitting ? 'Guardando…' : 'Guardar gasto'}
+            </Button>
+          </div>
+        </form>
+        <button type="button" aria-label="Cerrar formulario" onClick={cerrarCrear}
+          className="absolute right-3 top-3 z-20 rounded-lg p-2 text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-600">
+          <X aria-hidden="true" className="h-5 w-5" />
+        </button>
+      </Modal>
+
+      <Modal open={detalleCargando || !!detalle || !!detalleError} onClose={cerrarDetalle}
+        title={modoDetalle === 'EDITAR' ? 'Corregir gasto' : modoDetalle === 'ANULAR' ? 'Anular gasto' : 'Detalle del gasto'}
+        data-testid="gasto-detalle"
+        className="relative mx-auto my-2 max-h-[94dvh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl sm:my-6">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">
+              {modoDetalle === 'EDITAR' ? 'Corregir gasto' : modoDetalle === 'ANULAR' ? 'Anular registro' : 'Detalle del gasto'}
+            </h2>
+            <p className="text-xs text-slate-600">
+              {detalle ? fechaGasto(detalle.fecha) : 'Consultando registro…'}
+            </p>
+          </div>
+
+        </div>
+        {detalleCargando && <p role="status" className="px-6 py-10 text-center text-sm text-slate-600">Cargando gasto…</p>}
+        {detalleError && <p role="alert" className="mx-4 mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{detalleError}</p>}
+        {detalle && !detalleCargando && (
+          <div>
+            {detalleCerrado && <p className="mx-4 mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+              Esta jornada ya tiene cierre. El registro original es de solo lectura; los ajustes se gestionan por separado.
+            </p>}
+            {detalle.anuladoAt && <p className="mx-4 mt-4 rounded-xl bg-slate-100 p-3 text-sm text-slate-700">
+              Gasto anulado. Valor original: {formatCurrency(Number(detalle.montoAntesAnular ?? 0))}.
+            </p>}
+
+            {modoDetalle === 'VER' ? (
+              <div className="space-y-4 px-4 py-5 sm:px-6">
+                <div className="rounded-xl bg-blue-50 p-4">
+                  <span className="text-xs font-semibold text-blue-800">{etiquetaCategoriaGasto(detalle.categoria)}</span>
+                  <h3 className="mt-1 break-words text-lg font-semibold text-slate-900">{detalle.descripcion}</h3>
+                  <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900">
+                    {detalle.anuladoAt ? 'Anulado' : formatCurrency(Number(detalle.monto))}
                   </p>
-                )}
-              </div>
-              <div>
-                <Label htmlFor="gasto-monto">Monto <span className="text-red-500">*</span></Label>
-                <Input id="gasto-monto" type="number" min="0" required value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="0" />
-              </div>
-              <div>
-                <Label htmlFor="gasto-responsable">Responsable (opcional)</Label>
-                <Input id="gasto-responsable" value={responsable} onChange={(e) => setResponsable(e.target.value)} placeholder="Quién paga" />
-              </div>
-              <Button type="submit" disabled={submitting || !descripcion.trim() || !monto}>{submitting ? 'Guardando...' : 'Guardar'}</Button>
-            </CardContent>
-          </form>
-        </Card>
-      )}
-
-
-      {(detalleCargando || detalle || detalleError) && (
-        <Card id="gasto-detalle" data-testid="gasto-detalle" className="border-primary/20">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle className="text-lg">Detalle del gasto operativo</CardTitle>
-              <Button type="button" variant="outline" onClick={cerrarDetalle}>Cerrar</Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {detalleCargando && <p role="status">Cargando detalle...</p>}
-            {detalleError && <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-800">{detalleError}</p>}
-            {detalle && !detalleCargando && (
-              <>
-                <div className="text-sm text-muted-foreground">
-                  Fecha efectiva: {new Date(detalle.fecha).toLocaleDateString('es-CO', {
-                    timeZone: 'America/Bogota', day: '2-digit', month: '2-digit', year: 'numeric',
-                  })}
-                  {' · '}Estado: {detalle.anuladoAt ? 'Anulado' : detalleCerrado ? 'Jornada cerrada' : 'Vigente'}
                 </div>
-                {detalleCerrado && (
-                  <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-                    Esta jornada ya tiene cierre. No se altera el registro original; cualquier corrección requiere un ajuste contable separado.
-                  </p>
-                )}
-                {detalle.anuladoAt && (
-                  <p className="rounded-md bg-muted p-3 text-sm">
-                    Este gasto fue anulado. Monto original: {formatCurrency(Number(detalle.montoAntesAnular ?? 0))}.
-                  </p>
-                )}
-                {modoDetalle === 'VER' ? (
-                  <>
-                    <p className="font-medium">{detalle.categoria}: {detalle.descripcion}</p>
-                    <p>Importe actual: {formatCurrency(Number(detalle.monto))}</p>
-                    {detalle.responsable && <p className="text-sm">Responsable: {detalle.responsable}</p>}
-                    {!detalleCerrado && !detalle.anuladoAt && (
-                      <div className="flex flex-wrap gap-2">
-                        <Button type="button" onClick={() => { setModoDetalle('EDITAR'); setDetalleError(null) }}>Corregir</Button>
-                        <Button type="button" variant="outline" onClick={() => { setModoDetalle('ANULAR'); setDetalleError(null) }}>Anular registro</Button>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <form onSubmit={guardarCorreccion} className="space-y-3">
-                    {modoDetalle === 'EDITAR' ? (
-                      <>
-                        <div>
-                          <Label htmlFor="editar-categoria-gasto">Categoría</Label>
-                          <select id="editar-categoria-gasto" className="h-10 w-full rounded-md border border-input bg-background px-3"
-                            value={editCategoria} onChange={event => setEditCategoria(event.target.value)}>
-                            {categorias.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <Label htmlFor="editar-descripcion-gasto">Descripción</Label>
-                          <Input id="editar-descripcion-gasto" required maxLength={200} value={editDescripcion}
-                            onChange={event => setEditDescripcion(event.target.value)} />
-                        </div>
-                        <div>
-                          <Label htmlFor="editar-monto-gasto">Monto real</Label>
-                          <Input id="editar-monto-gasto" type="number" min="0.01" step="0.01" required value={editMonto}
-                            onChange={event => setEditMonto(event.target.value)} />
-                        </div>
-                        <div>
-                          <Label htmlFor="editar-responsable-gasto">Responsable</Label>
-                          <Input id="editar-responsable-gasto" maxLength={100} value={editResponsable}
-                            onChange={event => setEditResponsable(event.target.value)} />
-                        </div>
-                        <div>
-                          <Label htmlFor="editar-notas-gasto">Notas</Label>
-                          <Input id="editar-notas-gasto" maxLength={500} value={editNotas}
-                            onChange={event => setEditNotas(event.target.value)} />
-                        </div>
-                      </>
-                    ) : (
-                      <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-3">
-                        <p className="font-medium text-amber-900">Anular solo un registro equivocado, sin inventar una devolución.</p>
-                        <Label htmlFor="gasto-motivo-origen">¿Por qué se anula?</Label>
-                        <select id="gasto-motivo-origen" className="h-10 w-full rounded-md border border-input bg-white px-3"
-                          value={motivoOrigen} onChange={event => setMotivoOrigen(event.target.value as 'REGISTRO_DUPLICADO' | 'DINERO_NO_SALIO')}>
-                          <option value="REGISTRO_DUPLICADO">Registro duplicado</option>
-                          <option value="DINERO_NO_SALIO">El dinero nunca salió</option>
-                        </select>
-                        <label className="flex items-start gap-2 text-sm text-amber-900">
-                          <input type="checkbox" checked={confirmarOperacionNoReal}
-                            onChange={event => setConfirmarOperacionNoReal(event.target.checked)} />
-                          Confirmo que este registro no representa una salida de dinero adicional. Si el dinero realmente salió, no debo anularlo aquí.
-                        </label>
-                      </div>
-                    )}
-                    <div>
-                      <Label htmlFor="gasto-motivo-ajuste">Motivo de la acción (obligatorio)</Label>
-                      <Input id="gasto-motivo-ajuste" required minLength={5} maxLength={450} value={motivo}
-                        onChange={event => setMotivo(event.target.value)} placeholder="Explica qué dato estaba equivocado" />
+                {detalle.responsable && <p className="text-sm text-slate-700">
+                  <strong>Persona asociada (dato registrado):</strong> {detalle.responsable}
+                </p>}
+                {detalle.notas && <p className="break-words text-sm text-slate-700">
+                  <strong>Notas:</strong> {detalle.notas}
+                </p>}
+                <div className="flex flex-wrap gap-2">
+                  {!detalleCerrado && !detalle.anuladoAt && <>
+                    <Button type="button" onClick={() => { setModoDetalle('EDITAR'); setDetalleError(null) }}>
+                      <Pencil aria-hidden="true" className="mr-2 h-4 w-4" /> Corregir
+                    </Button>
+                    <Button type="button" variant="outline" className="text-red-700"
+                      onClick={() => { setModoDetalle('ANULAR'); setDetalleError(null) }}>
+                      Anular registro
+                    </Button>
+                  </>}
+                  <Button type="button" variant="outline" onClick={cerrarDetalle}>Cerrar</Button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={guardarCorreccion}>
+                <div className="space-y-4 px-4 py-4 sm:px-6">
+                  {modoDetalle === 'EDITAR' ? (
+                    <CamposGasto prefijo="editar" legado
+                      datos={{ categoria: editCategoria, descripcion: editDescripcion, monto: editMonto,
+                        responsable: editResponsable, notas: editNotas }}
+                      cambiar={cambiarEdit} categorias={opcionesCategoria} bloqueado={guardandoDetalle} />
+                  ) : (
+                    <div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+                      <p className="font-semibold">Solo anula un registro duplicado o un dinero que nunca salió.</p>
+                      <label htmlFor="gasto-motivo-origen" className="block font-semibold">¿Por qué se anula?</label>
+                      <select id="gasto-motivo-origen" className="h-11 w-full rounded-lg border border-amber-300 bg-white px-3"
+                        value={motivoOrigen} onChange={event => setMotivoOrigen(event.target.value as 'REGISTRO_DUPLICADO' | 'DINERO_NO_SALIO')}>
+                        <option value="REGISTRO_DUPLICADO">Registro duplicado</option>
+                        <option value="DINERO_NO_SALIO">El dinero nunca salió</option>
+                      </select>
+                      <label className="flex items-start gap-2">
+                        <input type="checkbox" className="mt-1" checked={confirmarOperacionNoReal}
+                          onChange={event => setConfirmarOperacionNoReal(event.target.checked)} />
+                        Confirmo que este registro no corresponde a otra salida real de dinero.
+                      </label>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="submit" disabled={guardandoDetalle || (modoDetalle === 'ANULAR' && !confirmarOperacionNoReal)}>
-                        {guardandoDetalle ? 'Guardando...' : modoDetalle === 'ANULAR' ? 'Confirmar anulación' : 'Guardar corrección'}
-                      </Button>
-                      <Button type="button" variant="outline" onClick={() => { setModoDetalle('VER'); setDetalleError(null) }}>Cancelar</Button>
-                    </div>
-                  </form>
-                )}
-              </>
+                  )}
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                    <label htmlFor="gasto-motivo-ajuste" className="mb-1 block text-sm font-semibold text-slate-800">
+                      Motivo de {modoDetalle === 'ANULAR' ? 'la anulación' : 'la corrección'} *
+                    </label>
+                    <textarea id="gasto-motivo-ajuste" required minLength={5} maxLength={450} rows={2}
+                      value={motivo} disabled={guardandoDetalle}
+                      onChange={event => setMotivo(event.target.value)}
+                      placeholder="Explica qué dato estaba equivocado"
+                      className="min-h-20 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" />
+                  </div>
+                </div>
+                <div className="sticky bottom-0 flex gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+                  <Button type="button" variant="outline" className="flex-1"
+                    onClick={cancelarCorreccion}>Cancelar</Button>
+                  <Button type="submit" variant={modoDetalle === 'ANULAR' ? 'destructive' : 'default'}
+                    className="flex-1" disabled={guardandoDetalle || (modoDetalle === 'EDITAR' && !editCategoria) || (modoDetalle === 'ANULAR' && !confirmarOperacionNoReal)}>
+                    {guardandoDetalle ? 'Guardando…' : modoDetalle === 'ANULAR' ? 'Confirmar anulación' : 'Guardar corrección'}
+                  </Button>
+                </div>
+              </form>
             )}
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
+        <button type="button" aria-label="Cerrar detalle" onClick={cerrarDetalle}
+          className="absolute right-3 top-3 z-20 rounded-lg p-2 text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-600">
+          <X aria-hidden="true" className="h-5 w-5" />
+        </button>
+      </Modal>
+
+      <ConfirmarDescarte
+        open={descartePendiente !== null}
+        onSeguirEditando={() => setDescartePendiente(null)}
+        onDescartar={confirmarDescarte}
+      />
+
+      {!errorGastos && !loadingGastos && <section aria-label="Resumen de gastos" className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm sm:p-5">
+        <div className="flex items-center gap-2 text-sm font-medium text-blue-900">
+          <Wallet aria-hidden="true" className="h-5 w-5" />
+          Total de gastos operativos del período
+        </div>
+        <p className="mt-2 text-3xl font-bold tabular-nums tracking-tight text-slate-900"
+          data-testid="gastos-monto-total">{formatCurrency(montoTotal)}</p>
+        <p className="mt-1 text-sm text-slate-600">
+          {totalRegistros} registros en el período, incluidos anulados. No equivale al efectivo de caja.
+        </p>
+      </section>}
 
       {errorGastos && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <p>{errorGastos}</p>
-          <Button className="mt-2" variant="outline" onClick={() => void fetchGastos()}>Reintentar</Button>
+          <Button className="mt-3" variant="outline" onClick={() => void fetchGastos(true)}>Reintentar</Button>
+        </div>
+      )}
+      {errorActualizacion && !errorGastos && (
+        <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          {errorActualizacion}
+          <button type="button" className="ml-2 font-semibold underline" onClick={() => void fetchGastos(false)}>
+            Reintentar
+          </button>
         </div>
       )}
       {loadingGastos ? (
-        <p role="status" className="text-sm text-muted-foreground">Cargando gastos...</p>
+        <p role="status" className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-600">
+          Cargando gastos…
+        </p>
       ) : errorGastos ? null : gastos.length === 0 ? (
         <EmptyState
-          icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>}
+          icon={<ReceiptText aria-hidden="true" className="h-12 w-12" />}
           title={dateRange.desde && dateRange.hasta ? 'No hay gastos en el rango seleccionado' : 'No hay gastos registrados hoy'}
-          description="Registra los gastos de operación"
-          actionLabel="+ Registrar Gasto"
+          description="Puedes registrar un gasto operativo nuevo."
+          actionLabel="+ Nuevo gasto"
           onAction={() => setShowCrear(true)}
         />
       ) : (
-        <div className="space-y-4">
-          <div className="flex justify-between p-3 bg-muted rounded-lg font-bold">
-            <span>Total gastos operativos del período:</span>
-            <span data-testid="gastos-monto-total">{formatCurrency(montoTotal)}</span>
-          </div>
-          <p className="text-xs text-muted-foreground" data-testid="gastos-resumen-pagina">
-            Mostrando {gastos.length} de {totalRegistros} gastos operativos · página {pagina} de {totalPaginas}
+        <section aria-label="Lista de gastos" className="space-y-3">
+          <p className="text-xs text-slate-600" data-testid="gastos-resumen-pagina">
+            Mostrando {gastos.length} de {totalRegistros} registros · página {pagina} de {totalPaginas}
           </p>
-          {gastos.map((gasto) => (
-            <Card key={gasto.id} data-testid={`gasto-${gasto.id}`}>
-              <CardContent className="py-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="font-medium">{cats[gasto.categoria as keyof typeof cats]} {gasto.categoria}</div>
-                    <div className="text-sm text-muted-foreground">{gasto.descripcion}</div>
-                    {gasto.responsable && (
-                      <div className="text-xs text-muted-foreground">Responsable: {gasto.responsable}</div>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    {gasto.anuladoAt ? (
-                      <>
-                        <span className="inline-block rounded border px-2 py-0.5 text-xs font-semibold text-muted-foreground">Anulado</span>
-                        <div className="text-xs text-muted-foreground line-through">
-                          Original: {formatCurrency(Number(gasto.montoAntesAnular ?? 0))}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="font-medium">{formatCurrency(Number(gasto.monto))}</div>
-                    )}
-                    <div className="text-xs text-muted-foreground">{new Date(gasto.fecha).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
-                    <Button type="button" variant="outline" className="mt-2" onClick={() => void abrirDetalle(gasto.id)}>
-                      Ver / Corregir
-                    </Button>
-                  </div>
+          {gastos.map(gasto => (
+            <article key={gasto.id} data-testid={'gasto-' + gasto.id}
+              className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
+              {/* La descripción siempre dispone del ancho completo en móvil.
+                  El importe y las acciones ocupan su propia fila, no la comprimen. */}
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-lg" aria-hidden="true">
+                  {iconoCategoria[gasto.categoria] ?? <Tag className="h-5 w-5 text-blue-700" />}
                 </div>
-              </CardContent>
-            </Card>
+                <div className="min-w-0 flex-1">
+                  <h3 className="whitespace-normal break-words text-base font-semibold leading-snug text-slate-900 [overflow-wrap:anywhere]">
+                    {gasto.descripcion}
+                  </h3>
+                  <p className="mt-1 break-words text-xs text-slate-600">
+                    {etiquetaCategoriaGasto(gasto.categoria)} · {fechaGasto(gasto.fecha)}
+                  </p>
+                  {gasto.anuladoAt && (
+                    <span className="mt-2 inline-flex rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                      Anulado
+                    </span>
+                  )}
+                  {gasto.responsable && (
+                    <p className="mt-2 break-words text-xs text-slate-600 [overflow-wrap:anywhere]">
+                      Persona asociada (dato registrado): {gasto.responsable}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                {gasto.anuladoAt ? (
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-slate-600">Importe original (anulado)</p>
+                    <p className="break-words text-xl font-semibold tabular-nums text-slate-500 line-through">
+                      {formatCurrency(Number(gasto.montoAntesAnular ?? 0))}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="min-w-0 break-words text-xl font-bold tabular-nums text-slate-900">
+                    {formatCurrency(Number(gasto.monto))}
+                  </p>
+                )}
+                <div className={`grid w-full gap-2 sm:flex sm:w-auto sm:shrink-0 sm:flex-wrap sm:justify-end ${gasto.anuladoAt ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                  <Button type="button" variant="outline" size="sm"
+                    className="min-h-11 min-w-0 whitespace-nowrap px-2 sm:px-3"
+                    onClick={() => void abrirDetalle(gasto.id)}>
+                    <Eye aria-hidden="true" className="mr-1 h-4 w-4 shrink-0" /> Ver detalle
+                  </Button>
+                  {!gasto.anuladoAt && (
+                    <Button type="button" variant="outline" size="sm"
+                      className="min-h-11 min-w-0 whitespace-nowrap px-2 sm:px-3"
+                      onClick={() => void abrirDetalle(gasto.id, 'EDITAR')}>
+                      <Pencil aria-hidden="true" className="mr-1 h-4 w-4 shrink-0" /> Corregir
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </article>
           ))}
           {totalPaginas > 1 && (
             <nav aria-label="Páginas de gastos" className="flex items-center justify-between gap-3">
               <Button variant="outline" disabled={pagina === 1} onClick={() => setPagina(p => Math.max(1, p - 1))}>Anterior</Button>
-              <span className="text-sm text-muted-foreground">Página {pagina} de {totalPaginas}</span>
+              <span className="text-sm text-slate-600">Página {pagina} de {totalPaginas}</span>
               <Button variant="outline" disabled={pagina >= totalPaginas} onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))}>Siguiente</Button>
             </nav>
           )}
-        </div>
+        </section>
       )}
     </div>
   )
