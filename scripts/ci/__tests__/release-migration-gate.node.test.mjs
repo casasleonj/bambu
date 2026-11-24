@@ -195,11 +195,27 @@ test('busca el último run push main ancestral que cubre la última migración',
 })
 test('run de rama ajena, fuera de ancestralidad o manual no certifica',async()=>{
  const attempts=[run({head_sha:'c'.repeat(40)}),run({event:'workflow_dispatch'}),run({head_branch:'other'})]
+ let clock=0
  await assert.rejects(findEffectiveMigrationSha({
   candidateSha:other,schemaSha:sha,token:'synthetic-token',
   isAncestor:(a,b)=>a===b||(a===sha&&b===other),
   fetchFn:async()=>({ok:true,json:async()=>({workflow_runs:attempts})}),
+  now:()=>clock,sleep:async ms=>{clock+=ms},interval:100,appearanceTimeout:300,
  }),/No se encontró/)
+ assert.equal(clock,300)
+})
+test('si el run ancestral aparece tarde, reintenta y certifica el SHA correcto',async()=>{
+ let calls=0,clock=0
+ const selected=await findEffectiveMigrationSha({
+  candidateSha:other,schemaSha:sha,token:'synthetic-token',
+  isAncestor:(a,b)=>a===b||(a===sha&&b===other),
+  fetchFn:async()=>({ok:true,json:async()=>({workflow_runs:
+    ++calls===1?[]:[run({head_sha:sha})]})}),
+  now:()=>clock,sleep:async ms=>{clock+=ms},interval:100,appearanceTimeout:300,
+ })
+ assert.equal(selected,sha)
+ assert.equal(calls,2)
+ assert.equal(clock,100)
 })
 test('historial inaccesible 403 y respuesta malformada son fallo cerrado',async()=>{
  for(const response of [{ok:false,status:403},{ok:true,json:async()=>({error:'bad'})}]){

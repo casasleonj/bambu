@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process'
 export const POLL_INTERVAL_MS = 15000
 export const APPEARANCE_TIMEOUT_MS = 3 * 60_000
 export const TOTAL_TIMEOUT_MS = 20 * 60_000
+export const FIND_APPEARANCE_TIMEOUT_MS = 90_000
 export const REPO = 'casasleonj/bambu'
 export const WORKFLOW = 'migrate-deploy.yml'
 const SHA_PATTERN = /^(?!0{40}$)[0-9a-f]{40}$/
@@ -83,12 +84,17 @@ export function commitIsAncestor(before,after){
 // de push sobre la cadena ancestral que cubra la última revisión del esquema.
 export async function findEffectiveMigrationSha({
   candidateSha,schemaSha,token,fetchFn=fetch,isAncestor=commitIsAncestor,maxPages=5,
+  sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),now=()=>Date.now(),
+  interval=POLL_INTERVAL_MS,appearanceTimeout=FIND_APPEARANCE_TIMEOUT_MS,
 }={}){
   if (![candidateSha,schemaSha].every(s=>SHA_PATTERN.test(s||'')) ||
-      !token || !Number.isSafeInteger(maxPages) || maxPages<1 || maxPages>10)
+      !token || !Number.isSafeInteger(maxPages) || maxPages<1 || maxPages>10 ||
+      ![interval,appearanceTimeout].every(ms=>Number.isFinite(ms)&&ms>0))
     throw Error('Datos de búsqueda inválidos')
   if(!isAncestor(schemaSha,candidateSha))throw Error('Esquema no es ancestro de candidato')
-  for(let page=1;page<=maxPages;page++){
+  const started=now()
+  for(;;){
+   for(let page=1;page<=maxPages;page++){
     const url='https://api.github.com/repos/'+REPO+'/actions/workflows/'+WORKFLOW+
       '/runs?branch=main&event=push&per_page=100&page='+page
     const res=await fetchFn(url,{method:'GET',redirect:'error',
@@ -104,8 +110,15 @@ export async function findEffectiveMigrationSha({
       if(isAncestor(schemaSha,e.head_sha)&&isAncestor(e.head_sha,candidateSha))return e.head_sha
     }
     if(data.workflow_runs.length<100)break
+   }
+   const elapsed=now()-started
+   if(elapsed>=appearanceTimeout){
+    throw Error('No se encontró una ejecución ancestral de migraciones que cubra el esquema')
+   }
+   // Una ejecución push puede tardar unos segundos en indexarse en GitHub.
+   // Reintento acotado; nunca aceptar SHA de otra rama ni "workflow_dispatch".
+   await sleep(Math.min(interval,appearanceTimeout-elapsed))
   }
-  throw Error('No se encontró una ejecución ancestral de migraciones que cubra el esquema')
 }
 
 export async function main(env=process.env,{verify=waitForMigration,find=findEffectiveMigrationSha,log=console.log}={}) {
