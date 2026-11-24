@@ -130,7 +130,11 @@ export async function main(env=process.env,{verify=waitForMigration,find=findEff
       !SHA_PATTERN.test(latestTrustSha || ''))
     throw new Error('Identidad SHA del candidato, esquema o pipeline inválida')
   const changesPrisma = env.SCHEMA_CHANGED === 'true' || newMigrations > 0
-  const effectiveSha=changesPrisma ? env.GITHUB_SHA :
+  // Si cambia el orquestador en ESTE push, migrate-deploy también se dispara
+  // para este SHA. Consultar historial de inmediato tiene carrera de aparición;
+  // waitForMigration sí espera su registro y resultado sin heredar un run viejo.
+  const certifyCurrentSha=changesPrisma || latestTrustSha===env.GITHUB_SHA
+  const effectiveSha=certifyCurrentSha ? env.GITHUB_SHA :
     await find({candidateSha:env.GITHUB_SHA,schemaSha:latestTrustSha,token:env.GITHUB_TOKEN})
   if(!SHA_PATTERN.test(effectiveSha||''))throw Error('SHA efectivo de migración inválido')
   const result=await verify({sha:effectiveSha,token:env.GITHUB_TOKEN})

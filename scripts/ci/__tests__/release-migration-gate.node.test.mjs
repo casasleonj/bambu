@@ -230,18 +230,30 @@ test('los checks de PR y producción son workflows diferentes, sin collision de 
  assert.ok(policy.includes('name: Release migration policy tests (PR)'))
  assert.ok(!policy.includes('name: Production migration gate'))
 })
-test('si cambia solo el workflow de migraciones, no hereda el certificado anterior',async()=>{
- let searchedSha
+test('si cambia solo migrate-deploy, espera el run del SHA actual y nunca hereda uno viejo',async()=>{
+ let checked
  await main({
    GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
    SCHEMA_CHANGED:'false',NEW_MIGRATIONS:'0',
    GITHUB_SHA:other,LAST_SCHEMA_SHA:sha,LAST_TRUST_SHA:other,
    GITHUB_TOKEN:'synthetic-only'
  },{
-   find:async ({schemaSha})=>{searchedSha=schemaSha;throw Error('No hay certificación posterior al cambio del workflow')},
-   verify:async()=>{throw Error('No se debe consultar un run viejo')}
- }).then(()=>{throw Error('No debió aprobar')},err=>{assert.match(err.message,/No hay certificación/)})
- assert.equal(searchedSha,other)
+   find:async()=>{throw Error('No buscar historial en cambios al orquestador')},
+   verify:async ({sha:target})=>{checked=target;return {runId:17,runAttempt:1}},
+   log:()=>{},
+ })
+ assert.equal(checked,other)
+})
+test('fallo o ausencia del run del orquestador bloquea el gate, incluso con esquema previo correcto',async()=>{
+ const env={
+   GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main',
+   SCHEMA_CHANGED:'false',NEW_MIGRATIONS:'0',GITHUB_SHA:other,
+   LAST_SCHEMA_SHA:sha,LAST_TRUST_SHA:other,GITHUB_TOKEN:'synthetic-only'
+ }
+ await assert.rejects(main(env,{
+   find:async()=>{throw Error('No buscar ejecución anterior')},
+   verify:async ({sha:target})=>{assert.equal(target,other);throw Error('Run actual no disponible')},
+ }),/Run actual no disponible/)
 })
 test('el SHA de confianza del pipeline no puede faltar ni ser arbitrario',async()=>{
  for(const bad of [undefined,'','main','0'.repeat(40)]){
