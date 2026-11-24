@@ -18,7 +18,7 @@ export function corteDeEntrega(
   const cierre = cierreDeJornadaAt.getTime()
   const entrega = entregadoAt.getTime()
   // Un cierre anterior a la entrega no puede convertir en fiado mercancía aún no entregada.
-  if (cierre < entrega || cierre >= medianoche) return medianoche
+  if (cierre < entrega || cierre >= medianoche || diaBogota(cierreDeJornadaAt) !== diaBogota(entregadoAt)) return medianoche
   return cierreDeJornadaAt
 }
 
@@ -95,6 +95,7 @@ export function desglosarPedidoConFIFO(
   })), pedido.totalPagado)
   const saldoFIFO = proyectadas.reduce((s, e) => s + cents(e.valorEntregado) - cents(e.asignado), 0)
   if (saldoFIFO !== cents(pedido.exigible)) return null
+  if (pedido.entregas.length === 0 && cents(pedido.exigible) > 0) return null
   return desglosarDeudaAlCorte(proyectadas.map(e => ({
     entregadoAt: e.entregadoAt,
     saldoCentavos: cents(e.valorEntregado) - cents(e.asignado),
