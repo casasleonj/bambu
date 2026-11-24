@@ -552,6 +552,11 @@ jobs:
       - name: QA navegador independiente Cierre → Nómina (#992)
         if: ${{ matrix.shard == 4 }}
         shell: bash
+        env:
+          # #760: el E2E anterior usa un presupuesto por IP mayor que producción.
+          # No heredar sus contadores al arrancar el QA con el límite normal:
+          # DB 1 pertenece solo a este recorrido en el Redis desechable del job.
+          REDIS_URL: redis://localhost:6379/1
         run: |
           npx tsx prisma/reset-locked.ts full
           PORT=3001 node .next/standalone/server.js > /tmp/qa-992-next.log 2>&1 &
