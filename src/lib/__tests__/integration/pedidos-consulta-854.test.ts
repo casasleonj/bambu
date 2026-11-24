@@ -313,20 +313,25 @@ describe("#854 — consulta por evento vs creación vs estado actual", () => {
       expect((await q(c.id, "desdeHora=11:00&hastaHora=11:30")).total).toBe(1);
       expect((await q(c.id, "desdeHora=12:00&hastaHora=13:00")).total).toBe(0);
     });
-    it("no cambia: entrega con hora distinta de la venta, o Domicilio, sigue por conciliar", async () => {
+    it("no cambia: una entrega con hora distinta de la venta sigue por conciliar", async () => {
       const a = await venta({ entregadoDistinto: true });
       const ra = await q(a.c.id, "");
       expect(ra.resumen?.productos).toEqual([]);
       expect(ra.resumen?.entregasPorConciliar).toBe(1);
       expect(ra.pedidos[0].entregaHoraVerificable).toBe(false);
+    });
+    it("#989: la venta en ruta a Domicilio entregada al vender ya no queda por conciliar", async () => {
       const b = await venta({ canal: "DOMICILIO" });
       const rb = await consultarPedidos(
         filtros(D14, `clienteId=${b.c.id}&resumen=1&canal=DOMICILIO&estadoEntrega=ENTREGADO`),
         "ADMIN",
         testPrisma,
       );
-      expect(rb.resumen?.entregasPorConciliar).toBe(1);
-      expect(rb.resumen?.productos).toEqual([]);
+      expect(rb.resumen?.entregasPorConciliar).toBe(0);
+      expect(rb.resumen?.productos).toEqual([
+        { producto: "BOTELLON", pedidas: 0, entregadas: 1 },
+        { producto: "PACA_AGUA", pedidas: 0, entregadas: 2 },
+      ]);
     });
   });
 });
