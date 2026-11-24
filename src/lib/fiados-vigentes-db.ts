@@ -28,10 +28,11 @@ export async function leerFiadosVigentes(tx: Pick<Prisma.TransactionClient, 'ped
       const porPedido = new Map<string, { fiado: number; pendiente: number; sinClasificar: number; exigible: number }>()
       const clientesFiados = new Set<string>()
       let fiado = 0, pendiente = 0, sinClasificar = 0, pedidosPendientes = 0
+      const clientesSinClasificar = new Set<string>()
       for (const { p, entregas } of entradas) {
         const exigible = exigibles.get(p.id) ?? 0
         const d = desglosarPedidoConFIFO({ entregas, exigible, totalPagado: Number(p.totalPagado), cierresPorDia }, ahora)
-        if (!d) { sinClasificar += Math.round(exigible * 100); porPedido.set(p.id, { fiado: 0, pendiente: 0, sinClasificar: exigible, exigible }); continue }
+        if (!d) { clientesSinClasificar.add(p.clienteId); sinClasificar += Math.round(exigible * 100); porPedido.set(p.id, { fiado: 0, pendiente: 0, sinClasificar: exigible, exigible }); continue }
         porPedido.set(p.id, { fiado: d.fiadoCentavos / 100, pendiente: d.pendienteOperativoCentavos / 100, sinClasificar: 0, exigible })
         if (d.fiadoCentavos > 0) clientesFiados.add(p.clienteId)
         if (d.pendienteOperativoCentavos > 0) pedidosPendientes++
@@ -41,6 +42,7 @@ export async function leerFiadosVigentes(tx: Pick<Prisma.TransactionClient, 'ped
       return {
         porPedido,
         corteOperativo: { clientesFiados: clientesFiados.size, pedidosPendientes,
+          clientesConsultaFiados: new Set([...clientesFiados, ...clientesSinClasificar]).size,
           fiado: fiado / 100, pendiente: pendiente / 100, sinClasificar: sinClasificar / 100 },
         clientes: new Set(conDeuda.map(p => p.clienteId)).size,
         pedidos: conDeuda.length,
