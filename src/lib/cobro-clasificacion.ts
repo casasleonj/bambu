@@ -38,6 +38,8 @@ export interface PedidoParaClasificar {
   entregadoAt: Date | null
   /** Hechos de entrega (EntregaExigible); vacío si no hay o la capacidad está apagada. */
   porciones: readonly PorcionEntregada[]
+  /** Cierres efectivos verificados, por jornada de Bogotá (#796). */
+  cierresPorDia?: ReadonlyMap<string, Date>
 }
 
 export type OrigenFechaEntrega = 'PORCIONES' | 'PEDIDO' | 'CREACION'
@@ -114,7 +116,10 @@ export function clasificarCobrosDePedido(
     const { aplicado, sobrante } = aplicar(elegibles, Number(cobro.monto ?? 0))
     for (const e of elegibles) {
       const c = aplicado.get(e.id) ?? 0
-      if (e.dia === diaCobro) ventaDia += c
+      const cierre = pedido.cierresPorDia?.get(e.dia)
+      const consolidado = cierre !== undefined && Number.isFinite(cierre.getTime()) &&
+        diaBogota(cierre) === e.dia && cierre >= e.entregadoAt && cobro.at >= cierre
+      if (e.dia === diaCobro && !consolidado) ventaDia += c
       else cartera += c
     }
     // Sin entrega que lo cubra: anticipo o sobrante. Solo si NO hay ninguna fecha real se conserva la
