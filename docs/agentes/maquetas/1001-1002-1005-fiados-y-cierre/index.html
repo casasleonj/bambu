@@ -16,16 +16,21 @@ table{width:100%;border-collapse:collapse;font-size:13px}th{font-size:11px;color
 <h1>#1001 · #1002 · #1005 — Fiados y Cierre, sin elementos nuevos</h1>
 <p class="n"><b>Estado: PROPUESTA — PENDIENTE DE APROBACIÓN DEL PO.</b> Criterio del PO: poca carga cognitiva, <b>sin chips, etiquetas ni tarjetas nuevas</b>. Todo se resuelve cambiando texto existente o el destino de un enlace. No cambian las cifras, el corte operativo (#796), los límites ni el cobro. Cifras y nombres sintéticos. Resaltado amarillo = lo que cambia.</p>
 
-<h2>#1001 · Enlace del detalle de un pedido parcial entregado hoy</h2>
+<h2>#1001 · Enlace del detalle de un pedido parcial entregado hoy: depende de si el CLIENTE ya tiene cartera</h2>
+<p class="n">«Tiene cartera» = el cliente ya figura en la pestaña Fiados (deuda pasada del corte o «por clasificar»). Se usan las mismas palabras que ya tiene la lista de Pedidos (#597): «Registrar pago» y «Cobrar en Fiados».</p>
 <div class="fila">
-<div class="marco esc antes"><div class="etq">Antes · escritorio y móvil</div>
+<div class="marco esc antes"><div class="etq">Antes · escritorio y móvil (siempre igual)</div>
 <p class="t">Por cobrar de lo entregado <b class="r">$ 8.000</b></p><a class="l" href="#">Consultar y cobrar en Fiados</a>
-<p class="t">→ lleva a Fiados: «$ 0 · 0 clientes · Sin resultados con estos filtros». Sin explicación.</p></div>
-<div class="marco esc nuevo"><div class="etq">Después · escritorio y móvil</div>
-<p class="t">Por cobrar de lo entregado <b class="r">$ 8.000</b></p><a class="l dif" href="#">Cobrar en Pedidos</a>
-<p class="t">→ abre Pedidos de ese cliente. Sin texto adicional: el cobro ya está ahí (#597).<br>Si el pedido tiene deuda de días anteriores o ya pasó el corte, el enlace sigue diciendo «Consultar y cobrar en Fiados» y va a Fiados, como hoy.</p></div>
+<p class="t">→ si el cliente no está en Fiados: «$ 0 · 0 clientes · Sin resultados». Sin explicación.</p></div>
+<div class="marco esc nuevo"><div class="etq">A · Cliente SIN cartera · escritorio y móvil</div>
+<p class="t">Por cobrar de lo entregado <b class="r">$ 8.000</b></p><a class="l dif" href="#">Registrar pago</a>
+<p class="t">→ abre el cobro de este pedido, como el botón de la lista (#597). No se menciona Fiados porque el cliente no debe nada anterior.</p></div>
+<div class="marco esc nuevo"><div class="etq">B · Cliente CON cartera · escritorio y móvil</div>
+<p class="t">Por cobrar de lo entregado <b class="r">$ 8.000</b></p><a class="l" href="#">Consultar y cobrar en Fiados</a>
+<p class="t">→ texto y destino como hoy: avisa que ese cliente tiene fiados anteriores y llega a su fila. <b>Lo de hoy sigue sin sumarse allí hasta el corte.</b></p></div>
 </div>
-<p class="n">Lo mismo para «Ver cartera del cliente →» del detalle: con saldo de hoy va a Pedidos; con deuda anterior, a Fiados.</p>
+<p class="n">Mismo criterio para «Ver cartera del cliente →»: con cartera va a Fiados; sin cartera no se muestra (no hay cartera que ver) y queda «Registrar pago».<br>
+<b>Estado intermedio (no se sabe si tiene cartera, por error de lectura):</b> se muestra B, nunca A: no se afirma «no debe» sin saberlo. Carga: el enlace aparece cuando termina la consulta, sin parpadeo de texto.</p>
 
 <h2>#1005 · Cierre del día (solo textos y destino de enlaces)</h2>
 <div class="fila">
@@ -67,5 +72,5 @@ table{width:100%;border-collapse:collapse;font-size:13px}th{font-size:11px;color
 <ul style="font-size:13px;max-width:900px"><li><b>QUIERE:</b> que nadie llegue a un callejón sin salida, y que el Cierre no diga que ya se fió lo que aún es pendiente del día.</li>
 <li><b>NO QUIERE:</b> chips, etiquetas, tarjetas o botones nuevos; mostrar lo de hoy como fiado antes del corte.</li>
 <li><b>PRESERVAR:</b> cifras, corte de #796, saldo exigible, límites, cobro, roles, cierre histórico guardado.</li></ul>
-<p class="n"><b>Por verificar al implementar (no se estima en pantalla):</b> (1) que el detalle sepa si el saldo es pendiente de hoy (<code>corteOperativo.pendiente</code>); (2) si la lista del Cierre filtra por fecha del pedido y el corte por fecha de entrega, y qué pedido queda fuera.</p>
+<p class="n"><b>Por verificar al implementar (no se estima en pantalla):</b> (1) de dónde sale «tiene cartera»: debe ser la misma fuente que la pestaña Fiados (clientes con fiado clasificado o «por clasificar»), <b>no</b> el aviso #932 de «otros pedidos con deuda», que también cuenta pedidos de hoy aún no fiados; (1b) qué hace «Registrar pago» cuando el pedido tiene promesa de pago (hoy la lista lo manda a Fiados); (2) si la lista del Cierre filtra por fecha del pedido y el corte por fecha de entrega, y qué pedido queda fuera.</p>
 </body></html>
