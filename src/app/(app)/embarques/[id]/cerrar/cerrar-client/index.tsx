@@ -1,6 +1,6 @@
-import { errorDeclaracionFechaVentaLibre } from '@/lib/declaracion-fecha-venta-libre-630'
 'use client'
 
+import { errorDeclaracionFechaVentaLibre } from '@/lib/declaracion-fecha-venta-libre-630'
 import { ComisionRepartidorDetalle } from '@/components/comision-repartidor-detalle'
 import type { ComisionRepartidor } from '@/lib/comision-repartidor-calculo'
 import { useState, useEffect, useMemo, useCallback } from 'react'
