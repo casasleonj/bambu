@@ -30,11 +30,13 @@
 /backups
 /obsidian
 /playwright-report
+/playwright-report-sessions
 /reports
 /coverage
 /docker-entrypoint-initdb.d
 /scripts
 /test-results
+/test-results-sessions
 
 # Sensitive files
 /hermes
@@ -55,6 +57,7 @@
 /opencode.jsonc
 /skills-lock.json
 /playwright.config.ts
+/playwright.sessions.config.ts
 /playwright.test.config.ts
 /vitest.config.ts
 /vitest.integration.config.ts

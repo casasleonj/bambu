@@ -1,4 +1,5 @@
 'use client'
+import { AUTH_EXPIRED_EVENT } from '@/lib/auth-events'
 
 import { rotulosCompromiso } from '@/lib/pedidos-compromiso-rotulos'
 import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent } from 'react'
@@ -388,12 +389,12 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
   const allPedidosLoadingRef = useRef(false)
 
   const redirectIfAuthError = useCallback((res: Response): boolean => {
-    if (res.status === 401 || res.status === 403) {
-      router.push('/login?reason=expired')
+    if (res.status === 401) {
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT))
       return true
     }
     return false
-  }, [router])
+  }, [])
 
   const loadAllPedidos = useCallback(async () => {
     if (allPedidosLoadingRef.current) return
@@ -940,8 +941,8 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
           setShowVentaRapida(false)
           setShowModal(true)
           setModalKey(k => k + 1)
-        } else if (result.status === 401 || result.status === 403) {
-          router.push('/login?reason=expired')
+        } else if (result.status === 401) {
+          window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT))
         } else if (result.status === 404) {
           toast.error('El cliente seleccionado no está disponible')
         } else {

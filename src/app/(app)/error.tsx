@@ -1,6 +1,9 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { SESSION_UNAVAILABLE_DIGEST } from '@/lib/session-status'
+import { SessionRecoveryCard } from '@/components/session-recovery-card'
 
 export default function AppError({
   error,
@@ -9,9 +12,15 @@ export default function AppError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const router = useRouter()
+  const [checking, startTransition] = useTransition()
   useEffect(() => {
     console.error('App error:', error)
   }, [error])
+
+  if (error.digest === SESSION_UNAVAILABLE_DIGEST) {
+    return <SessionRecoveryCard checking={checking} onRetry={() => startTransition(() => { reset(); router.refresh() })} />
+  }
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-4">

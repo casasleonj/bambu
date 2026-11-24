@@ -1,8 +1,8 @@
 /**
  * Tests for the auth-expired detection in fetchResilient.
  *
- * When the server responds 401/403, fetchResilient must dispatch the
- * app:auth:expired event so SessionExpiryGuard can redirect to /login.
+ * A 401 asks SessionExpiryGuard to verify the current credential before
+ * redirecting. A 403 is a permission denial, not proof of session expiry.
  * Internal Auth.js endpoints are excluded because the SessionProvider already
  * handles session state changes via its own polling.
  */
@@ -65,7 +65,7 @@ describe('fetchResilient auth error dispatching', () => {
     expect(event.detail).toEqual({ statusCode: 401, url: '/api/pedidos' })
   })
 
-  it('dispatches app:auth:expired on 403', async () => {
+  it('preserves the session on 403 and never queues the denied operation', async () => {
     const { fetchResilient } = await import('@/lib/fetch-resilient')
     mockFetch.mockResolvedValueOnce({
       ok: false,
@@ -75,10 +75,8 @@ describe('fetchResilient auth error dispatching', () => {
 
     await fetchResilient('/api/pedidos', { method: 'POST', body: {}, localEndpoint: 'crear-pedido' })
 
-    expect(dispatchEventSpy).toHaveBeenCalledTimes(1)
-    const event = dispatchEventSpy.mock.calls[0]?.[0] as CustomEvent
-    expect(event.type).toBe('app:auth:expired')
-    expect(event.detail.statusCode).toBe(403)
+    expect(dispatchEventSpy).not.toHaveBeenCalled()
+    expect(mockRequestQueueAdd).not.toHaveBeenCalled()
   })
 
   it('does NOT dispatch for /api/auth/* endpoints', async () => {

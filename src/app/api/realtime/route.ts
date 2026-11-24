@@ -1,5 +1,5 @@
 import { logger } from '@/lib/logger'
-import { auth } from '@/lib/auth'
+import { requireAuth } from '@/lib/auth-check'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getRealtimeChannel, type RealtimeEvent } from '@/lib/realtime'
 
@@ -20,7 +20,11 @@ const HEARTBEAT_INTERVAL_MS = 45_000
  * the connection open.
  */
 export async function GET(request: Request) {
-  const session = await auth()
+  const session = await requireAuth()
+  if (session instanceof Response) {
+    // Keep the SSE endpoint's existing anonymous-response contract.
+    return session.status === 401 ? new Response('Unauthorized', { status: 401 }) : session
+  }
   if (!session?.user?.id) {
     return new Response('Unauthorized', { status: 401 })
   }

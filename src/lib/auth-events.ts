@@ -1,12 +1,18 @@
 /**
  * Event name used to signal that the user's session has expired or was
- * revoked server-side. Dispatched from fetchResilient on 401/403 responses
- * and listened to by SessionExpiryGuard to redirect to /login.
+ * possibly rejected server-side. Dispatched on 401 (not ordinary 403).
+ * SessionExpiryGuard verifies the current session before deciding to redirect.
  *
  * Namespaced as 'app:auth:expired' to avoid collision with Auth.js internal
  * events or third-party libraries.
  */
 export const AUTH_EXPIRED_EVENT = 'app:auth:expired'
+export const AUTH_LOGOUT_STATE_EVENT = 'app:auth:logout-state'
+
+export interface LogoutStateDetail {
+  pending: boolean
+  retry: () => void
+}
 
 /**
  * Module-level flag to distinguish intentional signOut (user clicked

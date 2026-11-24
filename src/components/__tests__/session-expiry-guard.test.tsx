@@ -1,16 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { render, waitFor, fireEvent, screen, act } from '@testing-library/react'
 import { SessionExpiryGuard, shouldRedirectOnUnauth } from '@/components/session-expiry-guard'
 import { AUTH_EXPIRED_EVENT, isIntentionalSignOut, markIntentionalSignOut, resetIntentionalSignOut } from '@/lib/auth-events'
 import type { Session } from 'next-auth'
 
 const replaceMock = vi.fn()
+const mockUpdate = vi.fn()
+let mockTransport = 'valid'
+vi.mock('@/lib/session-transport', () => ({ getSessionTransportState: () => mockTransport, SESSION_TRANSPORT_EVENT: 'bambu:session-transport' }))
 let mockPathname = '/pedidos'
 let mockSession: Session | null = { user: { id: 'user-1' } } as unknown as Session
 let mockStatus: 'authenticated' | 'unauthenticated' | 'loading' = 'authenticated'
 
 vi.mock('next-auth/react', () => ({
-  useSession: () => ({ data: mockSession, status: mockStatus }),
+  useSession: () => ({ data: mockSession, status: mockStatus, update: mockUpdate }),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -65,6 +68,8 @@ describe('SessionExpiryGuard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     replaceMock.mockReset()
+    mockTransport = 'valid'
+    mockUpdate.mockImplementation(async () => { mockTransport = 'invalid'; return { user: {}, authStatus: 'invalid', expires: '2099-01-01T00:00:00Z' } })
     mockPathname = '/pedidos'
     mockSession = { user: { id: 'user-1' } } as unknown as Session
     mockStatus = 'authenticated'
@@ -87,7 +92,7 @@ describe('SessionExpiryGuard', () => {
     })
   })
 
-  it('redirects when CustomEvent is dispatched', async () => {
+  it('verifies current identity before redirecting on a rejected request', async () => {
     render(<SessionExpiryGuard />)
 
     window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT, { detail: { statusCode: 401, url: '/api/pedidos' } }))
@@ -107,6 +112,46 @@ describe('SessionExpiryGuard', () => {
     await waitFor(() => {
       expect(replaceMock).toHaveBeenCalledTimes(1)
     })
+  })
+
+  it('does not expel the current user because an old request returned 401', async () => {
+    mockUpdate.mockImplementation(async () => { mockTransport = 'valid'; return mockSession })
+    render(<SessionExpiryGuard />)
+    window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT))
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1))
+    expect(replaceMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps a temporary failure recoverable and never reports it as expiry', async () => {
+    mockUpdate.mockImplementation(async () => { mockTransport = 'unavailable'; return { user: {}, authStatus: 'unavailable' } })
+    render(<SessionExpiryGuard />)
+    window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT))
+    await screen.findByRole('button', { name: /^Reintentar$/ })
+    expect(replaceMock).not.toHaveBeenCalled()
+    mockUpdate.mockImplementation(async () => { mockTransport = 'valid'; return mockSession })
+    fireEvent.click(screen.getByRole('button', { name: /^Reintentar$/ }))
+    await waitFor(() => expect(screen.queryByTestId('session-recovery')).not.toBeInTheDocument())
+    expect(replaceMock).not.toHaveBeenCalled()
+  })
+
+  it('shows a retry instead of redirecting when verification rejects', async () => {
+    mockUpdate.mockRejectedValue(new TypeError('offline'))
+    render(<SessionExpiryGuard />)
+    window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT))
+    await screen.findByRole('button', { name: /^Reintentar$/ })
+    expect(replaceMock).not.toHaveBeenCalled()
+  })
+
+  it('removes a temporary overlay when the Provider later recovers on its own', async () => {
+    mockUpdate.mockImplementation(async () => { mockTransport = 'unavailable'; return { user: {}, authStatus: 'unavailable' } })
+    const view = render(<SessionExpiryGuard />)
+    window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT))
+    await screen.findByRole('button', { name: /^Reintentar$/ })
+    mockTransport = 'valid'
+    act(() => { window.dispatchEvent(new Event('bambu:session-transport')) })
+    view.rerender(<SessionExpiryGuard />)
+    await waitFor(() => expect(screen.queryByTestId('session-recovery')).not.toBeInTheDocument())
+    expect(replaceMock).not.toHaveBeenCalled()
   })
 
   it('does not redirect on public path when CustomEvent is dispatched', async () => {
