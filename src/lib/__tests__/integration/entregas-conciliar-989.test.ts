@@ -27,7 +27,8 @@ async function crear(opts: {
   repartidor?: string;
 }) {
   const c = await testPrisma.cliente.create({ data: { nombre: `989 ${randomUUID()}`, telefono: randomUUID() } });
-  const fecha = new Date();
+  // Keep the fixture inside the queried Bogota day, even when CI crosses midnight.
+  const fecha = new Date(startOfDayBogota(HOY).getTime() + 12 * 60 * 60 * 1000);
   const p = await testPrisma.pedido.create({
     data: {
       clienteId: c.id, createdById: adminId, canal: opts.canal ?? "DOMICILIO", origen: opts.origen,
