@@ -78,9 +78,15 @@ export function verifyLedger(files,history,allowedPending=new Set()){
 
 export function addedInPush(before,after,exec=execFileSync){
  if(!SHA.test(before||'')||!SHA.test(after||''))throw Error('SHA de push inválido')
- return diffAddedMigrations(exec('git',[
+ // Un push forzado o un rango inexistente no debe autorizar DDL.
+ exec('git',['merge-base','--is-ancestor',before,after],{stdio:'ignore',timeout:15000})
+ const added=diffAddedMigrations(exec('git',[
   'diff','--name-status','--no-renames','-z',before,after,'--','prisma/migrations/'
  ],{encoding:'buffer',maxBuffer:1048576,timeout:15000}))
+ const schema=exec('git',['diff','--name-only','-z',before,after,'--','prisma/schema.prisma'],
+  {encoding:'buffer',maxBuffer:1048576,timeout:15000})
+ if(schema.length>0 && added.size===0)throw Error('schema.prisma cambió sin migración nueva')
+ return added
 }
 
 // En un dispatch manual se valida la base, pero NUNCA se autoriza DDL.
@@ -106,8 +112,14 @@ export function writeApplyDecision(pending,output,write=appendFileSync){
  return enabled
 }
 
-export async function main(env=process.env){
- const allowed=allowedPendingForEvent(env)
+export function pendingForPhase(env,postflight=false,fromPush=addedInPush){
+ if(!env||!['push','workflow_dispatch'].includes(env.GITHUB_EVENT_NAME)||
+   env.GITHUB_REF!=='refs/heads/main')throw Error('Verificación solo para main y eventos autorizados')
+ return postflight?new Set():allowedPendingForEvent(env,fromPush)
+}
+
+export async function main(env=process.env,{postflight=false}={}){
+ const allowed=pendingForPhase(env,postflight)
  const files=readMigrations('prisma/migrations')
  const {PrismaClient}=await import('@prisma/client')
  const db=new PrismaClient()
@@ -116,11 +128,11 @@ export async function main(env=process.env){
   const sql='SELECT migration_name,checksum,finished_at,rolled_back_at FROM public."_prisma_migrations"'
   const rows=await db.$queryRawUnsafe(sql)
   const result=verifyLedger(files,rows,allowed)
-  writeApplyDecision(result.pending,env.GITHUB_OUTPUT)
+  if(!postflight)writeApplyDecision(result.pending,env.GITHUB_OUTPUT)
   console.log('Prisma ledger validado: '+result.completed+' aplicadas, '+
-   result.pending.length+' nuevas pendientes; modo '+env.GITHUB_EVENT_NAME)
+   result.pending.length+' nuevas pendientes; modo '+(postflight?'postflight':env.GITHUB_EVENT_NAME))
  }finally{await db.$disconnect()}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
- main().catch(error=>{console.error('Prisma preflight: '+error.message);process.exitCode=1})
+ main(process.env,{postflight:process.argv[2]==='--postflight'}).catch(error=>{console.error('Prisma preflight: '+error.message);process.exitCode=1})
 }

@@ -10,6 +10,9 @@ on:
       # Si cambia el orquestador, debe ejecutarse para certificar el SHA.
       # El release gate invalida el éxito anterior del pipeline.
       - '.github/workflows/migrate-deploy.yml'
+      - 'scripts/ci/migration-ledger-preflight.mjs'
+      - 'scripts/ci/release-migration-policy.mjs'
+      - 'scripts/ci/verify-vercel-prod-env.mjs'
   workflow_dispatch:
 
 permissions:
@@ -22,6 +25,7 @@ concurrency:
 jobs:
   migrate:
     name: Deploy database migrations
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
 
@@ -122,6 +126,11 @@ jobs:
       - name: Apply pending migrations
         if: github.event_name == 'push' && steps.preflight.outputs.apply_pending == 'true'
         run: npx prisma migrate deploy
+
+      # Un exit 0 de Prisma no sustituye la verificación del ledger final.
+      # Incluso si no había pendientes, el certificado exige conciliación completa.
+      - name: Conciliar ledger final (solo lectura)
+        run: node scripts/ci/migration-ledger-preflight.mjs --postflight
 
   # Optional: uncomment and configure if you want GitHub Actions to also trigger
   # the Vercel deployment instead of relying solely on Vercel's Git integration.

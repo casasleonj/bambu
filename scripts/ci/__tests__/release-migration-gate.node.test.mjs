@@ -168,7 +168,11 @@ test('el workflow valida la revisión histórica por primer padre y transmite el
   const workflow=readFileSync(new URL('../../../.github/workflows/release-migration-gate.yml',import.meta.url),'utf8')
   assert.ok(workflow.includes('git log --first-parent -1 --format=%H'))
   assert.ok(workflow.includes('git merge-base --is-ancestor'))
-  assert.ok(workflow.includes('last_new_count="$(node scripts/ci/release-migration-policy.mjs'))
+  assert.ok(workflow.includes('git merge-base --is-ancestor "$BEFORE" "$AFTER"'))
+  assert.ok(!workflow.includes('last_new_count='))
+  for(const path of ['migration-ledger-preflight.mjs','release-migration-policy.mjs','verify-vercel-prod-env.mjs']){
+    assert.ok(workflow.includes('scripts/ci/'+path))
+  }
   assert.ok(workflow.includes('LAST_SCHEMA_SHA: ${{ steps.schema-diff.outputs.last_schema_sha }}'))
   assert.ok(workflow.includes('last_schema_sha=$last_schema_sha'))
   assert.ok(workflow.includes('last_trust_sha=$last_trust_sha'))

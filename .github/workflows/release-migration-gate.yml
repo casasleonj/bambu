@@ -40,6 +40,10 @@ jobs:
             echo "::error::No es posible obtener el diff de main. Fail closed."
             exit 1
           fi
+          git merge-base --is-ancestor "$BEFORE" "$AFTER" || {
+            echo "::error::Push no ancestral; no se puede certificar"
+            exit 1
+          }
           # El manifiesto SQL crudo es SOLO para tests y desarrollo (ver
           # scripts/aplicar-migraciones-sql-crudas.sh). Production aplica
           # prisma/migrations/** mediante prisma migrate deploy; evitar
@@ -74,30 +78,18 @@ jobs:
             echo "::error::SHA histórico de esquema no es ancestro del commit"
             exit 1
           }
-          # Certificar que la última revisión NO cambió el esquema sin una
-          # migración nueva, ni modificó/renombró una migración histórica.
-          last_parent="$(git rev-parse --verify "$last_schema_sha^1")"
-          set +e
-          git diff --quiet "$last_parent" "$last_schema_sha" -- prisma/schema.prisma
-          last_schema_rc=$?
-          set -e
-          case "$last_schema_rc" in
-            0|1) ;;
-            *) echo "::error::Error clasificando revisión histórica ($last_schema_rc)"; exit 1 ;;
-          esac
-          git diff --name-status --no-renames -z "$last_parent" "$last_schema_sha" -- \
-            prisma/migrations/ > "$RUNNER_TEMP/last-schema.diff"
-          last_new_count="$(node scripts/ci/release-migration-policy.mjs < "$RUNNER_TEMP/last-schema.diff")"
-          if [[ "$last_schema_rc" -eq 1 && "$last_new_count" -eq 0 ]]; then
-            echo "::error::Última modificación del esquema carece de migración nueva"
-            exit 1
-          fi
+          # La estructura del rango completo del push se valida arriba y en
+          # el propio workflow de migración antes de DDL. No exigir schema y SQL
+          # en un único commit: un push multicommit puede separarlos legítimamente.
+          # El certificado heredado debe cubrir el pipeline actualizado.
           echo "last_schema_sha=$last_schema_sha" >> "$GITHUB_OUTPUT"
           # La propia lógica de migración es parte del perímetro de confianza.
           # Si alguien modifica migrate-deploy.yml, un certificado ANTERIOR
           # no alcanza para aprobar la publicación posterior.
           last_trust_sha="$(git log --first-parent -1 --format=%H "$AFTER" -- \
-            prisma/schema.prisma prisma/migrations/ .github/workflows/migrate-deploy.yml)"
+            prisma/schema.prisma prisma/migrations/ .github/workflows/migrate-deploy.yml \
+            scripts/ci/migration-ledger-preflight.mjs scripts/ci/release-migration-policy.mjs \
+            scripts/ci/verify-vercel-prod-env.mjs)"
           if ! [[ "$last_trust_sha" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::No se encontró revisión de confianza de migraciones"
             exit 1

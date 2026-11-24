@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto'
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
-import {readMigrations,diffAddedMigrations,verifyLedger,addedInPush,allowedPendingForEvent,writeApplyDecision} from '../migration-ledger-preflight.mjs'
+import {readMigrations,diffAddedMigrations,verifyLedger,addedInPush,allowedPendingForEvent,writeApplyDecision,pendingForPhase} from '../migration-ledger-preflight.mjs'
 const h=s=>createHash('sha256').update(s).digest('hex')
 const files=new Map([['20260101_a',h('SELECT 1;')],['20260201_b',h('SELECT 2;')]])
 const done=(name='20260101_a',extra={})=>({migration_name:name,checksum:files.get(name),
@@ -125,4 +125,38 @@ test('workflow de producción requiere señal positiva del preflight para DDL',(
  const flow=readFileSync('.github/workflows/migrate-deploy.yml','utf8')
  assert.match(flow,/id: preflight/)
  assert.match(flow,/if: github.event_name == 'push' && steps.preflight.outputs.apply_pending == 'true'/)
+})
+
+test('postflight exige ledger completo y no permite pendientes aunque sean nuevas del push',()=>{
+ const env={GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/main'}
+ const allowed=pendingForPhase(env,true,()=>{throw Error('No debe consultar diff')})
+ assert.equal(allowed.size,0)
+ assert.throws(()=>verifyLedger(files,[done()],allowed),/histórica/)
+ assert.deepEqual(verifyLedger(files,[done(),done('20260201_b')],allowed),{completed:2,pending:[]})
+ assert.throws(()=>pendingForPhase({...env,GITHUB_REF:'refs/heads/feature'},true),/autorizados/)
+})
+test('push multicommit permite esquema y SQL en el rango agregado, no exige mismo commit',()=>{
+ const calls=[]
+ const exec=(_cmd,args)=>{
+  calls.push(args)
+  if(args[0]==='merge-base')return Buffer.alloc(0)
+  if(args.includes('--name-status'))return diff(['A','prisma/migrations/20260301_c/migration.sql'])
+  return Buffer.from('prisma/schema.prisma\0')
+ }
+ assert.deepEqual([...addedInPush('a'.repeat(40),'b'.repeat(40),exec)],['20260301_c'])
+ assert.equal(calls.length,3)
+})
+test('schema sin SQL y push no ancestral fallan antes de autorizar DDL',()=>{
+ const exec=(_cmd,args)=>args[0]==='merge-base'||args.includes('--name-status')
+  ?Buffer.alloc(0):Buffer.from('prisma/schema.prisma\0')
+ assert.throws(()=>addedInPush('a'.repeat(40),'b'.repeat(40),exec),/sin migración nueva/)
+ assert.throws(()=>addedInPush('a'.repeat(40),'b'.repeat(40),()=>{throw Error('no ancestral')}),/no ancestral/)
+})
+test('workflow restringe main y exige postflight después del paso DDL',()=>{
+ const flow=readFileSync('.github/workflows/migrate-deploy.yml','utf8')
+ assert.match(flow,/if: github.ref == 'refs\/heads\/main'/)
+ assert.ok(flow.indexOf('run: npx prisma migrate deploy')<flow.indexOf('run: node scripts/ci/migration-ledger-preflight.mjs --postflight'))
+ for(const path of ['migration-ledger-preflight.mjs','release-migration-policy.mjs','verify-vercel-prod-env.mjs']){
+  assert.ok(flow.includes("      - 'scripts/ci/"+path+"'"))
+ }
 })
