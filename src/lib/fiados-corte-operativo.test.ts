@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { corteDeEntrega, desglosarDeudaAlCorte, desglosarPedidoConFIFO } from './fiados-corte-operativo'
+import { corteDeEntrega, desglosarDeudaAlCorte, desglosarPedidoConFIFO, cierreEfectivoVerificado } from './fiados-corte-operativo'
 
 const fecha = (s: string) => new Date(s)
 const entrega = fecha('2026-11-23T15:00:00-05:00')
@@ -81,5 +81,23 @@ describe('fiados #796: integración pura con FIFO y conciliación', () => {
     const cierre = fecha('2026-11-23T16:00:00-05:00')
     expect(desglosarPedidoConFIFO({ entregas, totalPagado: 0, exigible: 126000,
       cierresPorDia: new Map([['2026-11-23', cierre]]) }, ahora)?.fiadoCentavos).toBe(12600000)
+  })
+})
+
+describe('fiados #796: cierres registrados tardíamente', () => {
+  const dia = '2026-11-23'
+  const registradoManana = fecha('2026-11-24T09:00:00-05:00')
+  it('no confunde la fecha de registro tardío con el cierre efectivo', () => {
+    expect(cierreEfectivoVerificado(dia, registradoManana, registradoManana, false)).toBeNull()
+    expect(cierreEfectivoVerificado(dia, registradoManana, registradoManana, true)).toBeNull()
+  })
+  it('admite un cierre efectivo del día anterior solo si está confirmado', () => {
+    const efectivo = fecha('2026-11-23T18:00:00-05:00')
+    expect(cierreEfectivoVerificado(dia, efectivo, registradoManana, false)).toBeNull()
+    expect(cierreEfectivoVerificado(dia, efectivo, registradoManana, true)).toEqual(efectivo)
+  })
+  it('rechaza una hora efectiva posterior al registro', () => {
+    expect(cierreEfectivoVerificado(dia, fecha('2026-11-23T18:00:00-05:00'),
+      fecha('2026-11-23T17:00:00-05:00'), true)).toBeNull()
   })
 })
