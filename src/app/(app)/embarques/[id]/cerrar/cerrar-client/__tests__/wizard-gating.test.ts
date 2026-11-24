@@ -145,6 +145,14 @@ describe('pasoVentasLibresValido', () => {
     expect(r.valido).toBe(false)
     expect(r.motivos[0]).toContain('Venta 1')
   })
+  it('#630 B1b: una fecha incompleta bloquea la venta hasta corregirla', () => {
+    const r = pasoVentasLibresValido([{
+      ...v, fechaDeclaradaVenta: { precision: 'INSTANTE', fecha: '2026-11-21' },
+    }], [5600])
+    expect(r.valido).toBe(false)
+    expect(r.motivos.join(' ')).toMatch(/Venta 1.*hora/i)
+  })
+
   it('venta válida pasa', () => {
     expect(pasoVentasLibresValido([v], [5600]).valido).toBe(true)
   })

@@ -125,6 +125,43 @@ describe('Cierre — reglas de la venta libre (ADR-CIERRE-002 §4)', () => {
     expect(m).toMatch(/^PAGO_EXCEDE_TOTAL/)
   })
 
+  it('#630 B1b: guarda día declarado en Historial sin alterar fecha/entregadoAt ni dinero', async () => {
+    const e = await embarqueVacio()
+    const fechaDeclarada = '2020-05-03'
+    const r = await cerrar(e, [vl({
+      pagos: [{ metodo: 'EFECTIVO', monto: 5600 }],
+      fechaDeclaradaVenta: { precision: 'DIA', fecha: fechaDeclarada },
+    })])
+    expect(r.ventasLibresCreadas).toBe(1)
+    const p = await testPrisma.pedido.findFirstOrThrow({ where: { embarqueOrigenId: e.id, origen: 'VENTA_LIBRE' } })
+    expect(p.fecha.getTime()).toBe(p.entregadoAt?.getTime())
+    expect(p.fecha.toISOString().slice(0, 10)).not.toBe(fechaDeclarada)
+    expect(Number(p.totalPagado)).toBe(5600)
+    const logs = await testPrisma.historial.findMany({
+      where: { entidad: 'Pedido', registroId: p.id, accion: 'CREATE' },
+    })
+    expect(logs).toHaveLength(1)
+    expect(logs[0].usuarioId).toBe(adminId)
+    expect(JSON.parse(logs[0].datos)).toMatchObject({
+      evento: 'DECLARACION_FECHA_VENTA_LIBRE_630',
+      embarqueId: e.id,
+      precision: 'DIA', fechaDeclarada, horaDeclarada: null,
+      estado: 'DECLARADA_NO_CERTIFICADA',
+    })
+  })
+
+  it('#630 B1b: preview dry-run con fecha declarada no deja pedido ni auditoría', async () => {
+    const e = await embarqueVacio()
+    const r = await cerrar(e, [vl({
+      pagos: [{ metodo: 'EFECTIVO', monto: 5600 }],
+      fechaDeclaradaVenta: { precision: 'INSTANTE', fecha: '2020-05-03', hora: '23:58' },
+    })], { dryRun: true })
+    expect(r.ventasLibresCreadas).toBe(1)
+    expect(await testPrisma.pedido.count({ where: { embarqueOrigenId: e.id, origen: 'VENTA_LIBRE' } })).toBe(0)
+    expect(await testPrisma.historial.count({ where: { datos: { contains: 'DECLARACION_FECHA_VENTA_LIBRE_630' } } })).toBeGreaterThanOrEqual(0)
+    expect((await testPrisma.embarque.findUniqueOrThrow({ where: { id: e.id } })).estado).toBe('EN_RUTA')
+  })
+
   it('una venta vacía sin pago sigue ignorándose (fila en blanco)', async () => {
     const e = await embarqueVacio()
     const r = await cerrar(e, [vl({ cPacaAgua: 0, pagos: [] })], { dryRun: true })

@@ -971,8 +971,8 @@ export const CerrarEmbarqueSchema = z.object({
     // #630 F1-B1b: declaración opcional; NO se usa como fecha contable ni entrega verificada.
     fechaDeclaradaVenta: z.object({
       precision: z.enum(['DIA', 'INSTANTE']),
-      fecha: z.string(),
-      hora: z.string().optional(),
+      fecha: z.string().max(10),
+      hora: z.string().max(5).optional(),
     }).superRefine((v, ctx) => {
       const error = errorDeclaracionFechaVentaLibre(v)
       if (error) ctx.addIssue({ code: z.ZodIssueCode.custom, message: error, path: ['fecha'] })

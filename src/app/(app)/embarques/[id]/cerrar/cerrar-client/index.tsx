@@ -1,3 +1,4 @@
+import { errorDeclaracionFechaVentaLibre } from '@/lib/declaracion-fecha-venta-libre-630'
 'use client'
 
 import { ComisionRepartidorDetalle } from '@/components/comision-repartidor-detalle'
@@ -676,11 +677,17 @@ export default function CerrarEmbarqueClient() {
   // Ventas Libres (1) y Gastos (3) son opcionales y siempre válidos.
   // Cómputo inline (5 llamadas puras baratas), no useMemo: vive después de los
   // early-returns de `loading`/`!embarque`, donde un hook violaría rules-of-hooks.
+  // Cierre legacy V1 no aplica precios V2, pero sí debe bloquear una fecha inválida.
+  // Para V2 esta misma validación ya vive en validarVentaLibre().
+  const erroresFechaLegacy = ventasLibres.flatMap((v, i) => {
+    const error = errorDeclaracionFechaVentaLibre(v.fechaDeclaradaVenta)
+    return error ? [`Venta ${i + 1}: ${error}`] : []
+  })
   const pasoValidez: PasoValidez[] = [
     v2 ? pasoPedidosValidoV2(embarque.pedidos, cuadres) : pasoPedidosValido(cuadres),
     v2
       ? pasoVentasLibresValido(ventasLibres, ventasLibres.map((vl) => totalVentaLibre(vl, precios)))
-      : { valido: true, motivos: [] },
+      : { valido: erroresFechaLegacy.length === 0, motivos: erroresFechaLegacy },
     pasoFisicoValido(calculos.totalDiscrepancia, justificacion, !v2 || sustEstado === 'ok'),
     { valido: true, motivos: [] },
     (() => {

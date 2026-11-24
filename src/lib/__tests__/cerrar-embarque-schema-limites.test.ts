@@ -39,6 +39,25 @@ describe('CerrarEmbarqueSchema — topes (#444)', () => {
     expect(ok(base({ pedidos: [pedido({ pagos: Array(15).fill({ metodo: 'EFECTIVO', monto: 1 }) })] }))).toBe(false)
   })
 
+  it('#630 B1b: fecha declarada opcional admite día sin hora o fecha/hora precisa', () => {
+    const vl = { clienteId: 'c1', cPacaAgua: 2, pagos: [] }
+    expect(ok(base({ ventasLibres: [vl] }))).toBe(true)
+    expect(ok(base({ ventasLibres: [{ ...vl, fechaDeclaradaVenta: { precision: 'DIA', fecha: '2026-11-20' } }] }))).toBe(true)
+    expect(ok(base({ ventasLibres: [{ ...vl, fechaDeclaradaVenta: { precision: 'INSTANTE', fecha: '2026-11-20', hora: '23:58' } }] }))).toBe(true)
+  })
+
+  it('#630 B1b: servidor rechaza fechas futuras, inválidas y horas falsamente exactas', () => {
+    const vl = { clienteId: 'c1', cPacaAgua: 2, pagos: [] }
+    const rechazo = (fechaDeclaradaVenta: unknown) =>
+      ok(base({ ventasLibres: [{ ...vl, fechaDeclaradaVenta }] }))
+    expect(rechazo({ precision: 'DIA', fecha: '3000-01-01' })).toBe(false)
+    expect(rechazo({ precision: 'DIA', fecha: '2026-02-30' })).toBe(false)
+    expect(rechazo({ precision: 'DIA', fecha: '2026-11-20', hora: '12:00' })).toBe(false)
+    expect(rechazo({ precision: 'INSTANTE', fecha: '2026-11-20' })).toBe(false)
+    expect(rechazo({ precision: 'INSTANTE', fecha: '2026-11-20', hora: '25:00' })).toBe(false)
+    expect(rechazo({ precision: 'INSTANTE', fecha: '2026-11-20', hora: '12:00', variableExtra: 'x' })).toBe(true) // Zod strips extras
+  })
+
   it('cantidades absurdas se rechazan', () => {
     expect(ok(base({ ventasLibres: [{ clienteId: 'c1', cPacaAgua: 5_000_000, pagos: [] }] }))).toBe(false)
   })
