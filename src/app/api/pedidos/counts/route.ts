@@ -120,7 +120,7 @@ export async function GET(_request: NextRequest) {
 
     return apiSuccess({
       corteOperativo: cartera.corteOperativo,
-      fiadosCount: cartera.clientes,
+      fiadosCount: cartera.corteOperativo.clientesConsultaFiados,
       alertasCount: alertas.length,
       atrasadosCount,
       enRiesgoCount,
