@@ -4,9 +4,21 @@ import { prisma } from "./prisma";
 import { PRIVILEGED_READ_ROLES, type Role } from "./constants";
 import { apiError } from "./api-response";
 import { userCan, type Permission } from "./permissions";
+import { isSessionUnavailable, sessionUnavailableResponse } from './session-status';
+
+async function resolveSession(existing?: Session | null): Promise<Session | null | Response> {
+  try {
+    const session = existing || await auth();
+    return session?.authStatus === 'unavailable' ? sessionUnavailableResponse() : session;
+  } catch (error) {
+    if (isSessionUnavailable(error)) return sessionUnavailableResponse();
+    throw error;
+  }
+}
 
 export async function requireAuth() {
-  const session = await auth();
+  const session = await resolveSession();
+  if (session instanceof Response) return session;
   // FIX C-9 (defensa en profundidad): validar session?.user?.id, no solo
   // `!session`. El callback session() de src/lib/auth.ts devuelve un objeto
   // Session con session.user poblado por los defaults de NextAuth (name,
@@ -50,7 +62,8 @@ export async function requireAuth() {
  * y /api/auth/profile (para que pueda cambiar otros datos de su perfil).
  */
 export async function requireAuthWithoutMustChangePassword() {
-  const session = await auth();
+  const session = await resolveSession();
+  if (session instanceof Response) return session;
   if (!session?.user?.id) {
     return apiError("No autorizado", 401);
   }
@@ -64,7 +77,8 @@ export async function requireAuthWithoutMustChangePassword() {
  * Returns the session if authorized, or a 403 Response if not.
  */
 export async function requireRole(role: Role | Role[], existingSession?: Session | null) {
-  const session = existingSession || await auth();
+  const session = await resolveSession(existingSession);
+  if (session instanceof Response) return session;
   if (!session?.user?.id) {
     return apiError("No autorizado", 401);
   }
@@ -86,7 +100,8 @@ export async function requireRole(role: Role | Role[], existingSession?: Session
  * Returns the session if authorized, or a 403 Response if not.
  */
 export async function requirePermission(permission: Permission, existingSession?: Session | null) {
-  const session = existingSession || await auth();
+  const session = await resolveSession(existingSession);
+  if (session instanceof Response) return session;
   if (!session?.user?.id) {
     return apiError("No autorizado", 401);
   }

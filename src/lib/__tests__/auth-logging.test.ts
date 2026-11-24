@@ -14,14 +14,14 @@ describe('S-3: auth.ts loggea eventos de login (éxito y fallo)', () => {
   // Solo el authorize() callback
   const authorizeMatch = source.match(/async authorize\(credentials\) \{[\s\S]+?\n\s{6}\},/)
 
-  it('FIX: el codigo loggea login exitoso con userId, username, role', () => {
+  it('registra credenciales verificadas, sin confundirlas con una sesión ya persistida', () => {
     expect(authorizeMatch).not.toBeNull()
     // Login exitoso: logger.info con userId, username, role
     const block = authorizeMatch![0]
     expect(block).toMatch(/userId:\s*dbUser\.id/)
     expect(block).toMatch(/username:\s*dbUser\.username/)
     expect(block).toMatch(/role:\s*dbUser\.rol/)
-    expect(block).toMatch(/Auth: login exitoso/)
+    expect(block).toMatch(/Auth: credenciales verificadas/)
   })
 
   it('FIX: el codigo loggea login fallido con username (sin password)', () => {

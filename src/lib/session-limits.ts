@@ -26,7 +26,7 @@ function loadEnvSessionLimits(): Partial<Record<Role, number>> {
     }
     const result: Partial<Record<Role, number>> = {}
     for (const [key, value] of Object.entries(parsed)) {
-      if (ROLE_VALUES.includes(key as Role) && typeof value === 'number') {
+      if (ROLE_VALUES.includes(key as Role) && typeof value === 'number' && Number.isSafeInteger(value) && value > 0) {
         result[key as Role] = value
       }
     }
@@ -38,9 +38,14 @@ function loadEnvSessionLimits(): Partial<Record<Role, number>> {
 
 export function getSessionLimit(role: Role): number {
   const envLimits = loadEnvSessionLimits()
-  return envLimits[role] ?? SESSION_LIMITS[role] ?? 1
+  if (!Object.hasOwn(SESSION_LIMITS, role)) return 1
+  return envLimits[role] ?? SESSION_LIMITS[role]
 }
 
 export function isLoginCapableRole(role: string | undefined): role is Role {
-  return role !== undefined && role in SESSION_LIMITS
+  return role !== undefined && Object.hasOwn(SESSION_LIMITS, role)
+}
+
+export function getSessionMaxAgeMs(role: Role): number {
+  return (role === ROLES.REPARTIDOR ? 6 * 60 : 30) * 60 * 1000
 }

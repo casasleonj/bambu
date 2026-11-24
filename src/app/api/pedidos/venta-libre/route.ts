@@ -24,7 +24,6 @@ import { getConfigBool, getConfig } from '@/lib/config'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
 import { clasificarVentaLibre } from '@/lib/venta-libre-clasificacion'
-import { resolverFechaEntregaVentaLibre } from '@/lib/venta-libre-fecha-entrega'
 import { incrementMetric } from '@/lib/metrics'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
 import { datosConfirmacionInicial, parseMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
@@ -103,17 +102,6 @@ export async function POST(request: NextRequest) {
       capturedAt,
       serverReceivedAt,
     })
-    // #630 F1-B1a: declarar fecha física sólo si la captura es consistente.
-    // La hora de sincronización nunca sustituye una entrega offline histórica.
-    // Rollout seguro: entregadoAt ya interviene en cobros/fechas y comisiones.
-    // Capturamos occurredAt/capturedAt aun con flag OFF; sin permiso de
-    // conmutación, no alteramos las métricas ni el histórico oficial.
-    const entregadoAt = process.env.VENTA_LIBRE_FECHA_ENTREGA_B1A === 'true'
-      ? resolverFechaEntregaVentaLibre({
-          entregarAhora, occurredAt, capturedAt, serverReceivedAt, clasificacionTemporal,
-        })
-      : null
-
     // Métricas de observabilidad (§24): no bloquean la venta, solo la señalan.
     if (clasificacionTemporal === 'TARDIA') incrementMetric('venta_libre_tardia_count')
     if (clasificacionTemporal === 'SOSPECHOSA') incrementMetric('venta_libre_sospechosa_count')
@@ -322,8 +310,11 @@ export async function POST(request: NextRequest) {
           estadoEntrega: estadoEntregaFinal,
           estadoPago,
           estado: estadoEntregaFinal, // legacy
-          // Mismo commit que pedido/items, sin inferir entregador del embarque.
-          entregadoAt,
+          // #989/#602: una venta libre entregada al crearse guarda el día de su entrega en la misma
+          // transacción. Es la hora del registro en el servidor; no se asigna `entregadoPorId`
+          // (el embarque no prueba quién entregó ni debe mover la comisión).
+          entregadoAt: entregarAhora ? serverReceivedAt : null,
+          fecha: serverReceivedAt, // mismo instante que `entregadoAt`
           // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: si se entrega después, el pedido
           // NO queda asignado a un embarque (queda planificable); pero el embarque
           // de origen se conserva para conciliar el `Pago` en su cierre (§0).

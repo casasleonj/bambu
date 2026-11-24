@@ -1,8 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 import { CI_API_RATE_LIMIT_POINTS } from './e2e/ci-rate-limit-config'
 
-// Exponer el override al test runner para que specs que validan los límites
-// default (ej. session-limits.spec.ts) puedan skippear o adaptarse.
+// El spec de límites reales corre con playwright.sessions.config.ts en CI.
 if (!process.env.SESSION_LIMITS_JSON) {
   process.env.SESSION_LIMITS_JSON = JSON.stringify({
     ADMIN: 50,
@@ -41,7 +40,7 @@ export default defineConfig({
   // Specs exploratorios y QA comprehensivo son scripts manuales/auditores
   // que registran hallazgos, no tests CI. Los excluimos de la ejecución
   // por defecto para evitar timeouts y falsos negativos.
-  testIgnore: ['**/exploratory/**', '**/qa-comprehensive/**', '**/produccion/**'],
+  testIgnore: ['**/exploratory/**', '**/qa-comprehensive/**', '**/produccion/**', '**/session-limits.spec.ts'],
   use: {
     baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3001',
     trace: 'on-first-retry',

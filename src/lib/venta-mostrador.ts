@@ -12,6 +12,36 @@ const ms = (v: Instante): number | null => {
   return Number.isFinite(t) ? t : null;
 };
 
+/** Máxima diferencia para considerar `fecha` y `entregadoAt` el MISMO instante de creación.
+ * Ambas salen de la misma operación, sin esperas entre medias (en producción la mayor diferencia
+ * observada fue de 1 ms). Una diferencia mayor es una entrega distinta de la venta: incierta. */
+export const TOLERANCIA_MISMA_OPERACION_MS = 1000;
+
+/**
+ * #989: venta que nace entregada (venta rápida, incluida la «venta en ruta» a Domicilio,
+ * o venta libre en ruta). No depende del canal ni de la igualdad exacta al milisegundo
+ * (dos `new Date()` consecutivos podían diferir 1 ms): `entregadoAt` debe ser el instante de
+ * la propia venta. El origen la identifica porque estas ventas se crean con la mercancía ya
+ * entregada (`cantEntrega = cantPedido`). Quien la use debe verificar además que el pedido
+ * esté completo y sin ajustes. La hora es la del registro; en VENTA_LIBRE se declara «sin verificar».
+ */
+export function esVentaEntregadaAlCrear(p: {
+  origen?: string | null;
+  estadoEntrega: string;
+  fecha: Instante;
+  entregadoAt?: Instante;
+}): boolean {
+  const venta = ms(p.fecha);
+  const entrega = ms(p.entregadoAt);
+  return (
+    (p.origen === "VENTA_RAPIDA" || p.origen === "VENTA_LIBRE") &&
+    p.estadoEntrega === "ENTREGADO" &&
+    venta !== null &&
+    entrega !== null &&
+    Math.abs(entrega - venta) <= TOLERANCIA_MISMA_OPERACION_MS
+  );
+}
+
 export function esVentaMostradorEntregadaAlVender(p: {
   canal: string;
   estadoEntrega: string;

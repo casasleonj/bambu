@@ -1,8 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import { CAPTURA_ENTREGA_PEDIDO, leerMetadata } from "./entrega-fisica-viva";
-import { esVentaMostradorEntregadaAlVender } from "./venta-mostrador";
+import {
+  esVentaEntregadaAlCrear,
+  esVentaMostradorEntregadaAlVender,
+} from "./venta-mostrador";
 
-export { esVentaMostradorEntregadaAlVender };
+export { esVentaEntregadaAlCrear, esVentaMostradorEntregadaAlVender };
 
 export interface EntregaConsulta {
   id: string;
@@ -16,6 +19,9 @@ export interface EntregaConsulta {
   fuente: "AUDITORIA" | "MOVIMIENTO" | "HISTORICO";
   precisionDia?: boolean;
   incompleto?: boolean;
+  /** #989: auditoría anterior a #516 que declara una entrega COMPLETA (`parcial:false`, ENTREGADO).
+   * Solo la usa este lector para inferir cantidades cuando es la única evidencia del pedido. */
+  legadoCompleto?: boolean;
 }
 /** Una fuente HISTORICO no es incierta por sí sola: el mostrador puede aportar
  * cantidades y fecha verificables sin una segunda auditoría de entrega (#959).
@@ -161,7 +167,18 @@ export async function leerEntregasConsulta(
         fecha: true,
         entregadoAt: true,
         entregadoPorId: true,
-        items: { select: { producto: true, cantEntrega: true, cantRegaloEntrega: true } },
+        origen: true,
+        // #989: ajustes y reducciones invalidan cualquier inferencia desde el acumulado.
+        _count: { select: { ajustesCantidad: true, reduccionesComerciales: true } },
+        items: {
+          select: {
+            producto: true,
+            cantEntrega: true,
+            cantRegaloEntrega: true,
+            cantPedido: true,
+            cantRegaloPedido: true,
+          },
+        },
         cPacaAguaEnt: true,
         cPacaHieloEnt: true,
         cBotellonFabEnt: true,
@@ -263,6 +280,9 @@ export async function leerEntregasConsulta(
         cantidades: null,
         fuente: "HISTORICO",
         precisionDia: datos.accion === "ENTREGA_OFICINA",
+        ...(datos.parcial === false && datos.estadoEntrega === "ENTREGADO"
+          ? { legadoCompleto: true }
+          : {}),
       });
     }
   }
@@ -319,24 +339,58 @@ export async function leerEntregasConsulta(
     const exceso = [...conocido].some(
       ([producto, cantidad]) => cantidad > (porProducto.get(producto) ?? 0),
     );
+    const alVender = [...porProducto]
+      .filter(([, cantidad]) => cantidad > 0)
+      .map(([producto, cantidad]) => ({ producto, cantidad }));
+    // #989: lo entregado coincide con lo pedido en cada línea, sin ajustes ni reducciones.
+    // Sin el conteo de relaciones (lector parcial) no hay forma de comprobarlo: no se infiere.
+    const conteo = (p as { _count?: { ajustesCantidad: number; reduccionesComerciales: number } })._count;
+    const completoSinAjustes =
+      !!conteo &&
+      conteo.ajustesCantidad === 0 &&
+      conteo.reduccionesComerciales === 0 &&
+      p.items.length > 0 &&
+      p.items.every(
+        (i) =>
+          i.cantEntrega === i.cantPedido &&
+          (i.cantRegaloEntrega ?? 0) === (i.cantRegaloPedido ?? 0),
+      ) &&
+      alVender.length > 0;
+    // #989: un solo registro anterior a #516 que declara entrega completa no deja nada que
+    // repartir entre fechas: las cantidades son el acumulado. Con dos o más eventos (p. ej.
+    // parcial + completo) sigue siendo incierto.
+    if (
+      evidencias.length === 1 &&
+      evidencias[0].legadoCompleto === true &&
+      evidencias[0].cantidades === null &&
+      p.estadoEntrega === "ENTREGADO" &&
+      completoSinAjustes
+    ) {
+      evidencias[0].cantidades = alVender;
+      continue;
+    }
     for (const e of evidencias)
       if (incompleto) {
         e.incompleto = true;
         if (exceso) e.cantidades = null;
       }
-    const alVender = [...porProducto]
-      .filter(([, cantidad]) => cantidad > 0)
-      .map(([producto, cantidad]) => ({ producto, cantidad }));
     if (
       !evidencias.length &&
       p.entregadoAt &&
       alVender.length &&
-      esVentaMostradorEntregadaAlVender({
+      (esVentaMostradorEntregadaAlVender({
         canal: p.canal,
         estadoEntrega: p.estadoEntrega,
         fecha: p.fecha,
         entregadoAt: p.entregadoAt,
-      })
+      }) ||
+        (completoSinAjustes &&
+          esVentaEntregadaAlCrear({
+            origen: p.origen,
+            estadoEntrega: p.estadoEntrega,
+            fecha: p.fecha,
+            entregadoAt: p.entregadoAt,
+          })))
     ) {
       resultado.push({
         id: `historico:${p.id}`,
@@ -345,7 +399,8 @@ export async function leerEntregasConsulta(
         repartidorId: p.entregadoPorId,
         cantidades: alVender,
         fuente: "HISTORICO",
-        precisionDia: false,
+        // Venta libre: la hora es la del registro en el cierre; se declara sin verificar.
+        precisionDia: p.origen === "VENTA_LIBRE",
       });
       continue;
     }

@@ -51,6 +51,18 @@ describe('fetchResilient', () => {
     vi.useRealTimers()
   })
 
+  it('returns a permission error without expelling the session or queueing the request', async () => {
+    const expired = vi.fn()
+    window.addEventListener('app:auth:expired', expired)
+    try {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({ error: { message: 'Sin permiso' } }) })
+      const result = await fetchResilient('/api/pedidos', { method: 'POST', body: {}, localEndpoint: 'test' })
+      expect(result.status).toBe('error')
+      expect(expired).not.toHaveBeenCalled()
+      expect(mockRequestQueueAdd).not.toHaveBeenCalled()
+    } finally { window.removeEventListener('app:auth:expired', expired) }
+  })
+
   it('returns status=ok when server responds 200', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
