@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>#796 · Pestaña Fiados (corte operativo) — maqueta para aprobación</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background:#f3f4f6; color:#111827; }
+  h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:16px; margin:30px 0 8px; }
+  p.n { color:#6b7280; font-size:13px; margin:4px 0 12px; max-width:920px; }
+  .fila { display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; }
+  .marco { background:#fff; border:1px solid #d1d5db; border-radius:14px; padding:16px; }
+  .tel { width:360px; } .esc { width:700px; }
+  .etq { font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#374151; margin-bottom:8px; }
+  .tab { display:inline-block; padding:6px 12px; border-radius:8px; font-size:13px; background:#e5e7eb; margin-right:4px; }
+  .tab.on { background:#111827; color:#fff; }
+  .det { background:#f9fafb; border-radius:8px; padding:10px; margin-top:8px; font-size:13px; color:#4b5563; }
+  .det b { color:#111827; }
+  .chip { display:inline-block; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; }
+  .porcl { background:#fff7ed; color:#9a3412; border:1px solid #fed7aa; }
+  .nota { background:#eff6ff; color:#1e3a8a; border:1px solid #bfdbfe; border-radius:8px; padding:8px 10px; font-size:13px; margin-top:10px; }
+  .err { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; border-radius:8px; padding:8px 10px; font-size:13px; margin-top:10px; }
+  .skel { background:linear-gradient(90deg,#e5e7eb,#f3f4f6,#e5e7eb); border-radius:6px; height:22px; margin:8px 0; }
+  table { width:100%; border-collapse:collapse; font-size:13px; } th { text-align:left; font-size:11px; color:#6b7280; text-transform:uppercase; padding:6px 4px; border-bottom:1px solid #e5e7eb; } td { padding:7px 4px; border-bottom:1px solid #f3f4f6; } .r { text-align:right; }
+  button { font:500 13px system-ui; border:1px solid #111; background:#fff; border-radius:8px; padding:6px 12px; min-height:36px; } button.p { background:#111; color:#fff; }
+  ul.l { font-size:13px; color:#374151; margin:6px 0 0 18px; padding:0; }
+</style>
+</head>
+<body>
+<h1>#796 · Pestaña Fiados con corte operativo — maqueta para aprobación</h1>
+<p class="n">Solo cambia el texto del detalle por pedido y qué clientes entran a la lista. Sin rediseño. El saldo exigible, los límites y el cobro no cambian.</p>
+
+<h2>Reglas visibles</h2>
+<ul class="l">
+  <li><b>Entregado hoy y sin cobrar:</b> NO aparece en Fiados (sigue visible y cobrable en Pedidos, #597). No cuenta en el contador de la pestaña.</li>
+  <li><b>Pasado el corte</b> (cierre real de la jornada, o 00:00 de Bogotá sin cierre): aparece como fiado.</li>
+  <li><b>No se puede clasificar</b> (datos de entrega incompletos o que no concilian): aparece con la marca «Por clasificar»; nunca se oculta ni se inventa un reparto.</li>
+  <li>El número de la pestaña = clientes de la lista.</li>
+</ul>
+
+<h2>1 · Escritorio — lista normal</h2>
+<div class="marco esc">
+  <div class="etq">Escritorio</div>
+  <span class="tab">Pedidos</span><span class="tab on">Fiados · 2</span>
+  <table style="margin-top:10px">
+    <tr><th>Cliente</th><th class="r">Deuda en consulta</th><th>Más antiguo</th><th></th></tr>
+    <tr><td>Cliente A</td><td class="r">$ 80.000</td><td>22 nov</td><td><button class="p">Cobrar</button></td></tr>
+    <tr><td>Cliente B <span class="chip porcl">Por clasificar</span></td><td class="r">$ 5.000</td><td>10 nov</td><td><button class="p">Cobrar</button></td></tr>
+  </table>
+  <div class="det"><b>Pedido #1201 · 22/11/2026</b><br>
+    Fiado en consulta <b>$ 80.000</b> · Saldo del pedido $ 126.000 · Total $ 126.000<br>
+    Pagado $ 0 · Entrega parcial</div>
+  <div class="det"><b>Pedido #1090 · 10/11/2026</b><br>
+    Fiado en consulta $ 0 · <b>Por clasificar $ 5.000</b> · Saldo del pedido $ 5.000 · Total $ 30.000<br>
+    Pagado $ 25.000 · Entrega completa</div>
+  <div class="nota">Cliente C (entregó hoy $ 46.000 sin cobrar) no aparece aquí: se cobra desde Pedidos y pasa a Fiados al corte.</div>
+</div>
+
+<h2>2 · Móvil — lista y detalle</h2>
+<div class="fila">
+  <div class="marco tel"><div class="etq">Móvil · lista</div>
+    <span class="tab">Pedidos</span><span class="tab on">Fiados · 2</span>
+    <div class="det"><b>Cliente A</b> — $ 80.000<br>Más antiguo: 22 nov <button class="p" style="float:right">Cobrar</button></div>
+    <div class="det"><b>Cliente B</b> <span class="chip porcl">Por clasificar</span> — $ 5.000<br>Más antiguo: 10 nov <button class="p" style="float:right">Cobrar</button></div>
+  </div>
+  <div class="marco tel"><div class="etq">Móvil · detalle</div>
+    <div class="det"><b>Pedido #1090 · 10/11/2026</b><br>Fiado en consulta $ 0<br><b>Por clasificar $ 5.000</b><br>Saldo del pedido $ 5.000<br>Total $ 30.000<br>Pagado $ 25.000 · Entrega completa</div>
+  </div>
+</div>
+
+<h2>3 · Estados</h2>
+<div class="fila">
+  <div class="marco tel"><div class="etq">Carga</div><div class="skel"></div><div class="skel" style="width:80%"></div><div class="skel" style="width:50%"></div></div>
+  <div class="marco tel"><div class="etq">Error</div><div class="err">No se pudo cargar Fiados. El saldo exigible no cambió.</div><button style="margin-top:10px">Reintentar</button></div>
+  <div class="marco tel"><div class="etq">Confirmación de cobro (sin cambios)</div><div class="det">Cobrar a Cliente A<br><b>$ 80.000</b> · Efectivo</div><button class="p" style="margin-top:10px">Confirmar cobro</button> <button>Cancelar</button></div>
+  <div class="marco tel"><div class="etq">Vacío</div><div class="nota">Sin fiados consolidados. Las ventas de hoy sin cobrar se ven en Pedidos.</div></div>
+</div>
+</body>
+</html>
