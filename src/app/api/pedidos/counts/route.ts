@@ -6,13 +6,9 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { calcularAlertas } from '@/lib/alertas-detector'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
+import { leerFiadosVigentes } from '@/lib/fiados-vigentes-db'
 import { subDaysBogota } from '@/lib/dates'
 import { countPedidosAtrasadosSinAsignar, countPedidosHoyEnRiesgo } from '@/lib/pedidos-sin-asignar'
-import { leerExigibles } from '@/lib/entregas-exigibles-db'
-import { exigiblesActivos } from '@/lib/exigibles-flag'
-import { leerCierresOperativos } from '@/lib/fiados-corte-operativo-db'
-import { desglosarPedidoConFIFO } from '@/lib/fiados-corte-operativo'
-import { dayInBogota } from '@/lib/date-helpers'
 
 export async function GET(_request: NextRequest) {
   const authResult = await requireAuth()
@@ -26,43 +22,7 @@ export async function GET(_request: NextRequest) {
       const where: Prisma.PedidoWhereInput = { saldo: { gt: 0 },
         estadoEntrega: { notIn: ['CANCELADO', 'ANULADO'] },
         clienteId: { not: CANONICAL_CONSUMIDOR_FINAL_ID } }
-      const [exigibles, titulares] = await Promise.all([
-        leerExigibles(tx, where),
-        tx.pedido.findMany({ where, select: { id: true, clienteId: true, total: true, totalPagado: true,
-          estadoEntrega: true, entregadoAt: true,
-          ...(exigiblesActivos() ? { entregasExigibles: { select: { id: true, entregadoAt: true, valorEntregado: true } } } : {}),
-        } }),
-      ])
-      const conDeuda = titulares.filter(p => (exigibles.get(p.id) ?? 0) > 0)
-      const ahora = new Date()
-      const entradas = conDeuda.map(p => ({
-        p,
-        entregas: 'entregasExigibles' in p && Array.isArray(p.entregasExigibles) && p.entregasExigibles.length
-          ? p.entregasExigibles.map((e: { id: string; entregadoAt: Date; valorEntregado: unknown }) => ({
-              id: e.id, entregadoAt: e.entregadoAt, valorEntregado: Number(e.valorEntregado),
-            }))
-          : p.estadoEntrega === 'ENTREGADO' && p.entregadoAt
-            ? [{ id: p.id, entregadoAt: p.entregadoAt, valorEntregado: Number(p.total) }] : [],
-      }))
-      const cierresPorDia = await leerCierresOperativos(tx, entradas.flatMap(e => e.entregas.map(x => dayInBogota(x.entregadoAt))))
-      const clientesFiados = new Set<string>()
-      let fiado = 0, pendiente = 0, sinClasificar = 0, pedidosPendientes = 0
-      for (const { p, entregas } of entradas) {
-        const exigible = exigibles.get(p.id) ?? 0
-        const d = desglosarPedidoConFIFO({ entregas, exigible, totalPagado: Number(p.totalPagado), cierresPorDia }, ahora)
-        if (!d) { sinClasificar += Math.round(exigible * 100); continue }
-        if (d.fiadoCentavos > 0) clientesFiados.add(p.clienteId)
-        if (d.pendienteOperativoCentavos > 0) pedidosPendientes++
-        fiado += d.fiadoCentavos
-        pendiente += d.pendienteOperativoCentavos
-      }
-      return {
-        corteOperativo: { clientesFiados: clientesFiados.size, pedidosPendientes,
-          fiado: fiado / 100, pendiente: pendiente / 100, sinClasificar: sinClasificar / 100 },
-        clientes: new Set(conDeuda.map(p => p.clienteId)).size,
-        pedidos: conDeuda.length,
-        total: conDeuda.reduce((s, p) => s + Math.round((exigibles.get(p.id) ?? 0) * 100), 0) / 100,
-      }
+      return leerFiadosVigentes(tx, where)
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 15000 })
 
     // Alertas: detector necesita un subconjunto de campos. Limitamos a 365 días
