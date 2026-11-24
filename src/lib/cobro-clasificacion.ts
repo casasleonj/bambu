@@ -110,14 +110,14 @@ export function clasificarCobrosDePedido(
     const diaCobro = diaBogota(cobro.at)
     let ventaDia = 0
     let cartera = 0
-    // Restricción temporal: solo entregas ocurridas hasta la jornada del cobro. El FIFO (antigüedad, id) es el existente.
-    const elegibles = entregas.filter((e) => e.dia <= diaCobro)
+    // Restricción temporal: solo entregas ocurridas hasta el instante del cobro (salvo legado aproximado). El FIFO (antigüedad, id) es el existente.
+    const elegibles = entregas.filter((e) => origen === 'CREACION' ? e.dia <= diaCobro : e.entregadoAt <= cobro.at)
     if (credito > 0) credito = aplicar(elegibles, credito / 100).sobrante
     const { aplicado, sobrante } = aplicar(elegibles, Number(cobro.monto ?? 0))
     for (const e of elegibles) {
       const c = aplicado.get(e.id) ?? 0
       const cierre = pedido.cierresPorDia?.get(e.dia)
-      const consolidado = cierre !== undefined && Number.isFinite(cierre.getTime()) &&
+      const consolidado = origen !== 'CREACION' && cierre !== undefined && Number.isFinite(cierre.getTime()) &&
         diaBogota(cierre) === e.dia && cierre >= e.entregadoAt && cobro.at >= cierre
       if (e.dia === diaCobro && !consolidado) ventaDia += c
       else cartera += c
