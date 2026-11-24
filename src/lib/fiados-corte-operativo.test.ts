@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { corteDeEntrega, desglosarDeudaAlCorte } from './fiados-corte-operativo'
+import { corteDeEntrega, desglosarDeudaAlCorte, desglosarPedidoConFIFO } from './fiados-corte-operativo'
 
 const fecha = (s: string) => new Date(s)
 const entrega = fecha('2026-11-23T15:00:00-05:00')
@@ -47,5 +47,39 @@ describe('fiados #796: corte operativo', () => {
     expect(() => desglosarDeudaAlCorte([
       { entregadoAt: entrega, saldoCentavos: 100, cierreDeJornadaAt: null },
     ], fecha('2026-11-23T14:00:00-05:00'))).toThrow('ENTREGA_FUTURA_NO_EXIGIBLE')
+  })
+})
+
+describe('fiados #796: integración pura con FIFO y conciliación', () => {
+  const ayer = fecha('2026-11-22T15:00:00-05:00')
+  const ahora = fecha('2026-11-23T17:00:00-05:00')
+  const entregas = [
+    { id: 'vieja', entregadoAt: ayer, valorEntregado: 80000 },
+    { id: 'nueva', entregadoAt: entrega, valorEntregado: 46000 },
+  ]
+
+  it('asigna el abono primero a la entrega vieja, sin convertir la nueva en fiado', () => {
+    expect(desglosarPedidoConFIFO({ entregas, totalPagado: 20000, exigible: 106000,
+      cierresPorDia: new Map() }, ahora)).toEqual({
+      fiadoCentavos: 6000000, pendienteOperativoCentavos: 4600000, exigibleCentavos: 10600000,
+    })
+  })
+
+  it('no publica una cifra falsa si el saldo exigible difiere del FIFO', () => {
+    expect(desglosarPedidoConFIFO({ entregas, totalPagado: 20000, exigible: 100000,
+      cierresPorDia: new Map() }, ahora)).toBeNull()
+  })
+
+  it('rechaza entregas duplicadas y fechas futuras para evitar doble conteo', () => {
+    expect(desglosarPedidoConFIFO({ entregas: [entregas[0], entregas[0]], totalPagado: 0,
+      exigible: 160000, cierresPorDia: new Map() }, ahora)).toBeNull()
+    expect(desglosarPedidoConFIFO({ entregas: [{ id: 'futura', entregadoAt: fecha('2026-11-24T15:00:00-05:00'),
+      valorEntregado: 100 }], totalPagado: 0, exigible: 100, cierresPorDia: new Map() }, ahora)).toBeNull()
+  })
+
+  it('reconoce el cierre anticipado de la jornada de la nueva entrega', () => {
+    const cierre = fecha('2026-11-23T16:00:00-05:00')
+    expect(desglosarPedidoConFIFO({ entregas, totalPagado: 0, exigible: 126000,
+      cierresPorDia: new Map([['2026-11-23', cierre]]) }, ahora)?.fiadoCentavos).toBe(12600000)
   })
 })
