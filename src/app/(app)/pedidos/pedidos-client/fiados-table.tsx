@@ -121,7 +121,7 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
   const detalle = (row: FiadoRow) => <div className="space-y-3 rounded-lg bg-gray-50 p-3">
     {[...row.pedidos].sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero - b.numero).map(p => <div key={p.id} className="border-b py-2 last:border-0">
       <p className="text-sm font-medium">Pedido #{p.numero} · {new Date(p.fecha).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}</p>
-      <p className="text-sm text-gray-600">Fiado en consulta <MoneyDisplay value={importeFiadoVisible(p)} userRole={userRole} /> · Saldo del pedido <MoneyDisplay value={Number(p.saldo)} userRole={userRole} /> · Total <MoneyDisplay value={Number(p.total)} userRole={userRole} /></p>
+      <p className="text-sm text-gray-600">Fiado en consulta <MoneyDisplay value={p.corteOperativo?.fiado ?? importeFiadoVisible(p)} userRole={userRole} />{Boolean(p.corteOperativo?.sinClasificar) && <> · Por clasificar <MoneyDisplay value={p.corteOperativo!.sinClasificar} userRole={userRole} /></>} · Saldo del pedido <MoneyDisplay value={Number(p.saldo)} userRole={userRole} /> · Total <MoneyDisplay value={Number(p.total)} userRole={userRole} /></p>
       <p className="text-sm text-gray-600">Pagado <MoneyDisplay value={Number(p.totalPagado)} userRole={userRole} /> · {p.estadoEntrega === 'ENTREGADO' ? 'Entrega completa' : 'Entrega parcial'}</p>
       <PedidoDocumentLinks pedidoId={p.id} numero={p.numero} facturaId={p.factura?.id} facturaNumero={p.factura?.numero}
         userRole={userRole} onOpenPedido={onOpenPedido} onOpenFactura={onOpenFactura} />
