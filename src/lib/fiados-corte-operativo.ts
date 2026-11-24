@@ -94,7 +94,18 @@ export function desglosarPedidoConFIFO(
     id: e.id, entregadoAt: e.entregadoAt, valorEntregado: e.valorEntregado, asignado: 0,
   })), pedido.totalPagado)
   const saldoFIFO = proyectadas.reduce((s, e) => s + cents(e.valorEntregado) - cents(e.asignado), 0)
-  if (saldoFIFO !== cents(pedido.exigible)) return null
+  if (saldoFIFO !== cents(pedido.exigible)) {
+    // Si todas las entregas pertenecen a la misma categoría, el ajuste neto
+    // no cambia su clasificación. Nunca repartir arbitrariamente deuda mixta.
+    if (!pedido.entregas.length) return null
+    const categorias = new Set(pedido.entregas.filter(e => e.valorEntregado > 0).map(e =>
+      ahora >= corteDeEntrega(e.entregadoAt, pedido.cierresPorDia.get(diaBogota(e.entregadoAt)) ?? null)))
+    if (categorias.size !== 1) return null
+    const saldo = cents(pedido.exigible)
+    if (!Number.isSafeInteger(saldo)) return null
+    const fiado = categorias.has(true) ? saldo : 0
+    return { fiadoCentavos: fiado, pendienteOperativoCentavos: saldo - fiado, exigibleCentavos: saldo }
+  }
   if (pedido.entregas.length === 0 && cents(pedido.exigible) > 0) return null
   return desglosarDeudaAlCorte(proyectadas.map(e => ({
     entregadoAt: e.entregadoAt,
