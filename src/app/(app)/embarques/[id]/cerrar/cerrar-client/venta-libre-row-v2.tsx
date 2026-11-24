@@ -1,3 +1,4 @@
+import { FechaDeclaradaVentaLibreControl } from './fecha-declarada-venta-libre-control'
 import { useMemo, useState } from 'react'
 import { useProductosDomicilio } from '@/hooks/use-productos-domicilio'
 import { useClienteSearch } from '@/hooks/use-cliente-search'
@@ -208,6 +209,12 @@ export function VentaLibreRowV2({
           {saldo > 0.01 ? `Queda por cobrar ${formatCurrency(saldo)}${hayCliente && !venta.anonima ? ` → fiado de ${venta.clienteNombre}` : ''}` : total > 0 ? 'Pagado completo' : 'Sin productos todavía'}
         </div>
       </div>
+
+      <FechaDeclaradaVentaLibreControl
+        index={index}
+        valor={venta.fechaDeclaradaVenta}
+        onChange={(valor) => onUpdate(index, 'fechaDeclaradaVenta', valor)}
+      />
 
       {motivos.length > 0 && (
         <ul className="space-y-1 text-sm text-red-700" data-testid="vl-motivos">

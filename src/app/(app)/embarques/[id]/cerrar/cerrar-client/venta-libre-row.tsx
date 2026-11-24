@@ -1,3 +1,4 @@
+import { FechaDeclaradaVentaLibreControl } from './fecha-declarada-venta-libre-control'
 import { useProductosDomicilio } from '@/hooks/use-productos-domicilio'
 import type { VentaLibre, PagoItem, Cliente } from './types'
 import { METODOS_PAGO, calcularMontoPagado } from './types'
@@ -122,6 +123,11 @@ export function VentaLibreRow({
       <div className="text-sm text-gray-600">
         Total pagado: {formatCurrency(totalPagado)}
       </div>
+      <FechaDeclaradaVentaLibreControl
+        index={index}
+        valor={venta.fechaDeclaradaVenta}
+        onChange={(valor) => onUpdate(index, 'fechaDeclaradaVenta', valor)}
+      />
     </div>
   )
 }

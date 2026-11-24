@@ -1,3 +1,4 @@
+import { errorDeclaracionFechaVentaLibre } from '@/lib/declaracion-fecha-venta-libre-630'
 /**
  * Lógica pura del cierre de embarque V2 (épica #447, Fase A).
  *
@@ -260,6 +261,8 @@ export function validarVentaLibre(v: VentaLibre, total: number): string[] {
   const motivos: string[] = []
   const pagado = v.pagos.reduce((s, p) => s + (p.monto || 0), 0)
   const unidades = unidadesVentaLibre(v)
+  const errorFecha = errorDeclaracionFechaVentaLibre(v.fechaDeclaradaVenta)
+  if (errorFecha) motivos.push(errorFecha)
 
   if (!v.clienteId) motivos.push('Elige un cliente o marca «Venta al paso (sin cliente)».')
   if (unidades === 0) {

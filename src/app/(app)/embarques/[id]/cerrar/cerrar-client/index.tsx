@@ -516,6 +516,8 @@ export default function CerrarEmbarqueClient() {
           cBolsaHielo: v.cBolsaHielo,
           pagos: v.pagos.filter((p) => p.monto > 0),
           obs: v.obs,
+          // #630 B1b: metadato auditado, NO fecha contable ni movimiento físico.
+          fechaDeclaradaVenta: v.fechaDeclaradaVenta,
         })),
       productos: productosRetorno,
       ...(v2 ? { cambiosDesdeSustituciones: true } : {}),
