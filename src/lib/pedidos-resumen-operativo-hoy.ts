@@ -30,6 +30,15 @@ export function mostrarResumenOperativoDelDia(f: FiltrosConsultaPedidos, hoy: st
 }
 
 /**
+ * #853 Fase 1: el balance (por gestionar / entregadas / faltan) existe solo para HOY.
+ * Un día pasado exigiría reconstruir el pendiente al inicio con eventos de cambio de
+ * demanda que hoy no se registran; no se infiere desde el estado actual.
+ */
+export function mostrarBalanceOperativoHoy(f: FiltrosConsultaPedidos, hoy: string): boolean {
+  return mostrarResumenOperativoDelDia(f, hoy) && f.desde === hoy;
+}
+
+/**
  * Resume los DELTAS físicos del día, no el acumulado actual de cada pedido.
  * Los datos provienen del mismo lector canónico usado por Dashboard y Cierre.
  * Los pedidos anteriores se reconocen por fecha original, sin reescribirla.

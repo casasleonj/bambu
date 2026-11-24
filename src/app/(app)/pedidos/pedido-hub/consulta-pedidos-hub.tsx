@@ -434,7 +434,7 @@ export function ConsultaPedidosHub(props: Props) {
           )}
           {!muestraHub && entregasNode}
           {datos?.resumen && filtrosLeidos && (
-            <ResumenConsulta resumen={datos.resumen} filtros={filtrosLeidos} />
+            <ResumenConsulta resumen={datos.resumen} filtros={filtrosLeidos} onReintentar={() => void refetch()} />
           )}
           {(estadoBusqueda.tipo === "resultado" ||
             estadoBusqueda.tipo === "sin-resultados-en-todos") && (

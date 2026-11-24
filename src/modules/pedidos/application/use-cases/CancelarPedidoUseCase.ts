@@ -5,6 +5,7 @@
 import { getNextNumero } from '@/lib/sequence'
 import { revertirCreditoDelPedido } from '../services/saldo-favor-excedente.service'
 import { logAudit } from '@/lib/audit'
+import { evidenciaDemanda } from '@/lib/pedidos-cambios-demanda'
 import { registrarReversionPedido } from '@/lib/receivable-entry'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
 import type { IPedidoRepository } from '../../domain/repositories/IPedidoRepository'
@@ -50,6 +51,9 @@ export class CancelarPedidoUseCase {
       // FIX CRITICAL (C-BIZ-1): cancelar() now returns tuvoPagos and totalPagado.
       // Previously, pedido.total was reset to 0 inside cancelar(), causing the NC
       // to be created with monto=0 (customer lost refund silently).
+      // #853: la demanda pendiente que se retira, con su momento. Se lee ANTES de cancelar.
+      const demandaAntes = pedido.items.map((i) => ({ producto: i.producto as string, cantidad: i.cantPedido + i.cantRegaloPedido }))
+      const demandaDespues = pedido.items.map((i) => ({ producto: i.producto as string, cantidad: i.cantidadFisicaEntregada }))
       const { tuvoPagos, totalPagado } = pedido.cancelar(input.offlineId)
       // ADR-CIERRE-002 §2 (decisión del PO 2026-10-24): un pedido cancelado deja de
       // formar parte del embarque, para que el cierre no lo vea como pendiente ni
@@ -104,7 +108,7 @@ export class CancelarPedidoUseCase {
         entidad: 'Pedido',
         registroId: pedido.id.get(),
         accion: 'UPDATE',
-        datos: { motivo: input.motivo, estado: updated.estadoEntrega.get(), notaCredito: tuvoPagos, reversion: montoRevertido, ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}), ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}) },
+        datos: { motivo: input.motivo, estado: updated.estadoEntrega.get(), ...evidenciaDemanda('CANCELACION', { antes: demandaAntes, despues: demandaDespues }), notaCredito: tuvoPagos, reversion: montoRevertido, ...(revertido > 0 ? { saldoFavorRevertido: revertido } : {}), ...(yaUsado > 0 ? { saldoFavorYaUsado: yaUsado } : {}) },
       }, tx)
 
       const saldoFavorCliente = revertido > 0 || yaUsado > 0
