@@ -552,6 +552,11 @@ jobs:
       - name: QA navegador independiente Cierre → Nómina (#992)
         if: ${{ matrix.shard == 4 }}
         shell: bash
+        env:
+          # #760: el E2E anterior usa un presupuesto por IP mayor que producción.
+          # No heredar sus contadores al arrancar el QA con el límite normal:
+          # DB 1 pertenece solo a este recorrido en el Redis desechable del job.
+          REDIS_URL: redis://localhost:6379/1
         run: |
           npx tsx prisma/reset-locked.ts full
           PORT=3001 node .next/standalone/server.js > /tmp/qa-992-next.log 2>&1 &
@@ -787,6 +792,9 @@ jobs:
           e2e/pedidos-cobro-pendiente-932.spec.ts
           e2e/pedidos-prioridad-936.spec.ts
 
+      - name: Run Playwright with real session limits
+        run: npx playwright test --config=playwright.sessions.config.ts --project=chromium
+
       - name: Dump Postgres/Redis container logs and resource usage
         if: always()
         run: |
@@ -808,7 +816,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-hub
-          path: playwright-report/
+          path: |
+            playwright-report/
+            playwright-report-sessions/
           retention-days: 7
 
       - name: Upload Playwright traces on failure
@@ -816,7 +826,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces-hub
-          path: test-results/
+          path: |
+            test-results/
+            test-results-sessions/
           retention-days: 7
 
   # ───────────────────────────────────────────────────────────────────────────

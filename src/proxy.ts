@@ -1,6 +1,8 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest, type NextFetchEvent } from 'next/server'
 import { randomUUID } from 'crypto'
-import { auth } from '@/lib/auth'
+import { authProxy } from '@/lib/auth'
+import { sessionUnavailableResponse } from '@/lib/session-status'
+import { withoutSessionCookies } from '@/lib/session-cookies'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { isRouteAllowed, getRedirectForRole } from '@/lib/permissions'
 import { validateCsrf } from '@/lib/csrf'
@@ -29,13 +31,18 @@ import type { Role } from '@/lib/constants'
  *       defense-in-depth fallback.
  * 2. Page routes: Auth check + mustChangePassword guard + role-based access.
  */
-export const proxy = auth(async (request) => {
+const authenticatedProxy = authProxy(async (request, _event: NextFetchEvent) => {
   // Sprint 6 (V-5): set request ID para correlación de logs. Honra
   // x-request-id upstream (Vercel/edge proxies lo inyectan) o genera UUID.
   const requestId = request.headers.get('x-request-id') || randomUUID()
   setRequestIdProvider(() => requestId)
 
   const pathname = request.nextUrl.pathname
+
+  if (request.auth?.authStatus === 'unavailable') {
+    // Server components surface the approved recovery card; APIs return a temporary error.
+    return pathname.startsWith('/api/') ? sessionUnavailableResponse() : NextResponse.next()
+  }
 
   // ── API routes: auth + CSRF + rate limiting ──────────────────────────
   if (pathname.startsWith('/api/')) {
@@ -126,6 +133,11 @@ export const proxy = auth(async (request) => {
 
   return NextResponse.next()
 })
+
+export async function proxy(request: NextRequest, event: NextFetchEvent) {
+  const response = await authenticatedProxy(request, event)
+  return response ? withoutSessionCookies(response) : response
+}
 
 export const config = {
   matcher: [

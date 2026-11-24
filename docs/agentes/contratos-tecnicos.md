@@ -19,6 +19,7 @@ Para contratos de dominio y excepciones extraídos del documento original consul
 
 - Configuración, toolchain y base de datos: fuente original inicio.
 - Auth, proxy, rate limiting y Redis: sección «Critical Architecture Decisions».
+- Sesiones y recuperación de autenticación: [contrato técnico y pruebas de #760](sesiones-760.md), contrastar su estado candidato/liberado con el PR.
 - Offline y deduplicación: «Offline-First Architecture».
 - Esquema relacional 1FN: «1FN Normalization».
 - Next/SSR y Service Worker: «Service Worker», «App Router», «Server Components».
