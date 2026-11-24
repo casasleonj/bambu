@@ -40,6 +40,12 @@ describe('fiados #796: corte operativo', () => {
       .toEqual(fecha('2026-11-24T00:00:00-05:00'))
   })
 
+  it('ignora cierres de otra jornada incluso si el reloj está mal configurado', () => {
+    const cierreOtraJornada = fecha('2026-11-24T00:10:00-05:00')
+    expect(corteDeEntrega(entrega, cierreOtraJornada))
+      .toEqual(fecha('2026-11-24T00:00:00-05:00'))
+  })
+
   it('no acepta saldos negativos ni entregas futuras', () => {
     expect(() => desglosarDeudaAlCorte([
       { entregadoAt: entrega, saldoCentavos: -1, cierreDeJornadaAt: null },
