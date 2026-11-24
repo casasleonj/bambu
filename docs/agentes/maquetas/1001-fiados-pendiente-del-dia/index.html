@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>#1001 · «Consultar y cobrar en Fiados» desde un pedido parcial de hoy — maqueta para aprobación</title>
+<style>
+*{box-sizing:border-box}body{font-family:system-ui,sans-serif;margin:0;padding:24px;background:#f3f4f6;color:#111827}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:30px 0 8px}p.n{color:#6b7280;font-size:13px;margin:4px 0 12px;max-width:920px}
+.fila{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}.marco{background:#fff;border:1px solid #d1d5db;border-radius:14px;padding:16px}
+.tel{width:360px}.esc{width:700px}.etq{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#374151;margin-bottom:8px}
+.tab{display:inline-block;padding:8px 14px;font-size:13px;color:#6b7280;border-bottom:2px solid transparent}.tab.on{color:#2563eb;border-color:#2563eb;font-weight:600}
+.nota{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe;border-radius:10px;padding:12px;font-size:13px;margin-top:10px}
+.err{background:#fffbeb;color:#92400e;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;font-size:13px;margin-top:10px}
+.skel{background:linear-gradient(90deg,#e5e7eb,#f3f4f6,#e5e7eb);border-radius:6px;height:22px;margin:8px 0}
+.fil{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+button,a.b{font:500 13px system-ui;border:1px solid #111;background:#fff;border-radius:8px;padding:6px 12px;min-height:44px;display:inline-flex;align-items:center;text-decoration:none;color:#111}
+button.p,a.b.p{background:#2563eb;border-color:#2563eb;color:#fff}.u{color:#1d4ed8;text-decoration:underline;border:0;background:none}
+.det{background:#fffbeb;border-radius:8px;padding:10px;font-size:13px}.rojo{color:#b91c1c;font-weight:700}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:7px 4px;border-bottom:1px solid #f3f4f6;text-align:left}
+</style></head><body>
+<h1>#1001 · «Consultar y cobrar en Fiados» desde un pedido parcial de hoy</h1>
+<p class="n"><b>Estado: PROPUESTA — PENDIENTE DE APROBACIÓN DEL PO.</b> Problema: lo entregado hoy y sin cobrar no está en Fiados hasta el corte (regla aprobada en #796). Hoy el enlace del detalle lleva a «Sin resultados con estos filtros» sin explicar nada. <b>Cambio:</b> solo el estado vacío de Fiados cuando se llega filtrado por un cliente. No cambia la regla del corte, el cobro, los límites ni los totales.</p>
+<p class="n">Cifras y nombres sintéticos. Se corrige en el <b>destino</b> (una sola vez) porque hay otros enlaces que llevan al mismo sitio: «Ver cartera del cliente →» del detalle y el desglose del cierre.</p>
+
+<h2>Antes (hoy)</h2>
+<div class="fila"><div class="marco esc"><div class="etq">Escritorio · /pedidos?tab=fiados&amp;clienteId=…</div>
+<div><span class="tab">Pedidos</span><span class="tab on">Fiados</span><span class="tab">Alertas</span></div>
+<div class="marco" style="margin-top:10px;text-align:center"><b>Sin resultados con estos filtros</b><p class="n">Revisa la búsqueda y los filtros. Puede haber otros fiados fuera de esta consulta.</p><button class="u">Limpiar filtros</button></div></div></div>
+
+<h2>1 · Propuesto — Escritorio y móvil: el cliente tiene cobro del día y ninguna deuda anterior</h2>
+<div class="fila">
+<div class="marco esc"><div class="etq">Escritorio</div>
+<div><span class="tab">Pedidos</span><span class="tab on">Fiados</span><span class="tab">Alertas</span></div>
+<div class="nota"><b>Lo de hoy de Cliente C aún no es fiado.</b><br>Entregaste $ 46.000 que siguen sin cobrar. Pasan a Fiados al corte del día (cierre de la jornada, o 00:00 de Bogotá). Mientras tanto se cobran desde <b>Pedidos</b>.
+<div class="fil"><a class="b p" href="#">Cobrar en Pedidos →</a><button>Ver todos los fiados</button></div></div></div>
+<div class="marco tel"><div class="etq">Móvil 390 px</div>
+<div><span class="tab">Pedidos</span><span class="tab on">Fiados</span><span class="tab">Alertas</span></div>
+<div class="nota"><b>Lo de hoy de Cliente C aún no es fiado.</b><br>Entregaste $ 46.000 sin cobrar. Pasan a Fiados al corte del día. Se cobran desde Pedidos.
+<div class="fil"><a class="b p" href="#" style="flex:1;justify-content:center">Cobrar en Pedidos →</a><button style="flex:1;justify-content:center">Ver todos los fiados</button></div></div></div></div>
+<p class="n">«Cobrar en Pedidos →» abre Pedidos filtrado por ese cliente (<code>/pedidos?tab=hoy&amp;clienteId=…</code>), donde el cobro del día ya existe (#597).</p>
+
+<h2>2 · Propuesto — el cliente también tiene deuda anterior (fiado ya clasificado)</h2>
+<div class="fila"><div class="marco esc"><div class="etq">Escritorio</div>
+<div><span class="tab">Pedidos</span><span class="tab on">Fiados · 1</span><span class="tab">Alertas</span></div>
+<div class="nota" style="margin-bottom:10px">Mostrando solo a <b>Cliente C</b>. Además tiene <b>$ 46.000 entregados hoy</b> que se cobran en <a class="u" href="#">Pedidos</a> y pasan a Fiados al corte. <button class="u" style="min-height:44px">Ver todos los fiados</button></div>
+<table><tr><th>Cliente</th><th>Deuda total</th><th>Pedidos</th><th></th></tr><tr><td>Cliente C</td><td class="rojo">$ 80.000</td><td>1 en consulta</td><td><button>Ver pedidos</button></td></tr></table></div></div>
+<p class="n">La fila y su total no cambian: sigue siendo solo deuda ya pasada del corte. El aviso es informativo y no se suma.</p>
+
+<h2>3 · Estados</h2>
+<div class="fila">
+<div class="marco tel"><div class="etq">Carga (escritorio y móvil)</div><div class="skel"></div><div class="skel" style="width:70%"></div><p class="n">Mientras se consulta no se afirma «sin deuda»; el aviso aparece solo con datos confirmados.</p></div>
+<div class="marco tel"><div class="etq">Error (escritorio y móvil)</div><div class="err" role="alert">No se pudieron cargar los fiados. No podemos confirmar si Cliente C tiene deudas. <button class="u" style="min-height:44px">Reintentar</button></div><p class="n">Es el mensaje de error actual; no se reemplaza por «sin deuda».</p></div>
+<div class="marco tel"><div class="etq">Cliente sin deuda ni cobro del día</div><div class="nota"><b>Cliente C no tiene fiados.</b><div class="fil"><button>Ver todos los fiados</button></div></div></div>
+<div class="marco tel"><div class="etq">Confirmación</div><p class="n" style="margin:0">No hay acción de escritura nueva: los botones solo navegan. El cobro conserva su diálogo y confirmaciones actuales, sin cambios.</p></div>
+</div>
+
+<h2>QUIERE / NO QUIERE / PRESERVAR</h2>
+<ul style="font-size:13px;max-width:900px"><li><b>QUIERE:</b> que quien llega desde un pedido parcial de hoy entienda por qué no ve al cliente y llegue al cobro.</li>
+<li><b>NO QUIERE:</b> mostrar lo de hoy como fiado, sumarlo al contador/total de Fiados o cambiar el corte operativo.</li>
+<li><b>PRESERVAR:</b> corte aprobado en #796, saldo exigible, límites, deuda «Por clasificar», roles y cobro.</li></ul>
+<p class="n"><b>Por verificar al implementar:</b> que la lista de Fiados traiga el «pendiente del día» (<code>corteOperativo.pendiente</code>) de los pedidos del cliente solicitado; si no, hay que completarlo en la consulta, no estimarlo en pantalla.</p>
+</body></html>
