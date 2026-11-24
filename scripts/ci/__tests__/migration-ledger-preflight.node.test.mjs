@@ -109,14 +109,14 @@ test('sin pendientes emite apply_pending=false; sin output no autoriza DDL',()=>
  let wrote=[]
  assert.equal(writeApplyDecision([],'/tmp/synthetic',(f,s)=>wrote.push({f,s})),false)
  assert.equal(wrote.length,1)
- assert.equal(wrote[0].s,'apply_pending=false\\n')
+ assert.equal(wrote[0].s,'apply_pending=false\n')
  assert.throws(()=>writeApplyDecision([],null,()=>{throw Error('NO escribir')}),/GITHUB_OUTPUT/)
 })
 test('migración nueva validada emite apply_pending=true SOLO al confirmar resultados',()=>{
  let wrote=[]
  assert.equal(writeApplyDecision(['20260101_a'],'/tmp/synthetic',(f,s)=>wrote.push(s)),true)
  assert.equal(wrote.length,1)
- assert.equal(wrote[0],'apply_pending=true\\n')
+ assert.equal(wrote[0],'apply_pending=true\n')
  let called=0
  assert.throws(()=>writeApplyDecision([null],'/tmp/synthetic',()=>{called++}),/inválido/)
  assert.equal(called,0)

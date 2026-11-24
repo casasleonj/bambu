@@ -101,7 +101,7 @@ export function writeApplyDecision(pending,output,write=appendFileSync){
  }
  if(typeof output!=='string'||!output)throw Error('GITHUB_OUTPUT ausente')
  const enabled=pending.length>0
- write(output,'apply_pending='+(enabled?'true':'false')+'\\n',
+ write(output,'apply_pending='+(enabled?'true':'false')+'\n',
   {encoding:'utf8',flag:'a',mode:0o600})
  return enabled
 }
