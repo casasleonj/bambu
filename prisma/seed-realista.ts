@@ -1,5 +1,9 @@
 import { PrismaClient, RolUsuario, EstadoPedido, EstadoEmbarque, EstadoFactura, TipoPagoTrabajador, Turno, MetodoPago, type Producto, type Embarque } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { exigirBaseLocal } from './seed-guard'
+
+// Los seeds crean usuarios con contraseñas conocidas: solo se ejecutan contra una base local (ver seed-guard.ts).
+exigirBaseLocal()
 
 const prisma = new PrismaClient()
 const SALT_ROUNDS = 12

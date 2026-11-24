@@ -103,7 +103,7 @@ set -a; . ./.env; set +a
 npx playwright test e2e/embarques.spec.ts
 ```
 
-Credenciales dev: `admin`/`admin123`, `asistente`/`asist123`, `contador`/`cont123`, `repartidor`/`rep123`.
+Credenciales dev (**solo base local**; nunca en una base real, el repositorio es público): `admin`/`admin123`, `asistente`/`asist123`, `contador`/`cont123`, `repartidor`/`rep123`.
 
 Specs E2E de embarques: `e2e/embarques.spec.ts`, `e2e/embarques-all-contexts.spec.ts`, `e2e/embarques-fixes.spec.ts`, `e2e/embarques-fisico.spec.ts`, `e2e/embarques-hydration.spec.ts`.
 

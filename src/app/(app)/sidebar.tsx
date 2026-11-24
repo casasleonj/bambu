@@ -1,13 +1,13 @@
 'use client'
 
+import { LogoutButton } from '@/components/logout-button'
+
 import { PushOptInStrip } from '@/components/push-opt-in-strip'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { signOut } from 'next-auth/react'
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { MoreVertical } from 'lucide-react'
-import { markIntentionalSignOut } from '@/lib/auth-events'
 import {
   DndContext,
   closestCenter,
@@ -29,9 +29,6 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { purgeSWCache } from '@/lib/purge-sw-cache'
-import { unsubscribePushOnLogout } from '@/lib/push-cleanup'
-import { revokeSessionOnLogout } from '@/lib/session-cleanup'
 import { CajaBaseHeader } from '@/components/caja-base-header'
 import { useAppStore } from '@/stores/app-store'
 import { useIsDesktop } from '@/hooks/use-is-desktop'
@@ -844,14 +841,7 @@ export function Sidebar() {
           </DndContext>
 
           <div className="p-4 border-t space-y-4">
-          <button
-            onClick={async () => {
-              markIntentionalSignOut()
-              await revokeSessionOnLogout()
-              await unsubscribePushOnLogout()
-              await purgeSWCache()
-              signOut({ redirectTo: '/login' })
-            }}
+          <LogoutButton
             className="flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-50 transition w-full"
             aria-label="Cerrar sesión"
           >
@@ -859,7 +849,7 @@ export function Sidebar() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
             <span>Cerrar Sesión</span>
-          </button>
+          </LogoutButton>
         </div>
         </SidebarEditActivator>
       </aside>

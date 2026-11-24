@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Modal } from '@/components/modal'
+import { Desplegable } from '@/components/ui/desplegable'
 import { useGestionAdmin } from '@/hooks/use-gestion-admin'
 import { generateUUID } from '@/lib/uuid'
 import { fetchResilient } from '@/lib/fetch-resilient'
@@ -258,6 +259,10 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
   const monto = sumarCobroFiado(pagos)
   const reparto = preparacion ? repartirCobroFiado(preparacion.pedidos, monto) : null
   const pendiente = draft?.etapa === 'pendiente'
+  /** #634: lo que exige acción del usuario (pendiente o requiere revisión) nunca se oculta. */
+  const pendientesCobro = locales.filter(d => d.etapa === 'pendiente' || d.etapa === 'revisar-cambio')
+  /** #634: total exacto en centavos de lo que muestra el desplegable cerrado. */
+  const totalRecientes = recientes.reduce((s, r) => s + Math.round(r.montoRecibido * 100), 0) / 100
   const delPedido = (resultado ? null : draft?.cliente.pedido) ?? null
   const returnLabel = resultado ? 'Volver al resultado del pago' : 'Volver a la revisión del pago'
   const docs = (p: { pedidoId: string; numero: number; facturaId?: string; facturaNumero?: string }) => <PedidoDocumentLinks
@@ -265,11 +270,19 @@ export function CobroFiadoDialog({ cliente, actorId, visible, userRole, onClose,
   const bodyClass = 'min-h-11 w-full rounded-lg border border-gray-300 p-2 text-sm'
 
   return <>
-    {visible && (errorRecientes || recientes.length > 0 || locales.some(d => d.etapa === 'pendiente' || d.etapa === 'revisar-cambio')) && <section className="mb-4 space-y-2 rounded-xl border border-blue-200 bg-blue-50 p-4" aria-label="Estado de cobros">
-      <h2 className="font-semibold text-blue-950">Pagos recientes y pendientes</h2>
-      {errorRecientes && <p role="alert" className="text-sm">{errorRecientes} <button className="min-h-11 underline" onClick={() => void actualizarRecientes()}>Reintentar consulta de pagos</button></p>}
-      {locales.filter(d => d.etapa === 'pendiente' || d.etapa === 'revisar-cambio').map(d => <div key={d.referencia} className="flex flex-wrap items-center justify-between gap-2 text-sm"><p>{d.cliente.nombre} · {d.etapa === 'revisar-cambio' ? 'Requiere revisión' : 'Pendiente de verificar o sincronizar'}</p><button className="min-h-11 underline" onClick={() => abrirGuardado(d)}>Ver estado del cobro</button></div>)}
-      {recientes.map(r => <div key={r.referencia || r.registradoAt} className="flex flex-wrap items-center justify-between gap-2 text-sm"><p>{r.clienteNombre} · Registrado {dinero(r.montoRecibido)}</p><button className="min-h-11 underline" onClick={() => abrirResultado(r)}>Ver resultado y documentos</button></div>)}
+    {visible && (errorRecientes || recientes.length > 0 || pendientesCobro.length > 0) && <section className="mb-4 space-y-2" aria-label="Estado de cobros">
+      {/* #634: lo que exige acción nunca se oculta; sólo el histórico de pagos se puede plegar. */}
+      {errorRecientes && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{errorRecientes} <button className="min-h-11 underline" onClick={() => void actualizarRecientes()}>Reintentar consulta de pagos</button></p>}
+      {pendientesCobro.length > 0 && <div data-testid="cobros-por-verificar" className="rounded-xl border border-amber-300 bg-amber-50 p-3">
+        <p className="mb-1 text-sm font-semibold text-amber-950">{pendientesCobro.length === 1 ? '1 cobro por verificar o sincronizar' : `${pendientesCobro.length} cobros por verificar o sincronizar`}</p>
+        {pendientesCobro.map(d => <div key={d.referencia} className="flex flex-wrap items-center justify-between gap-2 text-sm"><p>{d.cliente.nombre} · {d.etapa === 'revisar-cambio' ? 'Requiere revisión' : 'Pendiente de verificar o sincronizar'}</p><button className="min-h-11 underline" onClick={() => abrirGuardado(d)}>Ver estado del cobro</button></div>)}
+      </div>}
+      {recientes.length > 0 && <div className="[&_summary]:min-h-11">
+        <Desplegable testid="pagos-recientes" icono="🧾" titulo="Pagos recientes" tono="azul"
+          resumen={`${recientes.length} pago${recientes.length === 1 ? '' : 's'} · ${dinero(totalRecientes)}`}>
+          {recientes.map(r => <div key={r.referencia || r.registradoAt} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 py-1 text-sm last:border-0"><p>{r.clienteNombre} · Registrado {dinero(r.montoRecibido)}</p><button className="min-h-11 underline" onClick={() => abrirResultado(r)}>Ver resultado y documentos</button></div>)}
+        </Desplegable>
+      </div>}
     </section>}
     <Modal open={open} onClose={cerrar} title="Cobro de fiado" data-testid="cobro-fiado-dialog"
       overlayClassName="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"

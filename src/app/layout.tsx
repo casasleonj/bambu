@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { headers } from 'next/headers'
 import './globals.css'
-import { Providers } from '@/components/providers'
 import { SerwistProvider } from '@serwist/turbopack/react'
 
 export const viewport: Viewport = {
@@ -76,7 +75,7 @@ export default async function RootLayout({
           disable={process.env.NODE_ENV !== 'production'}
           reloadOnOnline={false}
         >
-          <Providers>{children}</Providers>
+          {children}
         </SerwistProvider>
       </body>
     </html>

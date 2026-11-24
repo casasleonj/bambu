@@ -199,6 +199,83 @@ test.describe('Facturas — experiencia de usuario', () => {
     await expect(page.getByText('No se pudo cargar el resumen')).toHaveCount(0)
   })
 
+  test('el resumen abre en «Por cobrar»: una sola cifra, conteos que cuadran y sin barra pagado/facturado (#977)', async ({ page }) => {
+    await loginAs(page, 'admin')
+    await goto(page, `/resumen-facturas?clienteId=${sandraId}`)
+    await expect(page.getByTestId('resumen-tab-POR_COBRAR')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('resumen-tab-POR_COBRAR')).toContainText(`(${sandra.pendientes})`)
+    await expect(page.getByTestId('resumen-tab-PAGADA')).toContainText(`(${sandra.pagadas})`)
+    await expect(page.getByTestId('resumen-tab-ANULADA')).toContainText(`(${sandra.anuladas})`)
+    // «Vigentes» = por cobrar + pagadas: los conteos de las pestañas cuadran entre sí.
+    await expect(page.getByTestId('resumen-tab-TODAS')).toContainText(`(${sandra.pendientes + sandra.pagadas})`)
+    await expect(page.getByTestId('resumen-hero-monto')).toHaveText(norm(money(sandra.porCobrar)))
+    // «Por cobrar» no mezcla lo pagado ni lo facturado de otras facturas, y no repite el saldo en otro cuadro.
+    const hero = page.getByTestId('resumen-hero')
+    await expect(hero).not.toContainText('Pagado')
+    await expect(hero).not.toContainText('Facturado')
+    await expect(page.getByTestId('resumen-suma')).toContainText(norm(money(sandra.porCobrar)))
+    // Solo se ven las primeras facturas; «Mostrar» trae el resto (el PDF y la impresión las llevan todas).
+    await expect(page.getByTestId('resumen-mostrar-mas')).toBeVisible()
+    await page.getByTestId('resumen-mostrar-mas').click()
+    await expect(page.getByTestId('resumen-mostrar-mas')).toHaveCount(0)
+    await expect(page.locator('[data-testid^="resumen-fila-"]:visible')).toHaveCount(sandra.pendientes)
+  })
+
+  test('«Anuladas» es de consulta interna: no se ofrece compartir con el cliente (#977)', async ({ page }) => {
+    await loginAs(page, 'admin')
+    await goto(page, `/resumen-facturas?clienteId=${sandraId}&estado=ANULADA`)
+    await expect(page.getByTestId('resumen-hero')).toBeVisible()
+    await expect(page.getByTestId('btn-compartir-whatsapp')).toHaveCount(0)
+    await goto(page, `/resumen-facturas?clienteId=${sandraId}&estado=POR_COBRAR`)
+    await expect(page.getByTestId('btn-compartir-whatsapp')).toBeVisible()
+  })
+
+  test('cada factura muestra lo que se llevó (cantidad × producto a cuánto) y solo se debe lo entregado (#977, #656)', async ({ page }) => {
+    const cliente = await prisma.cliente.create({
+      data: { nombre: 'Cliente', apellido: 'Productos', telefono: '573001230000', direccion: 'Calle 9' },
+    })
+    const crear = async (numero: string, entregado: boolean) => {
+      const pedido = await prisma.pedido.create({
+        data: {
+          clienteId: cliente.id, fecha: new Date(Date.now() - 5 * DAY), total: 60_000, saldo: 60_000, totalPagado: 0,
+          estado: 'PENDIENTE', estadoEntrega: entregado ? 'ENTREGADO' : 'PENDIENTE', estadoPago: 'PENDIENTE',
+          items: {
+            create: [
+              { producto: 'PACA_AGUA', cantPedido: 3, cantEntrega: entregado ? 3 : 1, precio: 15_000, subtotal: 45_000 },
+              { producto: 'BOTELLON', cantPedido: 3, cantEntrega: entregado ? 3 : 0, precio: 5_000, subtotal: 15_000 },
+            ],
+          },
+        },
+      })
+      await prisma.factura.create({
+        data: { numero, pedidoId: pedido.id, clienteId: cliente.id, fecha: pedido.fecha, subtotal: 60_000, total: 60_000, montoPagado: 0, saldo: 60_000, estado: 'EMITIDA' },
+      })
+    }
+    await crear('FAC-QA-ENTREGADA', true)
+    await crear('FAC-QA-SINENTREGAR', false)
+
+    await loginAs(page, 'admin')
+    await goto(page, `/resumen-facturas?clienteId=${cliente.id}`)
+    const entregada = page.getByTestId('resumen-fila-FAC-QA-ENTREGADA')
+    await expect(entregada).toBeVisible()
+    const paca = page.getByTestId('resumen-item-FAC-QA-ENTREGADA-PACA_AGUA')
+    await expect(paca).toContainText('3 ×')
+    await expect(paca).toContainText('Paca Agua')
+    await expect(paca).toContainText(/15\.000/)
+    await expect(page.getByTestId('resumen-item-FAC-QA-ENTREGADA-BOTELLON')).toContainText('3 ×')
+    await expect(page.getByTestId('resumen-pendiente-FAC-QA-ENTREGADA')).toHaveCount(0)
+
+    // Sin entregar todo: se muestra solo lo entregado, se avisa lo que falta y eso no se cobra.
+    const parcial = page.getByTestId('resumen-fila-FAC-QA-SINENTREGAR')
+    await expect(parcial).toBeVisible()
+    await expect(page.getByTestId('resumen-item-FAC-QA-SINENTREGAR-PACA_AGUA')).toContainText('1 ×')
+    await expect(page.getByTestId('resumen-item-FAC-QA-SINENTREGAR-BOTELLON')).toHaveCount(0)
+    await expect(page.getByTestId('resumen-pendiente-FAC-QA-SINENTREGAR')).toContainText('Falta entregar')
+    await expect(page.getByTestId('resumen-pendiente-FAC-QA-SINENTREGAR')).toContainText('aún no se cobra')
+    // La cifra principal es la deuda exigible: solo la factura entregada ($ 60.000), igual que Fiados y Cartera.
+    await expect(page.getByTestId('resumen-hero-monto')).toHaveText(norm(money(60_000)))
+  })
+
   test('el encabezado del documento no se encima: apilado en móvil, en fila en escritorio y al imprimir (#873)', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, `/resumen-facturas?clienteId=${sandraId}`)

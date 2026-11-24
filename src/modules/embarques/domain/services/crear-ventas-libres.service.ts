@@ -170,6 +170,7 @@ export class CrearVentasLibresService {
       const numeroVenta = await getNextNumero(client, { model: 'pedido' })
       const estadoPago = calcularEstadoPago(totalVenta, totalPagado)
 
+      const ahoraVenta = new Date()
       const nuevaVenta = await tx.pedido.create({
         data: {
           numero: numeroVenta,
@@ -181,6 +182,10 @@ export class CrearVentasLibresService {
           estadoEntrega: 'ENTREGADO',
           estadoPago,
           estado: 'ENTREGADO',
+          // #989/#602: la venta libre nace entregada; se guarda el día de su entrega sin asignar
+          // `entregadoPorId` (la comisión de la misión se calcula por su propio camino).
+          fecha: ahoraVenta, // mismo instante que `entregadoAt`
+          entregadoAt: ahoraVenta,
           embarqueId,
           // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: embarque de origen inmutable.
           embarqueOrigenId: embarqueId,

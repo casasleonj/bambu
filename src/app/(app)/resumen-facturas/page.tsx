@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -9,27 +9,13 @@ import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { canCompartirResumenFacturas } from '@/lib/permissions'
 import './print.css'
-import { FacturaCard, ResumenHero, type ItemResumen } from './resumen-visual'
+import { FacturaCard, ResumenHero, money, type FacturaVisual } from './resumen-visual'
 import { CompartirWhatsapp } from './compartir-whatsapp'
 
-interface FacturaResumen {
-  id: string
-  numero: string
+interface FacturaResumen extends Omit<FacturaVisual, 'fechaTxt'> {
   fecha: string
-  total: number
-  montoPagado: number
-  saldo: number
-  estado: string
-  items: ItemResumen[]
-  otrosAjustes: number
   pedidoNumero: number | null
   pedidoId: string | null
-  desfase: {
-    facturaSaldo: number
-    pedidoSaldo: number | null
-    facturaPagado: number
-    pedidoPagado: number | null
-  } | null
 }
 
 interface ClienteResumen {
@@ -56,25 +42,27 @@ interface TotalesResumen {
   count: number
 }
 
-type EstadoTab = 'TODAS' | 'EMITIDA' | 'PARCIAL' | 'PAGADA' | 'ANULADA'
+type EstadoTab = 'POR_COBRAR' | 'PAGADA' | 'ANULADA' | 'TODAS'
 
+// «Todas» = solo las vigentes (por cobrar + pagadas): los conteos de las pestañas cuadran entre sí (#977).
 const TABS: { key: EstadoTab; label: string }[] = [
-  { key: 'TODAS', label: 'Todas' },
-  { key: 'EMITIDA', label: 'Emitidas' },
-  { key: 'PARCIAL', label: 'Parciales' },
+  { key: 'POR_COBRAR', label: 'Por cobrar' },
   { key: 'PAGADA', label: 'Pagadas' },
   { key: 'ANULADA', label: 'Anuladas' },
+  { key: 'TODAS', label: 'Vigentes' },
 ]
 
-const ESTADO_TXT: Record<string, string> = {
-  EMITIDA: 'Emitida',
-  PARCIAL: 'Parcial',
-  PAGADA: 'Pagada',
-  ANULADA: 'Anulada · no suma',
-}
+/** Cuántas facturas se ven de entrada en pantalla; el PDF y la impresión llevan todas. */
+const FILAS_INICIALES = 5
 
 function esEstadoTab(v: string | null): v is EstadoTab {
-  return v === 'TODAS' || v === 'EMITIDA' || v === 'PARCIAL' || v === 'PAGADA' || v === 'ANULADA'
+  return v === 'POR_COBRAR' || v === 'PAGADA' || v === 'ANULADA' || v === 'TODAS'
+}
+
+/** Enlaces anteriores: EMITIDA/PARCIAL sueltas pasan a «Por cobrar». Sin estado = «Por cobrar». */
+function estadoDeEnlace(v: string | null): EstadoTab {
+  if (esEstadoTab(v)) return v
+  return 'POR_COBRAR'
 }
 
 interface AnuladasResumen {
@@ -82,19 +70,24 @@ interface AnuladasResumen {
   totalHistorico: number
 }
 
+interface EncabezadoApi {
+  etiqueta: string
+  monto: number
+  tono: 'debe' | 'alDia' | 'neutro'
+  nota: string
+  datos: { etiqueta: string; valor: string | number; formato: 'numero' | 'fecha' | 'dinero' }[]
+}
+
 interface ResumenData {
   cliente: ClienteResumen
   periodo: { desde: string | null; hasta: string | null }
-  filtro: { estado: EstadoTab; incluirAnuladas: boolean }
+  filtro: { estado: string }
+  encabezado: EncabezadoApi
   conteos: Record<'EMITIDA' | 'PARCIAL' | 'PAGADA' | 'ANULADA', number>
   facturas: FacturaResumen[]
   totales: TotalesResumen
   anuladas: AnuladasResumen
   empresa: EmpresaResumen
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(value)
 }
 
 function formatDate(dateStr: string) {
@@ -146,16 +139,15 @@ export default function ResumenFacturasPage() {
   const clienteId = searchParams.get('clienteId')
   const desde = searchParams.get('desde')
   const hasta = searchParams.get('hasta')
-  // Enlaces antiguos sin `estado` = «Todas» (anuladas atenuadas, sin sumar).
-  const estadoParam = searchParams.get('estado')?.toUpperCase() ?? null
-  const estado: EstadoTab = esEstadoTab(estadoParam) ? estadoParam : 'TODAS'
-  const incluirAnuladas = searchParams.get('incluirAnuladas')
+  // Sin `estado` = «Por cobrar» (#977): lo primero que se quiere saber es qué se debe.
+  const estado: EstadoTab = estadoDeEnlace(searchParams.get('estado')?.toUpperCase() ?? null)
 
   const [data, setData] = useState<ResumenData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [resumenNumber] = useState(() => generateResumenNumber())
   const [generatedAt] = useState(() => formatDateTime())
+  const [mostrarTodas, setMostrarTodas] = useState(false)
 
   const fetchData = useCallback(async () => {
     if (!clienteId) {
@@ -171,7 +163,6 @@ export default function ResumenFacturasPage() {
       if (desde) query.set('desde', desde)
       if (hasta) query.set('hasta', hasta)
       query.set('estado', estado)
-      if (incluirAnuladas) query.set('incluirAnuladas', incluirAnuladas)
       const qs = query.toString()
       const res = await fetch(`/api/clientes/${clienteId}/resumen-facturas${qs ? `?${qs}` : ''}`)
       if (!res.ok) {
@@ -190,7 +181,7 @@ export default function ResumenFacturasPage() {
     } finally {
       setLoading(false)
     }
-  }, [clienteId, desde, hasta, estado, incluirAnuladas])
+  }, [clienteId, desde, hasta, estado])
 
   useEffect(() => {
     // Fetch de datos al montar / cambiar clienteId-desde-hasta — side
@@ -203,6 +194,8 @@ export default function ResumenFacturasPage() {
   const handleTab = (key: EstadoTab) => {
     const q = new URLSearchParams(searchParams.toString())
     q.set('estado', key)
+    q.delete('incluirAnuladas')
+    setMostrarTodas(false)
     router.replace(`/resumen-facturas?${q.toString()}`)
   }
   const handleRetry = () => { fetchData() }
@@ -269,20 +262,34 @@ export default function ResumenFacturasPage() {
     )
   }
 
-  const { cliente, periodo, facturas, totales, anuladas, conteos, empresa } = data
-  const estadoNombre = TABS.find((t) => t.key === estado)?.label ?? 'Todas'
+  const { cliente, periodo, facturas, totales, anuladas, conteos, empresa, encabezado } = data
+  const estadoNombre = TABS.find((t) => t.key === estado)?.label ?? 'Por cobrar'
+  const conteoTab: Record<EstadoTab, number> = {
+    POR_COBRAR: conteos.EMITIDA + conteos.PARCIAL,
+    PAGADA: conteos.PAGADA,
+    ANULADA: conteos.ANULADA,
+    TODAS: conteos.EMITIDA + conteos.PARCIAL + conteos.PAGADA,
+  }
+  const verTodas = mostrarTodas || facturas.length <= FILAS_INICIALES
+  const ocultas = facturas.length - FILAS_INICIALES
+  const datosHero = encabezado.datos.map((d) => ({
+    etiqueta: d.etiqueta,
+    texto: d.formato === 'dinero' ? money(Number(d.valor)) : d.formato === 'fecha' ? formatDate(String(d.valor)) : String(d.valor),
+  }))
+  const textoCliente = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ')
 
   return (
     <div className="p-4 space-y-4">
-      {/* Header de app — no imprimible */}
+      {/* Controles de la app: solo en pantalla */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 print:hidden">
         <h1 className="text-2xl font-bold">Resumen Consolidado de Facturas</h1>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => window.history.back()}>Volver</Button>
-          {puedeCompartir && (
+          {/* Las anuladas son de consulta interna: no se comparten con el cliente (#977). */}
+          {puedeCompartir && estado !== 'ANULADA' && (
             <CompartirWhatsapp
               clienteId={cliente.id}
-              clienteNombre={[cliente.nombre, cliente.apellido].filter(Boolean).join(' ')}
+              clienteNombre={textoCliente}
               telefono={cliente.telefono}
               estado={estado}
               desde={desde}
@@ -300,40 +307,34 @@ export default function ResumenFacturasPage() {
         </div>
       </div>
 
-      {/* Filtro por estado (#758): el documento y los totales siguen la selección */}
-      <div className="flex flex-wrap gap-2 print:hidden" role="tablist" aria-label="Filtrar por estado" data-testid="resumen-tabs">
-        {TABS.map((t) => {
-          const n = t.key === 'TODAS'
-            ? conteos.EMITIDA + conteos.PARCIAL + conteos.PAGADA + (data.filtro.incluirAnuladas ? conteos.ANULADA : 0)
-            : conteos[t.key]
-          const activa = estado === t.key
-          return (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={activa}
-              data-testid={`resumen-tab-${t.key}`}
-              onClick={() => handleTab(t.key)}
-              className={`min-h-11 px-4 rounded-full text-sm font-semibold border transition ${
-                activa ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              {t.label} ({n})
-            </button>
-          )
-        })}
+      {/* Filtro por estado: el documento sigue la pestaña (#977) */}
+      <div className="print:hidden" data-testid="resumen-tabs-bloque">
+        <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap" role="tablist" aria-label="Filtrar por estado" data-testid="resumen-tabs">
+          {TABS.map((t) => {
+            const activa = estado === t.key
+            return (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={activa}
+                data-testid={`resumen-tab-${t.key}`}
+                onClick={() => handleTab(t.key)}
+                className={`min-h-11 shrink-0 px-4 rounded-full text-sm font-semibold border transition whitespace-nowrap ${
+                  activa ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-400 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {t.label} ({conteoTab[t.key]})
+              </button>
+            )
+          })}
+        </div>
+        <p className="mt-2 text-xs text-gray-600">
+          {estado === 'ANULADA'
+            ? 'Las anuladas son de consulta interna: no son venta ni deuda y no se comparten con el cliente.'
+            : `Las ${conteos.ANULADA} anuladas no suman. «Vigentes» = por cobrar + pagadas.`}
+        </p>
       </div>
-
-      {/* Lo que se debe, de un vistazo (#867) — no imprimible */}
-      <ResumenHero
-        soloAnuladas={estado === 'ANULADA'}
-        totales={totales}
-        anuladasTotal={anuladas.totalHistorico}
-        conSaldo={facturas
-          .filter((f) => f.estado !== 'ANULADA' && f.saldo > 0)
-          .map((f) => ({ numero: f.numero, saldo: f.saldo }))}
-      />
 
       {/* Estado vacío */}
       {facturas.length === 0 && (
@@ -341,225 +342,108 @@ export default function ResumenFacturasPage() {
           <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <p className="text-gray-600 font-medium">No hay facturas de <span className="font-bold">{cliente.nombre}</span></p>
-          <p className="text-gray-400 text-sm mt-1">Período: {formatPeriodo(periodo.desde, periodo.hasta)} · Estado: {estadoNombre}</p>
+          <p className="text-gray-600 font-medium">No hay facturas «{estadoNombre}» de <span className="font-bold">{cliente.nombre}</span></p>
+          <p className="text-gray-600 text-sm mt-1">Período: {formatPeriodo(periodo.desde, periodo.hasta)}</p>
         </div>
       )}
 
-      {/* Documento imprimible */}
+      {/* El documento: es lo que recibe el cliente, igual en pantalla, impresión y PDF */}
       {facturas.length > 0 && (
-        <div className="bg-white rounded-xl shadow print:shadow-none print:rounded-none print:border-0">
-          <div className="p-6 print:p-4">
-            {/* Header del documento */}
-            <div className="border-b-2 border-gray-800 pb-4 mb-4 doc-header">
-              {/* #873: donde la fila no cabe (móvil, tableta con barra lateral) el logo/empresa y
-                  el título se apilan (antes se encimaban o se cortaban); desde `lg` y al imprimir
-                  siguen en fila, exactamente como antes. */}
-              <div className="flex flex-col gap-y-3 lg:flex-row lg:justify-between lg:items-start print:flex-row print:justify-between print:items-start">
-                <div className="flex items-start gap-3 lg:gap-4 min-w-0 lg:min-w-auto print:gap-4 print:min-w-auto" data-testid="resumen-doc-empresa">
-                  <Image src="/logo-agua-bambu.jpg" alt="Logo" width={1280} height={652} className="h-12 lg:h-14 w-auto object-contain print:h-20" />
-                  <div className="min-w-0 break-words lg:min-w-auto lg:break-normal print:min-w-auto print:break-normal">
-                    <h2 className="text-xl font-bold text-gray-900">{empresa.nombre}</h2>
-                    <p className="text-sm text-gray-600">NIT: {empresa.nit}</p>
-                    {empresa.direccion && <p className="text-xs text-gray-500">{empresa.direccion}</p>}
-                    {empresa.telefono && <p className="text-xs text-gray-500">Tel: {empresa.telefono}</p>}
+        <div className="space-y-4 print:space-y-3" data-testid="resumen-documento">
+          <div className="bg-white rounded-xl shadow print:shadow-none print:rounded-none print:border-0">
+            <div className="p-6 print:p-4">
+              {/* Membrete */}
+              <div className="border-b-2 border-gray-800 pb-4 doc-header">
+                {/* #873: donde la fila no cabe (móvil, tableta con barra lateral) el logo/empresa y
+                    el título se apilan; desde `lg` y al imprimir siguen en fila. */}
+                <div className="flex flex-col gap-y-3 lg:flex-row lg:justify-between lg:items-start print:flex-row print:justify-between print:items-start">
+                  <div className="flex items-start gap-3 lg:gap-4 min-w-0 lg:min-w-auto print:gap-4 print:min-w-auto" data-testid="resumen-doc-empresa">
+                    <Image src="/logo-agua-bambu.jpg" alt="Logo" width={1280} height={652} className="h-12 lg:h-14 w-auto object-contain print:h-20" />
+                    <div className="min-w-0 break-words lg:min-w-auto lg:break-normal print:min-w-auto print:break-normal">
+                      <h2 className="text-xl font-bold text-gray-900">{empresa.nombre}</h2>
+                      <p className="text-sm text-gray-600">NIT: {empresa.nit}</p>
+                      {empresa.direccion && <p className="text-xs text-gray-600">{empresa.direccion}</p>}
+                      {empresa.telefono && <p className="text-xs text-gray-600">Tel: {empresa.telefono}</p>}
+                    </div>
+                  </div>
+                  <div className="text-left text-sm lg:text-right print:text-right" data-testid="resumen-doc-titulo">
+                    <p className="font-bold text-gray-900 uppercase tracking-wider text-base">Resumen Consolidado de Cuenta</p>
+                    <p className="text-gray-600 mt-1">{resumenNumber}</p>
+                    <p className="text-gray-600 text-xs">Generado: {generatedAt}</p>
                   </div>
                 </div>
-                <div className="text-left text-sm lg:text-right print:text-right" data-testid="resumen-doc-titulo">
-                  <p className="font-bold text-gray-900 uppercase tracking-wider text-base">Resumen Consolidado de Cuenta</p>
-                  <p className="text-gray-600 mt-1">{resumenNumber}</p>
-                  <p className="text-gray-500 text-xs">Generado: {generatedAt}</p>
+                <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-600">
+                  <span><strong>Período de facturas:</strong> {formatPeriodo(periodo.desde, periodo.hasta)}</span>
+                  <span data-testid="resumen-estado"><strong>Estado:</strong> {estadoNombre}</span>
                 </div>
               </div>
-              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-600">
-                <span><strong>Período de facturas:</strong> {formatPeriodo(periodo.desde, periodo.hasta)}</span>
-                <span data-testid="resumen-estado"><strong>Estado:</strong> {estadoNombre}</span>
-              </div>
-            </div>
 
-            {/* Datos del cliente */}
-            <div className="border border-gray-300 rounded-lg p-4 mb-4 print:border-gray-400">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Datos del cliente</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-sm">
-                <div>
-                  <span className="text-gray-500">Nombre:</span>{' '}
-                  <Link href={`/clientes?openCliente=${cliente.id}`} className="font-medium text-blue-600 hover:underline">
-                    {cliente.nombre} {cliente.apellido || ''}
+              {/* Cliente */}
+              <div className="mt-4 rounded-lg border border-gray-300 px-4 py-3 text-sm flex flex-wrap gap-x-6 gap-y-1" data-testid="resumen-cliente">
+                <span>
+                  <span className="text-gray-600">Cliente:</span>{' '}
+                  <Link href={`/clientes?openCliente=${cliente.id}`} className="font-semibold text-blue-700 hover:underline print:text-inherit">
+                    {textoCliente}
                   </Link>
-                </div>
-                <div>
-                  <span className="text-gray-500">Teléfono:</span>{' '}
-                  <span className="font-medium">{cliente.telefono}</span>
-                </div>
+                </span>
+                <span><span className="text-gray-600">Teléfono:</span> <span className="font-medium">{cliente.telefono}</span></span>
                 {(cliente.direccion || cliente.barrio) && (
-                  <div>
-                    <span className="text-gray-500">Dirección:</span>{' '}
+                  <span>
+                    <span className="text-gray-600">Dirección:</span>{' '}
                     <span className="font-medium">{[cliente.direccion, cliente.barrio].filter(Boolean).join(', ')}</span>
-                  </div>
+                  </span>
                 )}
               </div>
-            </div>
 
-            {/* En pantalla: tarjetas con el detalle de productos (#867) */}
-            <div className="space-y-3 mb-4 print:hidden" data-testid="resumen-tarjetas">
-              {facturas.map((f) => (
-                <FacturaCard
-                  key={f.id}
-                  abiertaInicial={facturas.length === 1}
-                  factura={{
-                    id: f.id,
-                    numero: f.numero,
-                    fechaTxt: formatDate(f.fecha),
-                    total: f.total,
-                    montoPagado: f.montoPagado,
-                    saldo: f.saldo,
-                    estado: f.estado,
-                    items: f.items,
-                    otrosAjustes: f.otrosAjustes,
-                  }}
+              {/* Cifra principal según lo consultado */}
+              <div className="mt-4">
+                <ResumenHero
+                  etiqueta={encabezado.etiqueta}
+                  monto={encabezado.monto}
+                  tono={encabezado.tono}
+                  nota={encabezado.nota}
+                  datos={datosHero}
                 />
-              ))}
-            </div>
-
-            {/* Al imprimir: tabla con el detalle de cada factura */}
-            <div className="hidden print:block overflow-x-auto mb-4">
-              <table className="w-full text-sm border border-gray-300 print:border-gray-400">
-                <thead className="bg-gray-100 print:bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider border-b border-gray-300"># Factura</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider border-b border-gray-300"># Pedido</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider border-b border-gray-300">Fecha</th>
-                    <th className="px-3 py-2 text-right font-semibold text-gray-700 text-xs uppercase tracking-wider border-b border-gray-300">Total</th>
-                    <th className="px-3 py-2 text-right font-semibold text-gray-700 text-xs uppercase tracking-wider border-b border-gray-300">Pagado</th>
-                    <th className="px-3 py-2 text-right font-semibold text-gray-700 text-xs uppercase tracking-wider border-b border-gray-300">Saldo</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-700 text-xs uppercase tracking-wider border-b border-gray-300 print:hidden print:no-desfase" title="Desfase Factura vs Pedido">⚠️</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-700 text-xs uppercase tracking-wider border-b border-gray-300">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {facturas.map((f, i) => (
-                    <Fragment key={f.id}>
-                    <tr className={`print:break-inside-avoid ${f.estado === 'ANULADA' ? 'bg-gray-100 text-gray-500 print:bg-white' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50 print:bg-white'}`}>
-                      <td className="px-3 py-2 font-medium border-b border-gray-100 print:border-gray-200">
-                        <Link href={`/facturas?openFactura=${f.id}`} className="text-blue-600 hover:underline">
-                          {f.numero}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-2 text-gray-600 border-b border-gray-100 print:border-gray-200">
-                        {f.pedidoNumero && f.pedidoId ? (
-                          <Link href={`/pedidos?openPedido=${f.pedidoId}`} className="text-blue-600 hover:underline">
-                            #{f.pedidoNumero}
-                          </Link>
-                        ) : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-gray-600 border-b border-gray-100 print:border-gray-200">{formatDate(f.fecha)}</td>
-                      <td className="px-3 py-2 text-right font-medium text-gray-900 border-b border-gray-100 print:border-gray-200">{formatCurrency(f.total)}</td>
-                      <td className="px-3 py-2 text-right text-gray-600 border-b border-gray-100 print:border-gray-200">{formatCurrency(f.montoPagado)}</td>
-                      <td className="px-3 py-2 text-right font-medium border-b border-gray-100 print:border-gray-200">
-                        <span className={f.saldo > 0 ? 'text-red-600' : 'text-green-700'}>
-                          {f.saldo > 0 ? formatCurrency(f.saldo) : '—'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-center border-b border-gray-100 print:border-gray-200 print:hidden print:no-desfase">
-                        {f.desfase ? (
-                          <span className="relative group cursor-help" title={`Saldo: Factura=${formatCurrency(f.desfase.facturaSaldo)} ≠ Pedido=${f.desfase.pedidoSaldo !== null ? formatCurrency(f.desfase.pedidoSaldo) : 'N/A'} | Pagado: Factura=${formatCurrency(f.desfase.facturaPagado)} ≠ Pedido=${f.desfase.pedidoPagado !== null ? formatCurrency(f.desfase.pedidoPagado) : 'N/A'}`}>
-                            <span className="text-red-500 font-bold">⚠️</span>
-                            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-64 bg-gray-900 text-white text-xs rounded-lg py-2 px-3 z-10 whitespace-normal">
-                              <strong>Desfase detectado</strong><br/>
-                              Saldo: Factura={formatCurrency(f.desfase.facturaSaldo)} ≠ Pedido={f.desfase.pedidoSaldo !== null ? formatCurrency(f.desfase.pedidoSaldo) : 'N/A'}<br/>
-                              Pagado: Factura={formatCurrency(f.desfase.facturaPagado)} ≠ Pedido={f.desfase.pedidoPagado !== null ? formatCurrency(f.desfase.pedidoPagado) : 'N/A'}
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="text-green-500">✓</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-center text-xs font-medium text-gray-600 border-b border-gray-100 print:border-gray-200">
-                        {ESTADO_TXT[f.estado] ?? f.estado}
-                      </td>
-                    </tr>
-                    {f.items.map((it) => (
-                      <tr key={`${f.id}-${it.producto}`} className="print:break-inside-avoid text-xs text-gray-500">
-                        <td className="px-3 py-1 pl-8 border-b border-gray-100 print:border-gray-200" colSpan={3}>
-                          {it.etiqueta} × {it.cantidad}
-                        </td>
-                        <td className="px-3 py-1 text-right border-b border-gray-100 print:border-gray-200">{formatCurrency(it.subtotal)}</td>
-                        <td className="border-b border-gray-100 print:border-gray-200" colSpan={4} />
-                      </tr>
-                    ))}
-                    {f.otrosAjustes !== 0 && (
-                      <tr className="print:break-inside-avoid text-xs text-gray-500">
-                        <td className="px-3 py-1 pl-8 border-b border-gray-100 print:border-gray-200" colSpan={3}>Otros ajustes</td>
-                        <td className="px-3 py-1 text-right border-b border-gray-100 print:border-gray-200">{formatCurrency(f.otrosAjustes)}</td>
-                        <td className="border-b border-gray-100 print:border-gray-200" colSpan={4} />
-                      </tr>
-                    )}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Totales */}
-            <div className="flex justify-end mb-6 doc-totales">
-              <div className="w-full max-w-sm border-2 border-gray-800 rounded-lg p-4 print:border-gray-600">
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Facturas incluidas:</span>
-                    <span className="font-medium">{totales.count}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Total facturado:</span>
-                    <span className="font-semibold">{formatCurrency(totales.total)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Total pagado:</span>
-                    <span className="font-semibold text-green-700">{formatCurrency(totales.totalPagado)}</span>
-                  </div>
-                  {anuladas.count > 0 && (
-                    <div className="flex justify-between text-xs text-gray-500" data-testid="resumen-anuladas">
-                      <span>Anuladas (no suman): {anuladas.count}</span>
-                      <span>{formatCurrency(anuladas.totalHistorico)}</span>
-                    </div>
-                  )}
-                  <div className="border-t-2 border-gray-800 pt-2 mt-2 print:border-gray-600">
-                    <div className="flex justify-between text-base">
-                      <span className="font-bold text-gray-800 uppercase">
-                        {totales.saldo > 0 ? 'Saldo pendiente' : 'Cuenta al día'}
-                      </span>
-                      <span className={`font-bold text-lg ${totales.saldo > 0 ? 'text-red-600' : 'text-green-700'}`}>
-                        {formatCurrency(totales.saldo)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
               </div>
-            </div>
 
-            {/* Firma */}
-            <div className="mt-12 pt-4 border-t border-gray-300 print:border-gray-400 doc-firma">
-              <div className="grid grid-cols-2 gap-8 text-sm">
-                <div>
-                  <p className="text-gray-500 mb-8">Recibido por:</p>
-                  <div className="border-t border-gray-400 pt-1">
-                    <p className="text-xs text-gray-400">Nombre y firma del cliente</p>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-gray-500 mb-8">Fecha de recibido:</p>
-                  <div className="border-t border-gray-400 pt-1">
-                    <p className="text-xs text-gray-400">DD / MM / AAAA</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Nota legal */}
-            <div className="mt-8 pt-3 border-t border-gray-200 text-[10px] text-gray-400 print:text-gray-500 doc-nota">
-              <p>
-                Este documento es un resumen informativo de las facturas individuales emitidas en el período indicado.
-                Cada factura listada es un documento soporte contable independiente. Para fines fiscales o contables, refiérase a las facturas originales.
+              {/* Facturas, con lo que se llevó cada una */}
+              <p className="mt-4 mb-2 text-xs text-gray-600" data-testid="resumen-contexto">
+                {estadoNombre} ({facturas.length}) · de la más antigua a la más reciente
               </p>
+              <div className="space-y-2" data-testid="resumen-tarjetas">
+                {facturas.map((f, i) => (
+                  <div key={f.id} className={!verTodas && i >= FILAS_INICIALES ? 'hidden print:block' : undefined}>
+                    <FacturaCard factura={{ ...f, fechaTxt: formatDate(f.fecha) }} />
+                  </div>
+                ))}
+              </div>
+
+              {!verTodas && (
+                <div className="mt-2 print:hidden">
+                  <Button
+                    variant="outline"
+                    className="w-full min-h-12 border-dashed"
+                    onClick={() => setMostrarTodas(true)}
+                    data-testid="resumen-mostrar-mas"
+                  >
+                    Mostrar las otras {ocultas} facturas
+                  </Button>
+                  <p className="mt-1 text-center text-xs text-gray-600">Solo en pantalla: el PDF y la impresión llevan todas.</p>
+                </div>
+              )}
+
+              {/* Suma de verificación: coincide con la cifra principal */}
+              {(estado === 'POR_COBRAR') && (
+                <div className="mt-3 flex items-center justify-between border-t-2 border-gray-800 pt-3 text-sm" data-testid="resumen-suma">
+                  <span className="text-gray-700">Suma de las {totales.count} por cobrar</span>
+                  <strong className="text-base text-red-700">{money(totales.saldo)}</strong>
+                </div>
+              )}
+              {estado === 'TODAS' && anuladas.count > 0 && (
+                <p className="mt-3 text-xs text-gray-600" data-testid="resumen-anuladas">
+                  Anuladas aparte: {anuladas.count} ({money(anuladas.totalHistorico)}). No son venta ni deuda y no suman.
+                </p>
+              )}
             </div>
           </div>
         </div>

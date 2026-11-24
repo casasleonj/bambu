@@ -3,6 +3,16 @@
 import { useState, useActionState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { authenticate } from '@/lib/auth-actions'
+import { AuthCookieLockError, withAuthCookieLock } from '@/lib/auth-cookie-lock'
+
+async function authenticateCoordinated(previous: string | undefined, form: FormData) {
+  try {
+    return await withAuthCookieLock(() => authenticate(previous, form))
+  } catch (error) {
+    if (error instanceof AuthCookieLockError) return error.message
+    throw error
+  }
+}
 
 /**
  * Mobile keyboard fix: cuando el teclado virtual aparece, iOS Safari NO
@@ -27,15 +37,17 @@ export function LoginForm() {
   const searchParams = useSearchParams()
   const reason = searchParams.get('reason')
   const isExpired = reason === 'expired'
+  const isSignedOut = reason === 'signedout'
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showDevHint] = useState(() => process.env.NODE_ENV === 'development')
-  const [errorMessage, formAction, isPending] = useActionState(authenticate, undefined)
+  const [errorMessage, formAction, isPending] = useActionState(authenticateCoordinated, undefined)
 
   return (
     <form action={formAction} className="space-y-6">
+      {isSignedOut && <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800" role="status">Cerraste la sesión en este navegador.</div>}
       {isExpired && (
         <div
           className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm flex items-center gap-2"

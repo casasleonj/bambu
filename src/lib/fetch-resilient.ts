@@ -97,7 +97,7 @@ async function encolarResilient(req: ResilientRequest): Promise<{ enqueued: bool
 function dispatchAuthExpired(url: string, statusCode: number, endpoint: string): void {
   if (typeof window === 'undefined') return
   if (url.startsWith('/api/auth/')) return
-  if (statusCode !== 401 && statusCode !== 403) return
+  if (statusCode !== 401) return
   logger.warn(
     { url, statusCode, endpoint },
     'fetchResilient: sesión rechazada por el servidor',

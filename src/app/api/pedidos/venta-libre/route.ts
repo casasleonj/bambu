@@ -310,6 +310,11 @@ export async function POST(request: NextRequest) {
           estadoEntrega: estadoEntregaFinal,
           estadoPago,
           estado: estadoEntregaFinal, // legacy
+          // #989/#602: una venta libre entregada al crearse guarda el día de su entrega en la misma
+          // transacción. Es la hora del registro en el servidor; no se asigna `entregadoPorId`
+          // (el embarque no prueba quién entregó ni debe mover la comisión).
+          entregadoAt: entregarAhora ? serverReceivedAt : null,
+          fecha: serverReceivedAt, // mismo instante que `entregadoAt`
           // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: si se entrega después, el pedido
           // NO queda asignado a un embarque (queda planificable); pero el embarque
           // de origen se conserva para conciliar el `Pago` en su cierre (§0).

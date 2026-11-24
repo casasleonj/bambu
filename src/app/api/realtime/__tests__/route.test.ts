@@ -28,6 +28,7 @@ vi.mock('@/lib/realtime', () => ({
 }))
 
 import { auth } from '@/lib/auth'
+import { SessionUnavailableError } from '@/lib/session-status'
 import { checkRateLimit } from '@/lib/rate-limit'
 import type { Session } from 'next-auth'
 
@@ -48,6 +49,13 @@ describe('M5: /api/realtime rate-limit contract', () => {
     const res = await GET(new Request('http://localhost/api/realtime'))
     expect(res.status).toBe(401)
     expect(await res.text()).toBe('Unauthorized')
+  })
+
+  it('retorna 503 sin abrir SSE si la verificación está indisponible', async () => {
+    mockedAuth.mockRejectedValueOnce(new SessionUnavailableError())
+    const res = await GET(new Request('http://localhost/api/realtime'))
+    expect(res.status).toBe(503)
+    expect(mockedCheckRateLimit).not.toHaveBeenCalled()
   })
 
   it('retorna 503 cuando no hay REDIS_URL y rate limit permite', async () => {
