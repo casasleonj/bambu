@@ -107,3 +107,25 @@ describe('fiados #796: cierres registrados tardíamente', () => {
       fecha('2026-11-23T17:00:00-05:00'), true)).toBeNull()
   })
 })
+
+describe('fiados #796: ajustes netos y reversión del saldo vigente', () => {
+  const ahora = fecha('2026-11-23T17:00:00-05:00')
+  const entregas = [
+    { id: 'a', entregadoAt: fecha('2026-11-22T15:00:00-05:00'), valorEntregado: 80000 },
+    { id: 'b', entregadoAt: entrega, valorEntregado: 46000 },
+  ]
+  it('restablece ambas porciones cuando el saldo neto refleja una reversión completa', () => {
+    const base = { entregas, cierresPorDia: new Map<string, Date>() }
+    expect(desglosarPedidoConFIFO({ ...base, totalPagado: 100000, exigible: 26000 }, ahora))
+      .toEqual({ fiadoCentavos: 0, pendienteOperativoCentavos: 2600000, exigibleCentavos: 2600000 })
+    expect(desglosarPedidoConFIFO({ ...base, totalPagado: 0, exigible: 126000 }, ahora))
+      .toEqual({ fiadoCentavos: 8000000, pendienteOperativoCentavos: 4600000, exigibleCentavos: 12600000 })
+  })
+  it('clasifica un ajuste inequívoco sin inventar una distribución mixta', () => {
+    expect(desglosarPedidoConFIFO({ entregas: [entregas[0]], totalPagado: 0, exigible: 60000,
+      cierresPorDia: new Map() }, ahora))
+      .toEqual({ fiadoCentavos: 6000000, pendienteOperativoCentavos: 0, exigibleCentavos: 6000000 })
+    expect(desglosarPedidoConFIFO({ entregas, totalPagado: 0, exigible: 106000,
+      cierresPorDia: new Map() }, ahora)).toBeNull()
+  })
+})
