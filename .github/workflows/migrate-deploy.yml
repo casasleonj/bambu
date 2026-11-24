@@ -111,11 +111,16 @@ jobs:
         run: npx prisma migrate status || true
 
       - name: Conciliar checksum e historial de migraciones ANTES de DDL
+        id: preflight
         env:
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: node scripts/ci/migration-ledger-preflight.mjs
 
+      # Fail closed: ausencia de output, error de preflight o dispatch manual
+      # jamás habilitan este paso. Solo se aplica DDL si la conciliación
+      # detectó migraciones SQL NUEVAS y aún pendientes en este push.
       - name: Apply pending migrations
+        if: github.event_name == 'push' && steps.preflight.outputs.apply_pending == 'true'
         run: npx prisma migrate deploy
 
   # Optional: uncomment and configure if you want GitHub Actions to also trigger

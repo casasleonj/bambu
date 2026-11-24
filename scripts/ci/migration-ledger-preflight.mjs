@@ -1,5 +1,5 @@
 // #703 R0 · Conciliación Prisma read-only ANTES de migrate deploy.
-import {readdirSync,readFileSync} from 'node:fs'
+import {readdirSync,readFileSync,appendFileSync} from 'node:fs'
 import {join} from 'node:path'
 import {createHash} from 'node:crypto'
 import {execFileSync} from 'node:child_process'
@@ -83,11 +83,31 @@ export function addedInPush(before,after,exec=execFileSync){
  ],{encoding:'buffer',maxBuffer:1048576,timeout:15000}))
 }
 
-export async function main(env=process.env){
- if(env.GITHUB_EVENT_NAME!=='push'||env.GITHUB_REF!=='refs/heads/main'){
-  throw Error('Preflight exclusivo de push main; dispatch no certificado')
+// En un dispatch manual se valida la base, pero NUNCA se autoriza DDL.
+export function allowedPendingForEvent(env,fromPush=addedInPush){
+ if(!env||!['push','workflow_dispatch'].includes(env.GITHUB_EVENT_NAME)||
+   env.GITHUB_REF!=='refs/heads/main'){
+  throw Error('Preflight solo para main y eventos autorizados')
  }
- const allowed=addedInPush(env.GITHUB_EVENT_BEFORE,env.GITHUB_SHA)
+ return env.GITHUB_EVENT_NAME==='workflow_dispatch'
+  ? new Set() : fromPush(env.GITHUB_EVENT_BEFORE,env.GITHUB_SHA)
+}
+
+// Señal positiva explícita: sin salida, DDL nunca puede ser habilitado.
+// Solo se escribe después de verificar TODAS las migraciones y checksums.
+export function writeApplyDecision(pending,output,write=appendFileSync){
+ if(!Array.isArray(pending)||pending.some(name=>typeof name!=='string')){
+  throw Error('Resultado de preflight inválido')
+ }
+ if(typeof output!=='string'||!output)throw Error('GITHUB_OUTPUT ausente')
+ const enabled=pending.length>0
+ write(output,'apply_pending='+(enabled?'true':'false')+'\\n',
+  {encoding:'utf8',flag:'a',mode:0o600})
+ return enabled
+}
+
+export async function main(env=process.env){
+ const allowed=allowedPendingForEvent(env)
  const files=readMigrations('prisma/migrations')
  const {PrismaClient}=await import('@prisma/client')
  const db=new PrismaClient()
@@ -96,8 +116,9 @@ export async function main(env=process.env){
   const sql='SELECT migration_name,checksum,finished_at,rolled_back_at FROM public."_prisma_migrations"'
   const rows=await db.$queryRawUnsafe(sql)
   const result=verifyLedger(files,rows,allowed)
+  writeApplyDecision(result.pending,env.GITHUB_OUTPUT)
   console.log('Prisma ledger validado: '+result.completed+' aplicadas, '+
-   result.pending.length+' nuevas pendientes')
+   result.pending.length+' nuevas pendientes; modo '+env.GITHUB_EVENT_NAME)
  }finally{await db.$disconnect()}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
