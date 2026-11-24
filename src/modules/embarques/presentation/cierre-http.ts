@@ -57,6 +57,7 @@ export function toCerrarInput(
       negocioId: v.negocioId,
       pedidoOrigenId: v.pedidoOrigenId,
       excepcionId: v.excepcionId,
+      fechaDeclaradaVenta: v.fechaDeclaradaVenta,
     })),
     productosRetorno: productos,
     ...(cambiosDesdeSustituciones ? { cambiosDesdeSustituciones: true } : {}),

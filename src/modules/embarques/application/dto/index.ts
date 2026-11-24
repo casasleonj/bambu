@@ -1,3 +1,4 @@
+import type { DeclaracionFechaVentaLibre } from '@/lib/declaracion-fecha-venta-libre-630'
 /**
  * Embarques Application DTOs.
  *
@@ -64,6 +65,8 @@ export interface CerrarEmbarqueInput {
     pedidoOrigenId?: string
     /** F2: excepción de crédito ya autorizada para esta venta. */
     excepcionId?: string
+    /** #630 F1-B1b: declaración del usuario, sin efecto contable. */
+    fechaDeclaradaVenta?: DeclaracionFechaVentaLibre
   }>
   productosRetorno?: Array<{
     producto: string
