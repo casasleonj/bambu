@@ -105,6 +105,7 @@ export interface Pedido {
   totalPagado: number
   total: number
   exigible?: number
+  corteOperativo?: { fiado: number; pendiente: number; sinClasificar: number; exigible: number } | null
   saldo: number
   /** #932: deuda exigible actual de OTROS pedidos del mismo titular. */
   fiadosAnteriores?: ResumenFiadosAnteriores

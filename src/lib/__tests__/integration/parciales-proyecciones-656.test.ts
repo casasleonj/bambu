@@ -95,7 +95,8 @@ describe('Parcial: misma exigibilidad entre proyecciones',()=>{
     await entregarPedidoUseCase.execute({pedidoId:parcialId,itemsEntregados:[{producto:'PACA_AGUA',cantidad:2}],offlineId:randomUUID()})
     const completo=await consultarPedidos(filtros(),'ADMIN',db)
     expect(completo.pedidos.find(p=>p.id===parcialId)).toMatchObject({exigible:4000,estadoEntrega:'ENTREGADO',saldo:4000})
-    expect(await (await consultarContadores(new NextRequest('http://localhost/api/pedidos/counts'))).json()).toMatchObject({ fiadosCount: 1, esperandoPagoCount: 1, esperandoPagoTotal: 4000 })
+    expect(await (await consultarContadores(new NextRequest('http://localhost/api/pedidos/counts'))).json()).// #796 (maqueta aprobada): lo entregado hoy y sin cobrar sigue exigible y cobrable (esperandoPago), pero aún no es fiado.
+    toMatchObject({ fiadosCount: 0, esperandoPagoCount: 1, esperandoPagoTotal: 4000 })
     expect((await pagar(4000)).status).toBe(200)
     const final=await consultarPedidos(filtros(),'ADMIN',db)
     expect(final.pedidos.find(p=>p.id===parcialId)).toMatchObject({total:12000,totalPagado:12000,saldo:0,exigible:0})
@@ -165,6 +166,7 @@ describe('Parcial: misma exigibilidad entre proyecciones',()=>{
     try {
       expect(await (await consultarContadores(new NextRequest('http://localhost/api/pedidos/counts'))).json()).toMatchObject({ fiadosCount: 1, esperandoPagoCount: 2, esperandoPagoTotal: 5000 })
     } finally { vi.unstubAllEnvs() }
-    expect(await (await consultarContadores(new NextRequest('http://localhost/api/pedidos/counts'))).json()).toMatchObject({ fiadosCount: 2, esperandoPagoCount: 3, esperandoPagoTotal: 13000 })
+    // #796: la parcial entregada hoy (4000) es exigible pero aún no fiado; solo el cliente de fecha 05-nov es fiado.
+    expect(await (await consultarContadores(new NextRequest('http://localhost/api/pedidos/counts'))).json()).toMatchObject({ fiadosCount: 1, esperandoPagoCount: 3, esperandoPagoTotal: 13000 })
   })
 })
