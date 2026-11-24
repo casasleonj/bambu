@@ -12,6 +12,9 @@ import { endOfDayBogota, startOfDayBogota, todayStringBogota } from "@/lib/dates
  * y comprueba que la comisión del repartidor no cambia ni se bloquea.
  */
 const HOY = todayStringBogota();
+// #989/#630: fixtures dentro del mismo día Bogotá. Date.now() + 23 min
+// cerca de medianoche caía mañana y hacía fallar el filtro HOY (flake CI).
+const HORA_FIJA = new Date(`${HOY}T12:00:00-05:00`);
 const TARIFA = { agua: 400, hielo: 400, botellon: 400 };
 let adminId: string;
 let repartidorId: string;
@@ -27,7 +30,7 @@ async function crear(opts: {
   repartidor?: string;
 }) {
   const c = await testPrisma.cliente.create({ data: { nombre: `989 ${randomUUID()}`, telefono: randomUUID() } });
-  const fecha = new Date();
+  const fecha = new Date(HORA_FIJA);
   const p = await testPrisma.pedido.create({
     data: {
       clienteId: c.id, createdById: adminId, canal: opts.canal ?? "DOMICILIO", origen: opts.origen,
@@ -44,10 +47,10 @@ async function crear(opts: {
 const auditoriaLegada = (pedidoId: string, parcial: boolean, n: number) =>
   testPrisma.historial.create({
     data: {
-      entidad: "Pedido", registroId: pedidoId, accion: "UPDATE", fecha: new Date(Date.now() + n),
+      entidad: "Pedido", registroId: pedidoId, accion: "UPDATE", fecha: new Date(+HORA_FIJA + n),
       datos: JSON.stringify({
         accion: "ENTREGA_OFICINA", estadoEntrega: parcial ? "PENDIENTE" : "ENTREGADO", parcial,
-        repartidorId, fechaEntrega: new Date().toISOString(),
+        repartidorId, fechaEntrega: HORA_FIJA.toISOString(),
       }),
     },
   });
