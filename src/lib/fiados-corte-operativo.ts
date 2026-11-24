@@ -18,7 +18,7 @@ export function corteDeEntrega(
   const cierre = cierreDeJornadaAt.getTime()
   const entrega = entregadoAt.getTime()
   // Un cierre anterior a la entrega no puede convertir en fiado mercancía aún no entregada.
-  if (cierre < entrega || cierre >= medianoche || diaBogota(cierreDeJornadaAt) !== diaBogota(entregadoAt)) return medianoche
+  if (cierre < entrega || cierre >= medianoche.getTime() || diaBogota(cierreDeJornadaAt) !== diaBogota(entregadoAt)) return medianoche
   return cierreDeJornadaAt
 }
 
