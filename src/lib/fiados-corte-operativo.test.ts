@@ -129,3 +129,33 @@ describe('fiados #796: ajustes netos y reversión del saldo vigente', () => {
       cierresPorDia: new Map() }, ahora)).toBeNull()
   })
 })
+
+describe('fiados #796: el desglose nunca lanza por datos del pedido', () => {
+  const ahora = fecha('2026-11-23T17:00:00-05:00')
+  const entregas = [
+    { id: 'a', entregadoAt: fecha('2026-11-22T15:00:00-05:00'), valorEntregado: 80000 },
+    { id: 'b', entregadoAt: entrega, valorEntregado: 46000 },
+  ]
+  const base = { entregas, cierresPorDia: new Map<string, Date>() }
+
+  it('sobrepago (anticipo): el FIFO no deja saldos negativos y no lanza', () => {
+    expect(() => desglosarPedidoConFIFO({ ...base, totalPagado: 500000, exigible: 0 }, ahora)).not.toThrow()
+    expect(desglosarPedidoConFIFO({ ...base, totalPagado: 500000, exigible: 0 }, ahora))
+      .toEqual({ fiadoCentavos: 0, pendienteOperativoCentavos: 0, exigibleCentavos: 0 })
+  })
+  it('sobrepago con exigible incoherente devuelve null (por clasificar), sin lanzar', () => {
+    expect(desglosarPedidoConFIFO({ ...base, totalPagado: 500000, exigible: 5000 }, ahora)).toBeNull()
+  })
+  it('entregas con centavos y valor cero: saldos enteros no negativos', () => {
+    const e = [
+      { id: 'x', entregadoAt: fecha('2026-11-22T15:00:00-05:00'), valorEntregado: 1000.1 },
+      { id: 'y', entregadoAt: entrega, valorEntregado: 0 },
+    ]
+    expect(desglosarPedidoConFIFO({ entregas: e, cierresPorDia: new Map(), totalPagado: 0.3, exigible: 999.8 }, ahora))
+      .toEqual({ fiadoCentavos: 99980, pendienteOperativoCentavos: 0, exigibleCentavos: 99980 })
+  })
+  it('entrega futura devuelve null en lugar de lanzar ENTREGA_FUTURA_NO_EXIGIBLE', () => {
+    expect(desglosarPedidoConFIFO({ entregas: [{ id: 'f', entregadoAt: fecha('2026-11-24T10:00:00-05:00'), valorEntregado: 100 }],
+      cierresPorDia: new Map(), totalPagado: 0, exigible: 100 }, ahora)).toBeNull()
+  })
+})
