@@ -1,5 +1,6 @@
 import { corteFinDelDiaBogota } from './fiado-al-corte'
 import { diaBogota } from './cobro-clasificacion'
+import { proyectarPagoFIFO } from './entregas-exigibles'
 
 /**
  * #796: fecha efectiva de consolidación de una entrega.
@@ -56,4 +57,47 @@ export function desglosarDeudaAlCorte(
   }
   return { fiadoCentavos, pendienteOperativoCentavos,
     exigibleCentavos: fiadoCentavos + pendienteOperativoCentavos }
+}
+
+/** Datos verificables del pedido. No inferir fechas a partir de la creación. */
+export interface EntregaParaClasificar {
+  id: string
+  entregadoAt: Date
+  valorEntregado: number
+}
+
+export interface PedidoParaDesglose {
+  entregas: readonly EntregaParaClasificar[]
+  totalPagado: number
+  /** Autoridad del saldo exigible actual (leerExigibles). */
+  exigible: number
+  /** Cierres de la jornada, indexados por YYYY-MM-DD de Bogotá. */
+  cierresPorDia: ReadonlyMap<string, Date>
+}
+
+/**
+ * Adaptador de la clasificación al FIFO existente. Cuando el valor de las entregas
+ * no concilia con el exigible vigente (rebajas, cambios de precio, hechos faltantes),
+ * NO publica un total aproximado como definitivo: devuelve null.
+ */
+export function desglosarPedidoConFIFO(
+  pedido: PedidoParaDesglose,
+  ahora: Date,
+): DesgloseDeudaAlCorte | null {
+  const cents = (n: number) => Math.round(n * 100)
+  if (![pedido.totalPagado, pedido.exigible].every(n => Number.isFinite(n) && n >= 0)) return null
+  if (pedido.entregas.some(e => !e.id || !Number.isFinite(e.valorEntregado) || e.valorEntregado < 0 ||
+    !Number.isFinite(e.entregadoAt.getTime()) || e.entregadoAt > ahora)) return null
+  const ids = new Set(pedido.entregas.map(e => e.id))
+  if (ids.size !== pedido.entregas.length) return null
+  const proyectadas = proyectarPagoFIFO(pedido.entregas.map(e => ({
+    id: e.id, entregadoAt: e.entregadoAt, valorEntregado: e.valorEntregado, asignado: 0,
+  })), pedido.totalPagado)
+  const saldoFIFO = proyectadas.reduce((s, e) => s + cents(e.valorEntregado) - cents(e.asignado), 0)
+  if (saldoFIFO !== cents(pedido.exigible)) return null
+  return desglosarDeudaAlCorte(proyectadas.map(e => ({
+    entregadoAt: e.entregadoAt,
+    saldoCentavos: cents(e.valorEntregado) - cents(e.asignado),
+    cierreDeJornadaAt: pedido.cierresPorDia.get(diaBogota(e.entregadoAt)) ?? null,
+  })), ahora)
 }
