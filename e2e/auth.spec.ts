@@ -59,8 +59,19 @@ test('signOut redirects to login', async ({ page }) => {
     await expect(cerrarSesion).toBeVisible({ timeout: 2000 })
   }).toPass({ timeout: 20000 })
 
+  // #812: no dar por bueno un redirect a 0.0.0.0 solo porque contiene /login.
+  const origenAntes = new URL(page.url()).origin
   await cerrarSesion.click()
-  // The redirect may use 0.0.0.0 (AUTH_TRUST_HOST) or localhost,
-  // so use a regex matcher instead of exact URL.
-  await expect(page).toHaveURL(/\/login/, { timeout: 15000 })
+  await expect(page).toHaveURL(
+    url => url.origin === origenAntes && url.pathname === '/login',
+    { timeout: 15000 },
+  )
+
+  // Verificar efecto real del cierre y no solo la URL. Si la cookie siguiera
+  // autenticando, este acceso protegido abriría el dashboard de nuevo.
+  await page.goto(origenAntes + '/dashboard')
+  await expect(page).toHaveURL(
+    url => url.origin === origenAntes && url.pathname === '/login',
+    { timeout: 15000 },
+  )
 })
