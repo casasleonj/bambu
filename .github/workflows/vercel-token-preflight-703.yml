@@ -1,0 +1,61 @@
+# Verificación aislada, de un solo PR, sin DDL, checkout ni descarga de secretos.
+# Eliminar este workflow del PR después de documentar el resultado.
+name: Vercel token preflight #703 (read-only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/vercel-token-preflight-703.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test-vercel-project-access:
+    name: Token Vercel y acceso a proyecto (sin DDL)
+    if: ${{ github.event.pull_request.number == 985 && github.event.pull_request.head.repo.full_name == 'casasleonj/bambu' && github.event.pull_request.head.ref == 'ci/703-r0-migration-release-gate-20261122' }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 5
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Solo GET autenticado de proyecto Vercel; ninguna escritura
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const token=process.env.VERCEL_TOKEN
+          const projectId='prj_NzjF7gJ1CFYYHOhfAhE5mK7CxpPr'
+          const teamId='team_Ml9rVX2uWgNn2OJ8cZe9pTWD'
+          if(!token){
+            console.error('FAIL: GitHub Actions no entregó VERCEL_TOKEN al entorno production')
+            process.exitCode=1
+          }else{
+            try{
+              const url=new URL('https://api.vercel.com/v9/projects/'+projectId)
+              url.searchParams.set('teamId',teamId)
+              const response=await fetch(url,{
+                method:'GET',
+                redirect:'error',
+                headers:{Authorization:'Bearer '+token,Accept:'application/json'},
+                signal:AbortSignal.timeout(12000),
+              })
+              if(!response.ok){
+                console.error('FAIL: Vercel rechazó la consulta read-only al proyecto; HTTP '+response.status)
+                process.exitCode=1
+              }else{
+                const project=await response.json()
+                if(project.id!==projectId||project.accountId!==teamId){
+                  console.error('FAIL: Identidad del proyecto o equipo Vercel no coincide')
+                  process.exitCode=1
+                }else{
+                  console.log('PASS: VERCEL_TOKEN de GitHub Actions es válido y autoriza lectura del proyecto correcto')
+                }
+              }
+            }catch(_){
+              console.error('FAIL: no se pudo verificar Vercel por red o respuesta inválida; no se exponen secretos')
+              process.exitCode=1
+            }
+          }
+          NODE
