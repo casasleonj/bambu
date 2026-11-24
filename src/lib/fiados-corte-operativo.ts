@@ -102,3 +102,20 @@ export function desglosarPedidoConFIFO(
     cierreDeJornadaAt: pedido.cierresPorDia.get(diaBogota(e.entregadoAt)) ?? null,
   })), ahora)
 }
+
+/**
+ * Solo admite la hora del cierre cuando se confirmó que representa el instante
+ * EFECTIVO de cierre, no el momento de registrar retroactivamente el documento.
+ * El día del cierre debe coincidir con la jornada declarada y no ser futuro.
+ */
+export function cierreEfectivoVerificado(
+  diaJornada: string,
+  horaCierre: Date | null,
+  registradoAt: Date,
+  horaEfectivaConfirmada: boolean,
+): Date | null {
+  if (!horaEfectivaConfirmada || horaCierre === null) return null
+  if (!Number.isFinite(horaCierre.getTime()) || !Number.isFinite(registradoAt.getTime())) return null
+  if (diaBogota(horaCierre) !== diaJornada || horaCierre > registradoAt) return null
+  return horaCierre
+}
