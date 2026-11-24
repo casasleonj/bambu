@@ -27,15 +27,20 @@ export interface FiadoRow {
   negocioId?: string | null; nombreNegocioCli?: string | null; pedidos: Pedido[]; deuda: number; antigua: Date
 }
 /** Filas de la consulta de Fiados: una por cliente, solo deuda exigible de lo entregado. Fuente única del total (#613, #781). */
+/** El saldo exigible permanece intacto para cobro y límites. El legado sin clasificación sigue visible. */
+export function importeFiadoVisible(p: Pedido): number {
+  return p.corteOperativo ? p.corteOperativo.fiado + p.corteOperativo.sinClasificar
+    : p.exigible ?? (p.estadoEntrega === 'ENTREGADO' ? Number(p.saldo) : 0)
+}
 export function filasFiados(pedidos: Pedido[], periodo: PeriodoFiltro): FiadoRow[] {
   const grouped = new Map<string, FiadoRow>()
   for (const p of filtrarPorPeriodo(pedidos, periodo)) {
-    if (['ANULADO', 'CANCELADO'].includes(p.estadoEntrega) || (p.exigible ?? (p.estadoEntrega === 'ENTREGADO' ? Number(p.saldo) : 0)) <= 0 || p.clienteId === 'CONSUMIDOR_FINAL') continue
+    if (['ANULADO', 'CANCELADO'].includes(p.estadoEntrega) || importeFiadoVisible(p) <= 0 || p.clienteId === 'CONSUMIDOR_FINAL') continue
     const row = grouped.get(p.clienteId)
-    if (row) { row.pedidos.push(p); row.deuda += p.exigible ?? Number(p.saldo); if (new Date(p.fecha) < row.antigua) row.antigua = new Date(p.fecha) }
+    if (row) { row.pedidos.push(p); row.deuda += importeFiadoVisible(p); if (new Date(p.fecha) < row.antigua) row.antigua = new Date(p.fecha) }
     else grouped.set(p.clienteId, { clienteId: p.clienteId, nombreCli: p.nombreCli, apellidoCli: p.apellidoCli,
       telefonoCli: p.telefonoCli, negocioId: p.negocioId, nombreNegocioCli: p.nombreNegocioCli,
-      pedidos: [p], deuda: p.exigible ?? Number(p.saldo), antigua: new Date(p.fecha) })
+      pedidos: [p], deuda: importeFiadoVisible(p), antigua: new Date(p.fecha) })
   }
   return [...grouped.values()]
 }
@@ -116,7 +121,7 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
   const detalle = (row: FiadoRow) => <div className="space-y-3 rounded-lg bg-gray-50 p-3">
     {[...row.pedidos].sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero - b.numero).map(p => <div key={p.id} className="border-b py-2 last:border-0">
       <p className="text-sm font-medium">Pedido #{p.numero} · {new Date(p.fecha).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}</p>
-      <p className="text-sm text-gray-600">Por cobrar <MoneyDisplay value={p.exigible ?? Number(p.saldo)} userRole={userRole} /> · Saldo del pedido <MoneyDisplay value={Number(p.saldo)} userRole={userRole} /> · Total <MoneyDisplay value={Number(p.total)} userRole={userRole} /></p>
+      <p className="text-sm text-gray-600">Fiado en consulta <MoneyDisplay value={importeFiadoVisible(p)} userRole={userRole} /> · Saldo del pedido <MoneyDisplay value={Number(p.saldo)} userRole={userRole} /> · Total <MoneyDisplay value={Number(p.total)} userRole={userRole} /></p>
       <p className="text-sm text-gray-600">Pagado <MoneyDisplay value={Number(p.totalPagado)} userRole={userRole} /> · {p.estadoEntrega === 'ENTREGADO' ? 'Entrega completa' : 'Entrega parcial'}</p>
       <PedidoDocumentLinks pedidoId={p.id} numero={p.numero} facturaId={p.factura?.id} facturaNumero={p.factura?.numero}
         userRole={userRole} onOpenPedido={onOpenPedido} onOpenFactura={onOpenFactura} />
