@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>#1001 · #1002 · #1005 — Fiados y Cierre sin ruido visual (maqueta para aprobación)</title>
+<title>#1001 · #1002 · #1005 · #1006 — Fiados y Cierre sin ruido visual (maqueta para aprobación)</title>
 <style>
 *{box-sizing:border-box}body{font-family:system-ui,sans-serif;margin:0;padding:24px;background:#f3f4f6;color:#111827}
 h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:32px 0 8px}p.n{color:#6b7280;font-size:13px;margin:4px 0 12px;max-width:920px}
@@ -13,7 +13,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th{font-size:11px;color
 .am{color:#92400e}.pill{border:1px solid #d1d5db;border-radius:99px;padding:1px 8px;font-size:11px;color:#4b5563}
 .dif{background:#fef9c3}.err{color:#92400e;font-size:13px}
 </style></head><body>
-<h1>#1001 · #1002 · #1005 — Fiados y Cierre, sin elementos nuevos</h1>
+<h1>#1001 · #1002 · #1005 · #1006 — Fiados y Cierre, sin elementos nuevos</h1>
 <p class="n"><b>Estado: PROPUESTA — PENDIENTE DE APROBACIÓN DEL PO.</b> Criterio del PO: poca carga cognitiva, <b>sin chips, etiquetas ni tarjetas nuevas</b>. Todo se resuelve cambiando texto existente o el destino de un enlace. No cambian las cifras, el corte operativo (#796), los límites ni el cobro. Cifras y nombres sintéticos. Resaltado amarillo = lo que cambia.</p>
 
 <h2>#1001 · Enlace del detalle de un pedido parcial entregado hoy: depende de si el CLIENTE ya tiene cartera</h2>
@@ -68,9 +68,29 @@ table{width:100%;border-collapse:collapse;font-size:13px}th{font-size:11px;color
 <p class="t"><span class="dif">1 pedido por clasificar</span> · 10 días</p><span class="pill">1/2 fiados en total</span></div>
 <div class="marco tel"><div class="etq">Reglas</div><p class="t" style="margin:0">Solo aparece si parte de la deuda del cliente no se pudo clasificar. Sin ese caso, el texto no cambia. El importe y los contadores no cambian. El detalle conserva «Por clasificar $ X».</p></div></div>
 
+<h2>#1006 · Cierre: mismo nombre que en Pedidos (negocio como principal)</h2>
+<p class="n">Se reutiliza el estilo que ya existe en Pedidos y Fiados: el negocio arriba, «de {persona}» en gris. Aplica a «A quién se fió hoy» y a «Pagos por confirmar». Sin chips ni etiquetas nuevas; las cifras no cambian.</p>
+<div class="fila">
+<div class="marco esc antes"><div class="etq">Antes · escritorio</div>
+<p class="t"><a class="l" href="#" style="min-height:0">Vanessa Leon</a> <a class="l" href="#" style="min-height:0;font-weight:400">#1496</a> <span style="float:right"><b>$ 5.000</b></span></p>
+<p class="t">Valor comercial $ 5.000 · pagado $ 0 · promesa de pago: 30 de nov</p>
+<p class="t">En Pedidos y Fiados este mismo pedido se llama «Ferretería Premium».</p></div>
+<div class="marco esc nuevo"><div class="etq">Después · escritorio</div>
+<p class="t"><a class="l dif" href="#" style="min-height:0">Ferretería Premium</a> <a class="l" href="#" style="min-height:0;font-weight:400">#1496</a> <span style="float:right"><b>$ 5.000</b></span></p>
+<p class="t dif" style="margin-top:-6px;font-size:12px;color:#6b7280">de Vanessa Leon</p>
+<p class="t">Valor comercial $ 5.000 · pagado $ 0 · promesa de pago: 30 de nov</p></div>
+</div>
+<div class="fila" style="margin-top:12px">
+<div class="marco tel nuevo"><div class="etq">Después · móvil 390 px</div>
+<p class="t"><a class="l dif" href="#" style="min-height:0">Ferretería Premium</a> <span style="float:right"><b>$ 5.000</b></span></p>
+<p class="t" style="margin-top:-4px;font-size:12px;color:#6b7280">de Vanessa Leon · <a class="l" href="#" style="min-height:0;font-weight:400">#1496</a></p>
+<p class="t">Valor comercial $ 5.000 · pagado $ 0 · promesa de pago: 30 de nov</p></div>
+<div class="marco tel nuevo"><div class="etq">Sin cambio</div><p class="t" style="margin:0">Pedido de una persona sin negocio: se muestra su nombre, como hoy. Consumidor final: su etiqueta actual. Carga y error: los actuales del Cierre.</p></div>
+</div>
+
 <h2>QUIERE / NO QUIERE / PRESERVAR</h2>
 <ul style="font-size:13px;max-width:900px"><li><b>QUIERE:</b> que nadie llegue a un callejón sin salida, y que el Cierre no diga que ya se fió lo que aún es pendiente del día.</li>
 <li><b>NO QUIERE:</b> chips, etiquetas, tarjetas o botones nuevos; mostrar lo de hoy como fiado antes del corte.</li>
 <li><b>PRESERVAR:</b> cifras, corte de #796, saldo exigible, límites, cobro, roles, cierre histórico guardado.</li></ul>
-<p class="n"><b>Por verificar al implementar (no se estima en pantalla):</b> (1) de dónde sale «tiene cartera»: debe ser la misma fuente que la pestaña Fiados (clientes con fiado clasificado o «por clasificar»), <b>no</b> el aviso #932 de «otros pedidos con deuda», que también cuenta pedidos de hoy aún no fiados; (1b) qué hace «Registrar pago» cuando el pedido tiene promesa de pago (hoy la lista lo manda a Fiados); (2) si la lista del Cierre filtra por fecha del pedido y el corte por fecha de entrega, y qué pedido queda fuera.</p>
+<p class="n"><b>Por verificar al implementar (no se estima en pantalla):</b> (1) de dónde sale «tiene cartera»: debe ser la misma fuente que la pestaña Fiados (clientes con fiado clasificado o «por clasificar»), <b>no</b> el aviso #932 de «otros pedidos con deuda», que también cuenta pedidos de hoy aún no fiados; (1b) qué hace «Registrar pago» cuando el pedido tiene promesa de pago (hoy la lista lo manda a Fiados); (2) la consulta del Cierre debe traer el negocio del pedido y usar el helper común de nombres (#1006); (3) si la lista del Cierre filtra por fecha del pedido y el corte por fecha de entrega, y qué pedido queda fuera.</p>
 </body></html>
