@@ -6,9 +6,9 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { calcularAlertas } from '@/lib/alertas-detector'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
+import { leerFiadosVigentes } from '@/lib/fiados-vigentes-db'
 import { subDaysBogota } from '@/lib/dates'
 import { countPedidosAtrasadosSinAsignar, countPedidosHoyEnRiesgo } from '@/lib/pedidos-sin-asignar'
-import { leerExigibles } from '@/lib/entregas-exigibles-db'
 
 export async function GET(_request: NextRequest) {
   const authResult = await requireAuth()
@@ -22,16 +22,7 @@ export async function GET(_request: NextRequest) {
       const where: Prisma.PedidoWhereInput = { saldo: { gt: 0 },
         estadoEntrega: { notIn: ['CANCELADO', 'ANULADO'] },
         clienteId: { not: CANONICAL_CONSUMIDOR_FINAL_ID } }
-      const [exigibles, titulares] = await Promise.all([
-        leerExigibles(tx, where),
-        tx.pedido.findMany({ where, select: { id: true, clienteId: true } }),
-      ])
-      const conDeuda = titulares.filter(p => (exigibles.get(p.id) ?? 0) > 0)
-      return {
-        clientes: new Set(conDeuda.map(p => p.clienteId)).size,
-        pedidos: conDeuda.length,
-        total: conDeuda.reduce((s, p) => s + Math.round((exigibles.get(p.id) ?? 0) * 100), 0) / 100,
-      }
+      return leerFiadosVigentes(tx, where)
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 15000 })
 
     // Alertas: detector necesita un subconjunto de campos. Limitamos a 365 días
@@ -128,7 +119,8 @@ export async function GET(_request: NextRequest) {
     )
 
     return apiSuccess({
-      fiadosCount: cartera.clientes,
+      corteOperativo: cartera.corteOperativo,
+      fiadosCount: cartera.corteOperativo.clientesConsultaFiados,
       alertasCount: alertas.length,
       atrasadosCount,
       enRiesgoCount,

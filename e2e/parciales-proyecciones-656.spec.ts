@@ -53,7 +53,8 @@ test.describe('Importes de entregas parciales', () => {
     await expect(row).toContainText('6 pedidas · 4 entregadas · 2 por entregar')
     await expect(row).toContainText(/Por cobrar de lo entregado\s*\$\s*8\.000/)
     await expect(row).toContainText(/Pendiente de entrega:\s*\$\s*4\.000/)
-    await expect(appMain(page).getByTestId('tab-fiados')).toContainText('1')
+    // #796: lo entregado hoy es exigible (arriba) pero aún no es fiado: la pestaña no cuenta este cliente.
+    await expect(appMain(page).getByTestId('tab-fiados')).toHaveText(/^\s*Fiados\s*$/)
     await expect(row.getByRole('button', { name: /Planificar en embarque/ })).toBeVisible()
     const resumen = appMain(page).getByTestId('consulta-resumen')
     await expect(resumen).toContainText(/Por cobrar de lo entregado/)

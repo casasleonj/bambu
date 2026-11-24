@@ -3,6 +3,7 @@
 // Tabs: Pedidos (hoy), Fiados, Alertas; full UI flows + edge cases
 import { test, expect, apiPost, createCliente, BASE, sharedPageLogin, sharedLoginAs } from './fixtures'
 import type { Page } from '@playwright/test'
+import { PrismaClient } from '@prisma/client'
 
 const PEDIDOS_URL = `${BASE}/pedidos`
 
@@ -509,6 +510,14 @@ test.describe('Pedidos — Tab Fiados', () => {
         items: [{ producto: 'PACA_AGUA', cantidad: 2 }], pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
       })
       expect(creado.ok()).toBe(true)
+      // #796: Fiados lista deuda ya consolidada. Lo entregado hoy es pendiente del día (se cobra desde Pedidos);
+      // el fixture representa un fiado de ayer para ejercitar el formulario de cobro de Fiados.
+      const ayer = new Date(Date.now() - 36 * 3_600_000)
+      const prisma = new PrismaClient()
+      try {
+        await prisma.pedido.updateMany({ where: { clienteId }, data: { fecha: ayer, entregadoAt: ayer } })
+        await prisma.entregaExigible.updateMany({ where: { pedido: { clienteId } }, data: { entregadoAt: ayer } })
+      } finally { await prisma.$disconnect() }
       await gotoPedidos(p)
       await p.goto(`${PEDIDOS_URL}?tab=fiados&fiadosCliente=${encodeURIComponent(clienteId)}`)
       await p.getByRole('button', { name: 'Registrar pago', exact: true }).locator('visible=true').click()
