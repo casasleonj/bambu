@@ -52,7 +52,6 @@ export function FiadosActoresDetalle({ p, userRole }: { p: Pedido; userRole?: st
     <ul className="mt-2" aria-label={`Historial del pedido ${p.numero}`}>
       <Evento icono="✍️" titulo="Creó el pedido" desconocido={!a.creadoPor} hora={fechaHora(a.createdAt)}>
         {a.creadoPor ? <span className="font-semibold">{a.creadoPor}</span> : SIN_REGISTRO}</Evento>
-      <Evento icono="🔐" titulo="Autorizó el fiado" desconocido extra="El sistema aún no guarda este dato.">{SIN_REGISTRO}</Evento>
       {a.entregas.length === 0 && <Evento icono="🚚" titulo="Entregó" desconocido extra="Entrega registrada sin detalle de fecha ni responsable.">{SIN_REGISTRO}</Evento>}
       {a.entregas.map(e => <Evento key={e.id} icono="🚚" titulo="Entregó" desconocido={!e.responsable} hora={fechaHora(e.fecha, e.soloDia)}
         extra={e.cantidades ? e.cantidades.map(l => `${getProductoIconConfig(l.producto).label} ${l.cantidad}`).join(' · ') : 'Cantidades sin registrar'}>

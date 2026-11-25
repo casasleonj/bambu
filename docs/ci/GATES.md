@@ -26,6 +26,7 @@ Estado verificado el 2026-11-08 con `gh api` (solo lectura).
 | `e2e-hub` (V2 ON) | Exigido por `ci-gate`. Se conserva: producción corre con `NEXT_PUBLIC_PEDIDOS_V2=true` y `e2e` prueba V2 OFF. Su retiro es F10b (#312). |
 | `lint`, `integration` | Informativos (`continue-on-error`); `ci-gate` los lista sin bloquear. |
 | `migrate-deploy.yml` | Corre en `push` a `main` si cambian `prisma/schema.prisma` o `prisma/migrations/**`, **sin esperar al CI**. Usa `vercel@latest`. |
+| `migrate-recover.yml` | Solo `workflow_dispatch` en `main`, entorno `production` (#1017). Registra UNA migración ya aplicada pero ausente de `_prisma_migrations`, tras verificar ledger y objetos; sin DDL. Procedimiento en `docs/deploy-migraciones.md`. |
 | Despliegue en Vercel | La integración Git despliega cada merge a `main` sin depender del CI (no se pudo consultar la configuración del proyecto desde esta sesión). |
 
 ## `ci-gate` (nuevo)
