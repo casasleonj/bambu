@@ -7,6 +7,12 @@ on:
     paths:
       - 'prisma/schema.prisma'
       - 'prisma/migrations/**'
+      # Si cambia el orquestador, debe ejecutarse para certificar el SHA.
+      # El release gate invalida el éxito anterior del pipeline.
+      - '.github/workflows/migrate-deploy.yml'
+      - 'scripts/ci/migration-ledger-preflight.mjs'
+      - 'scripts/ci/release-migration-policy.mjs'
+      - 'scripts/ci/verify-vercel-prod-env.mjs'
   workflow_dispatch:
 
 permissions:
@@ -19,17 +25,21 @@ concurrency:
 jobs:
   migrate:
     name: Deploy database migrations
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: 'package.json'
+          node-version: 22
           cache: 'npm'
 
       - name: Install dependencies
@@ -46,8 +56,8 @@ jobs:
       # base como secrets separados (riesgo de desincronización — exactamente
       # lo que pasó), este job las trae en vivo desde Vercel (única fuente de
       # verdad) con `vercel env pull`, autenticado con un VERCEL_TOKEN.
-      - name: Install Vercel CLI
-        run: npm i -g vercel@latest
+      - name: Install Vercel CLI (versión exacta revisada)
+        run: npm i -g vercel@66.6.0
 
       # DIAGNÓSTICO 2026-10-08: "Could not retrieve Project Settings" en el
       # paso siguiente es el mensaje genérico que la CLI de Vercel da tanto
@@ -59,13 +69,19 @@ jobs:
       # este paso falla o resuelve a otra cuenta/team, la causa es el
       # secret, no la lógica del job.
       - name: Verificar credenciales de Vercel (diagnóstico)
-        run: vercel whoami --token="$VERCEL_TOKEN" --format json
+        run: |
+          if [[ -z "$VERCEL_TOKEN" ]]; then
+            echo "::error::Falta VERCEL_TOKEN en GitHub Secrets; registrar token válido con permisos del team"
+            exit 1
+          fi
+          # No pasar el token por argv ni imprimir detalles de cuenta en logs.
+          vercel whoami --format json >/dev/null
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
       - name: Pull production env vars from Vercel
         run: |
-          vercel env pull --environment=production --token="$VERCEL_TOKEN" --yes .env.vercel-production || {
+          vercel env pull --environment=production --yes .env.vercel-production || {
             echo "::error::vercel env pull falló. Comparar la cuenta/team que mostró 'vercel whoami' en el paso anterior contra VERCEL_ORG_ID=$VERCEL_ORG_ID. Si no coincide, o whoami también falló: VERCEL_TOKEN está vencido/revocado o no es miembro de ese team. Generar uno nuevo en https://vercel.com/account/tokens (cuenta con acceso al team) y actualizarlo en Settings -> Secrets and variables -> Actions -> VERCEL_TOKEN de este repo."
             exit 1
           }
@@ -79,17 +95,11 @@ jobs:
           VERCEL_ORG_ID: team_Ml9rVX2uWgNn2OJ8cZe9pTWD
           VERCEL_PROJECT_ID: prj_NzjF7gJ1CFYYHOhfAhE5mK7CxpPr
 
-      - name: Export DATABASE_URL/DIRECT_URL to job env
+      - name: Validar identidad de Supabase y exportar credenciales
         run: |
-          {
-            echo "DATABASE_URL<<EOF"
-            grep '^DATABASE_URL=' .env.vercel-production | sed -E 's/^DATABASE_URL=//; s/^"(.*)"$/\1/'
-            echo "EOF"
-            echo "DIRECT_URL<<EOF"
-            grep '^DIRECT_URL=' .env.vercel-production | sed -E 's/^DIRECT_URL=//; s/^"(.*)"$/\1/'
-            echo "EOF"
-          } >> "$GITHUB_ENV"
-          rm -f .env.vercel-production
+          set -euo pipefail
+          trap 'rm -f .env.vercel-production' EXIT
+          node scripts/ci/verify-vercel-prod-env.mjs .env.vercel-production
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -104,8 +114,23 @@ jobs:
       - name: Check pending migrations (informativo, no bloqueante)
         run: npx prisma migrate status || true
 
+      - name: Conciliar checksum e historial de migraciones ANTES de DDL
+        id: preflight
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: node scripts/ci/migration-ledger-preflight.mjs
+
+      # Fail closed: ausencia de output, error de preflight o dispatch manual
+      # jamás habilitan este paso. Solo se aplica DDL si la conciliación
+      # detectó migraciones SQL NUEVAS y aún pendientes en este push.
       - name: Apply pending migrations
+        if: github.event_name == 'push' && steps.preflight.outputs.apply_pending == 'true'
         run: npx prisma migrate deploy
+
+      # Un exit 0 de Prisma no sustituye la verificación del ledger final.
+      # Incluso si no había pendientes, el certificado exige conciliación completa.
+      - name: Conciliar ledger final (solo lectura)
+        run: node scripts/ci/migration-ledger-preflight.mjs --postflight
 
   # Optional: uncomment and configure if you want GitHub Actions to also trigger
   # the Vercel deployment instead of relying solely on Vercel's Git integration.

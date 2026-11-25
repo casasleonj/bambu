@@ -1,0 +1,109 @@
+# #703 R0: produce el check único "Production migration gate" para CADA push a main.
+# Se ejecuta solo en push main; ninguna ejecución PR genera un check skipped
+# con su mismo nombre. Activación Vercel pendiente. Solo lectura, sin DDL.
+name: Production migration gate
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  release-migration:
+    name: Production migration gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Identificar cambios de Prisma o migraciones SQL entre commits
+        id: schema-diff
+        shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$BEFORE" =~ ^[a-f0-9]{40}$ && "$AFTER" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "::error::SHAs inválidos para clasificación"
+            exit 1
+          fi
+          if ! git cat-file -e "$BEFORE^{commit}" || ! git cat-file -e "$AFTER^{commit}"; then
+            echo "::error::No es posible obtener el diff de main. Fail closed."
+            exit 1
+          fi
+          git merge-base --is-ancestor "$BEFORE" "$AFTER" || {
+            echo "::error::Push no ancestral; no se puede certificar"
+            exit 1
+          }
+          # El manifiesto SQL crudo es SOLO para tests y desarrollo (ver
+          # scripts/aplicar-migraciones-sql-crudas.sh). Production aplica
+          # prisma/migrations/** mediante prisma migrate deploy; evitar
+          # bloquear prod por un cambio de fixtures de CI.
+          set +e
+          git diff --quiet "$BEFORE" "$AFTER" -- prisma/schema.prisma
+          schema_rc=$?
+          set -e
+          case "$schema_rc" in
+            0) echo "schema_changed=false" >> "$GITHUB_OUTPUT" ;;
+            1) echo "schema_changed=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::No se pudo clasificar schema Prisma ($schema_rc)"; exit 1 ;;
+          esac
+          # --no-renames hace que un rename incluya la baja de la ruta vieja:
+          # no permite ocultar modificación de una migración histórica.
+          git diff --name-status --no-renames -z "$BEFORE" "$AFTER" -- \
+            prisma/migrations/ > "$RUNNER_TEMP/prisma-migrations.diff"
+          # El analizador SOLO acepta archivos migration.sql nuevos: modificar,
+          # eliminar o renombrar migraciones ya presentes no certifica esquema.
+          new_count="$(node scripts/ci/release-migration-policy.mjs < "$RUNNER_TEMP/prisma-migrations.diff")"
+          echo "new_migrations=$new_count" >> "$GITHUB_OUTPUT"
+          # Una versión que no toca Prisma también debe heredar la salud
+          # de la última modificación del esquema. Evita que un push
+          # posterior de solo código obtenga verde tras una migración fallida.
+          last_schema_sha="$(git log --first-parent -1 --format=%H "$AFTER" -- \
+            prisma/schema.prisma prisma/migrations/)"
+          if ! [[ "$last_schema_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::No se encontró una revisión de esquema válida en el historial main"
+            exit 1
+          fi
+          git merge-base --is-ancestor "$last_schema_sha" "$AFTER" || {
+            echo "::error::SHA histórico de esquema no es ancestro del commit"
+            exit 1
+          }
+          # La estructura del rango completo del push se valida arriba y en
+          # el propio workflow de migración antes de DDL. No exigir schema y SQL
+          # en un único commit: un push multicommit puede separarlos legítimamente.
+          # El certificado heredado debe cubrir el pipeline actualizado.
+          echo "last_schema_sha=$last_schema_sha" >> "$GITHUB_OUTPUT"
+          # La propia lógica de migración es parte del perímetro de confianza.
+          # Si alguien modifica migrate-deploy.yml, un certificado ANTERIOR
+          # no alcanza para aprobar la publicación posterior.
+          last_trust_sha="$(git log --first-parent -1 --format=%H "$AFTER" -- \
+            prisma/schema.prisma prisma/migrations/ .github/workflows/migrate-deploy.yml \
+            scripts/ci/migration-ledger-preflight.mjs scripts/ci/release-migration-policy.mjs \
+            scripts/ci/verify-vercel-prod-env.mjs)"
+          if ! [[ "$last_trust_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::No se encontró revisión de confianza de migraciones"
+            exit 1
+          fi
+          git merge-base --is-ancestor "$last_trust_sha" "$AFTER" || {
+            echo "::error::Revisión de confianza no pertenece al release"
+            exit 1
+          }
+          echo "last_trust_sha=$last_trust_sha" >> "$GITHUB_OUTPUT"
+      - name: Comprobar resultado de migrate-deploy.yml para el SHA exacto
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SCHEMA_CHANGED: ${{ steps.schema-diff.outputs.schema_changed }}
+          NEW_MIGRATIONS: ${{ steps.schema-diff.outputs.new_migrations }}
+          LAST_SCHEMA_SHA: ${{ steps.schema-diff.outputs.last_schema_sha }}
+          LAST_TRUST_SHA: ${{ steps.schema-diff.outputs.last_trust_sha }}
+        run: node scripts/ci/release-migration-gate.mjs
