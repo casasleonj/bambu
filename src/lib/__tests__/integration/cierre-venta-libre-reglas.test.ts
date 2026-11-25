@@ -152,8 +152,11 @@ describe('Cierre — reglas de la venta libre (ADR-CIERRE-002 §4)', () => {
 
   it('#630 B1b: preview dry-run con fecha declarada no deja pedido ni auditoría', async () => {
     const e = await embarqueVacio()
+    // Contar únicamente la auditoría de ESTE embarque: otros archivos de
+    // integración pueden ejecutarse en paralelo sobre PostgreSQL.
+    const marker = '"embarqueId":"' + e.id + '"'
     const antes = await testPrisma.historial.count({ where: {
-      datos: { contains: 'DECLARACION_FECHA_VENTA_LIBRE_630' },
+      entidad: 'Pedido', accion: 'CREATE', datos: { contains: marker },
     } })
     const r = await cerrar(e, [vl({
       pagos: [{ metodo: 'EFECTIVO', monto: 5600 }],
@@ -161,7 +164,7 @@ describe('Cierre — reglas de la venta libre (ADR-CIERRE-002 §4)', () => {
     })], { dryRun: true })
     expect(r.ventasLibresCreadas).toBe(1)
     expect(await testPrisma.pedido.count({ where: { embarqueOrigenId: e.id, origen: 'VENTA_LIBRE' } })).toBe(0)
-    expect(await testPrisma.historial.count({ where: { datos: { contains: 'DECLARACION_FECHA_VENTA_LIBRE_630' } } })).toBe(antes)
+    expect(await testPrisma.historial.count({ where: { entidad: 'Pedido', accion: 'CREATE', datos: { contains: marker } } })).toBe(antes)
     expect((await testPrisma.embarque.findUniqueOrThrow({ where: { id: e.id } })).estado).toBe('EN_RUTA')
   })
 
