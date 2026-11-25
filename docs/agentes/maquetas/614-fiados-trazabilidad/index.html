@@ -1,57 +1,174 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>#614 · Fiados: trazabilidad — maqueta para aprobación (datos ficticios)</title>
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>#614 · Fiados: trazabilidad — maqueta v2 (datos ficticios)</title>
 <style>
-*{box-sizing:border-box}body{font-family:system-ui,sans-serif;margin:0;padding:24px;background:#f3f4f6;color:#111827}
-h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:28px 0 8px}p.n{color:#6b7280;font-size:13px;max-width:900px}
-.fila{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}.marco{background:#fff;border:1px solid #d1d5db;border-radius:14px;padding:16px}
-.esc{width:720px}.tel{width:360px}.etq{font-size:11px;font-weight:700;text-transform:uppercase;color:#374151;margin-bottom:8px}
-select,input{min-height:40px;border:1px solid #d1d5db;border-radius:8px;padding:6px;font-size:13px}
-.res{background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px;margin:10px 0}.res b{font-size:20px;color:#b91c1c}
-.ped{background:#f9fafb;border-radius:8px;padding:10px;margin-top:8px;font-size:13px}
-.lt{list-style:none;margin:8px 0;padding:0 0 0 10px;border-left:2px solid #d1d5db}.lt li{margin:6px 0;padding-left:8px}.lt small{color:#6b7280}
-.desc{color:#6b7280;font-style:italic}.chip{display:inline-block;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700;background:#fff7ed;color:#9a3412;border:1px solid #fed7aa}
-.err{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:8px;padding:8px;font-size:13px;margin-top:8px}
-.nota{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe;border-radius:8px;padding:8px;font-size:13px;margin-top:8px}
-.skel{background:linear-gradient(90deg,#e5e7eb,#f3f4f6,#e5e7eb);height:20px;border-radius:6px;margin:8px 0}
-button{font:500 13px system-ui;border:1px solid #111;background:#fff;border-radius:8px;padding:6px 12px;min-height:40px}button.p{background:#d97706;color:#fff;border-color:#d97706}
-table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:4px;border-bottom:1px solid #eee;text-align:left}
+:root{--ink:#111827;--mut:#6b7280;--line:#e5e7eb;--bg:#f4f5f7;--card:#fff;--red:#dc2626;--red-d:#991b1b;--red-l:#fef2f2;--amb:#d97706;--amb-l:#fffbeb;--blue:#2563eb;--blue-l:#eff6ff;--grn:#059669;--grn-l:#ecfdf5;--vio:#7c3aed;--vio-l:#f5f3ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:28px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:34px 0 12px}
+.lead{max-width:860px;color:var(--mut);margin:0 0 6px}
+.badge{display:inline-block;background:#fef3c7;color:#92400e;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700}
+.wrap{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+/* marcos */
+.desk{width:820px;max-width:100%;background:var(--card);border-radius:16px;box-shadow:0 10px 30px rgba(17,24,39,.12);overflow:hidden;border:1px solid var(--line)}
+.bar{display:flex;gap:6px;align-items:center;background:#e5e7eb;padding:10px 14px}.bar i{width:10px;height:10px;border-radius:50%;background:#cbd5e1;display:block}
+.bar span{margin-left:10px;font-size:12px;color:#475569;background:#f8fafc;border-radius:6px;padding:2px 12px}
+.phone{width:372px;background:#0f172a;border-radius:38px;padding:12px;box-shadow:0 14px 34px rgba(15,23,42,.35)}
+.screen{background:var(--bg);border-radius:28px;overflow:hidden;min-height:520px}
+.notch{height:22px;background:var(--bg);display:flex;justify-content:center;align-items:center}.notch b{width:84px;height:6px;border-radius:9px;background:#0f172a}
+.body{padding:18px}.pad{padding:14px}
+/* tabs */
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}.tab{padding:7px 14px;border-radius:999px;background:#eef0f3;color:#475569;font-weight:600;font-size:13px}.tab.on{background:var(--red);color:#fff}
+/* encabezado rojo */
+.hero{background:linear-gradient(135deg,#fef2f2,#fee2e2);border:1px solid #fecaca;border-radius:14px;padding:14px 16px;margin-bottom:14px}
+.hero h3{margin:0;color:var(--red-d);font-size:17px}.hero p{margin:4px 0 0;color:#b91c1c;font-size:13px}
+/* filtros */
+.filt{display:grid;grid-template-columns:1.1fr 1.4fr auto;gap:10px;align-items:end;margin-bottom:14px}
+.fld label{display:block;font-size:11px;font-weight:700;color:var(--mut);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.sel,.inp{width:100%;min-height:44px;border:1px solid #d1d5db;border-radius:10px;background:#fff;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:14px}
+.sel.act{border-color:var(--red);box-shadow:0 0 0 3px #fee2e2}.sel .car{margin-left:auto;color:var(--mut)}
+.linkb{color:var(--blue);text-decoration:underline;font-size:13px;padding-bottom:12px;white-space:nowrap}
+.menu{position:relative}
+/* chips de persona */
+.av{width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;flex:none}
+.c1{background:#2563eb}.c2{background:#059669}.c3{background:#d97706}.c4{background:#7c3aed}.c5{background:#64748b}
+.who{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700}
+.p-sh{background:var(--vio-l);color:#5b21b6}.p-na{background:#f1f5f9;color:#475569}.p-gr{background:var(--grn-l);color:#065f46}.p-am{background:var(--amb-l);color:#92400e}
+/* KPIs */
+.kpis{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px;margin-bottom:14px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px}.kpi small{display:block;color:var(--mut);font-size:12px}.kpi b{font-size:24px;letter-spacing:-.02em}.kpi.main{background:var(--red-l);border-color:#fecaca}.kpi.main b{color:var(--red)}
+.note{font-size:12px;color:var(--mut);margin:-6px 0 12px}
+/* tabla cliente */
+.cli{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.row{display:grid;grid-template-columns:1.6fr .8fr .9fr auto;gap:12px;align-items:center;padding:14px 16px}
+.row .t{font-weight:700}.row .s{color:var(--mut);font-size:12px}.money{font-weight:800;color:var(--red);font-size:16px}
+.btns{display:flex;gap:6px;flex-wrap:wrap}.b{min-height:40px;border-radius:10px;padding:0 13px;border:1px solid #d1d5db;background:#fff;font-weight:600;font-size:13px;display:inline-flex;align-items:center}
+.b.blue{background:var(--blue);border-color:var(--blue);color:#fff}.b.amb{background:var(--amb);border-color:var(--amb);color:#fff}.b.ghost{color:var(--blue);border-color:#bfdbfe;background:var(--blue-l)}
+/* pedido */
+.ped{border-top:1px solid var(--line);background:#fafafa;padding:16px}
+.ph{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start}
+.ph h4{margin:0;font-size:15px}.ph .d{color:var(--mut);font-size:12px}
+.sal{text-align:right}.sal small{display:block;color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.04em}.sal b{font-size:19px;color:var(--red)}
+.prods{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
+.prod{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px 12px}.prod .e{font-size:18px}.prod b{font-size:17px}.prod small{display:block;color:var(--mut);font-size:11px;line-height:1.1}
+.prod.tot{background:var(--ink);color:#fff;border-color:var(--ink)}.prod.tot small{color:#d1d5db}
+.hint{font-size:12px;color:var(--mut);font-style:italic;margin:2px 0 10px}
+/* línea de tiempo */
+.tl{list-style:none;margin:10px 0 0;padding:0;position:relative}
+.tl:before{content:"";position:absolute;left:17px;top:8px;bottom:8px;width:2px;background:var(--line)}
+.tl li{position:relative;display:flex;gap:12px;padding:8px 0}
+.ic{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex:none;border:3px solid #fafafa;z-index:1}
+.i-cr{background:var(--blue-l)}.i-au{background:#f3f4f6}.i-en{background:var(--grn-l)}.i-pa{background:var(--amb-l)}
+.ev{flex:1;background:#fff;border:1px solid var(--line);border-radius:12px;padding:9px 12px}
+.ev .k{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);font-weight:700}
+.ev .l{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;margin-top:3px}.ev .h{color:var(--mut);font-size:12px}
+.ev .x{font-size:12px;color:var(--mut);margin-top:3px}
+.ev.unk{background:#f9fafb;border-style:dashed}.ev.unk .l b{color:var(--mut);font-weight:600}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+/* móvil */
+.m-ped{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+.m-ped .tl:before{left:15px}.m-ped .ic{width:32px;height:32px;font-size:14px}.m-ped .ev{padding:7px 10px}
+.full{width:100%;justify-content:center}
+.sheet{background:#fff;border-radius:22px 22px 0 0;margin-top:14px;box-shadow:0 -8px 24px rgba(0,0,0,.12);padding:16px}
+/* estados */
+.st{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;width:372px;box-shadow:0 4px 14px rgba(17,24,39,.06)}
+.st h5{margin:0 0 10px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+.sk{height:16px;border-radius:8px;background:linear-gradient(90deg,#e5e7eb,#f3f4f6,#e5e7eb);background-size:200% 100%;animation:sh 1.3s infinite;margin:9px 0}@keyframes sh{to{background-position:-200% 0}}
+.err{background:var(--red-l);border:1px solid #fecaca;color:var(--red-d);border-radius:12px;padding:12px;font-size:13px}
+.info{background:var(--blue-l);border:1px solid #bfdbfe;color:#1e3a8a;border-radius:12px;padding:12px;font-size:13px}
+.empty{text-align:center;padding:10px 4px}.empty .e{font-size:34px}
+@media(max-width:700px){.filt,.kpis{grid-template-columns:1fr}.row{grid-template-columns:1fr}body{padding:14px}}
 </style></head><body>
-<h1>#614 · Fiados: quién creó, entregó y cobró — MAQUETA (datos ficticios)</h1>
-<p class="n">Estado: PENDIENTE DE APROBACIÓN del PO. Se conserva el diseño actual de Fiados; se añade el filtro «Entregado por», el detalle por pedido con desglose físico y línea de tiempo. «Convertir» no cambia aquí: lo gobierna #865.</p>
+<h1>#614 · Fiados: quién creó, entregó y cobró <span class="badge">MAQUETA v2 · PENDIENTE DE APROBACIÓN</span></h1>
+<p class="lead">Datos ficticios. Se conserva la base actual de Fiados (rojo, filtros, «Ver pedidos», «Registrar pago», «Convertir»). Se añade: filtro «Entregado por», totales por persona, y por cada pedido: lo entregado por producto + línea de tiempo con las personas.</p>
 
-<h2>Escritorio · filtro «Entregado por: Pedro» + detalle expandido</h2>
-<div class="fila"><div class="marco esc">
-<div class="etq">Pedidos → Fiados</div>
-<label>Entregado por <select><option>Todos</option><option selected>Pedro Gómez</option><option>Lilia Ruiz (en punto)</option><option>Ana Soto (inactiva)</option><option>Sin identificar</option></select></label>
-<input placeholder="Buscar cliente…"> <button>Limpiar filtros</button>
-<div class="res"><small>Deuda pendiente (según filtros) · entregado por Pedro Gómez</small><br><b>$70.000</b> · 1 cliente · 2 pedidos
-<br><small>Los totales por persona pueden solaparse en pedidos compartidos; no se suman.</small></div>
-<table><tr><th>Cliente</th><th>Deuda</th><th>Pedidos</th><th>Días</th><th></th></tr>
-<tr><td>Tienda La Esperanza</td><td><b>$70.000</b></td><td>2 en consulta</td><td>12</td><td><button>Ocultar</button> <button>Registrar pago</button> <button class="p">Convertir…</button></td></tr></table>
-<div class="ped"><b>Pedido #684</b> · 03/11/2026 · Saldo exigible <b>$40.000</b> · Total $60.000 · Pagado $20.000
-<br>Entregado en total: <b>12 unidades</b> → Agua 10 · Hielo 2 · Botellones 0 <span class="desc">(cantidad física; no equivale a lo impago)</span>
-<ul class="lt">
-<li>✍️ <b>Creó</b> Lilia Ruiz <small>· 03/11 8:05 a. m.</small></li>
-<li>🔐 <b>Autorizó el fiado</b> <span class="desc">sin registro</span></li>
-<li>🚚 <b>Entregó</b> Pedro Gómez · Agua 10, Hielo 2 <small>· 03/11 10:40 a. m. · registró Lilia Ruiz</small></li>
-<li>💵 <b>Pago $20.000 (efectivo)</b> recibió Ana Soto <small>· 05/11 3:12 p. m.</small></li>
-</ul><button>Pedido</button> <button>Factura</button> <button class="p">Convertir este pedido…</button></div>
-<div class="ped"><b>Pedido #701</b> · compartido <span class="chip">Entregado por Pedro y Ana</span> · Saldo <b>$30.000</b> <span class="desc">(saldo del pedido, no de un trabajador)</span>
-<ul class="lt"><li>🚚 Pedro Gómez · Agua 6 <small>· 08/11 9:00 a. m.</small></li><li>🚚 Ana Soto · Agua 4 <small>· 09/11 (hora sin verificar)</small></li><li>🧾 Registro legado <span class="desc">cantidades y autor sin registrar</span></li></ul></div>
+<h2>Computador · filtro «Entregado por: Pedro Gómez» y un cliente abierto</h2>
+<div class="wrap"><div class="desk">
+<div class="bar"><i></i><i></i><i></i><span>bambu / pedidos / fiados</span></div>
+<div class="body">
+ <div class="tabs"><span class="tab">Hoy</span><span class="tab on">Fiados</span><span class="tab">Alertas</span></div>
+ <div class="hero"><h3>Control de Fiados</h3><p>Consulta lo entregado y pendiente de pago, agrupado por cliente.</p></div>
+ <div class="filt">
+  <div class="fld menu"><label>Entregado por</label><div class="sel act"><span class="av c1">PG</span> Pedro Gómez <span class="car">▾</span></div></div>
+  <div class="fld"><label>Buscar cliente</label><div class="inp" style="color:#9ca3af">🔍 Nombre, negocio o teléfono…</div></div>
+  <span class="linkb">Limpiar filtros</span>
+ </div>
+ <div class="kpis">
+  <div class="kpi main"><small>Deuda pendiente · entregada por Pedro</small><b>$70.000</b></div>
+  <div class="kpi"><small>Clientes con deuda</small><b>1</b></div>
+  <div class="kpi"><small>Pedidos</small><b>2</b></div>
+ </div>
+ <p class="note">Los totales de cada persona pueden coincidir en pedidos compartidos: no se suman entre sí. Todos: 1 cliente · 3 pedidos · $90.000.</p>
+
+ <div class="cli">
+  <div class="row">
+   <div><div class="t">🏪 Tienda La Esperanza</div><div class="s">310 555 0101</div></div>
+   <div><div class="money">$70.000</div><div class="s">2 pedidos</div></div>
+   <div><span class="pill p-am">12 días</span></div>
+   <div class="btns"><span class="b ghost">Ocultar</span><span class="b blue">Registrar pago</span></div>
+  </div>
+
+  <div class="ped">
+   <div class="ph"><div><h4>Pedido #684</h4><div class="d">Pedido del 03/11/2026 · entregado el 03/11/2026</div></div>
+    <div class="sal"><small>Saldo exigible</small><b>$40.000</b><div class="d">Total $60.000 · Pagado $20.000</div></div></div>
+   <div class="prods">
+    <div class="prod tot"><span class="e">📦</span><div><b>12</b><small>entregadas en total</small></div></div>
+    <div class="prod"><span class="e">💧</span><div><b>10</b><small>Agua</small></div></div>
+    <div class="prod"><span class="e">🧊</span><div><b>2</b><small>Hielo</small></div></div>
+    <div class="prod"><span class="e">🫙</span><div><b>0</b><small>Botellones</small></div></div>
+   </div>
+   <div class="hint">Cantidad física entregada en el pedido. No indica cuáles unidades siguen sin pagarse.</div>
+   <ul class="tl">
+    <li><div class="ic i-cr">✍️</div><div class="ev"><div class="k">Creó el pedido</div><div class="l"><span class="who"><span class="av c3">LR</span>Lilia Ruiz</span><span class="h">03/11 · 8:05 a. m.</span></div></div></li>
+    <li><div class="ic i-au">🔐</div><div class="ev unk"><div class="k">Autorizó el fiado</div><div class="l"><b>Sin registro</b><span class="h">el sistema aún no guarda este dato</span></div></div></li>
+    <li><div class="ic i-en">🚚</div><div class="ev"><div class="k">Entregó</div><div class="l"><span class="who"><span class="av c1">PG</span>Pedro Gómez</span><span class="h">03/11 · 10:40 a. m.</span></div><div class="x">Agua 10 · Hielo 2 · registrado por Lilia Ruiz</div></div></li>
+    <li><div class="ic i-pa">💵</div><div class="ev"><div class="k">Recibió un pago</div><div class="l"><span class="who"><span class="av c2">AS</span>Ana Soto</span><span class="h">05/11 · 3:12 p. m.</span></div><div class="x"><b>$20.000</b> · efectivo</div></div></li>
+   </ul>
+   <div class="acts"><span class="b">Ver pedido</span><span class="b">Ver factura</span><span class="b amb">Convertir este pedido…</span></div>
+  </div>
+
+  <div class="ped" style="border-top:1px dashed #d1d5db">
+   <div class="ph"><div><h4>Pedido #701 <span class="pill p-sh">👥 Entrega compartida</span></h4><div class="d">Pedido del 08/11/2026</div></div>
+    <div class="sal"><small>Saldo del pedido</small><b>$30.000</b><div class="d">no es deuda de una sola persona</div></div></div>
+   <ul class="tl">
+    <li><div class="ic i-en">🚚</div><div class="ev"><div class="k">Entregó</div><div class="l"><span class="who"><span class="av c1">PG</span>Pedro Gómez</span><span class="h">08/11 · 9:00 a. m.</span></div><div class="x">Agua 6</div></div></li>
+    <li><div class="ic i-en">🚚</div><div class="ev"><div class="k">Entregó</div><div class="l"><span class="who"><span class="av c5">MD</span>Mario Díaz <span class="pill p-na">inactivo</span></span><span class="h">09/11 · hora sin verificar</span></div><div class="x">Agua 4</div></div></li>
+    <li><div class="ic i-au">🧾</div><div class="ev unk"><div class="k">Registro anterior</div><div class="l"><b>Autor y cantidades sin registrar</b></div></div></li>
+   </ul>
+  </div>
+ </div>
+</div></div>
+
+<div class="phone"><div class="screen"><div class="notch"><b></b></div><div class="pad">
+ <div class="tabs" style="margin-bottom:10px"><span class="tab">Hoy</span><span class="tab on">Fiados</span><span class="tab">Alertas</span></div>
+ <div class="fld" style="margin-bottom:10px"><label>Entregado por</label><div class="sel act"><span class="av c1">PG</span> Pedro Gómez <span class="car">▾</span></div></div>
+ <div class="kpi main" style="margin-bottom:10px"><small>Deuda · entregada por Pedro</small><b>$70.000</b><div class="s" style="color:var(--mut);font-size:12px">1 cliente · 2 pedidos</div></div>
+ <div class="m-ped">
+  <div class="ph"><div><div class="t" style="font-weight:700">🏪 Tienda La Esperanza</div><div class="d">12 días</div></div><div class="money">$70.000</div></div>
+  <div class="btns" style="margin:10px 0"><span class="b ghost">Ocultar</span><span class="b blue">Registrar pago</span></div>
+  <div style="border-top:1px solid var(--line);padding-top:10px"><b>Pedido #684</b> <span style="color:var(--mut);font-size:12px">· 03/11</span><div style="color:var(--red);font-weight:800;font-size:17px">Saldo $40.000</div>
+  <div class="prods" style="margin:8px 0 2px"><div class="prod tot"><span class="e">📦</span><div><b>12</b><small>total</small></div></div><div class="prod"><span class="e">💧</span><div><b>10</b></div></div><div class="prod"><span class="e">🧊</span><div><b>2</b></div></div></div>
+  <ul class="tl">
+   <li><div class="ic i-cr">✍️</div><div class="ev"><div class="k">Creó</div><div class="l"><span class="who"><span class="av c3">LR</span>Lilia</span><span class="h">03/11 8:05</span></div></div></li>
+   <li><div class="ic i-au">🔐</div><div class="ev unk"><div class="k">Autorizó el fiado</div><div class="l"><b>Sin registro</b></div></div></li>
+   <li><div class="ic i-en">🚚</div><div class="ev"><div class="k">Entregó</div><div class="l"><span class="who"><span class="av c1">PG</span>Pedro</span><span class="h">03/11 10:40</span></div></div></li>
+   <li><div class="ic i-pa">💵</div><div class="ev"><div class="k">Recibió $20.000</div><div class="l"><span class="who"><span class="av c2">AS</span>Ana</span><span class="h">05/11 15:12</span></div></div></li>
+  </ul>
+  <div class="b amb full" style="margin-top:8px">Convertir este pedido…</div></div>
+ </div>
+</div></div></div></div>
+
+<h2>Estados (carga · error · sin resultados · confirmación)</h2>
+<div class="wrap">
+ <div class="st"><h5>Cargando</h5><div class="sk" style="width:60%"></div><div class="sk"></div><div class="sk" style="width:80%"></div><p class="note" style="margin:6px 0 0">Los filtros quedan visibles. «Cargando responsables…»</p></div>
+ <div class="st"><h5>Error al cargar las personas</h5><div class="err" role="alert"><b>No pudimos cargar quién entregó y cobró.</b><br>Los saldos siguen vigentes y puede seguir cobrando.<div class="b" style="margin-top:8px;background:#fff">Reintentar</div></div></div>
+ <div class="st"><h5>Sin resultados</h5><div class="empty"><div class="e">🔎</div><b>Nada entregado por Lilia Ruiz con estos filtros</b><p class="note">Puede haber otros fiados fuera de esta consulta.</p><div class="b ghost">Limpiar filtros</div></div></div>
+ <div class="st"><h5>Al pulsar «Convertir este pedido…»</h5><div class="info">Se abre el flujo de <b>#865</b> con el pedido #684 ya elegido. Usted escoge al trabajador y confirma. <b>Elegir a un repartidor en el filtro no convierte nada.</b></div></div>
+ <div class="st"><h5>Lista del filtro «Entregado por»</h5>
+  <div class="inp" style="margin-bottom:6px">Todos</div>
+  <div class="who" style="padding:6px 4px"><span class="av c1">PG</span>Pedro Gómez</div>
+  <div class="who" style="padding:6px 4px"><span class="av c3">LR</span>Lilia Ruiz <span class="pill p-na">en punto</span></div>
+  <div class="who" style="padding:6px 4px"><span class="av c5">MD</span>Mario Díaz <span class="pill p-na">inactivo</span></div>
+  <div class="who" style="padding:6px 4px"><span class="av c5">?</span>Sin identificar</div></div>
 </div>
-
-<div class="marco tel"><div class="etq">Móvil</div>
-<label>Entregado por<br><select style="width:100%"><option>Pedro Gómez</option></select></label>
-<div class="res"><b>$70.000</b><br><small>1 cliente · 2 pedidos</small></div>
-<div class="ped"><b>Tienda La Esperanza</b> · $70.000<br><button>Ver pedidos</button>
-<div class="ped" style="background:#fff"><b>#684</b> · saldo $40.000<br>Entregado: 12 u (Agua 10, Hielo 2)
-<ul class="lt"><li>✍️ Creó Lilia Ruiz <small>03/11 8:05</small></li><li>🔐 Autorizó: <span class="desc">sin registro</span></li><li>🚚 Entregó Pedro Gómez <small>03/11 10:40</small></li><li>💵 $20.000 · Ana Soto <small>05/11 15:12</small></li></ul>
-<button class="p" style="width:100%">Convertir este pedido…</button></div></div></div></div>
-
-<h2>Estados</h2>
-<div class="fila">
-<div class="marco tel"><div class="etq">Carga</div><div class="skel"></div><div class="skel"></div><p class="n">Los filtros quedan visibles; «Cargando responsables…».</p></div>
-<div class="marco tel"><div class="etq">Error al cargar actores</div><div class="err" role="alert">No se pudo cargar quién entregó y cobró. Los saldos siguen vigentes. <button>Reintentar</button></div></div>
-<div class="marco tel"><div class="etq">Sin resultados</div><p>Sin fiados entregados por Lilia Ruiz con estos filtros.</p><button>Limpiar filtros</button></div>
-<div class="marco tel"><div class="etq">Confirmación de Convertir (lo define #865)</div><div class="nota">Se abre el flujo de #865 con el pedido #684 y el trabajador por elegir. Seleccionar al repartidor <b>no</b> convierte nada. Aquí solo se enlaza.</div></div>
-</div></body></html>
+</body></html>
