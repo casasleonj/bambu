@@ -1,5 +1,6 @@
 import { leerFiadosVigentes } from '@/lib/fiados-vigentes-db'
 import { leerExigibles } from '@/lib/entregas-exigibles-db'
+import { leerActoresFiados, type ActoresFiado } from '@/lib/fiados-actores'
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { mapRegaloPedidoError } from '@/modules/pedidos/presentation/regalo-pedido-http'
@@ -209,6 +210,19 @@ export async function GET(request: NextRequest) {
           isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
         })
       : null
+    // #614 F1: actores y eventos solo para Fiados; un fallo no debe ocultar la deuda.
+    let actores: Map<string, ActoresFiado> | null = null
+    let actoresError = false
+    if (scopeFilter === 'fiados') {
+      try {
+        actores = await prisma.$transaction(tx => leerActoresFiados(tx, result.pedidos.map(p => p.id)), {
+          isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        })
+      } catch (error) {
+        actoresError = true
+        logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'No se pudieron leer los actores de fiados (#614)')
+      }
+    }
     const exigibles = deuda
       ? new Map([...deuda.porPedido].map(([id, d]) => [id, d.exigible]))
       : await leerExigibles(prisma, whereDeuda)
@@ -235,6 +249,7 @@ export async function GET(request: NextRequest) {
         exigible: exigibles.get(p.id) ?? 0,
         ...(deuda ? { corteOperativo: deuda.porPedido.get(p.id) ?? null } : {}),
         ...(scoped ? { factura: facturaByPedido.get(p.id) ?? null } : {}),
+        ...(scopeFilter === 'fiados' ? { actores: actores?.get(p.id) ?? null, ...(actoresError ? { actoresError: true } : {}) } : {}),
         nombreCli: getAnonymousClientDisplayName(p.clienteId, 'short') ?? (cliente?.nombre || 'Desconocido'),
         apellidoCli: cliente?.apellido || null,
         telefonoCli: cliente?.telefono || '',
