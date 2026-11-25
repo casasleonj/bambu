@@ -1,8 +1,28 @@
 // @tests #630 F1-B1b: QA real de navegador, escritorio y móvil, datos sintéticos.
-// Nunca confirma el cierre: prueba el flujo visible y su validación sin tocar
-// datos históricos ni ejecutar operaciones económicas de producción.
+// La UI nunca confirma el cierre. El teardown devuelve únicamente la carga
+// sintética de este test por la API, sin venta ni cobro, para liberar stock.
 import type { Page } from '@playwright/test'
 import { test, expect, loginAs, apiPost, createTrabajador, createCliente, BASE } from './fixtures'
+
+const fixtures = new WeakMap<Page, { embarqueId: string; pedidoId?: string; enRuta: boolean }>()
+
+test.afterEach(async ({ page }) => {
+  const f = fixtures.get(page)
+  if (!f) return
+  // No tocar embarques ajenos, ni cerrar una venta con dinero.
+  if (!f.enRuta) {
+    const cancelado = await page.request.delete(BASE + '/api/embarques/' + f.embarqueId)
+    expect(cancelado.ok(), 'cancelar embarque sintético: ' + await cancelado.text()).toBeTruthy()
+    return
+  }
+  const cerrado = await apiPost(page, '/api/embarques/' + f.embarqueId + '/cerrar', {
+    pedidos: f.pedidoId ? [{ pedidoId: f.pedidoId, entregado: 'NO_ENTREGADO', pagado: 'NO_PAGADO', pagos: [] }] : [],
+    ventasLibres: [],
+    productos: [{ producto: 'PACA_AGUA', devueltas: 3, cambios: 0, rotas: 0 }],
+    dineroEntregado: 0,
+  })
+  expect(cerrado.ok(), 'devolver carga sintética sin venta: ' + await cerrado.text()).toBeTruthy()
+})
 
 async function abrirVentasLibres(page: Page) {
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().split('T')[0]
@@ -23,9 +43,12 @@ async function abrirVentasLibres(page: Page) {
     horaSalida: '08:00',
     carga: [{ producto: 'PACA_AGUA', cargadas: 3 }],
   })
+  expect(e.ok(), 'crear embarque sintético: ' + await e.text()).toBeTruthy()
   const ej = await e.json()
   const embarqueId = ej.data?.id || ej.embarque?.id
   expect(embarqueId, 'embarque sintético creado').toBeTruthy()
+  const fixture = { embarqueId: embarqueId as string, pedidoId: undefined as string | undefined, enRuta: false }
+  fixtures.set(page, fixture)
 
   const p = await apiPost(page, '/api/pedidos', {
     clienteId, canal: 'DOMICILIO', ventaRapida: false,
@@ -34,11 +57,13 @@ async function abrirVentasLibres(page: Page) {
   const pj = await p.json()
   const pedidoId = pj.pedido?.id || pj.data?.id
   expect(pedidoId, 'pedido sintético creado').toBeTruthy()
+  fixture.pedidoId = pedidoId
 
   const asignado = await apiPost(page, '/api/pedidos/' + pedidoId + '/enviar', { embarqueId })
   expect(asignado.ok()).toBeTruthy()
   const enviado = await apiPost(page, '/api/embarques/' + embarqueId + '/enviar', {})
-  expect(enviado.ok()).toBeTruthy()
+  expect(enviado.ok(), await enviado.text()).toBeTruthy()
+  fixture.enRuta = true
 
   await page.goto(BASE + '/embarques/' + embarqueId + '/cerrar', { waitUntil: 'domcontentloaded' })
   await expect(page.getByTestId('siguiente-paso')).toBeEnabled({ timeout: 15_000 })
@@ -88,7 +113,8 @@ test.describe('#630 F1-B1b · fecha declarada en cierre (no certificada)', () =>
     const ancho = await page.evaluate(() => ({
       contenido: document.documentElement.scrollWidth,
       viewport: document.documentElement.clientWidth,
+      desbordes: Array.from(document.querySelectorAll('main *')).filter(el => el.getBoundingClientRect().right > document.documentElement.clientWidth + 1 && !el.closest('[class*="overflow-x-auto"]')).slice(0, 12).map(el => ({ tag: el.tagName, clase: el.className, ancho: Math.round(el.getBoundingClientRect().width) })),
     }))
-    expect(ancho.contenido, 'sin desborde horizontal en 360 px').toBeLessThanOrEqual(ancho.viewport + 1)
+    expect(ancho.contenido, 'sin desborde horizontal en 360 px: ' + JSON.stringify(ancho.desbordes)).toBeLessThanOrEqual(ancho.viewport + 1)
   })
 })

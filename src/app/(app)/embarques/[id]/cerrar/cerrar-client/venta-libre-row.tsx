@@ -47,7 +47,7 @@ export function VentaLibreRow({
   const totalPagado = calcularMontoPagado(venta.pagos)
 
   return (
-    <div className="border rounded-lg p-3 mb-2 space-y-2">
+    <div className="min-w-0 border rounded-lg p-3 mb-2 space-y-2">
       <div className="flex gap-2">
         <select
           value={venta.clienteId}
@@ -56,7 +56,7 @@ export function VentaLibreRow({
             onUpdate(index, 'clienteId', e.target.value)
             onUpdate(index, 'clienteNombre', cliente?.nombre || '')
           }}
-          className="flex-1 px-3 py-2 border rounded-lg text-sm"
+          className="min-w-0 flex-1 px-3 py-2 border rounded-lg text-sm"
         >
           <option value="">Seleccionar cliente...</option>
           {clientes.map((c) => (
@@ -70,16 +70,16 @@ export function VentaLibreRow({
           Eliminar
         </button>
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {PRODUCTOS_VENTA.map(({ key, label }) => (
-          <div key={key}>
+          <div key={key} className="min-w-0">
             <label className="text-xs text-gray-500">{label}</label>
             <input
               type="number"
               min={0}
               value={(venta as unknown as Record<string, number>)[key]}
               onChange={(e) => onUpdate(index, key as keyof VentaLibre, parseInt(e.target.value) || 0)}
-              className="w-full px-2 py-1 border rounded text-sm"
+              className="min-w-0 w-full px-2 py-1 border rounded text-sm"
             />
           </div>
         ))}
@@ -91,7 +91,7 @@ export function VentaLibreRow({
             <select
               value={pago.metodo}
               onChange={(e) => onUpdatePago(index, pIdx, 'metodo', e.target.value)}
-              className="px-3 py-2 border rounded-lg text-sm"
+              className="max-w-[45%] min-w-0 px-3 py-2 border rounded-lg text-sm"
             >
               {METODOS_PAGO.map((m) => (
                 <option key={m} value={m}>{m}</option>

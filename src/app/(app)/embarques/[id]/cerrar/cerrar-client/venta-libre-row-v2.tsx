@@ -100,7 +100,7 @@ export function VentaLibreRowV2({
   }
 
   return (
-    <div className="mb-3 space-y-3 rounded-lg border p-3" data-testid={`venta-libre-v2-${index}`}>
+    <div className="mb-3 min-w-0 space-y-3 rounded-lg border p-3" data-testid={`venta-libre-v2-${index}`}>
       {hayCliente ? (
         <div className="flex items-center justify-between gap-2 rounded-lg bg-blue-50 p-3">
           <div>
@@ -123,7 +123,7 @@ export function VentaLibreRowV2({
             value={termino}
             onChange={(e) => setTermino(e.target.value)}
             placeholder="Nombre, apellido, tienda o celular"
-            className="h-11 w-full rounded-lg border px-3 text-sm"
+            className="h-11 min-w-0 w-full rounded-lg border px-3 text-sm"
             autoComplete="off"
           />
           {meetsMinSearchLength(termino.trim()) && (
@@ -160,7 +160,7 @@ export function VentaLibreRowV2({
               min={0}
               value={venta[key] as number}
               onChange={(e) => onUpdate(index, key, Math.max(0, parseInt(e.target.value, 10) || 0))}
-              className="h-11 w-full rounded-lg border px-2 text-sm"
+              className="h-11 min-w-0 w-full rounded-lg border px-2 text-sm"
             />
             <div className="text-[11px] text-gray-400">{precios[codigo as keyof PreciosVentaLibre] ? formatCurrency(precios[codigo as keyof PreciosVentaLibre] as number) : 'precio al guardar'} c/u</div>
           </div>

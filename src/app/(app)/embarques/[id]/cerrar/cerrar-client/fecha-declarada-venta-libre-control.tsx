@@ -33,7 +33,7 @@ export function FechaDeclaradaVentaLibreControl({
   }
 
   return (
-    <section className="rounded-lg border border-blue-100 bg-blue-50/50 p-3" data-testid={'vl-fecha-declarada-' + index}>
+    <section className="min-w-0 max-w-full rounded-lg border border-blue-100 bg-blue-50/50 p-3" data-testid={'vl-fecha-declarada-' + index}>
       <button
         type="button"
         aria-expanded={abierto}
@@ -52,8 +52,8 @@ export function FechaDeclaradaVentaLibreControl({
         </p>
       )}
       {abierto && (
-        <div id={id + '-panel'} className="space-y-3 pt-2">
-          <fieldset className="space-y-2">
+        <div id={id + '-panel'} className="min-w-0 space-y-3 pt-2">
+          <fieldset className="min-w-0 space-y-2">
             <legend className="text-xs font-medium text-gray-700">Precisión del dato</legend>
             {([
               ['DESCONOCIDA', 'No conozco el momento'],
@@ -73,25 +73,25 @@ export function FechaDeclaradaVentaLibreControl({
             ))}
           </fieldset>
           {valor && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="space-y-1 text-xs font-medium text-gray-700" htmlFor={id + '-dia'}>
+            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="block min-w-0 space-y-1 text-xs font-medium text-gray-700" htmlFor={id + '-dia'}>
                 <span>Día de la venta (declarado)</span>
                 <input
                   id={id + '-dia'} type="date" value={valor.fecha}
                   max={diaColombia(new Date())}
                   aria-invalid={intentado && Boolean(error)}
                   onChange={(e) => cambiar({ ...valor, fecha: e.target.value })}
-                  className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
+                  className="block h-11 min-w-0 w-full max-w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
                 />
               </label>
               {valor.precision === 'INSTANTE' && (
-                <label className="space-y-1 text-xs font-medium text-gray-700" htmlFor={id + '-hora'}>
+                <label className="block min-w-0 space-y-1 text-xs font-medium text-gray-700" htmlFor={id + '-hora'}>
                   <span>Hora declarada</span>
                   <input
                     id={id + '-hora'} type="time" value={valor.hora ?? ''}
                     onChange={(e) => cambiar({ ...valor, hora: e.target.value })}
                     aria-invalid={intentado && Boolean(error)}
-                    className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
+                    className="block h-11 min-w-0 w-full max-w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
                   />
                 </label>
               )}

@@ -709,11 +709,11 @@ export default function CerrarEmbarqueClient() {
   ]
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="w-full min-w-0 max-w-5xl mx-auto">
       {/* Header sticky */}
       <div className="sticky top-0 z-20 bg-white border-b shadow-sm">
         <div className="max-w-5xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
             <div>
               <button onClick={() => router.push('/embarques')} className="text-sm text-blue-600 hover:underline">← Embarques</button>
               <h1 className="text-xl font-bold text-gray-900">
@@ -731,7 +731,7 @@ export default function CerrarEmbarqueClient() {
           </div>
 
           {/* Wizard steps (Fase 7): se puede retroceder, no saltar hacia adelante */}
-          <div className="flex gap-1 overflow-x-auto">
+          <div className="flex min-w-0 max-w-full gap-1 overflow-x-auto">
             {sections.map((sec, i) => {
               const isPast = i < activeSection
               const isCurrent = i === activeSection
@@ -765,7 +765,7 @@ export default function CerrarEmbarqueClient() {
         </div>
       </div>
 
-      <div className="px-4 py-6 space-y-6">
+      <div className="min-w-0 px-3 py-6 space-y-6 sm:px-4">
         {/* Section 0: Pedidos */}
         {activeSection === 0 && (
           <div className="space-y-4">
@@ -816,8 +816,8 @@ export default function CerrarEmbarqueClient() {
 
         {/* Section 1: Ventas Libres */}
         {activeSection === 1 && (
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between mb-4">
+          <div className="min-w-0 bg-white rounded-lg shadow-sm border p-3 sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <h2 className="text-lg font-semibold">Ventas Libres ({ventasLibres.length})</h2>
               <button
                 onClick={agregarVentaLibre}
