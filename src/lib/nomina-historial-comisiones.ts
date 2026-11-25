@@ -5,6 +5,8 @@ import { whereFechaPagoComision } from './comision-pagada'
 import { calcularComisionRepartidor, tarifasRepartidor } from './comision-repartidor'
 import { agruparHistorialComisiones, claveJornadaComision, resumirPagosComision, type PagoHistorialComision } from './nomina-historial-comisiones-calculo'
 
+import { interpretarEvidenciaComision } from './comision-evidencia'
+
 const LIMITE_PAGOS = 10_000
 export class HistorialComisionLimiteError extends Error {}
 type Tx = Prisma.TransactionClient
@@ -72,7 +74,14 @@ export async function leerHistorialComisiones(tx: Tx, filtro: FiltroHistorial) {
 export async function leerDetalleHistorialComision(tx: Tx, grupo: Grupo) {
   const pagos = await leerPagos(tx, whereJornada(grupo))
   if (!pagos.length) return null
-  const base = { ...grupo, pagos, totalJornada: resumirPagosComision(pagos), evidenciaAlPagar: 'NO_VERIFICADA' as const }
+  const evidencias = await tx.pagoComisionEvidencia.findMany({ where: { pagoId: { in: pagos.map(p => p.id) } } })
+  const porPago = new Map(evidencias.map(e => [e.pagoId, e.datos]))
+  // Cada evidencia representa una versión acumulada de la jornada. Nunca sumar sus unidades.
+  const evidenciasAlRegistrar = pagos.map(p => ({
+    pagoId: p.id, ...interpretarEvidenciaComision(porPago.get(p.id), p),
+  }))
+  const base = { ...grupo, pagos, totalJornada: resumirPagosComision(pagos),
+    evidenciaAlPagar: 'NO_VERIFICADA' as const, evidenciasAlRegistrar }
   const rango = dateRangeForDay(grupo.fechaTrabajo)
   if (grupo.concepto === 'REPARTO') {
     const [trabajador, config] = await Promise.all([
