@@ -11,6 +11,7 @@ vi.mock('@/lib/push', () => ({ sendPushToUser: vi.fn().mockResolvedValue(undefin
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { POST } from '@/app/api/nomina/dia/pagar/route'
 import { GET } from '@/app/api/nomina/comisiones/route'
+import { POST as corregirFecha } from '@/app/api/nomina/pagos-comision/[id]/corregir-fecha/route'
 import { startOfDayBogota, todayStringBogota } from '@/lib/dates'
 import { crearPedidoUseCase } from '@/modules/pedidos'
 let adminId: string
@@ -19,8 +20,8 @@ const hoy = todayStringBogota()
 const pagar = (trabajadorId: string, concepto: string, offlineId: string, montoEsperado: number) =>
   POST(new NextRequest('http://localhost/api/nomina/dia/pagar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ trabajadorId, concepto, fecha: hoy, fechaPagoReal: hoy, offlineId, montoEsperado }) }))
-const leer = async (trabajadorId: string, concepto: string) => {
-  const res = await GET(new NextRequest('http://localhost/api/nomina/comisiones?modo=detalle&trabajadorId=' + trabajadorId + '&fechaTrabajo=' + hoy + '&concepto=' + concepto))
+const leer = async (trabajadorId: string, concepto: string, fechaTrabajo = hoy) => {
+  const res = await GET(new NextRequest('http://localhost/api/nomina/comisiones?modo=detalle&trabajadorId=' + trabajadorId + '&fechaTrabajo=' + fechaTrabajo + '&concepto=' + concepto))
   expect(res.status).toBe(200)
   return (await res.json()).detalle
 }
@@ -123,6 +124,56 @@ describe('#1010 F2A evidencia histórica prospectiva', () => {
     expect(pagos).toHaveLength(1)
     expect(Number(pagos[0].monto)).toBe(600)
     expect(pagos[0].evidencia?.datos).toMatchObject({ desembolsoCentavos: 60000 })
+  })
+
+
+  it('corregir el desembolso por el endpoint real conserva la evidencia, jornada y dinero', async () => {
+    const anterior = new Date(startOfDayBogota(hoy).getTime() - 2 * 86_400_000)
+    const trabajo = anterior.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    const corregida = new Date(anterior.getTime() + 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    const t = await testPrisma.trabajador.create({ data: { nombre: 'Sellador corrección evidencia', rol: 'SELLADOR', tipoPago: 'COMISION' } })
+    await testPrisma.produccion.create({ data: { trabajadorId: t.id, fecha: anterior, turno: 'JORNADA',
+      comSellTotal: 300, items: { create: [{ producto: 'PACA_AGUA', producido: 1, comSellador: 300 }] } } })
+    const res = await POST(new NextRequest('http://localhost/api/nomina/dia/pagar', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trabajadorId: t.id, concepto: 'PRODUCCION',
+        fecha: trabajo, fechaPagoReal: hoy, montoEsperado: 300, offlineId: randomUUID() }) }))
+    expect(res.status).toBe(201)
+    const id = (await res.json()).pago.id
+    const original = await testPrisma.pagoComisionEvidencia.findUniqueOrThrow({ where: { pagoId: id } })
+    const corregir = await corregirFecha(new NextRequest('http://localhost/api/nomina/pagos-comision/' + id + '/corregir-fecha', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fechaPagoReal: corregida, motivo: 'Corrección sintética de evidencia', offlineId: randomUUID() }),
+    }), { params: Promise.resolve({ id }) })
+    expect(corregir.status).toBe(201)
+    const d = await leer(t.id, 'PRODUCCION', trabajo)
+    expect(d.pagos[0]).toMatchObject({ id, fechaTrabajo: trabajo, fechaPagoReal: corregida, monto: 300 })
+    expect(d.evidenciasAlRegistrar).toEqual([{ pagoId: id, estado: 'REGISTRADA', evidencia: original.datos }])
+    expect(await testPrisma.pagoComisionEvidencia.findUnique({ where: { pagoId: id } })).toEqual(original)
+  })
+
+  it('si falla la escritura de evidencia en PostgreSQL, revierte el pago y no deja auditoría fantasma', async () => {
+    const t = await testPrisma.trabajador.create({ data: { nombre: 'Sellador rollback evidencia', rol: 'SELLADOR', tipoPago: 'COMISION' } })
+    await testPrisma.produccion.create({ data: { trabajadorId: t.id, fecha: startOfDayBogota(hoy), turno: 'JORNADA',
+      comSellTotal: 300, items: { create: [{ producto: 'PACA_AGUA', producido: 1, comSellador: 300 }] } } })
+    // Solo en el PostgreSQL aislado de integración; la función falla para esta identidad sintética.
+    const clave = randomUUID()
+    const antes = await testPrisma.historial.count({ where: { entidad: 'PagoComisionRepartidor', accion: 'CREATE' } })
+    await testPrisma.$executeRawUnsafe(`CREATE FUNCTION public.test_1010_falla_evidencia() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.datos->>'trabajadorId' = TG_ARGV[0] THEN RAISE EXCEPTION 'Fallo sintético de evidencia'; END IF; RETURN NEW; END; $`)
+    try {
+      if (!/^[a-zA-Z0-9_-]+$/.test(t.id)) throw new Error('ID sintético inválido')
+      await testPrisma.$executeRawUnsafe(`CREATE TRIGGER test_1010_falla_evidencia BEFORE INSERT ON "PagoComisionEvidencia" FOR EACH ROW EXECUTE FUNCTION public.test_1010_falla_evidencia('${t.id}')`)
+      const res = await pagar(t.id, 'PRODUCCION', clave, 300)
+      expect(res.status).toBe(500)
+      expect(await testPrisma.pagoComisionRepartidor.findUnique({ where: { offlineId: clave } })).toBeNull()
+      expect(await testPrisma.historial.count({ where: { entidad: 'PagoComisionRepartidor', accion: 'CREATE' } })).toBe(antes)
+    } finally {
+      await testPrisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS test_1010_falla_evidencia ON "PagoComisionEvidencia"')
+      await testPrisma.$executeRawUnsafe('DROP FUNCTION IF EXISTS public.test_1010_falla_evidencia()')
+    }
+    expect((await pagar(t.id, 'PRODUCCION', clave, 300)).status).toBe(201)
+    const p = await testPrisma.pagoComisionRepartidor.findUniqueOrThrow({ where: { offlineId: clave }, include: { evidencia: true } })
+    expect(p.evidencia?.datos).toMatchObject({ desembolsoCentavos: 30000 })
   })
 
 })
