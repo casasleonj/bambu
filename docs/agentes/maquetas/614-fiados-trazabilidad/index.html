@@ -1,0 +1,57 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>#614 · Fiados: trazabilidad — maqueta para aprobación (datos ficticios)</title>
+<style>
+*{box-sizing:border-box}body{font-family:system-ui,sans-serif;margin:0;padding:24px;background:#f3f4f6;color:#111827}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:28px 0 8px}p.n{color:#6b7280;font-size:13px;max-width:900px}
+.fila{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}.marco{background:#fff;border:1px solid #d1d5db;border-radius:14px;padding:16px}
+.esc{width:720px}.tel{width:360px}.etq{font-size:11px;font-weight:700;text-transform:uppercase;color:#374151;margin-bottom:8px}
+select,input{min-height:40px;border:1px solid #d1d5db;border-radius:8px;padding:6px;font-size:13px}
+.res{background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px;margin:10px 0}.res b{font-size:20px;color:#b91c1c}
+.ped{background:#f9fafb;border-radius:8px;padding:10px;margin-top:8px;font-size:13px}
+.lt{list-style:none;margin:8px 0;padding:0 0 0 10px;border-left:2px solid #d1d5db}.lt li{margin:6px 0;padding-left:8px}.lt small{color:#6b7280}
+.desc{color:#6b7280;font-style:italic}.chip{display:inline-block;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700;background:#fff7ed;color:#9a3412;border:1px solid #fed7aa}
+.err{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:8px;padding:8px;font-size:13px;margin-top:8px}
+.nota{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe;border-radius:8px;padding:8px;font-size:13px;margin-top:8px}
+.skel{background:linear-gradient(90deg,#e5e7eb,#f3f4f6,#e5e7eb);height:20px;border-radius:6px;margin:8px 0}
+button{font:500 13px system-ui;border:1px solid #111;background:#fff;border-radius:8px;padding:6px 12px;min-height:40px}button.p{background:#d97706;color:#fff;border-color:#d97706}
+table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:4px;border-bottom:1px solid #eee;text-align:left}
+</style></head><body>
+<h1>#614 · Fiados: quién creó, entregó y cobró — MAQUETA (datos ficticios)</h1>
+<p class="n">Estado: PENDIENTE DE APROBACIÓN del PO. Se conserva el diseño actual de Fiados; se añade el filtro «Entregado por», el detalle por pedido con desglose físico y línea de tiempo. «Convertir» no cambia aquí: lo gobierna #865.</p>
+
+<h2>Escritorio · filtro «Entregado por: Pedro» + detalle expandido</h2>
+<div class="fila"><div class="marco esc">
+<div class="etq">Pedidos → Fiados</div>
+<label>Entregado por <select><option>Todos</option><option selected>Pedro Gómez</option><option>Lilia Ruiz (en punto)</option><option>Ana Soto (inactiva)</option><option>Sin identificar</option></select></label>
+<input placeholder="Buscar cliente…"> <button>Limpiar filtros</button>
+<div class="res"><small>Deuda pendiente (según filtros) · entregado por Pedro Gómez</small><br><b>$70.000</b> · 1 cliente · 2 pedidos
+<br><small>Los totales por persona pueden solaparse en pedidos compartidos; no se suman.</small></div>
+<table><tr><th>Cliente</th><th>Deuda</th><th>Pedidos</th><th>Días</th><th></th></tr>
+<tr><td>Tienda La Esperanza</td><td><b>$70.000</b></td><td>2 en consulta</td><td>12</td><td><button>Ocultar</button> <button>Registrar pago</button> <button class="p">Convertir…</button></td></tr></table>
+<div class="ped"><b>Pedido #684</b> · 03/11/2026 · Saldo exigible <b>$40.000</b> · Total $60.000 · Pagado $20.000
+<br>Entregado en total: <b>12 unidades</b> → Agua 10 · Hielo 2 · Botellones 0 <span class="desc">(cantidad física; no equivale a lo impago)</span>
+<ul class="lt">
+<li>✍️ <b>Creó</b> Lilia Ruiz <small>· 03/11 8:05 a. m.</small></li>
+<li>🔐 <b>Autorizó el fiado</b> <span class="desc">sin registro</span></li>
+<li>🚚 <b>Entregó</b> Pedro Gómez · Agua 10, Hielo 2 <small>· 03/11 10:40 a. m. · registró Lilia Ruiz</small></li>
+<li>💵 <b>Pago $20.000 (efectivo)</b> recibió Ana Soto <small>· 05/11 3:12 p. m.</small></li>
+</ul><button>Pedido</button> <button>Factura</button> <button class="p">Convertir este pedido…</button></div>
+<div class="ped"><b>Pedido #701</b> · compartido <span class="chip">Entregado por Pedro y Ana</span> · Saldo <b>$30.000</b> <span class="desc">(saldo del pedido, no de un trabajador)</span>
+<ul class="lt"><li>🚚 Pedro Gómez · Agua 6 <small>· 08/11 9:00 a. m.</small></li><li>🚚 Ana Soto · Agua 4 <small>· 09/11 (hora sin verificar)</small></li><li>🧾 Registro legado <span class="desc">cantidades y autor sin registrar</span></li></ul></div>
+</div>
+
+<div class="marco tel"><div class="etq">Móvil</div>
+<label>Entregado por<br><select style="width:100%"><option>Pedro Gómez</option></select></label>
+<div class="res"><b>$70.000</b><br><small>1 cliente · 2 pedidos</small></div>
+<div class="ped"><b>Tienda La Esperanza</b> · $70.000<br><button>Ver pedidos</button>
+<div class="ped" style="background:#fff"><b>#684</b> · saldo $40.000<br>Entregado: 12 u (Agua 10, Hielo 2)
+<ul class="lt"><li>✍️ Creó Lilia Ruiz <small>03/11 8:05</small></li><li>🔐 Autorizó: <span class="desc">sin registro</span></li><li>🚚 Entregó Pedro Gómez <small>03/11 10:40</small></li><li>💵 $20.000 · Ana Soto <small>05/11 15:12</small></li></ul>
+<button class="p" style="width:100%">Convertir este pedido…</button></div></div></div></div>
+
+<h2>Estados</h2>
+<div class="fila">
+<div class="marco tel"><div class="etq">Carga</div><div class="skel"></div><div class="skel"></div><p class="n">Los filtros quedan visibles; «Cargando responsables…».</p></div>
+<div class="marco tel"><div class="etq">Error al cargar actores</div><div class="err" role="alert">No se pudo cargar quién entregó y cobró. Los saldos siguen vigentes. <button>Reintentar</button></div></div>
+<div class="marco tel"><div class="etq">Sin resultados</div><p>Sin fiados entregados por Lilia Ruiz con estos filtros.</p><button>Limpiar filtros</button></div>
+<div class="marco tel"><div class="etq">Confirmación de Convertir (lo define #865)</div><div class="nota">Se abre el flujo de #865 con el pedido #684 y el trabajador por elegir. Seleccionar al repartidor <b>no</b> convierte nada. Aquí solo se enlaza.</div></div>
+</div></body></html>
