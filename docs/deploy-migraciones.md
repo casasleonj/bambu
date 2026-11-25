@@ -48,3 +48,16 @@ WHERE NOT EXISTS (SELECT 1 FROM _prisma_migrations WHERE migration_name = '$m' A
 Orden: aplicar la migración → verificar con una consulta de solo lectura que sus objetos existen → registrarla → recién entonces mergear el PR (AGENTS.md, Flujo de Entrega, paso 7).
 
 Comprobación: las filas con `rolled_back_at IS NULL` deben ser exactamente las carpetas de `prisma/migrations/` (sin `migration_lock.toml`). Al 2026-11-02 son 71 y 71.
+
+## Recuperar una migración aplicada pero no registrada (#1017)
+
+**Síntoma:** `migrate-deploy` falla en "Conciliar checksum e historial ANTES de DDL" con `Migración histórica no registrada: <nombre>` en pushes que no tocan esa migración. Ocurre cuando el run del push de la migración falló (token, red) y su SQL quedó aplicado fuera del flujo sin fila en `_prisma_migrations`.
+
+**No** se relaja el preflight ni se escribe a mano en producción. Procedimiento (workflow `migrate-recover.yml`, solo `workflow_dispatch` en `main`, con aprobación del entorno `production`, sin DDL):
+
+1. Leer el `migration.sql` y listar **todos** los objetos que crea, con la gramática: `tabla:X`, `columna:tabla.col`, `funcion:f`, `trigger:tabla.trg`, `indice:idx` (separados por coma).
+2. Lanzar el workflow con `registrar=false`. Verifica que la migración existe en Git, que es la **única** sin registrar, que no tiene filas previas (fallida/revertida exige revisión manual), que el resto del ledger y sus checksums son íntegros y que cada objeto declarado existe en producción (consultas de catálogo de solo lectura).
+3. Si pasó, lanzar de nuevo con `registrar=true`: ejecuta `prisma migrate resolve --applied <nombre>` (checksum = sha256 del archivo, el mismo de `migrate deploy`) y concilia el ledger completo (`--postflight`).
+4. Reintentar ("Re-run failed jobs") los runs fallidos de `migrate-deploy` del SHA que se quiera liberar: `release-migration-gate` exige un run exitoso de ese SHA exacto.
+
+**Límite:** la lista de objetos la declara una persona; el código prueba que existen, no que el SQL se aplicó completo (p. ej. una migración sin transacción que falló a mitad). La aprobación del entorno `production` es el control humano. Si falta un objeto, el workflow se detiene: aplicar/corregir por el flujo normal y revisar con el PO.
