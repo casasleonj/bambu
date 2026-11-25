@@ -11,7 +11,7 @@ vi.mock('@/lib/auth', () => ({ auth: () => mockAuth() }))
 
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { GET } from '@/app/api/nomina/comisiones/route'
-import { startOfDayBogota } from '@/lib/dates'
+import { startOfDayBogota, todayStringBogota } from '@/lib/dates'
 import { crearPedidoUseCase } from '@/modules/pedidos'
 import { randomUUID } from 'crypto'
 
@@ -98,6 +98,7 @@ describe('#1010 historial de comisiones', () => {
   })
 
   it('recupera el pedido de reparto histórico sin confundir la tarifa vigente con la tarifa al pagar', async () => {
+    const hoy = todayStringBogota()
     const t = await testPrisma.trabajador.create({ data: {
       nombre: 'Repartidor detalle sintético', rol: 'REPARTIDOR', usaMoto: true,
       tipoPago: 'COMISION', comRepartAgua: 300,
@@ -113,13 +114,13 @@ describe('#1010 historial de comisiones', () => {
     })
     await testPrisma.pedido.update({ where: { id: pedido.id }, data: {
       estadoEntrega: 'ENTREGADO', estado: 'ENTREGADO', cPacaAguaEnt: 5,
-      entregadoAt: dia(trabajo), entregadoPorId: t.id,
+      entregadoAt: new Date(), entregadoPorId: t.id,
     } })
     await testPrisma.pagoComisionRepartidor.create({ data: {
-      trabajadorId: t.id, fecha: dia(trabajo), fechaPagoReal: dia(pago1), monto: 1250,
+      trabajadorId: t.id, fecha: dia(hoy), fechaPagoReal: dia(hoy), monto: 1250,
       metodo: 'EFECTIVO', concepto: 'REPARTO',
     } })
-    const res = await consultar('modo=detalle&trabajadorId=' + t.id + '&fechaTrabajo=' + trabajo + '&concepto=REPARTO')
+    const res = await consultar('modo=detalle&trabajadorId=' + t.id + '&fechaTrabajo=' + hoy + '&concepto=REPARTO')
     expect(res.status).toBe(200)
     const d = (await res.json()).detalle
     expect(d.totalJornada.monto).toBe(1250)
@@ -127,6 +128,30 @@ describe('#1010 historial de comisiones', () => {
     expect(d.trabajo.evidencia).toBe('CALCULO_ACTUAL_NO_HISTORICO')
     expect(d.trabajo.calculo).toMatchObject({ entregasAgua: 5, comAgua: 1500, total: 1500, tarifas: { agua: 300 } })
     expect(d.trabajo.calculo.fuentes[0].pedidos[0]).toMatchObject({ id: pedido.id, unidades: { agua: 5 } })
+  })
+
+  it('una corrección de fecha se refleja sin duplicar el pago ni cambiar su jornada', async () => {
+    const t = await testPrisma.trabajador.create({ data: { nombre: 'Corrección sintética', rol: 'SELLADOR' } })
+    const pago = await testPrisma.pagoComisionRepartidor.create({ data: {
+      trabajadorId: t.id, fecha: dia(trabajo), fechaPagoReal: dia(pago2), monto: 300,
+      metodo: 'EFECTIVO', concepto: 'PRODUCCION', pagadoPorId: adminId,
+      correcciones: { create: {
+        fechaRealAnterior: dia(pago1), fechaRealNueva: dia(pago2),
+        motivo: 'Corrección sintética', corregidoPorId: adminId,
+      } },
+    } })
+    const buscar = (fecha: string) => consultar('trabajadorId=' + t.id + '&desde=' + fecha + '&hasta=' + fecha + '&porFecha=PAGO')
+    const antes = await (await buscar(pago1)).json()
+    const despues = await (await buscar(pago2)).json()
+    expect(antes.resumen.cantidadPagos).toBe(0)
+    expect(despues.resumen.monto).toBe(300)
+    expect(despues.jornadas[0].pagos[0]).toMatchObject({
+      id: pago.id, fechaTrabajo: trabajo, fechaPagoReal: pago2,
+      correccion: { anterior: pago1, nueva: pago2 },
+    })
+    const d = await (await consultar('modo=detalle&trabajadorId=' + t.id + '&fechaTrabajo=' + trabajo + '&concepto=PRODUCCION')).json()
+    expect(d.detalle.totalJornada.monto).toBe(300)
+    expect(d.detalle.trabajo.hayFuentes).toBe(false)
   })
 
   it('la lectura no crea pagos, gastos ni nóminas', async () => {
