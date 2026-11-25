@@ -1,6 +1,6 @@
 // #597 / S2-02: «Registrar pago» desde la lista de Pedidos cobra SOLO el pedido entregado hoy.
-// Si el cliente tiene una deuda que el reparto por antigüedad pagaría antes, o el pedido se vendió fiado,
-// o se entregó otro día, se cobra en Fiados (reparto del más antiguo al más reciente, sin cambios).
+// Si el cliente tiene una deuda que el reparto por antigüedad pagaría antes
+// o se entregó otro día, se cobra en Fiados (#1001: la promesa de pago ya no cuenta) (reparto del más antiguo al más reciente, sin cambios).
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { randomUUID } from 'node:crypto'
@@ -88,13 +88,68 @@ describe('#597 — cobro de un solo pedido entregado hoy', () => {
     expect(r.status).toBe(409); expect(await codigo(r)).toBe('PEDIDO_NO_ES_DEL_DIA')
   })
 
-  it('un pedido de hoy vendido fiado a propósito (promesa de pago) se cobra en Fiados', async () => {
-    const { c, pedido } = await cliente()
-    const fiado = await pedido({ creadoHaceHoras: 0, entregadoHaceHoras: 0, promesa: true })
-    const r = await paga(c.id, fiado.id, 10000)
-    expect(r.status).toBe(409); expect(await codigo(r)).toBe('PEDIDO_VENDIDO_FIADO')
-    expect(await saldoDe(fiado.id)).toBe(10000)
-    expect((await GET(get(`clienteId=${c.id}&pedidoId=${fiado.id}`))).status).toBe(409)
+  // #1001 (decisión del PO): la promesa de pago ya no bloquea el cobro de lo entregado hoy. Los resguardos de dinero siguen.
+  describe('pedido de hoy con promesa de pago (venta fiada a propósito)', () => {
+    it('se cobra completo: Pago, factura PAGADA, sin saldo a favor y solo a ese pedido', async () => {
+      const { c, pedido } = await cliente()
+      const fiado = await pedido({ creadoHaceHoras: 0, entregadoHaceHoras: 0, promesa: true })
+      expect((await GET(get(`clienteId=${c.id}&pedidoId=${fiado.id}`))).status).toBe(200)
+      const r = await paga(c.id, fiado.id, 10000)
+      expect(r.status).toBe(200)
+      expect((await r.json()).pagosAplicados.map((p: { pedidoId: string }) => p.pedidoId)).toEqual([fiado.id])
+      expect(await saldoDe(fiado.id)).toBe(0)
+      expect(await db.pago.count({ where: { pedidoId: fiado.id } })).toBe(1)
+      const fac = await db.factura.findUniqueOrThrow({ where: { pedidoId: fiado.id } })
+      expect(fac.estado).toBe('PAGADA'); expect(Number(fac.saldo)).toBe(0)
+      expect(Number((await db.cliente.findUniqueOrThrow({ where: { id: c.id } })).saldoFavor)).toBe(0)
+    })
+
+    it('abono parcial: queda el resto y la promesa sigue vigente para sus alertas y su vencimiento', async () => {
+      const { c, pedido } = await cliente()
+      const fiado = await pedido({ creadoHaceHoras: 0, entregadoHaceHoras: 0, promesa: true })
+      expect((await paga(c.id, fiado.id, 4000)).status).toBe(200)
+      expect(await saldoDe(fiado.id)).toBe(6000)
+      const p = await db.pedido.findUniqueOrThrow({ where: { id: fiado.id } })
+      expect(p.promesaPagoFecha).not.toBeNull()
+      expect(p.estadoPago).not.toBe('PAGADO')
+    })
+
+    it('el mismo reintento (mismo offlineId) no cobra dos veces', async () => {
+      const { c, pedido } = await cliente()
+      const fiado = await pedido({ creadoHaceHoras: 0, entregadoHaceHoras: 0, promesa: true })
+      const offlineId = randomUUID()
+      expect((await paga(c.id, fiado.id, 10000, { offlineId })).status).toBe(200)
+      await paga(c.id, fiado.id, 10000, { offlineId })
+      expect(await db.pago.count({ where: { pedidoId: fiado.id } })).toBe(1)
+      expect(await saldoDe(fiado.id)).toBe(0)
+    })
+
+    it('con deuda anterior el dinero NO va a este pedido, aunque tenga promesa', async () => {
+      const { c, pedido } = await cliente()
+      const antiguo = await pedido({ creadoHaceHoras: 72, entregadoHaceHoras: 72 })
+      const fiado = await pedido({ creadoHaceHoras: 0, entregadoHaceHoras: 0, promesa: true })
+      const r = await paga(c.id, fiado.id, 10000)
+      expect(r.status).toBe(409); expect(await codigo(r)).toBe('CLIENTE_CON_DEUDA_ANTERIOR')
+      expect(await saldoDe(fiado.id)).toBe(10000); expect(await saldoDe(antiguo.id)).toBe(10000)
+      expect(await db.pago.count({ where: { pedidoId: { in: [fiado.id, antiguo.id] } } })).toBe(0)
+    })
+
+    it('si se entregó otro día sigue siendo un fiado: se cobra en Fiados', async () => {
+      const { c, pedido } = await cliente()
+      const ayer = await pedido({ creadoHaceHoras: 30, entregadoHaceHoras: 30, promesa: true })
+      const r = await paga(c.id, ayer.id, 10000)
+      expect(r.status).toBe(409); expect(await codigo(r)).toBe('PEDIDO_NO_ES_DEL_DIA')
+      expect(await saldoDe(ayer.id)).toBe(10000)
+    })
+
+    it('un monto mayor al saldo se rechaza: nunca genera saldo a favor', async () => {
+      const { c, pedido } = await cliente()
+      const fiado = await pedido({ creadoHaceHoras: 0, entregadoHaceHoras: 0, promesa: true })
+      const r = await paga(c.id, fiado.id, 10001)
+      expect(r.status).toBe(400); expect(await codigo(r)).toBe('MONTO_EXCEDE_PEDIDO')
+      expect(await saldoDe(fiado.id)).toBe(10000)
+      expect(Number((await db.cliente.findUniqueOrThrow({ where: { id: c.id } })).saldoFavor)).toBe(0)
+    })
   })
 
   it('con deuda anterior el dinero NO va al pedido de hoy: se rechaza y el cobro de Fiados paga la más antigua', async () => {

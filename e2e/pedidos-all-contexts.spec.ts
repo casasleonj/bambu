@@ -910,14 +910,16 @@ test.describe('Pedidos — Mobile Viewport', () => {
 
   test('touch targets en mobile son adecuados', async () => {
     await gotoPedidos(p)
-    // Check that tab buttons have adequate touch targets (min 44px)
-    const tabs = p.locator('.flex.border-b button')
-    const count = await tabs.count()
-    for (let i = 0; i < count; i++) {
+    // #1003: solo las pestañas de Vistas de Pedidos. El selector anterior
+    // `.flex.border-b button` también capturaba los botones «Activar», «Más
+    // tarde» y «No volver a mostrar» (28-32 px) del aviso de notificaciones
+    // (`push-opt-in-strip.tsx`), que no son pestañas.
+    const tabs = p.getByRole('tablist', { name: 'Vistas de Pedidos' }).getByRole('tab')
+    await expect(tabs).toHaveCount(3)
+    for (let i = 0; i < 3; i++) {
       const box = await tabs.nth(i).boundingBox()
-      if (box) {
-        expect(box.height).toBeGreaterThanOrEqual(36) // relaxed for mobile tabs
-      }
+      expect(box, `pestaña ${i} sin caja visible`).not.toBeNull()
+      expect(box!.height).toBeGreaterThanOrEqual(36) // relaxed for mobile tabs
     }
   })
 })

@@ -22,7 +22,7 @@ import { SmartDateFilter } from '@/components/smart-date-filter'
 import { normalizeCanalFilter, tipoDesdeCanal } from '@/lib/pedido-canal'
 import { PedidoFilters } from './pedido-filters'
 import { PedidoTable } from './pedido-table'
-import { FiadosTable } from './fiados-table'
+import { FiadosTable, clienteTieneCartera } from './fiados-table'
 import { AlertasTable } from './alertas-table'
 import { FacturaConsultaModal } from './factura-consulta-modal'
 import { CobroFiadoDialog } from './cobro-fiado-dialog'
@@ -503,6 +503,12 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
     refetching: actualizandoFiados,
   } = usePedidos({ scope: 'fiados' }, { all: true, autoFetch: false, refetchOnParamsChange: true })
   const pedidosFiados = pedidosFiadosRaw as Pedido[]
+  // #1001: ¿el cliente del detalle abierto ya figura en Fiados? Misma fuente que la pestaña; no se asume sin datos.
+  const clienteDelDetalle = selectedPedido?.clienteId
+  const carteraSeleccionada = useMemo<'con' | 'sin' | 'desconocida'>(() => {
+    if (!clienteDelDetalle || !fiadosCargados || errorFiados) return 'desconocida'
+    return clienteTieneCartera(pedidosFiados, clienteDelDetalle) ? 'con' : 'sin'
+  }, [clienteDelDetalle, fiadosCargados, errorFiados, pedidosFiados])
 
   const {
     pedidos: pedidosAlertasRaw,
@@ -2628,6 +2634,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
             estadoBadge={getEstadoEntregaBadge(selectedPedido.estadoEntrega)}
             canalBadge={getCanalBadge(selectedPedido.canal)}
             volverLabel={pedidoDocumento?.volver}
+            cartera={carteraSeleccionada}
             onOpenFactura={id => setFacturaConsulta({ id, volver: 'Volver a Pedidos',pedidoId:selectedPedido.id,pedidoNumero:selectedPedido.numero,consulta:`/pedidos?${shallowParams.toString()}`,desdePedido:true })}
             onClose={() => { setShowDetailModal(false); setPedidoDocumento(null) }}
             onAccion={(key) => {
@@ -2648,6 +2655,17 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
                 case 'corregir-canal':
                   setShowDetailModal(false)
                   setCorregirCanalPara(selectedPedido)
+                  break
+                case 'registrar-pago':
+                  // #1001: lo de hoy sin cartera se cobra aquí, igual que el botón de la lista (#597).
+                  if (userRole !== 'ADMIN' && userRole !== 'ASISTENTE') {
+                    toast.info('Solo Administración puede registrar pagos. Avisa a un administrador.')
+                    break
+                  }
+                  setShowDetailModal(false)
+                  setClienteCobro({ id: selectedPedido.clienteId,
+                    nombre: [selectedPedido.nombreCli, selectedPedido.apellidoCli].filter(Boolean).join(' '),
+                    pedido: { id: selectedPedido.id, numero: selectedPedido.numero } })
                   break
                 case 'volver-pendiente': void cambiarEstado(selectedPedido.id, 'PENDIENTE'); break
                 case 'anular': void cambiarEstado(selectedPedido.id, 'ANULADO'); break
