@@ -1,11 +1,17 @@
 import type { Prisma } from "@prisma/client";
 import { leerEntregasConsulta, type EntregaConsulta } from "./entregas-consulta";
+import { ROLES } from "./constants";
 
 /**
  * #614 F1: quién creó, quién entregó y quién recibió cada pago de un pedido fiado.
  * Solo hechos acreditados: nunca se infiere un autor desde la ruta/embarque actual
  * ni se reparte dinero. Un dato sin autor se devuelve como `null` (desconocido).
  */
+/** Quién cobró cada pago y los montos son datos de gestión: no se entregan a repartidores ni selladores. */
+export function puedeVerActoresFiados(role: string | null | undefined): boolean {
+  return role === ROLES.ADMIN || role === ROLES.ASISTENTE || role === ROLES.CONTADOR;
+}
+
 export const RESPONSABLE_HISTORICO = "Responsable histórico";
 
 export interface ResponsableFiado {

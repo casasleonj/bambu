@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EntregaConsulta } from "../entregas-consulta";
-import { componerActoresFiado, RESPONSABLE_HISTORICO } from "../fiados-actores";
+import { componerActoresFiado, puedeVerActoresFiados, RESPONSABLE_HISTORICO } from "../fiados-actores";
 
 // #614 F1: creador, entregador y receptor de pago se mantienen como personas distintas.
 const nombres = new Map([["t-pedro", "Pedro Gómez"], ["t-ana", "Ana Soto"]]);
@@ -52,5 +52,12 @@ describe("componerActoresFiado (#614)", () => {
     ], nombres);
     expect(r.creadoPor).toBeNull();
     expect(r.pagos[0].recibidoPor).toBeNull();
+  });
+});
+
+describe("puedeVerActoresFiados (#614)", () => {
+  it("solo roles de gestión; repartidor, sellador y sin sesión no", () => {
+    for (const r of ["ADMIN", "ASISTENTE", "CONTADOR"]) expect(puedeVerActoresFiados(r)).toBe(true);
+    for (const r of ["REPARTIDOR", "SELLADOR", "", null, undefined]) expect(puedeVerActoresFiados(r)).toBe(false);
   });
 });
