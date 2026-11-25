@@ -136,3 +136,17 @@ test('activar por defecto solo difiere borradores aptos; desactivar restaura ful
   }
   assert.equal(revisarGate(pr, { ...saltado, deferred: 'true' }).ok, false)
 })
+
+// #1023/#1025 · la evidencia `.qa/pr-<N>.md` también cuenta en el diff apto de borrador,
+// con la MISMA regex exacta del clasificador (un solo criterio, dos consumidores).
+test('borrador: src/ + .qa/pr-<N>.md exacta es apto; el resto de .qa/ no', () => {
+  const f = (ruta, extra = {}) => ({ estado: 'M', modoAnterior: '100644', modoNuevo: '100644', ruta, ...extra })
+  assert.equal(diffAptoBorrador([f('src/lib/x.ts'), f('.qa/pr-1027.md', { estado: 'A', modoAnterior: '000000' })]), true)
+  assert.equal(diffAptoBorrador([f('.qa/pr-1.md')]), true)
+  for (const ruta of ['.qa/README.md', '.qa/pr-abc.md', '.qa/pr-1.md.sh', '.qa/sub/pr-1.md', '.QA/pr-1.md', '.qa/pr-１.md', '.qa/pr-1.md\n']) {
+    assert.equal(diffAptoBorrador([f('src/lib/x.ts'), f(ruta)]), false, ruta)
+  }
+  for (const extra of [{ modoNuevo: '100755' }, { modoNuevo: '120000' }, { estado: 'R100' }]) {
+    assert.equal(diffAptoBorrador([f('src/lib/x.ts'), f('.qa/pr-1.md', extra)]), false, JSON.stringify(extra))
+  }
+})

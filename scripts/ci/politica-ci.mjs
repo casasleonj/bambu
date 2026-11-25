@@ -1,6 +1,7 @@
 // #896 — feedback de borrador separado de una certificación de CI.
 import { appendFileSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
+import { RE_EVIDENCIA_QA } from './clasificar-cambios.mjs'
 
 // No se intenta demostrar que un cambio de producto sea inocuo: un borrador
 // diferido nunca certifica nada. Se excluyen diffs estructurales y cambios
@@ -11,7 +12,7 @@ export function diffAptoBorrador(entradas) {
     if (!e || e.invalida || typeof e.ruta !== 'string' || !['A', 'M', 'D'].includes(e.estado)) return false
     const modos = { A: ['000000', '100644'], M: ['100644', '100644'], D: ['100644', '000000'] }[e.estado]
     return e.modoAnterior === modos[0] && e.modoNuevo === modos[1] &&
-      /^(src\/|docs\/)/.test(e.ruta) && !/[\u0000-\u001f\u007f]/.test(e.ruta)
+      (/^(src\/|docs\/)/.test(e.ruta) || RE_EVIDENCIA_QA.test(e.ruta)) && !/[\u0000-\u001f\u007f]/.test(e.ruta)
   })
 }
 
