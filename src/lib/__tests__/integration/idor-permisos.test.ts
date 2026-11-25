@@ -68,7 +68,7 @@ describe('IDOR / permisos a nivel de query', () => {
       // Cleanup
       await testPrisma.embarque.delete({ where: { id: miEmbarque.id } })
       await testPrisma.embarque.delete({ where: { id: otroEmbarque.id } })
-      await testPrisma.trabajador.delete({ where: { id: otroTrabajador.id } })
+      await testPrisma.trabajador.update({ where: { id: otroTrabajador.id }, data: { activo: false } })
     })
 
     it('ADMIN ve embarques de todos (sin filtro)', async () => {
@@ -86,7 +86,7 @@ describe('IDOR / permisos a nivel de query', () => {
 
       // Cleanup
       await testPrisma.embarque.delete({ where: { id: e.id } })
-      await testPrisma.trabajador.delete({ where: { id: t.id } })
+      await testPrisma.trabajador.update({ where: { id: t.id }, data: { activo: false } })
     })
   })
 
@@ -140,7 +140,7 @@ describe('IDOR / permisos a nivel de query', () => {
       await testPrisma.pedido.delete({ where: { id: otroPedido.id } })
       await testPrisma.embarque.delete({ where: { id: miEmbarque.id } })
       await testPrisma.embarque.delete({ where: { id: otroEmbarque.id } })
-      await testPrisma.trabajador.delete({ where: { id: otroTrabajador.id } })
+      await testPrisma.trabajador.update({ where: { id: otroTrabajador.id }, data: { activo: false } })
       await testPrisma.cliente.delete({ where: { id: c.id } })
     })
   })
