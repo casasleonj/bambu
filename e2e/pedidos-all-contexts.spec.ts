@@ -423,8 +423,9 @@ test.describe('Pedidos — Tab Fiados', () => {
     // Deuda min/max
     await expect(p.locator('input[placeholder*="Deuda min" i]')).toBeVisible()
     await expect(p.locator('input[placeholder*="Deuda max" i]')).toBeVisible()
-    // Dias fiado select
-    await expect(p.locator('select')).toBeVisible()
+    // Dias fiado select (por etiqueta: #614 añadió el filtro «Entregado por», que también es un select)
+    await expect(p.getByLabel('Antigüedad')).toBeVisible()
+    await expect(p.getByLabel('Entregado por')).toBeVisible()
   })
 
   test('periodo chips en Fiados', async () => {
@@ -535,7 +536,7 @@ test.describe('Pedidos — Tab Fiados', () => {
     await gotoPedidos(p)
     await tabButton(p, 'Fiados').click()
     await p.waitForTimeout(500)
-    const diasSelect = p.locator('select').first()
+    const diasSelect = p.getByLabel('Antigüedad')
     if (await diasSelect.isVisible({ timeout: 3000 }).catch(() => false)) {
       await diasSelect.selectOption('0-7')
       await p.waitForTimeout(300)
