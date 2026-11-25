@@ -31,6 +31,15 @@ export const PREFIJOS_DOCS = ['docs/']
 /** Archivos sueltos de la raíz tratados como documentación del producto. */
 export const ARCHIVOS_DOCS = ['AGENTS.md']
 
+/**
+ * #1025 · Evidencia de QA por PR: SOLO la ruta exacta `.qa/pr-<N>.md` (N numérico
+ * ASCII). Es Markdown que lee el hook `qa-merge-gate.sh`; no se ejecuta en el ERP.
+ * Anclada de extremo a extremo y sensible a mayúsculas: cualquier otra cosa de
+ * `.qa/` (README, subcarpetas, scripts, variantes de nombre) sigue siendo incierta
+ * o ejecutable y fuerza el E2E completo.
+ */
+export const RE_EVIDENCIA_QA = /^\.qa\/pr-[0-9]+\.md$/
+
 /** Raíces de skills de agente, en sus dos copias mantenidas por el repo. */
 export const RAICES_SKILLS = ['.agents/skills/', '.claude/skills/']
 
@@ -73,7 +82,7 @@ export function esRutaDeSkill(ruta) {
 /** ¿La ruta es documentación declarativa del producto? */
 export function esRutaDeDocs(ruta) {
   const p = normalizar(ruta)
-  return esPrefijoDe(p, PREFIJOS_DOCS) || ARCHIVOS_DOCS.includes(p)
+  return esPrefijoDe(p, PREFIJOS_DOCS) || ARCHIVOS_DOCS.includes(p) || RE_EVIDENCIA_QA.test(p)
 }
 
 /** ¿La ruta es un archivo ejecutable o de configuración? */

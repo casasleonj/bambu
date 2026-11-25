@@ -359,3 +359,24 @@ describe('parsearRawDiff', () => {
     expect(clasificar(r).e2e_required).toBe(true)
   })
 })
+
+describe('#1025 evidencia de QA por PR', () => {
+  it('.qa/pr-<N>.md es documentación y no exige E2E por sí sola', () => {
+    expect(esRutaDeDocs('.qa/pr-1024.md')).toBe(true)
+    expect(clasificar([f('docs/agentes/flujo-entrega.md'), f('.qa/pr-1024.md', 'A')]).e2e_required).toBe(false)
+    expect(clasificar([f('.qa/pr-1.md', 'D')]).e2e_required).toBe(false)
+  })
+
+  it('el resto de .qa/ y las variantes de nombre siguen forzando E2E', () => {
+    for (const ruta of ['.qa/README.md', '.qa/pr-abc.md', '.qa/pr-1.md.sh', '.qa/sub/pr-1.md', '.QA/pr-1.md', '.qa/pr-１.md']) {
+      expect(esRutaDeDocs(ruta)).toBe(false)
+      expect(clasificar([f(ruta)]).e2e_required).toBe(true)
+    }
+  })
+
+  it('modo ejecutable, symlink o código en el mismo diff fuerzan E2E', () => {
+    expect(clasificar([f('.qa/pr-1.md', 'A', { modoNuevo: '100755' })]).e2e_required).toBe(true)
+    expect(clasificar([f('.qa/pr-1.md', 'A', { modoNuevo: MODO_SYMLINK })]).e2e_required).toBe(true)
+    expect(clasificar([f('.qa/pr-1.md'), f('src/lib/x.ts')]).e2e_required).toBe(true)
+  })
+})

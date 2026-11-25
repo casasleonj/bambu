@@ -1,0 +1,96 @@
+# #1017 · Recuperación auditable del ledger de migraciones de producción.
+# Registra UNA migración cuyo SQL ya está aplicado pero falta en
+# _prisma_migrations. Jamás ejecuta DDL. Solo dispatch manual en main, con la
+# aprobación del entorno `production`. Comparte concurrencia con migrate-deploy.
+name: Recover Prisma migration ledger (production)
+
+on:
+  workflow_dispatch:
+    inputs:
+      migracion:
+        description: 'Nombre exacto de la carpeta de migración (p. ej. 20261125000100_evidencia_comision_pago)'
+        required: true
+        type: string
+      objetos:
+        description: 'Objetos esperados separados por coma: tabla:X, columna:tabla.col, funcion:f, trigger:tabla.trg, indice:idx'
+        required: true
+        type: string
+      registrar:
+        description: 'false = solo verificar; true = registrar la fila (sin DDL)'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prisma-migrate-production
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    name: Recover migration ledger
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Vercel CLI (versión exacta revisada)
+        run: npm i -g vercel@66.6.0
+
+      - name: Verificar acceso de VERCEL_TOKEN al proyecto y team
+        run: node scripts/ci/verify-vercel-project-access.mjs
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: team_Ml9rVX2uWgNn2OJ8cZe9pTWD
+          VERCEL_PROJECT_ID: prj_NzjF7gJ1CFYYHOhfAhE5mK7CxpPr
+
+      - name: Pull production env vars from Vercel
+        run: |
+          vercel env pull --environment=production --yes .env.vercel-production || {
+            echo "::error::vercel env pull falló; revisar el alcance de VERCEL_TOKEN."
+            exit 1
+          }
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: team_Ml9rVX2uWgNn2OJ8cZe9pTWD
+          VERCEL_PROJECT_ID: prj_NzjF7gJ1CFYYHOhfAhE5mK7CxpPr
+
+      - name: Validar identidad de Supabase y exportar credenciales
+        run: |
+          set -euo pipefail
+          trap 'rm -f .env.vercel-production' EXIT
+          node scripts/ci/verify-vercel-prod-env.mjs .env.vercel-production
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      # Las entradas llegan por variables de entorno, nunca interpoladas en el
+      # script, para evitar inyección desde los inputs del dispatch.
+      - name: Verificar y registrar la migración (sin DDL)
+        run: node scripts/ci/migration-ledger-recover.mjs
+        env:
+          MIGRATION_NAME: ${{ inputs.migracion }}
+          EXPECTED_OBJECTS: ${{ inputs.objetos }}
+          REGISTER: ${{ inputs.registrar }}
+
+      # Tras registrar, el ledger completo debe quedar conciliado.
+      - name: Conciliar ledger final (solo lectura)
+        if: ${{ inputs.registrar }}
+        run: node scripts/ci/migration-ledger-preflight.mjs --postflight
