@@ -12,6 +12,8 @@ vi.mock('@/lib/auth', () => ({ auth: () => mockAuth() }))
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { GET } from '@/app/api/nomina/comisiones/route'
 import { startOfDayBogota } from '@/lib/dates'
+import { crearPedidoUseCase } from '@/modules/pedidos'
+import { randomUUID } from 'crypto'
 
 let adminId: string
 let trabajadorId: string
@@ -93,6 +95,38 @@ describe('#1010 historial de comisiones', () => {
     expect(d.pagos).toHaveLength(2)
     expect(d.trabajo.hayFuentes).toBe(false)
     expect(d.evidenciaAlPagar).toBe('NO_VERIFICADA')
+  })
+
+  it('recupera el pedido de reparto histórico sin confundir la tarifa vigente con la tarifa al pagar', async () => {
+    const t = await testPrisma.trabajador.create({ data: {
+      nombre: 'Repartidor detalle sintético', rol: 'REPARTIDOR', usaMoto: true,
+      tipoPago: 'COMISION', comRepartAgua: 300,
+    } })
+    const c = await testPrisma.cliente.create({ data: {
+      nombre: 'Cliente historial sintético', telefono: '3001230099', direccion: 'Calle 1 # 2-3',
+      barrio: 'Centro', limitePedidosFiados: 20, activo: true,
+    } })
+    const { pedido } = await crearPedidoUseCase.execute({
+      clienteId: c.id, canal: 'DOMICILIO', origen: 'PEDIDO',
+      items: [{ producto: 'PACA_AGUA', cantidad: 5 }], pagos: [],
+      createdById: adminId, createdByRole: 'ADMIN', offlineId: randomUUID(),
+    })
+    await testPrisma.pedido.update({ where: { id: pedido.id }, data: {
+      estadoEntrega: 'ENTREGADO', estado: 'ENTREGADO', cPacaAguaEnt: 5,
+      entregadoAt: dia(trabajo), entregadoPorId: t.id,
+    } })
+    await testPrisma.pagoComisionRepartidor.create({ data: {
+      trabajadorId: t.id, fecha: dia(trabajo), fechaPagoReal: dia(pago1), monto: 1250,
+      metodo: 'EFECTIVO', concepto: 'REPARTO',
+    } })
+    const res = await consultar('modo=detalle&trabajadorId=' + t.id + '&fechaTrabajo=' + trabajo + '&concepto=REPARTO')
+    expect(res.status).toBe(200)
+    const d = (await res.json()).detalle
+    expect(d.totalJornada.monto).toBe(1250)
+    expect(d.evidenciaAlPagar).toBe('NO_VERIFICADA')
+    expect(d.trabajo.evidencia).toBe('CALCULO_ACTUAL_NO_HISTORICO')
+    expect(d.trabajo.calculo).toMatchObject({ entregasAgua: 5, comAgua: 1500, total: 1500, tarifas: { agua: 300 } })
+    expect(d.trabajo.calculo.fuentes[0].pedidos[0]).toMatchObject({ id: pedido.id, unidades: { agua: 5 } })
   })
 
   it('la lectura no crea pagos, gastos ni nóminas', async () => {
