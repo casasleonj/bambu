@@ -98,4 +98,39 @@ describe('PushOptInStrip', () => {
     expect(c.clearAttempt).toHaveBeenCalledTimes(1)
     expect(c.remindLater).not.toHaveBeenCalled()
   })
+
+  // #1004: tamaño táctil (44 px = min-h-11, como el resto de la app). jsdom no mide cajas: la medición real va en el QA de navegador.
+  describe('tamaño táctil (#1004)', () => {
+    const botones = (el: HTMLElement) => Array.from(el.querySelectorAll('button'))
+    const tieneAltoTactil = (b: HTMLElement) => b.className.split(/\s+/).includes('min-h-11')
+
+    it.each([
+      ['idle', ctx(), 3],
+      ['activando', ctx({ status: 'activating' }), 1],
+      ['error', ctx({ status: 'error' }), 2],
+      ['error bloqueado', ctx({ status: 'error', blocked: true, shouldShow: false }), 1],
+    ] as const)('%s: todos sus botones tienen alto de 44 px (min-h-11)', (_estado, c, cantidad) => {
+      mockedCtx.mockReturnValue(c)
+      render(<PushOptInStrip />)
+      const lista = botones(screen.getByTestId('push-opt-in-strip'))
+      expect(lista).toHaveLength(cantidad)
+      for (const b of lista) expect(tieneAltoTactil(b), b.textContent ?? b.getAttribute('aria-label') ?? '').toBe(true)
+    })
+
+    it('la ✕ también tiene 44 px de ancho y no usa el relleno chico de antes', () => {
+      mockedCtx.mockReturnValue(ctx())
+      render(<PushOptInStrip />)
+      const x = screen.getByRole('button', { name: 'No volver a mostrar' })
+      expect(x.className).toMatch(/\bmin-w-11\b/)
+      expect(x.className).not.toMatch(/\bp-1\.5\b/)
+    })
+
+    it('el texto ocupa todo el ancho en móvil (botones debajo) y comparte fila desde sm', () => {
+      mockedCtx.mockReturnValue(ctx())
+      render(<PushOptInStrip />)
+      const texto = screen.getByText('Recibí alertas al instante').parentElement as HTMLElement
+      expect(texto.className).toMatch(/\bbasis-full\b/)
+      expect(texto.className).toMatch(/\bsm:flex-1\b/)
+    })
+  })
 })
