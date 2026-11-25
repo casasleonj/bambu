@@ -58,7 +58,7 @@ describe('#631 CierreDesgloseCobros', () => {
     expect(screen.getByTestId('cierre-desglose-historico')).toBeTruthy()
   })
 
-  it('lista a quién se fió con enlaces: cliente → Fiados filtrado, # → detalle del pedido', () => {
+  it('con el día abierto: «Pasarán a Fiados al cerrar», cliente → Pedidos filtrado, # → detalle del pedido (#1005)', () => {
     render(<CierreDesgloseCobros data={datos({ fiadosDelDia: [
       { pedidoId: 'p1', numero: 1042, clienteId: 'c1', cliente: 'Tienda La Esperanza', total: 96000, pagado: 0, saldo: 96000, promesaPago: '2026-11-12' },
       { pedidoId: 'p2', numero: 1047, clienteId: 'c2', cliente: 'Don Pedro Ruiz', total: 80000, pagado: 30000, saldo: 50000, promesaPago: null },
@@ -66,7 +66,9 @@ describe('#631 CierreDesgloseCobros', () => {
     const sec = screen.getByTestId('cierre-fiados-del-dia')
     expect(sec.textContent).toContain('2 pedidos')
     expect(sec.textContent).toContain('146.000')
-    expect(within(sec).getByText('Tienda La Esperanza').getAttribute('href')).toBe('/pedidos?tab=fiados&clienteId=c1')
+    expect(sec.textContent).toContain('Pasarán a Fiados al cerrar')
+    expect(sec.textContent).not.toContain('A quién se fió hoy')
+    expect(within(sec).getByText('Tienda La Esperanza').getAttribute('href')).toBe('/pedidos?clienteId=c1')
     expect(within(sec).getByText('#1042').getAttribute('href')).toBe('/pedidos?openPedido=p1')
     expect(sec.textContent).toContain('Fiado total')
     expect(sec.textContent).toContain('sin promesa')
@@ -74,8 +76,34 @@ describe('#631 CierreDesgloseCobros', () => {
     expect(sec.textContent).toContain('promesa de pago')
   })
 
+  it('con cierre guardado o día pasado: «A quién se fió hoy» y el cliente va a Fiados (#1005)', () => {
+    const fiado = [{ pedidoId: 'p1', numero: 1042, clienteId: 'c1', cliente: 'Tienda La Esperanza', total: 96000, pagado: 0, saldo: 96000, promesaPago: null }]
+    for (const extra of [{ horaCierre: '2026-11-05T23:00:00.000Z' }, { fiadoAlCorte: { estado: 'AL_CORTE', diaCorte: '2026-11-04' } }]) {
+      const { unmount } = render(<CierreDesgloseCobros data={datos({ fiadosDelDia: fiado, ...extra })} />)
+      const sec = screen.getByTestId('cierre-fiados-del-dia')
+      expect(sec.textContent).toContain('A quién se fió hoy')
+      expect(sec.textContent).not.toContain('Pasarán a Fiados')
+      expect(within(sec).getByText('Tienda La Esperanza').getAttribute('href')).toBe('/pedidos?tab=fiados&clienteId=c1')
+      unmount()
+    }
+  })
+
+  it('pedido de un negocio: el negocio es el nombre y la persona queda debajo (#1006)', () => {
+    render(<CierreDesgloseCobros data={datos({ fiadosDelDia: [
+      { pedidoId: 'p1', numero: 1496, clienteId: 'c1', cliente: 'Ferretería Premium', clienteDe: 'de Vanessa Leon', total: 5000, pagado: 0, saldo: 5000, promesaPago: null },
+    ] })} />)
+    const sec = screen.getByTestId('cierre-fiados-del-dia')
+    expect(within(sec).getByText('Ferretería Premium')).toBeTruthy()
+    expect(within(sec).getByText('de Vanessa Leon')).toBeTruthy()
+  })
+
   it('sin fiados lo dice', () => {
     render(<CierreDesgloseCobros data={datos()} />)
+    expect(screen.getByTestId('cierre-fiados-del-dia').textContent).toContain('Ningún pedido pasará a Fiados al cerrar')
+  })
+
+  it('sin fiados y con cierre guardado conserva «Hoy no se fió ningún pedido» (#1005)', () => {
+    render(<CierreDesgloseCobros data={datos({ horaCierre: '2026-11-05T23:00:00.000Z' })} />)
     expect(screen.getByTestId('cierre-fiados-del-dia').textContent).toContain('Hoy no se fió ningún pedido')
   })
 

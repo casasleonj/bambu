@@ -177,6 +177,10 @@ test.describe('Gestión temporal sin embarque (#472)', () => {
       promesaPagoFecha: promesa,
     })
     expect(entrega.ok()).toBeTruthy()
+    // #796: Fiados lista deuda ya consolidada; lo entregado hoy es pendiente del día. El fixture fecha la entrega ayer.
+    const ayer = new Date(Date.now() - 36 * 3_600_000)
+    await prisma.pedido.update({ where: { id: ped.id }, data: { fecha: ayer, entregadoAt: ayer } })
+    await prisma.entregaExigible.updateMany({ where: { pedidoId: ped.id }, data: { entregadoAt: ayer } })
 
     await page.goto(`${BASE}/pedidos?tab=fiados&fiadosCliente=${encodeURIComponent(ped.clienteId)}`)
     const fiados = responsiveContainer(page, 'fiados-mobile', 'fiados-desktop')

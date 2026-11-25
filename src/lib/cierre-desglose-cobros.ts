@@ -1,3 +1,4 @@
+import { getPedidoClienteDisplay } from './pedido-display'
 // #631 — Desglose del dinero cobrado en el día por origen y medio, lista de a quién se fió y detalle de los pagos
 // digitales por confirmar. Funciones puras: el cierre las alimenta con lo que ya lee (no cambia ninguna cifra de dinero).
 
@@ -111,6 +112,26 @@ export interface PedidoParaFiado {
   exigible?: number
   promesaPagoFecha: Date | null
   cliente: { nombre: string; apellido: string | null } | null
+  /** #1006: negocio al que se hizo el pedido; gana sobre el nombre de la persona. */
+  negocioId?: string | null
+  negocio?: { nombre: string } | null
+}
+
+/**
+ * #1006: mismo nombre que en Pedidos y Fiados (`getPedidoClienteDisplay`):
+ * el negocio es el principal y la persona queda como subtexto.
+ */
+function nombreVisible(
+  clienteId: string,
+  cliente: { nombre: string; apellido: string | null } | null,
+  negocio: { id: string | null | undefined; nombre: string | undefined },
+): { cliente: string; clienteDe?: string } {
+  if (!cliente) return { cliente: 'Sin cliente' }
+  const d = getPedidoClienteDisplay({
+    clienteId, nombreCli: cliente.nombre, apellidoCli: cliente.apellido,
+    negocioId: negocio.id, nombreNegocioCli: negocio.nombre,
+  })
+  return { cliente: d.nombrePrincipal, ...(d.subtextoPersona ? { clienteDe: d.subtextoPersona } : {}) }
 }
 
 export interface FiadoDelDia {
@@ -118,6 +139,8 @@ export interface FiadoDelDia {
   numero: number
   clienteId: string
   cliente: string
+  /** #1006: «de {persona}» cuando el pedido es de un negocio. */
+  clienteDe?: string
   total: number
   pagado: number
   saldo: number
@@ -137,7 +160,7 @@ export function listarFiadosDelDia(pedidos: readonly PedidoParaFiado[]): FiadoDe
       pedidoId: p.id,
       numero: p.numero,
       clienteId: p.clienteId,
-      cliente: p.cliente ? `${p.cliente.nombre} ${p.cliente.apellido ?? ''}`.trim() : 'Sin cliente',
+      ...nombreVisible(p.clienteId, p.cliente, { id: p.negocioId, nombre: p.negocio?.nombre }),
       total: Number(p.total),
       pagado: Number(p.totalPagado),
       saldo: p.exigible ?? Number(p.saldo),
@@ -155,6 +178,8 @@ export interface PagoPorConfirmarRaw {
   pedido: {
     id: string
     numero: number
+    negocioId?: string | null
+    negocio?: { nombre: string } | null
     cliente: { id: string; nombre: string; apellido: string | null } | null
     factura: { numero: string } | null
   }
@@ -166,6 +191,8 @@ export interface PagoPorConfirmarDetalle {
   numero: number
   clienteId: string | null
   cliente: string
+  /** #1006: «de {persona}» cuando el pedido es de un negocio. */
+  clienteDe?: string
   factura: string | null
   fecha: string
   metodo: string
@@ -178,7 +205,7 @@ export function detallarPorConfirmar(rows: readonly PagoPorConfirmarRaw[]): Pago
     pedidoId: r.pedido.id,
     numero: r.pedido.numero,
     clienteId: r.pedido.cliente?.id ?? null,
-    cliente: r.pedido.cliente ? `${r.pedido.cliente.nombre} ${r.pedido.cliente.apellido ?? ''}`.trim() : 'Sin cliente',
+    ...nombreVisible(r.pedido.cliente?.id ?? '', r.pedido.cliente, { id: r.pedido.negocioId, nombre: r.pedido.negocio?.nombre }),
     factura: r.pedido.factura?.numero ?? null,
     fecha: r.createdAt.toISOString(),
     metodo: r.metodo,

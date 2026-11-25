@@ -10,7 +10,7 @@ vi.mock('@/lib/auth', () => ({ auth: () => mockAuth() }))
 vi.mock('@/lib/notifications/notify-event', () => ({ notifyEvent: vi.fn(async () => {}) }))
 vi.mock('@/lib/realtime', () => ({ publishRealtimeEvent: vi.fn(async () => {}) }))
 
-import { testPrisma as db, resetAndSeed, disconnect, getAdminUser } from './setup'
+import { testPrisma as db, resetAndSeed, disconnect, getAdminUser, limpiarPagosComisionDePrueba } from './setup'
 import { POST as corregir } from '@/app/api/nomina/pagos-comision/[id]/corregir-fecha/route'
 import { GET as consultarCierre } from '@/app/api/cierre/route'
 import { comisionPagadaEnCaja, pagadoComisionDia, leerPagosComisionCaja } from '@/lib/comision-pagada'
@@ -54,8 +54,7 @@ describe('#834 — corregir el día real de caja de un pago de comisión', () =>
   beforeAll(async () => { await resetAndSeed(); adminId = (await getAdminUser()).id })
   beforeEach(async () => {
     como('ADMIN')
-    await db.pagoComisionFechaCorreccion.deleteMany({})
-    await db.pagoComisionRepartidor.deleteMany({})
+    await limpiarPagosComisionDePrueba()
     await db.cierreDia.deleteMany({})
     await db.historial.deleteMany({ where: { entidad: 'PagoComisionRepartidor' } })
   })

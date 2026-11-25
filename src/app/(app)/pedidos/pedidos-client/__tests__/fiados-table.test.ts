@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { diasFiadoDesde } from '../fiados-table'
+import { diasFiadoDesde, filasFiados, pedidosPorClasificar, clienteTieneCartera } from '../fiados-table'
+import type { Pedido } from '../types'
 
 // @tests diasFiadoDesde: antes se calculaba una vez dentro de un useMemo
 // dependiente solo de los pedidos (Date.now() dentro del factory), así que
@@ -53,5 +54,24 @@ describe('resumenFiados (#613)', () => {
   it('sin filas = cero', async () => {
     const { resumenFiados } = await import('../fiados-table')
     expect(resumenFiados([])).toEqual({ total: 0, clientes: 0, pedidos: 0 })
+  })
+})
+
+describe('#1002 y #1001: por clasificar y cartera del cliente', () => {
+  const ped = (id: string, clienteId: string, corte: { fiado: number; sinClasificar: number; pendiente?: number }): Pedido => ({
+    id, numero: 1, clienteId, nombreCli: clienteId, telefonoCli: '', estadoEntrega: 'ENTREGADO', fecha: '2026-11-10T15:00:00.000Z',
+    total: 10, saldo: 10, totalPagado: 0, exigible: 10,
+    corteOperativo: { fiado: corte.fiado, sinClasificar: corte.sinClasificar, pendiente: corte.pendiente ?? 0, exigible: 10 },
+  } as unknown as Pedido)
+  it('pedidosPorClasificar cuenta solo los pedidos con importe sin clasificar', () => {
+    const [row] = filasFiados([ped('a', 'c1', { fiado: 10, sinClasificar: 0 }), ped('b', 'c1', { fiado: 0, sinClasificar: 10 })], 'todos')
+    expect(pedidosPorClasificar(row)).toBe(1)
+  })
+  it('cliente con fiado o por clasificar tiene cartera; con solo pendiente del día, no', () => {
+    const lista = [ped('a', 'conFiado', { fiado: 10, sinClasificar: 0 }), ped('b', 'sinClasificar', { fiado: 0, sinClasificar: 10 }), ped('c', 'soloHoy', { fiado: 0, sinClasificar: 0, pendiente: 10 })]
+    expect(clienteTieneCartera(lista, 'conFiado')).toBe(true)
+    expect(clienteTieneCartera(lista, 'sinClasificar')).toBe(true)
+    expect(clienteTieneCartera(lista, 'soloHoy')).toBe(false)
+    expect(clienteTieneCartera(lista, 'nadie')).toBe(false)
   })
 })

@@ -105,6 +105,7 @@ export interface Pedido {
   totalPagado: number
   total: number
   exigible?: number
+  corteOperativo?: { fiado: number; pendiente: number; sinClasificar: number; exigible: number } | null
   saldo: number
   /** #932: deuda exigible actual de OTROS pedidos del mismo titular. */
   fiadosAnteriores?: ResumenFiadosAnteriores
@@ -139,6 +140,9 @@ export interface Pedido {
   createdAt?: string
   responsablesEntrega?: Array<{ id: string; nombre: string }>
   entregasSinDetalle?: boolean
+  /** #614 F1: solo en `scope=fiados`. `null`/ausente = sin datos (ver `actoresError`). */
+  actores?: import('@/lib/fiados-actores').ActoresFiado | null
+  actoresError?: boolean
   entregaHoraVerificable?: boolean
   pagosDetalle?: PagoDetalle[]
   embarqueResumen?: {

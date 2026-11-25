@@ -26,6 +26,9 @@ const TIPO_CORRECCION: Record<string, string> = {
 
 const urlFiadosDe = (clienteId: string | null): string | null =>
   clienteId && clienteId !== 'CONSUMIDOR_FINAL' ? `/pedidos?tab=fiados&clienteId=${encodeURIComponent(clienteId)}` : null
+/** #1005: con el día abierto el cliente aún no está en Fiados (pasa al cerrar); su cobro se hace en Pedidos. */
+const urlPedidosDe = (clienteId: string | null): string | null =>
+  clienteId && clienteId !== 'CONSUMIDOR_FINAL' ? `/pedidos?clienteId=${encodeURIComponent(clienteId)}` : null
 const pagos = (n: number): string => `${n} pago${n === 1 ? '' : 's'}`
 const urlPedido = (pedidoId: string): string => `/pedidos?openPedido=${encodeURIComponent(pedidoId)}`
 
@@ -75,7 +78,7 @@ function GrupoPorConfirmar({ titulo, filas, confirmaPagos, testid }: {
       <h5 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{titulo}</h5>
       <ListaLimitada items={filas} render={(f) => (
         <Fila key={f.pagoId}
-          izquierda={<><Enlace href={urlPedido(f.pedidoId)}>#{f.numero}</Enlace> · <Enlace href={urlFiadosDe(f.clienteId)}>{f.cliente}</Enlace></>}
+          izquierda={<><Enlace href={urlPedido(f.pedidoId)}>#{f.numero}</Enlace> · <Enlace href={urlFiadosDe(f.clienteId)}>{f.cliente}</Enlace>{f.clienteDe && <span className="block text-xs font-normal text-slate-500">{f.clienteDe}</span>}</>}
           detalle={<>{f.factura ?? 'Sin factura'} · {fechaHora(f.fecha)} · {NOMBRE_MEDIO[f.metodo] ?? f.metodo}
             <span className="ml-2"><AccionConfirmar fila={f} confirmaPagos={confirmaPagos} /></span></>}
           derecha={formatCurrency(f.monto)} />
@@ -123,6 +126,9 @@ export default function CierreDesgloseCobros({ data, puedeVerGastos = false }: {
 
   const fiados = data.fiadosDelDia ?? []
   const totalFiados = fiados.reduce((t, f) => t + f.saldo, 0)
+  // #1005: día abierto = sin «fiado al corte» (solo existe para fechas pasadas) y sin cierre guardado.
+  const diaAbierto = !data.fiadoAlCorte && !data.horaCierre
+  const urlClienteFiado = diaAbierto ? urlPedidosDe : urlFiadosDe
 
   return (
     <div className="mt-4 space-y-2" data-testid="cierre-desglose">
@@ -263,15 +269,15 @@ export default function CierreDesgloseCobros({ data, puedeVerGastos = false }: {
         </Desplegable>
       )}
 
-      <Desplegable testid="cierre-fiados-del-dia" tono="gris" icono="🧑‍🤝‍🧑" titulo="A quién se fió hoy"
-        ayuda={data.valorComercialPedidosDelDia === undefined ? 'Saldo conservado en este cierre histórico con su definición original.' : 'Saldo actual de lo entregado en pedidos de esta fecha. La mercancía pendiente de entrega no se cobra como recibida.'}
+      <Desplegable testid="cierre-fiados-del-dia" tono="gris" icono="🧑‍🤝‍🧑" titulo={diaAbierto ? 'Pasarán a Fiados al cerrar' : 'A quién se fió hoy'}
+        ayuda={data.valorComercialPedidosDelDia === undefined ? 'Saldo conservado en este cierre histórico con su definición original.' : `Saldo actual de lo entregado en pedidos de esta fecha. La mercancía pendiente de entrega no se cobra como recibida.${diaAbierto ? ' Pasan a Fiados al cerrar el día; mientras tanto se cobran desde Pedidos.' : ''}`}
         resumen={fiados.length > 0 ? `${fiados.length} pedido${fiados.length === 1 ? '' : 's'} · ${formatCurrency(totalFiados)}` : 'Ninguno'}>
         {fiados.length === 0 ? (
-          <p className="text-slate-500">{data.parcialesPorConciliar?.length ? 'No hay deuda identificada en este listado; faltan entregas por conciliar. No significa que la deuda sea cero.' : 'Hoy no se fió ningún pedido. ✔'}</p>
+          <p className="text-slate-500">{data.parcialesPorConciliar?.length ? 'No hay deuda identificada en este listado; faltan entregas por conciliar. No significa que la deuda sea cero.' : diaAbierto ? 'Ningún pedido pasará a Fiados al cerrar. ✔' : 'Hoy no se fió ningún pedido. ✔'}</p>
         ) : (
           <ListaLimitada items={fiados} render={(f) => (
             <Fila key={f.pedidoId}
-              izquierda={<><Enlace href={urlFiadosDe(f.clienteId)}>{f.cliente}</Enlace>{' '}<Enlace href={urlPedido(f.pedidoId)} className="text-xs !font-normal">#{f.numero}</Enlace></>}
+              izquierda={<><Enlace href={urlClienteFiado(f.clienteId)}>{f.cliente}</Enlace>{' '}<Enlace href={urlPedido(f.pedidoId)} className="text-xs !font-normal">#{f.numero}</Enlace>{f.clienteDe && <span className="block text-xs font-normal text-slate-500">{f.clienteDe}</span>}</>}
               detalle={<>{f.saldoComercial === undefined
                 ? <>{f.pagado > 0 ? `Pagó ${formatCurrency(f.pagado)} de ${formatCurrency(f.total)}` : 'Fiado total'} (registro histórico)</>
                 : <>Valor comercial {formatCurrency(f.total)} · pagado {formatCurrency(f.pagado)}{f.saldoComercial > f.saldo ? ` · saldo por mercancía pendiente ${formatCurrency(f.saldoComercial - f.saldo)}` : ''}</>}{' · '}{f.promesaPago ? `promesa de pago: ${promesaCorta(f.promesaPago)}` : 'sin promesa'}</>}
