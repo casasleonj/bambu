@@ -96,4 +96,33 @@ describe('#1010 F2A evidencia histórica prospectiva', () => {
     expect(d.evidenciasAlRegistrar).toEqual([{ pagoId: p.id, estado: 'NO_VERIFICADA', evidencia: null }])
     expect(await testPrisma.pagoComisionEvidencia.findUnique({ where: { pagoId: p.id } })).toBeNull()
   })
+
+  it('el trigger SQL impide editar y eliminar evidencia; FK y PK protegen la identidad del pago', async () => {
+    const t = await testPrisma.trabajador.create({ data: { nombre: 'Sellador inmutabilidad', rol: 'SELLADOR', tipoPago: 'COMISION' } })
+    await testPrisma.produccion.create({ data: { trabajadorId: t.id, fecha: startOfDayBogota(hoy),
+      turno: 'JORNADA', comSellTotal: 300, items: { create: [{ producto: 'PACA_AGUA', producido: 1, comSellador: 300 }] } } })
+    const res = await pagar(t.id, 'PRODUCCION', randomUUID(), 300)
+    expect(res.status).toBe(201)
+    const pagoId = (await res.json()).pago.id
+    const original = await testPrisma.pagoComisionEvidencia.findUniqueOrThrow({ where: { pagoId } })
+    await expect(testPrisma.pagoComisionEvidencia.update({ where: { pagoId }, data: { datos: { version: 99 } } })).rejects.toThrow()
+    await expect(testPrisma.pagoComisionEvidencia.delete({ where: { pagoId } })).rejects.toThrow()
+    await expect(testPrisma.pagoComisionRepartidor.delete({ where: { id: pagoId } })).rejects.toThrow()
+    await expect(testPrisma.pagoComisionEvidencia.create({ data: { pagoId, datos: {} } })).rejects.toThrow()
+    await expect(testPrisma.pagoComisionEvidencia.create({ data: { pagoId: randomUUID(), datos: {} } })).rejects.toThrow()
+    expect(await testPrisma.pagoComisionEvidencia.findUnique({ where: { pagoId } })).toEqual(original)
+  })
+
+  it('dos solicitudes concurrentes no duplican ni el pago ni la evidencia', async () => {
+    const t = await testPrisma.trabajador.create({ data: { nombre: 'Sellador concurrencia evidencia', rol: 'SELLADOR', tipoPago: 'COMISION' } })
+    await testPrisma.produccion.create({ data: { trabajadorId: t.id, fecha: startOfDayBogota(hoy),
+      turno: 'JORNADA', comSellTotal: 600, items: { create: [{ producto: 'PACA_AGUA', producido: 2, comSellador: 600 }] } } })
+    const [a, b] = await Promise.all([pagar(t.id, 'PRODUCCION', randomUUID(), 600), pagar(t.id, 'PRODUCCION', randomUUID(), 600)])
+    expect([a.status, b.status].sort()).toEqual([201, 409])
+    const pagos = await testPrisma.pagoComisionRepartidor.findMany({ where: { trabajadorId: t.id }, include: { evidencia: true } })
+    expect(pagos).toHaveLength(1)
+    expect(Number(pagos[0].monto)).toBe(600)
+    expect(pagos[0].evidencia?.datos).toMatchObject({ desembolsoCentavos: 60000 })
+  })
+
 })
