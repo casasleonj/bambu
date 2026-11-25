@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>#1004 · Aviso de notificaciones: botones de tamaño táctil — maqueta para aprobación</title>
+<style>
+*{box-sizing:border-box}body{font-family:system-ui,sans-serif;margin:0;padding:24px;background:#f3f4f6;color:#111827}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:30px 0 8px}p.n{color:#6b7280;font-size:13px;margin:4px 0 12px;max-width:920px}
+.fila{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}.marco{background:#fff;border:1px solid #d1d5db;border-radius:14px;padding:16px}
+.esc{width:760px}.tel{width:360px}.etq{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#374151;margin-bottom:8px}
+.antes{border-color:#fca5a5}.nuevo{border-color:#86efac}
+.strip{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;border:1px solid #dbeafe;background:#eff6ff;padding:8px 16px;font-size:14px;border-radius:8px}
+.strip.err{border-color:#fecaca;background:#fef2f2}.strip.ok{border-color:#a7f3d0;background:#ecfdf5;color:#065f46;font-weight:500}
+.tx{flex:1;min-width:0}.tx b{display:block;font-weight:500}.tx span{font-size:12px;color:#4b5563}
+.bt{display:flex;align-items:center;gap:8px}
+.b{border:0;border-radius:8px;font:500 14px system-ui;background:none;color:#4b5563;padding:6px 12px}
+.b.p{background:#2563eb;color:#fff}.b.x{color:#9ca3af;padding:6px}
+.n .b{min-height:44px}.n .b.x{min-width:44px;display:inline-flex;align-items:center;justify-content:center}
+.medida{font-size:11px;color:#b91c1c;margin-top:6px}.nuevo .medida{color:#15803d}
+.dif{outline:2px solid #facc15}
+</style></head><body>
+<h1>#1004 · Aviso de notificaciones: botones de tamaño táctil</h1>
+<p class="n"><b>Estado: PROPUESTA — PENDIENTE DE APROBACIÓN DEL PO.</b> Problema: «Activar», «Más tarde» y «No volver a mostrar» miden 32, 32 y 28 px de alto; el resto de la app usa 44 px (<code>min-h-11</code>) en controles táctiles. <b>Cambio:</b> solo el alto de esos botones. Sin textos nuevos, sin chips, sin colores nuevos, y el aviso sigue en el flujo, sin flotar (#595). Resaltado amarillo = lo que cambia.</p>
+
+<h2>1 · Estado normal (invitación) — escritorio</h2>
+<div class="fila">
+<div class="marco esc antes"><div class="etq">Antes</div><div class="strip"><div class="tx"><b>Recibí alertas al instante</b><span>Activá las notificaciones para enterarte de los casos críticos.</span></div><div class="bt"><button class="b p" style="height:32px;padding:0 12px">Activar</button><button class="b" style="height:32px;padding:0 12px">Más tarde</button><button class="b x" style="height:28px;width:28px;padding:0">✕</button></div></div><div class="medida">Alturas: 32 · 32 · 28 px</div></div>
+<div class="marco esc nuevo n"><div class="etq">Después</div><div class="strip"><div class="tx"><b>Recibí alertas al instante</b><span>Activá las notificaciones para enterarte de los casos críticos.</span></div><div class="bt"><button class="b p dif">Activar</button><button class="b dif">Más tarde</button><button class="b x dif">✕</button></div></div><div class="medida">Alturas: 44 · 44 · 44 px. La franja crece unos 12 px en alto.</div></div>
+</div>
+
+<h2>2 · Estado normal — móvil 390 px</h2>
+<div class="fila">
+<div class="marco tel antes"><div class="etq">Antes</div><div class="strip"><div class="tx"><b>Recibí alertas al instante</b><span>Activá las notificaciones para enterarte de los casos críticos.</span></div><div class="bt"><button class="b p" style="height:32px;padding:0 12px">Activar</button><button class="b" style="height:32px;padding:0 12px">Más tarde</button><button class="b x" style="height:28px;width:28px;padding:0">✕</button></div></div><div class="medida">32 · 32 · 28 px</div></div>
+<div class="marco tel nuevo n"><div class="etq">Después</div><div class="strip"><div class="tx"><b>Recibí alertas al instante</b><span>Activá las notificaciones para enterarte de los casos críticos.</span></div><div class="bt"><button class="b p dif">Activar</button><button class="b dif">Más tarde</button><button class="b x dif">✕</button></div></div><div class="medida">44 · 44 · 44 px. Los tres caben en una fila.</div></div>
+</div>
+
+<h2>3 · Otros estados (mismo cambio de alto, nada más)</h2>
+<div class="fila">
+<div class="marco tel nuevo n"><div class="etq">Activando (carga)</div><div class="strip"><div class="tx"><b>Activando…</b><span>Aceptá el permiso en tu navegador.</span></div><div class="bt"><button class="b p dif" style="opacity:.6">Activando…</button></div></div></div>
+<div class="marco tel nuevo n"><div class="etq">Error</div><div class="strip err"><div class="tx"><b style="color:#7f1d1d">No se pudieron activar</b><span style="color:#991b1b">Algo falló al activar. Probá de nuevo en unos segundos.</span></div><div class="bt"><button class="b p dif">Reintentar</button><button class="b dif">Más tarde</button></div></div></div>
+<div class="marco tel nuevo n"><div class="etq">Éxito / confirmación</div><div class="strip ok">✓ Listo: notificaciones activadas</div><p class="n" style="margin:8px 0 0">Sin botones: no cambia.</p></div>
+</div>
+
+<h2>QUIERE / NO QUIERE / PRESERVAR</h2>
+<ul style="font-size:13px;max-width:900px"><li><b>QUIERE:</b> que los tres botones se puedan tocar con el dedo sin errar, como el resto de la app.</li>
+<li><b>NO QUIERE:</b> textos, íconos, colores, chips o botones nuevos; que el aviso flote o tape otros controles.</li>
+<li><b>PRESERVAR:</b> textos, colores y orden; que «Más tarde» enciende la campana y «✕» descarta para siempre; el aviso en el flujo (#595); el test de pestañas de #1003.</li></ul>
+<p class="n"><b>Costo:</b> la franja crece unos 12 px de alto, en todas las pantallas donde aparece, hasta que la persona decida.</p>
+</body></html>
