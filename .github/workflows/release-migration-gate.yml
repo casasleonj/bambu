@@ -89,7 +89,7 @@ jobs:
           last_trust_sha="$(git log --first-parent -1 --format=%H "$AFTER" -- \
             prisma/schema.prisma prisma/migrations/ .github/workflows/migrate-deploy.yml \
             scripts/ci/migration-ledger-preflight.mjs scripts/ci/release-migration-policy.mjs \
-            scripts/ci/verify-vercel-prod-env.mjs)"
+            scripts/ci/verify-vercel-prod-env.mjs scripts/ci/verify-vercel-project-access.mjs)"
           if ! [[ "$last_trust_sha" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::No se encontró revisión de confianza de migraciones"
             exit 1

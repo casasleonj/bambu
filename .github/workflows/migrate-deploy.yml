@@ -13,6 +13,7 @@ on:
       - 'scripts/ci/migration-ledger-preflight.mjs'
       - 'scripts/ci/release-migration-policy.mjs'
       - 'scripts/ci/verify-vercel-prod-env.mjs'
+      - 'scripts/ci/verify-vercel-project-access.mjs'
   workflow_dispatch:
 
 permissions:
@@ -59,30 +60,22 @@ jobs:
       - name: Install Vercel CLI (versión exacta revisada)
         run: npm i -g vercel@66.6.0
 
-      # DIAGNÓSTICO 2026-10-08: "Could not retrieve Project Settings" en el
-      # paso siguiente es el mensaje genérico que la CLI de Vercel da tanto
-      # para un VERCEL_TOKEN vencido/revocado como para uno que no pertenece
-      # al team de VERCEL_ORG_ID (confirmado contra el código fuente de la
-      # CLI — setup-and-link.ts — y la referencia de errores de Vercel,
-      # "Scope Not Accessible"). VERCEL_ORG_ID/VERCEL_PROJECT_ID ya están
-      # verificados correctos contra la API real del proyecto, así que si
-      # este paso falla o resuelve a otra cuenta/team, la causa es el
-      # secret, no la lógica del job.
-      - name: Verificar credenciales de Vercel (diagnóstico)
-        run: |
-          if [[ -z "$VERCEL_TOKEN" ]]; then
-            echo "::error::Falta VERCEL_TOKEN en GitHub Secrets; registrar token válido con permisos del team"
-            exit 1
-          fi
-          # No pasar el token por argv ni imprimir detalles de cuenta en logs.
-          vercel whoami --format json >/dev/null
+      # #1015: `vercel whoami` consulta el endpoint de USUARIO y devuelve
+      # "User not found" con tokens de alcance team, aunque el token acceda al
+      # proyecto. Se verifica en cambio el acceso al proyecto y team EXACTOS
+      # (API de proyecto; id y accountId deben coincidir). Fail closed, sin
+      # imprimir token, cuerpos de respuesta ni datos de cuenta.
+      - name: Verificar acceso de VERCEL_TOKEN al proyecto y team
+        run: node scripts/ci/verify-vercel-project-access.mjs
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: team_Ml9rVX2uWgNn2OJ8cZe9pTWD
+          VERCEL_PROJECT_ID: prj_NzjF7gJ1CFYYHOhfAhE5mK7CxpPr
 
       - name: Pull production env vars from Vercel
         run: |
           vercel env pull --environment=production --yes .env.vercel-production || {
-            echo "::error::vercel env pull falló. Comparar la cuenta/team que mostró 'vercel whoami' en el paso anterior contra VERCEL_ORG_ID=$VERCEL_ORG_ID. Si no coincide, o whoami también falló: VERCEL_TOKEN está vencido/revocado o no es miembro de ese team. Generar uno nuevo en https://vercel.com/account/tokens (cuenta con acceso al team) y actualizarlo en Settings -> Secrets and variables -> Actions -> VERCEL_TOKEN de este repo."
+            echo "::error::vercel env pull falló. El paso anterior ya verificó acceso al proyecto/team por API; si falló solo aquí, el token puede carecer de permiso para leer variables de entorno de producción (alcance del token). Generar uno nuevo en https://vercel.com/account/tokens (cuenta con acceso al team) y actualizarlo en Settings -> Secrets and variables -> Actions -> VERCEL_TOKEN de este repo."
             exit 1
           }
         env:
