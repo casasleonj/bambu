@@ -34,15 +34,18 @@ $sql$;
 
 -- Un baseline de configuración observada NO certifica jornadas anteriores.
 -- El día de instalación tampoco se afirma como jornada completa conocida.
+-- Una sola referencia temporal para TODAS las filas del baseline; no puede
+-- partir la instalación en dos fechas si atraviesa medianoche.
+CREATE TEMP TABLE tarifa_1010_corte ON COMMIT DROP AS SELECT clock_timestamp() AS instante;
 INSERT INTO public."ComisionTarifaVersion" ("ambito","trabajadorId","fechaVigencia","registradoAt","origen","rolDb","datos")
-SELECT 'TRABAJADOR',t.id,(clock_timestamp() AT TIME ZONE 'America/Bogota')::date+1,clock_timestamp(),'BASELINE',current_user,public.datos_tarifa_trabajador_1010(t)
-FROM public."Trabajador" t WHERE NOT EXISTS (
+SELECT 'TRABAJADOR',t.id,(c.instante AT TIME ZONE 'America/Bogota')::date+1,c.instante,'BASELINE',current_user,public.datos_tarifa_trabajador_1010(t)
+FROM public."Trabajador" t CROSS JOIN pg_temp.tarifa_1010_corte c WHERE NOT EXISTS (
   SELECT 1 FROM public."ComisionTarifaVersion" v WHERE v."ambito"='TRABAJADOR' AND v."trabajadorId"=t.id
 );
 INSERT INTO public."ComisionTarifaVersion" ("ambito","fechaVigencia","registradoAt","origen","rolDb","datos")
-SELECT 'COM_REPARTIDOR',(clock_timestamp() AT TIME ZONE 'America/Bogota')::date+1,clock_timestamp(),'BASELINE',current_user,
+SELECT 'COM_REPARTIDOR',(c.instante AT TIME ZONE 'America/Bogota')::date+1,c.instante,'BASELINE',current_user,
   jsonb_build_object('version',1,'valor',(SELECT valor FROM public."Config" WHERE clave='COM_REPARTIDOR'))
-WHERE NOT EXISTS (SELECT 1 FROM public."ComisionTarifaVersion" WHERE "ambito"='COM_REPARTIDOR');
+FROM pg_temp.tarifa_1010_corte c WHERE NOT EXISTS (SELECT 1 FROM public."ComisionTarifaVersion" WHERE "ambito"='COM_REPARTIDOR');
 
 CREATE OR REPLACE FUNCTION public.capturar_tarifa_trabajador_1010() RETURNS trigger
 LANGUAGE plpgsql SET search_path=pg_catalog,public AS $sql$
