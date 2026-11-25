@@ -1,7 +1,7 @@
 -- #1010 F2A: expansión aditiva. No backfill, no cambios a pagos previos.
 BEGIN;
 SET LOCAL lock_timeout = '5s';
-CREATE TABLE "PagoComisionEvidencia" (
+CREATE TABLE IF NOT EXISTS "PagoComisionEvidencia" (
     "pagoId" TEXT NOT NULL,
     "datos" JSONB NOT NULL,
     CONSTRAINT "PagoComisionEvidencia_pkey" PRIMARY KEY ("pagoId"),
@@ -10,12 +10,13 @@ CREATE TABLE "PagoComisionEvidencia" (
 );
 
 -- El registro de evidencia no se edita al corregir fecha ni por actualización ordinaria.
-CREATE FUNCTION public.impedir_mutacion_evidencia_comision() RETURNS trigger
+CREATE OR REPLACE FUNCTION public.impedir_mutacion_evidencia_comision() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
     RAISE EXCEPTION 'La evidencia registrada de comisión no se modifica ni elimina';
 END;
 $$;
+DROP TRIGGER IF EXISTS trg_evidencia_comision_inmutable ON "PagoComisionEvidencia";
 CREATE TRIGGER trg_evidencia_comision_inmutable
 BEFORE UPDATE OR DELETE ON "PagoComisionEvidencia"
 FOR EACH ROW EXECUTE FUNCTION public.impedir_mutacion_evidencia_comision();
