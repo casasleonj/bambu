@@ -158,8 +158,8 @@ describe('#1010 F2A evidencia histórica prospectiva', () => {
     // Solo en el PostgreSQL aislado de integración; la función falla para esta identidad sintética.
     const clave = randomUUID()
     const antes = await testPrisma.historial.count({ where: { entidad: 'PagoComisionRepartidor', accion: 'CREATE' } })
-    await testPrisma.$executeRawUnsafe(`CREATE FUNCTION public.test_1010_falla_evidencia() RETURNS trigger LANGUAGE plpgsql AS $$
-      BEGIN IF NEW.datos->>'trabajadorId' = TG_ARGV[0] THEN RAISE EXCEPTION 'Fallo sintético de evidencia'; END IF; RETURN NEW; END; $`)
+    await testPrisma.$executeRawUnsafe(`CREATE FUNCTION public.test_1010_falla_evidencia() RETURNS trigger LANGUAGE plpgsql AS $falla1010$
+      BEGIN IF NEW.datos->>'trabajadorId' = TG_ARGV[0] THEN RAISE EXCEPTION 'Fallo sintético de evidencia'; END IF; RETURN NEW; END; $falla1010$`)
     try {
       if (!/^[a-zA-Z0-9_-]+$/.test(t.id)) throw new Error('ID sintético inválido')
       await testPrisma.$executeRawUnsafe(`CREATE TRIGGER test_1010_falla_evidencia BEFORE INSERT ON "PagoComisionEvidencia" FOR EACH ROW EXECUTE FUNCTION public.test_1010_falla_evidencia('${t.id}')`)
