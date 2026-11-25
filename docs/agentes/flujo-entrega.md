@@ -59,13 +59,13 @@ Comando: `/qa <issues o rutas> [entorno]`.
 **Por qué:** el ruleset de `main` exige la rama al día (`strict=true`). Cuando otro PR se fusiona, un PR ya verde vuelve a correr el CI completo. En la muestra del 2026-11-25 (9 corridas completas exitosas de PR, un solo día con mucho tráfico) tardaron entre 22 y 40 min. No son p50/p95 representativos; la línea base real está pendiente en #1023. El repo es público y los runners estándar no se cobran, así que el costo es **latencia**. **Costo adicional cero:** sin runners "larger", sin Apps de pago y sin mover el repo a una organización.
 
 **Regla (la cumplen por defecto personas y agentes):**
-1. **Abrir como borrador (Draft) mientras se itera.** `ci.yml` no repite el E2E completo por commit en borrador (CI progresivo #896).
+1. **Abrir como borrador (Draft) solo si el diff es apto; si no, abrir directamente listo.** El CI progresivo (#896, `diffAptoBorrador` en `scripts/ci/politica-ci.mjs`) difiere el E2E en cada push de un borrador **únicamente** cuando todo el diff son archivos normales `A/M/D` bajo `src/`, `docs/` o la evidencia exacta `.qa/pr-<N>.md`. Si el diff toca cualquier otra cosa (`e2e/`, `prisma/`, `scripts/`, `.github/`, lockfiles, `package.json`, symlinks o cambios de modo), el borrador corre el E2E **completo en cada push** y «Ready for review» lo corre **otra vez** sobre el mismo commit: en ese caso el borrador no ahorra, duplica. Al pasar a listo el E2E completo siempre corre.
 2. **Pasar a «Ready for review» una sola vez**, con todo ya incluido en el árbol: código, pruebas, docs, `.qa/pr-N.md` y descripción. Cada push posterior cancela y reinicia la corrida certificadora.
 3. **Un PR listo a la vez hacia `main`.** Antes de marcar listo un PR, comprobar que no haya otro PR abierto, no borrador, hacia `main` con CI en curso. Si lo hay, esperar a que se fusione o vuelva a borrador. Excepción: un P0 con autorización expresa del PO.
 4. **Si `main` avanza antes del merge:** integrar `main`, repetir las pruebas y esperar el CI del nuevo head. No bajar `strict`, no saltar gates y no fusionar con evidencia caducada.
 5. **Límites:** esta regla no cambia el ruleset ni los gates. No hay un check que la fuerce; se cumple por proceso y revisión. Las sesiones de agentes no se coordinan entre sí salvo a través de GitHub, por eso el punto 3 se comprueba allí.
 
-**Pendiente (fuera de esta regla):** línea base p50/p95, causa de corridas duplicadas del mismo SHA (p. ej. #1019, corridas 2411 y 2412) y posible contención de runners. Se siguen en #1023.
+**Pendiente (fuera de esta regla):** línea base p50/p95 y posible contención de runners. Las corridas duplicadas del mismo SHA (p. ej. #1019, corridas 2411 y 2412) se explican por el punto 1 (borrador no apto + «Ready for review»); es una explicación leída en el código, no observada en los eventos de ese PR. Se siguen en #1023.
 
 ### 6. CI / REVIEW
 - esperar y revisar todos los checks: Typecheck · Lint · Unit · Integration · E2E · build/deploy checks cuando correspondan

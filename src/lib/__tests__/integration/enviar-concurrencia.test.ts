@@ -81,6 +81,6 @@ describe('POST /api/embarques/[id]/enviar — concurrencia real (A.10 #2)', () =
 
     // Cleanup
     await testPrisma.embarque.deleteMany({ where: { trabajadorId: trabajador.id } })
-    await testPrisma.trabajador.delete({ where: { id: trabajador.id } })
+    await testPrisma.trabajador.update({ where: { id: trabajador.id }, data: { activo: false } })
   })
 })

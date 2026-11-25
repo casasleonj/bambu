@@ -2,16 +2,29 @@
 import { appendFileSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
-// No se intenta demostrar que un cambio de producto sea inocuo: un borrador
-// diferido nunca certifica nada. Se excluyen diffs estructurales y cambios
-// en infraestructura, tests E2E, configuración y rutas no mapeadas del piloto.
+// #896/#1023 — Un borrador diferido nunca certifica nada: el E2E completo corre SIEMPRE al
+// pasar a «Ready for review» (planCI no difiere ese evento) y el gate falla a propósito en
+// borrador. Por eso el borrador puede diferir el E2E largo para cualquier diff de archivos
+// normales (decisión del PO, 2026-11-25; patrón habitual de la comunidad: comprobaciones
+// rápidas en borrador y suite completa al salir de él).
+// Se mantiene el E2E completo en borrador cuando el diff es estructuralmente dudoso (renombres,
+// copias, symlinks, cambios de modo) o toca la maquinaria que define qué significa «pasar»:
+// un error ahí debe verse antes de pasar a listo.
+const MAQUINARIA_DEL_GATE = ['.github/workflows/ci.yml', 'scripts/ci/', 'scripts/__tests__/clasificar-cambios.test.ts']
+
+function esMaquinariaDelGate(ruta) {
+  const p = ruta.toLowerCase() // insensible a mayúsculas: en un FS case-insensitive es el mismo archivo
+  return MAQUINARIA_DEL_GATE.some(m => (m.endsWith('/') ? p.startsWith(m) : p === m))
+}
+
 export function diffAptoBorrador(entradas) {
   if (!Array.isArray(entradas) || entradas.length === 0) return false
   return entradas.every(e => {
     if (!e || e.invalida || typeof e.ruta !== 'string' || !['A', 'M', 'D'].includes(e.estado)) return false
     const modos = { A: ['000000', '100644'], M: ['100644', '100644'], D: ['100644', '000000'] }[e.estado]
     return e.modoAnterior === modos[0] && e.modoNuevo === modos[1] &&
-      /^(src\/|docs\/)/.test(e.ruta) && !/[\u0000-\u001f\u007f]/.test(e.ruta)
+      e.ruta.length > 0 && !e.ruta.startsWith('/') && !/[\u0000-\u001f\u007f]/.test(e.ruta) &&
+      !esMaquinariaDelGate(e.ruta)
   })
 }
 

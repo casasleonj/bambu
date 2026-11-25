@@ -597,6 +597,32 @@ jobs:
           if [ "$ready" != 1 ]; then tail -100 /tmp/qa-1010-next.log; exit 1; fi
           node scripts/qa/qa-1010-browser.mjs
 
+      - name: QA navegador independiente vigencia de tarifas (#1019)
+        if: ${{ matrix.shard == 4 }}
+        shell: bash
+        env:
+          REDIS_URL: redis://localhost:6379/3
+        run: |
+          npx tsx prisma/reset-locked.ts full
+          PORT=3001 node .next/standalone/server.js > /tmp/qa-1019-next.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent http://localhost:3001/api/health > /dev/null; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" != 1 ]; then tail -100 /tmp/qa-1019-next.log; exit 1; fi
+          node scripts/qa/qa-1019-browser.mjs
+
+      - name: Upload QA independiente #1019
+        if: always() && matrix.shard == 4
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-1019-pr-1019
+          path: .qa/artifacts/pr-1019/
+          retention-days: 7
+
       - name: Upload QA independiente #1010
         if: always() && matrix.shard == 4
         uses: actions/upload-artifact@v4

@@ -80,7 +80,7 @@ describe('CerrarEmbarqueUseCase — dry-run preview (A.3.4)', () => {
 
     // Cleanup
     await testPrisma.embarque.delete({ where: { id: embarque.id } })
-    await testPrisma.trabajador.delete({ where: { id: embarque.trabajadorId } })
+    await testPrisma.trabajador.update({ where: { id: embarque.trabajadorId }, data: { activo: false } })
   })
 
   it('dryRun:true calcula EXACTAMENTE lo mismo que el cierre real posterior', async () => {
@@ -106,6 +106,6 @@ describe('CerrarEmbarqueUseCase — dry-run preview (A.3.4)', () => {
     // Cleanup
     await testPrisma.gasto.deleteMany({ where: { embarqueId: embarque.id } })
     await testPrisma.embarque.delete({ where: { id: embarque.id } })
-    await testPrisma.trabajador.delete({ where: { id: embarque.trabajadorId } })
+    await testPrisma.trabajador.update({ where: { id: embarque.trabajadorId }, data: { activo: false } })
   })
 })
