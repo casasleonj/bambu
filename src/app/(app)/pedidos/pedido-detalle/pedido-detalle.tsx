@@ -40,6 +40,11 @@ interface Props {
   onAccion: (key: AccionDetalleKey) => void
   volverLabel?: string
   onOpenFactura?: (id: string) => void
+  /**
+   * #1001: si el CLIENTE ya figura en Fiados (misma fuente que la pestaña). Sin cartera, lo de hoy se cobra con
+   * «Registrar pago»; con cartera, o si no se sabe, el enlace avisa y lleva a Fiados. Nunca se afirma «no debe» sin saberlo.
+   */
+  cartera?: 'con' | 'sin' | 'desconocida'
 }
 
 const ITEM_BG: Record<string, string> = {
@@ -91,7 +96,7 @@ const TONO_BOTON: Record<AccionDetalle['tone'], string> = {
 }
 
 export function PedidoDetalle({
-  pedido, embarqueNumeroDia, preciosActuales, updatingId, userRole, gestionAdmin, nombreRepartidor, estadoBadge, canalBadge, onClose, onAccion, volverLabel, onOpenFactura,
+  pedido, embarqueNumeroDia, preciosActuales, updatingId, userRole, gestionAdmin, nombreRepartidor, estadoBadge, canalBadge, onClose, onAccion, volverLabel, onOpenFactura, cartera = 'desconocida',
 }: Props) {
   const [relacionadoAbierto, setRelacionadoAbierto] = useState(false)
   const total = Number(pedido.total)
@@ -99,6 +104,13 @@ export function PedidoDetalle({
   const saldo = Number(pedido.saldo)
   const importes = importesEntregaPedido(pedido)
   const entregado = pedido.estadoEntrega === 'ENTREGADO'
+  // #1001: «Registrar pago» solo donde el servidor acepta el cobro de UN pedido (`errorCobroPedido`): cliente real,
+  // entregado hoy (`entregadoAt ?? fecha`, día de Bogotá) y un rol que cobra. Si no, el enlace a Fiados de siempre.
+  const diaBogota = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+  const cobraAqui = cartera === 'sin'
+    && (userRole === 'ADMIN' || userRole === 'ASISTENTE')
+    && pedido.clienteId !== 'CONSUMIDOR_FINAL'
+    && diaBogota(pedido.entregadoAt ?? pedido.fecha) === diaBogota(new Date().toISOString())
   const pct = porcentajePagado(total, pagado)
   const links = linksContacto(pedido)
   const acciones = accionesDetalle(pedido.estadoEntrega, pedido.embarqueResumen?.estado, { gestionAdmin })
@@ -186,7 +198,9 @@ export function PedidoDetalle({
                   <p>Pendiente de entrega <b className="block">{formatCurrency(importes.pendienteEntrega)}</b></p>
                   <p className="sm:col-span-2">Por cobrar de lo entregado <b className="block text-red-700">{importes.porConciliar ? 'Por conciliar' : importes.porCobrar === null ? 'Por consultar' : formatCurrency(importes.porCobrar)}</b></p>
                   {importes.porConciliar && <p className="text-xs sm:col-span-2">Falta conciliar el registro de esta entrega; no se supone que la deuda sea cero.</p>}
-                  {(importes.porCobrar ?? 0) > 0 && <Link className="inline-flex min-h-11 items-center font-semibold text-blue-700 underline sm:col-span-2" href={`/pedidos?tab=fiados&clienteId=${encodeURIComponent(pedido.clienteId)}`}>Consultar y cobrar en Fiados</Link>}
+                  {(importes.porCobrar ?? 0) > 0 && (cobraAqui
+                    ? <button type="button" data-testid="detalle-registrar-pago" className="inline-flex min-h-11 items-center font-semibold text-blue-700 underline sm:col-span-2" onClick={() => onAccion('registrar-pago')}>Registrar pago</button>
+                    : <Link className="inline-flex min-h-11 items-center font-semibold text-blue-700 underline sm:col-span-2" href={`/pedidos?tab=fiados&clienteId=${encodeURIComponent(pedido.clienteId)}`}>Consultar y cobrar en Fiados</Link>)}
                 </div>
               )}
               <div className="h-2 rounded-full bg-gray-200 overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Porcentaje pagado">
@@ -369,11 +383,15 @@ export function PedidoDetalle({
                   ))}
                 </ul>
               )}
-              {entregado && saldo > 0 && (
+              {entregado && saldo > 0 && (cobraAqui ? (
+                <button type="button" onClick={() => onAccion('registrar-pago')} data-testid="detalle-registrar-pago-entregado" className="mt-3 inline-flex min-h-[44px] items-center px-4 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
+                  Registrar pago
+                </button>
+              ) : (
                 <Link href={pedido.clienteId === 'CONSUMIDOR_FINAL' ? '/pedidos' : `/pedidos?tab=fiados&clienteId=${pedido.clienteId}`} data-testid="detalle-ver-cartera" className="mt-3 inline-flex min-h-[44px] items-center px-4 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
                   Ver cartera del cliente →
                 </Link>
-              )}
+              ))}
               {pedido.factura && (
                 <div className="mt-3 border-t pt-3">
                   <div className="flex items-center justify-between mb-2">

@@ -3,6 +3,7 @@
 // Tabs: Pedidos (hoy), Fiados, Alertas; full UI flows + edge cases
 import { test, expect, apiPost, createCliente, BASE, sharedPageLogin, sharedLoginAs } from './fixtures'
 import type { Page } from '@playwright/test'
+import { PrismaClient } from '@prisma/client'
 
 const PEDIDOS_URL = `${BASE}/pedidos`
 
@@ -422,8 +423,9 @@ test.describe('Pedidos — Tab Fiados', () => {
     // Deuda min/max
     await expect(p.locator('input[placeholder*="Deuda min" i]')).toBeVisible()
     await expect(p.locator('input[placeholder*="Deuda max" i]')).toBeVisible()
-    // Dias fiado select
-    await expect(p.locator('select')).toBeVisible()
+    // Dias fiado select (por etiqueta: #614 añadió el filtro «Entregado por», que también es un select)
+    await expect(p.getByLabel('Antigüedad')).toBeVisible()
+    await expect(p.getByLabel('Entregado por')).toBeVisible()
   })
 
   test('periodo chips en Fiados', async () => {
@@ -509,6 +511,14 @@ test.describe('Pedidos — Tab Fiados', () => {
         items: [{ producto: 'PACA_AGUA', cantidad: 2 }], pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
       })
       expect(creado.ok()).toBe(true)
+      // #796: Fiados lista deuda ya consolidada. Lo entregado hoy es pendiente del día (se cobra desde Pedidos);
+      // el fixture representa un fiado de ayer para ejercitar el formulario de cobro de Fiados.
+      const ayer = new Date(Date.now() - 36 * 3_600_000)
+      const prisma = new PrismaClient()
+      try {
+        await prisma.pedido.updateMany({ where: { clienteId }, data: { fecha: ayer, entregadoAt: ayer } })
+        await prisma.entregaExigible.updateMany({ where: { pedido: { clienteId } }, data: { entregadoAt: ayer } })
+      } finally { await prisma.$disconnect() }
       await gotoPedidos(p)
       await p.goto(`${PEDIDOS_URL}?tab=fiados&fiadosCliente=${encodeURIComponent(clienteId)}`)
       await p.getByRole('button', { name: 'Registrar pago', exact: true }).locator('visible=true').click()
@@ -526,7 +536,7 @@ test.describe('Pedidos — Tab Fiados', () => {
     await gotoPedidos(p)
     await tabButton(p, 'Fiados').click()
     await p.waitForTimeout(500)
-    const diasSelect = p.locator('select').first()
+    const diasSelect = p.getByLabel('Antigüedad')
     if (await diasSelect.isVisible({ timeout: 3000 }).catch(() => false)) {
       await diasSelect.selectOption('0-7')
       await p.waitForTimeout(300)
@@ -901,14 +911,16 @@ test.describe('Pedidos — Mobile Viewport', () => {
 
   test('touch targets en mobile son adecuados', async () => {
     await gotoPedidos(p)
-    // Check that tab buttons have adequate touch targets (min 44px)
-    const tabs = p.locator('.flex.border-b button')
-    const count = await tabs.count()
-    for (let i = 0; i < count; i++) {
+    // #1003: solo las pestañas de Vistas de Pedidos. El selector anterior
+    // `.flex.border-b button` también capturaba los botones «Activar», «Más
+    // tarde» y «No volver a mostrar» (28-32 px) del aviso de notificaciones
+    // (`push-opt-in-strip.tsx`), que no son pestañas.
+    const tabs = p.getByRole('tablist', { name: 'Vistas de Pedidos' }).getByRole('tab')
+    await expect(tabs).toHaveCount(3)
+    for (let i = 0; i < 3; i++) {
       const box = await tabs.nth(i).boundingBox()
-      if (box) {
-        expect(box.height).toBeGreaterThanOrEqual(36) // relaxed for mobile tabs
-      }
+      expect(box, `pestaña ${i} sin caja visible`).not.toBeNull()
+      expect(box!.height).toBeGreaterThanOrEqual(36) // relaxed for mobile tabs
     }
   })
 })

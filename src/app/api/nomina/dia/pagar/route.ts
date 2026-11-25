@@ -12,6 +12,7 @@ import { dayInBogota } from '@/lib/date-helpers'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
 import { nominaQueCubre } from '@/lib/nomina-cobertura'
 import { comisionDiaConEstado, comisionSelladoresDia } from '@/lib/comision-pagada'
+import { centavosComision, construirEvidenciaComision, evidenciaReparto, evidenciaProduccion } from '@/lib/comision-evidencia'
 
 /**
  * POST /api/nomina/dia/pagar — el ADMIN/CONTADOR marca que le pagó al repartidor la comisión
@@ -113,12 +114,33 @@ export async function POST(request: NextRequest) {
         throw new PagoComisionError(409, 'La comisión cambió mientras mirabas la pantalla. Revisa el valor nuevo', 'MONTO_CAMBIO', { pendiente: fila.pendiente, total: fila.total, pagado: fila.pagado })
       }
 
+      // Conservar la misma lectura Serializable y la fórmula aprobada; no recalcular tarifas.
+      // Para sellado, guardar los items persistidos que originaron la suma de la fila.
+      const detalleEvidencia = repartidor
+        ? evidenciaReparto(repartidor)
+        : evidenciaProduccion(await tx.produccion.findMany({
+          where: { trabajadorId, fecha: { gte: dia, lt: new Date(dia.getTime() + 86_400_000) } },
+          orderBy: [{ turno: 'asc' }, { id: 'asc' }],
+          select: { id: true, turno: true, comSellTotal: true, items: {
+            select: { id: true, producto: true, producido: true, comSellador: true },
+            orderBy: { producto: 'asc' },
+          } },
+        }))
+
       const pago = await tx.pagoComisionRepartidor.create({
         data: { trabajadorId, fecha: dia, fechaPagoReal: diaPago, monto: fila.pendiente, metodo, concepto, pagadoPorId: userId ?? null, offlineId },
       })
+      // Una única evidencia por pago. Si no se puede guardar, la transacción completa revierte.
+      // Los reintentos retornan arriba y jamás reconstruyen la evidencia original.
+      const evidencia = construirEvidenciaComision({
+        trabajadorId, fechaTrabajo: fecha, fechaPagoRealDeclarada: fechaPagoReal,
+        registradoAt: pago.createdAt.toISOString(), totalCentavos: centavosComision(fila.total),
+        pagadoAntesCentavos: centavosComision(fila.pagado), desembolsoCentavos: centavosComision(pago.monto),
+      }, detalleEvidencia)
+      await tx.pagoComisionEvidencia.create({ data: { pagoId: pago.id, datos: evidencia } })
       await logAudit({
         entidad: 'PagoComisionRepartidor', registroId: pago.id, accion: 'CREATE',
-        datos: { trabajadorId, fecha, fechaPagoReal, monto: Number(pago.monto), metodo: pago.metodo, concepto, registradoAt: pago.createdAt.toISOString() },
+        datos: { trabajadorId, fecha, fechaPagoReal, monto: Number(pago.monto), metodo: pago.metodo, concepto, registradoAt: pago.createdAt.toISOString(), evidenciaVersion: evidencia.version, evidenciaDesgloseCuadra: evidencia.desgloseCuadra },
         usuarioId: userId,
       }, tx)
       return { pago, deduped: false as const }

@@ -62,6 +62,24 @@ describe('#631 desglosarCobros', () => {
   })
 })
 
+describe('#1006 nombre del negocio en el Cierre', () => {
+  const base = { id: 'p1', numero: 1496, clienteId: 'c1', total: 5000, totalPagado: 0, saldo: 5000, promesaPagoFecha: null }
+  it('listarFiadosDelDia: pedido de un negocio → negocio principal y «de persona» debajo', () => {
+    const [f] = listarFiadosDelDia([{ ...base, cliente: { nombre: 'Vanessa', apellido: 'Leon' }, negocioId: 'n1', negocio: { nombre: 'Ferretería Premium' } }])
+    expect(f).toMatchObject({ cliente: 'Ferretería Premium', clienteDe: 'de Vanessa Leon' })
+  })
+  it('listarFiadosDelDia: pedido sin negocio → nombre de la persona, sin subtexto', () => {
+    const [f] = listarFiadosDelDia([{ ...base, cliente: { nombre: 'Vanessa', apellido: 'Leon' } }])
+    expect(f.cliente).toBe('Vanessa Leon')
+    expect(f.clienteDe).toBeUndefined()
+  })
+  it('detallarPorConfirmar: mismo criterio que Pedidos y Fiados', () => {
+    const [d] = detallarPorConfirmar([{ id: 'g1', metodo: 'NEQUI', monto: 1000, createdAt: new Date('2026-11-24T15:00:00Z'),
+      pedido: { id: 'p1', numero: 1496, negocioId: 'n1', negocio: { nombre: 'Ferretería Premium' }, cliente: { id: 'c1', nombre: 'Vanessa', apellido: 'Leon' }, factura: null } }])
+    expect(d).toMatchObject({ cliente: 'Ferretería Premium', clienteDe: 'de Vanessa Leon' })
+  })
+})
+
 describe('#631 listarFiadosDelDia', () => {
   const base = { clienteId: 'c1', total: 80000, totalPagado: 0, saldo: 80000, promesaPagoFecha: null }
   it('incluye pedidos con saldo (aunque pagaron una parte), ordena por número y formatea la promesa en hora de Bogotá', () => {

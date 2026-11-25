@@ -31,6 +31,21 @@ export function uniqueId(prefix = 'test'): string {
   return `${prefix}-${randomUUID()}`
 }
 
+
+/**
+ * Limpieza de fixtures entre casos #673/#834. La evidencia de un pago real
+ * es inmutable: no desactivar triggers ni usar DELETE como atajo.
+ * TRUNCATE explícito de las tres tablas relacionadas, exclusivamente en
+ * Vitest contra la DB local de pruebas; sin CASCADE ni acceso a producción.
+ */
+export async function limpiarPagosComisionDePrueba(): Promise<void> {
+  const url = new URL(process.env.DATABASE_URL ?? '')
+  if (process.env.NODE_ENV !== 'test' || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
+    throw new Error('Limpieza de comisiones permitida solo en la base local de pruebas')
+  }
+  await testPrisma.$executeRaw`TRUNCATE TABLE "PagoComisionEvidencia", "PagoComisionFechaCorreccion", "PagoComisionRepartidor"`
+}
+
 /**
  * Helper para desconectar limpiamente.
  */

@@ -38,7 +38,7 @@ export function PushOptInStrip() {
         aria-live="polite"
         className={`${base} border-blue-100 bg-blue-50`}
       >
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 basis-full sm:flex-1">
           <p className="font-medium text-gray-900">Activando…</p>
           <p className="text-xs text-gray-600">Aceptá el permiso en tu navegador.</p>
         </div>
@@ -46,7 +46,7 @@ export function PushOptInStrip() {
           type="button"
           disabled
           data-testid="push-opt-in-accept"
-          className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white opacity-60"
+          className="min-h-11 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white opacity-60"
         >
           Activando…
         </button>
@@ -61,7 +61,7 @@ export function PushOptInStrip() {
         role="alert"
         className={`${base} border-red-200 bg-red-50`}
       >
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 basis-full sm:flex-1">
           <p className="font-medium text-red-900">No se pudieron activar</p>
           <p className="text-xs text-red-800">
             {blocked
@@ -75,7 +75,7 @@ export function PushOptInStrip() {
               type="button"
               onClick={accept}
               data-testid="push-opt-in-accept"
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+              className="min-h-11 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white hover:bg-blue-700"
             >
               Reintentar
             </button>
@@ -84,7 +84,7 @@ export function PushOptInStrip() {
             type="button"
             onClick={blocked ? clearAttempt : remindLater}
             data-testid="push-opt-in-later"
-            className="rounded-lg px-3 py-1.5 text-sm text-gray-700 hover:bg-red-100"
+            className="min-h-11 rounded-lg px-3 text-sm text-gray-700 hover:bg-red-100"
           >
             {blocked ? 'Cerrar' : 'Más tarde'}
           </button>
@@ -100,7 +100,7 @@ export function PushOptInStrip() {
       aria-live="polite"
       className={`${base} border-blue-100 bg-blue-50`}
     >
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 basis-full sm:flex-1">
         <p className="font-medium text-gray-900">Recibí alertas al instante</p>
         <p className="text-xs text-gray-600">
           Activá las notificaciones para enterarte de los casos críticos.
@@ -111,7 +111,7 @@ export function PushOptInStrip() {
           type="button"
           onClick={accept}
           data-testid="push-opt-in-accept"
-          className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+          className="min-h-11 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white hover:bg-blue-700"
         >
           Activar
         </button>
@@ -119,7 +119,7 @@ export function PushOptInStrip() {
           type="button"
           onClick={remindLater}
           data-testid="push-opt-in-later"
-          className="rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-blue-100"
+          className="min-h-11 rounded-lg px-3 text-sm text-gray-600 hover:bg-blue-100"
         >
           Más tarde
         </button>
@@ -129,7 +129,7 @@ export function PushOptInStrip() {
           aria-label="No volver a mostrar"
           title="No volver a mostrar"
           data-testid="push-opt-in-dismiss"
-          className="rounded p-1.5 text-gray-400 hover:bg-blue-100 hover:text-gray-600"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded text-gray-400 hover:bg-blue-100 hover:text-gray-600"
         >
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
