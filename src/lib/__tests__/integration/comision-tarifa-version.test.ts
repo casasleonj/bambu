@@ -65,6 +65,29 @@ describe('#1010 F2B.1 diario prospectivo',()=>{
     await expect(db.comisionTarifaVersion.delete({where:{id:filas[0].id}})).rejects.toThrow()
     await expect(db.trabajador.delete({where:{id:t.id}})).rejects.toThrow()
   })
+  it('app_write puede editar la configuración por el camino autorizado, no insertar una versión directamente',async()=>{
+    const t=await crearTrabajador()
+    // El GRANT a Trabajador solo se usa dentro de esta transacción de fixtures.
+    // Se revierte deliberadamente para no contaminar los demás tests.
+    await expect(db.$transaction(async tx=>{
+      await tx.$executeRaw`GRANT USAGE ON SCHEMA public TO app_write`
+      await tx.$executeRaw`GRANT SELECT, UPDATE ON public."Trabajador" TO app_write`
+      await tx.$executeRaw`CREATE POLICY tarifa_qa_trabajador ON public."Trabajador" FOR ALL TO app_write USING (true) WITH CHECK (true)`
+      await tx.$executeRaw`SET LOCAL ROLE app_write`
+      const filas=await tx.$executeRaw`UPDATE public."Trabajador" SET "comPacaAgua"=370 WHERE id=${t.id}`
+      expect(filas).toBe(1)
+      const versiones=await tx.comisionTarifaVersion.findMany({where:{trabajadorId:t.id},orderBy:{id:'asc'}})
+      expect(versiones).toHaveLength(2)
+      expect(versiones[1].datos).toMatchObject({comPacaAgua:'370.00'})
+      throw new Error('fin prueba rol aislada')
+    })).rejects.toThrow('fin prueba rol aislada')
+    expect(await db.comisionTarifaVersion.count({where:{trabajadorId:t.id}})).toBe(1)
+    await expect(db.$transaction(async tx=>{
+      await tx.$executeRaw`SET LOCAL ROLE app_write`
+      await tx.comisionTarifaVersion.create({data:{ambito:'TRABAJADOR',trabajadorId:t.id,fechaVigencia:new Date('2026-01-01T00:00:00Z'),origen:'CAMBIO',rolDb:'app_write',datos:{version:1}}})
+    })).rejects.toThrow()
+    expect(await db.comisionTarifaVersion.count({where:{trabajadorId:t.id}})).toBe(1)
+  })
   it('RLS y roles de Data API quedan sin acceso; backend no puede editar o truncar',async()=>{
     const [tabla]=await db.$queryRaw<Array<{rls:boolean}>>`SELECT relrowsecurity AS rls FROM pg_class WHERE oid='public."ComisionTarifaVersion"'::regclass`
     expect(tabla.rls).toBe(true)
