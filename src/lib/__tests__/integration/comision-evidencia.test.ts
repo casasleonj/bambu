@@ -176,4 +176,29 @@ describe('#1010 F2A evidencia histórica prospectiva', () => {
     expect(p.evidencia?.datos).toMatchObject({ desembolsoCentavos: 30000 })
   })
 
+
+  it('la migración activa RLS y no expone evidencia financiera a los roles Data API', async () => {
+    const [tabla] = await testPrisma.$queryRaw<Array<{ rls: boolean }>>`
+      SELECT relrowsecurity AS rls FROM pg_class WHERE oid = 'public."PagoComisionEvidencia"'::regclass
+    `
+    expect(tabla.rls).toBe(true)
+    const roles = await testPrisma.$queryRaw<Array<{ rolname: string; lectura: boolean; insercion: boolean; edicion: boolean; borrado: boolean; truncado: boolean }>>`
+      SELECT rolname,
+        has_table_privilege(oid, 'public."PagoComisionEvidencia"', 'SELECT') AS lectura,
+        has_table_privilege(oid, 'public."PagoComisionEvidencia"', 'INSERT') AS insercion,
+        has_table_privilege(oid, 'public."PagoComisionEvidencia"', 'UPDATE') AS edicion,
+        has_table_privilege(oid, 'public."PagoComisionEvidencia"', 'DELETE') AS borrado,
+        has_table_privilege(oid, 'public."PagoComisionEvidencia"', 'TRUNCATE') AS truncado
+      FROM pg_roles WHERE rolname IN ('anon', 'authenticated', 'service_role')
+    `
+    for (const r of roles) expect(r).toMatchObject({ lectura: false, insercion: false, edicion: false, borrado: false, truncado: false })
+    const [escritura] = await testPrisma.$queryRaw<Array<{ editar: boolean; borrar: boolean; truncar: boolean }>>`
+      SELECT has_table_privilege(oid, 'public."PagoComisionEvidencia"', 'UPDATE') AS editar,
+        has_table_privilege(oid, 'public."PagoComisionEvidencia"', 'DELETE') AS borrar,
+        has_table_privilege(oid, 'public."PagoComisionEvidencia"', 'TRUNCATE') AS truncar
+      FROM pg_roles WHERE rolname = 'app_write'
+    `
+    expect(escritura).toEqual({ editar: false, borrar: false, truncar: false })
+  })
+
 })
