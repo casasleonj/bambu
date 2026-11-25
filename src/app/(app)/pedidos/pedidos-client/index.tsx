@@ -503,6 +503,12 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
     refetching: actualizandoFiados,
   } = usePedidos({ scope: 'fiados' }, { all: true, autoFetch: false, refetchOnParamsChange: true })
   const pedidosFiados = pedidosFiadosRaw as Pedido[]
+  // #1001: ¿el cliente del detalle abierto ya figura en Fiados? Misma fuente que la pestaña; no se asume sin datos.
+  const clienteDelDetalle = selectedPedido?.clienteId
+  const carteraSeleccionada = useMemo<'con' | 'sin' | 'desconocida'>(() => {
+    if (!clienteDelDetalle || !fiadosCargados || errorFiados) return 'desconocida'
+    return clienteTieneCartera(pedidosFiados, clienteDelDetalle) ? 'con' : 'sin'
+  }, [clienteDelDetalle, fiadosCargados, errorFiados, pedidosFiados])
 
   const {
     pedidos: pedidosAlertasRaw,
@@ -2628,7 +2634,7 @@ export function PedidosClient({ initialPedidos,initialConsulta,initialActorId }:
             estadoBadge={getEstadoEntregaBadge(selectedPedido.estadoEntrega)}
             canalBadge={getCanalBadge(selectedPedido.canal)}
             volverLabel={pedidoDocumento?.volver}
-            cartera={!fiadosCargados || errorFiados ? 'desconocida' : clienteTieneCartera(pedidosFiados, selectedPedido.clienteId) ? 'con' : 'sin'}
+            cartera={carteraSeleccionada}
             onOpenFactura={id => setFacturaConsulta({ id, volver: 'Volver a Pedidos',pedidoId:selectedPedido.id,pedidoNumero:selectedPedido.numero,consulta:`/pedidos?${shallowParams.toString()}`,desdePedido:true })}
             onClose={() => { setShowDetailModal(false); setPedidoDocumento(null) }}
             onAccion={(key) => {

@@ -104,7 +104,13 @@ export function PedidoDetalle({
   const saldo = Number(pedido.saldo)
   const importes = importesEntregaPedido(pedido)
   const entregado = pedido.estadoEntrega === 'ENTREGADO'
+  // #1001: «Registrar pago» solo donde el servidor acepta el cobro de UN pedido (`errorCobroPedido`): cliente real,
+  // entregado hoy (`entregadoAt ?? fecha`, día de Bogotá) y un rol que cobra. Si no, el enlace a Fiados de siempre.
+  const diaBogota = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
   const cobraAqui = cartera === 'sin'
+    && (userRole === 'ADMIN' || userRole === 'ASISTENTE')
+    && pedido.clienteId !== 'CONSUMIDOR_FINAL'
+    && diaBogota(pedido.entregadoAt ?? pedido.fecha) === diaBogota(new Date().toISOString())
   const pct = porcentajePagado(total, pagado)
   const links = linksContacto(pedido)
   const acciones = accionesDetalle(pedido.estadoEntrega, pedido.embarqueResumen?.estado, { gestionAdmin })

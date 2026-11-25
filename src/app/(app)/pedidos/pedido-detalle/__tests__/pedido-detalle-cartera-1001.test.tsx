@@ -1,5 +1,5 @@
 // @tests #1001 — el cobro de lo entregado depende de si el CLIENTE ya figura en Fiados.
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { PedidoDetalle } from '../pedido-detalle'
 import type { Pedido } from '../../pedidos-client/types'
@@ -25,7 +25,12 @@ const props = (pedido: Pedido, cartera?: 'con' | 'sin' | 'desconocida') => ({
 })
 
 describe('PedidoDetalle — cobro según la cartera del cliente (#1001)', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-24T18:00:00Z')) // mediodía de Bogotá: «hoy» es el 24
+  })
+  afterEach(() => vi.useRealTimers())
 
   it('parcial sin cartera: «Registrar pago» abre el cobro y no manda a Fiados', () => {
     const p = props(parcial, 'sin')
@@ -57,5 +62,24 @@ describe('PedidoDetalle — cobro según la cartera del cliente (#1001)', () => 
     render(<PedidoDetalle {...props(entregadoConSaldo, 'con')} />)
     expect(screen.getByText(/Ver cartera del cliente/).getAttribute('href')).toBe('/pedidos?tab=fiados&clienteId=c1')
     expect(screen.queryByTestId('detalle-registrar-pago-entregado')).toBeNull()
+  })
+
+  it('donde el servidor rechazaría el cobro no se ofrece «Registrar pago»: enlace a Fiados como antes', () => {
+    const casos: Array<[string, Pedido, string]> = [
+      ['consumidor final', { ...entregadoConSaldo, clienteId: 'CONSUMIDOR_FINAL' } as unknown as Pedido, 'ADMIN'],
+      ['entregado otro día', { ...parcial, entregadoAt: '2026-11-23T15:00:00Z', fecha: '2026-11-23T15:00:00Z' } as unknown as Pedido, 'ADMIN'],
+      ['rol que no cobra', parcial, 'VENDEDOR'],
+    ]
+    for (const [, pedido, userRole] of casos) {
+      const { unmount } = render(<PedidoDetalle {...props(pedido, 'sin')} userRole={userRole} />)
+      expect(screen.queryByTestId('detalle-registrar-pago')).toBeNull()
+      expect(screen.queryByTestId('detalle-registrar-pago-entregado')).toBeNull()
+      unmount()
+    }
+  })
+
+  it('el día de entrega manda sobre el de creación: creado ayer y entregado hoy sí se cobra aquí', () => {
+    render(<PedidoDetalle {...props({ ...parcial, fecha: '2026-11-23T15:00:00Z', entregadoAt: '2026-11-24T15:00:00Z' } as unknown as Pedido, 'sin')} />)
+    expect(screen.getByTestId('detalle-registrar-pago')).toBeTruthy()
   })
 })
