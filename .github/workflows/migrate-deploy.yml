@@ -11,6 +11,8 @@ on:
       # El release gate invalida el éxito anterior del pipeline.
       - '.github/workflows/migrate-deploy.yml'
       - 'scripts/ci/migration-ledger-preflight.mjs'
+      - 'scripts/ci/migration-ledger-recover.mjs'
+      - '.github/workflows/migrate-recover.yml'
       - 'scripts/ci/release-migration-policy.mjs'
       - 'scripts/ci/verify-vercel-prod-env.mjs'
       - 'scripts/ci/verify-vercel-project-access.mjs'
