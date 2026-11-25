@@ -90,7 +90,7 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
   const puedeCobrar = userRole === 'ADMIN' || userRole === 'ASISTENTE'
 
   const rows = useMemo(() => filasFiados(pedidos, periodo, entregadoPor), [pedidos, periodo, entregadoPor])
-  // Opciones de TODO el universo con deuda (no del filtrado) para poder cambiar de persona sin perderlas.
+  // Opciones de todo el universo con deuda (no del filtrado) para poder cambiar de persona sin perderlas.
   const opciones = useMemo(() => opcionesEntregadoPor(pedidos.filter(p => !['ANULADO', 'CANCELADO'].includes(p.estadoEntrega) && importeFiadoVisible(p) > 0)), [pedidos])
   const personaFiltro = opciones.personas.find(x => x.id === entregadoPor)
   const actoresFallaron = pedidos.some(p => p.actoresError)
