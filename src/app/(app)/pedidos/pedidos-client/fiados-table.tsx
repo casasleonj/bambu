@@ -12,6 +12,8 @@ import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 import { filtrarPorPeriodo, PERIODOS, type PeriodoFiltro } from './date-utils'
 import { PedidoDocumentLinks, type AccesoDocumentosPedido } from './pedido-document-links'
 import { useParametroConsulta } from './use-consulta-contexto'
+import { FiadosActoresDetalle } from './fiados-actores-detalle'
+import { coincideEntregadoPor, ENTREGO_SIN_IDENTIFICAR, opcionesEntregadoPor } from './fiados-actores-vista'
 import type { Pedido, Cliente } from './types'
 
 export function diasFiadoDesde(fecha: Date): number {
@@ -40,9 +42,11 @@ export function pedidosPorClasificar(row: Pick<FiadoRow, 'pedidos'>): number {
 export function clienteTieneCartera(pedidosFiados: Pedido[], clienteId: string): boolean {
   return filasFiados(pedidosFiados, 'todos').some(row => row.clienteId === clienteId)
 }
-export function filasFiados(pedidos: Pedido[], periodo: PeriodoFiltro): FiadoRow[] {
+/** `entregadoPor` (#614) filtra PEDIDOS antes de agrupar por cliente: la deuda de otra persona nunca se traslada. */
+export function filasFiados(pedidos: Pedido[], periodo: PeriodoFiltro, entregadoPor = ''): FiadoRow[] {
   const grouped = new Map<string, FiadoRow>()
   for (const p of filtrarPorPeriodo(pedidos, periodo)) {
+    if (!coincideEntregadoPor(p, entregadoPor)) continue
     if (['ANULADO', 'CANCELADO'].includes(p.estadoEntrega) || importeFiadoVisible(p) <= 0 || p.clienteId === 'CONSUMIDOR_FINAL') continue
     const row = grouped.get(p.clienteId)
     if (row) { row.pedidos.push(p); row.deuda += importeFiadoVisible(p); if (new Date(p.fecha) < row.antigua) row.antigua = new Date(p.fecha) }
@@ -71,6 +75,7 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
   const [search, setSearch] = useParametroConsulta<string>('fiadosBuscar', '')
   const [min, setMin] = useParametroConsulta<string>('fiadosMin', '')
   const [max, setMax] = useParametroConsulta<string>('fiadosMax', '')
+  const [entregadoPor, setEntregadoPor] = useParametroConsulta<string>('fiadosEntrego', '')
   const [dias, setDias] = useParametroConsulta<string>('fiadosDias', 'todos', ['todos', '0-7', '8-30', '30+'])
   const [expandido, setExpandido] = useParametroConsulta<string>('fiadosExpandido', '')
   // clienteId legacy solo aparece en enlaces directos: el cambio de pestaña
@@ -84,7 +89,11 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
   const [guardandoDeuda, setGuardandoDeuda] = useState(false)
   const puedeCobrar = userRole === 'ADMIN' || userRole === 'ASISTENTE'
 
-  const rows = useMemo(() => filasFiados(pedidos, periodo), [pedidos, periodo])
+  const rows = useMemo(() => filasFiados(pedidos, periodo, entregadoPor), [pedidos, periodo, entregadoPor])
+  // Opciones de todo el universo con deuda (no del filtrado) para poder cambiar de persona sin perderlas.
+  const opciones = useMemo(() => opcionesEntregadoPor(pedidos.filter(p => !['ANULADO', 'CANCELADO'].includes(p.estadoEntrega) && importeFiadoVisible(p) > 0)), [pedidos])
+  const personaFiltro = opciones.personas.find(x => x.id === entregadoPor)
+  const actoresFallaron = pedidos.some(p => p.actoresError)
   // Primero aplicar ámbito financiero y filtros; después ordenar por coincidencia.
   // Los importes se calculan sobre los mismos deudores visibles, sin modificar deuda.
   const elegibles = rows.filter(row => {
@@ -98,9 +107,9 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
     pesosTexto: [3, 3, 2],
     telefonos: [row.telefonoCli],
   }), (row) => row.clienteId)
-  const hayFiltros = periodo !== 'todos' || Boolean(search || min || max || clienteSolicitado) || dias !== 'todos'
+  const hayFiltros = periodo !== 'todos' || Boolean(search || min || max || clienteSolicitado || entregadoPor) || dias !== 'todos'
   const limpiar = () => params.set({ fiadosPeriodo: undefined, fiadosBuscar: undefined, fiadosMin: undefined,
-    fiadosMax: undefined, fiadosDias: undefined, fiadosCliente: undefined, clienteId: undefined }, { history: 'replace' })
+    fiadosMax: undefined, fiadosDias: undefined, fiadosEntrego: undefined, fiadosCliente: undefined, clienteId: undefined }, { history: 'replace' })
   const abrirConversion = async (row: FiadoRow) => {
     setConvertir(row); setTrabajadorId(''); setMontoDeuda(String(row.deuda))
     setDescripcion(`Fiado convertido: ${row.nombreCli}${row.nombreNegocioCli ? ' - ' + row.nombreNegocioCli : ''}`)
@@ -131,6 +140,7 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
       <p className="text-sm font-medium">Pedido #{p.numero} · {new Date(p.fecha).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}</p>
       <p className="text-sm text-gray-600">Fiado en consulta <MoneyDisplay value={p.corteOperativo?.fiado ?? importeFiadoVisible(p)} userRole={userRole} />{Boolean(p.corteOperativo?.sinClasificar) && <> · Por clasificar <MoneyDisplay value={p.corteOperativo!.sinClasificar} userRole={userRole} /></>} · Saldo del pedido <MoneyDisplay value={Number(p.saldo)} userRole={userRole} /> · Total <MoneyDisplay value={Number(p.total)} userRole={userRole} /></p>
       <p className="text-sm text-gray-600">Pagado <MoneyDisplay value={Number(p.totalPagado)} userRole={userRole} /> · {p.estadoEntrega === 'ENTREGADO' ? 'Entrega completa' : 'Entrega parcial'}</p>
+      <FiadosActoresDetalle p={p} userRole={userRole ?? undefined} />
       <PedidoDocumentLinks pedidoId={p.id} numero={p.numero} facturaId={p.factura?.id} facturaNumero={p.factura?.numero}
         userRole={userRole} onOpenPedido={onOpenPedido} onOpenFactura={onOpenFactura} />
     </div>)}
@@ -153,8 +163,16 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
       <p>{pedidos.length ? 'No se pudo actualizar. Se conservan los datos anteriores.' : 'No se pudieron cargar los fiados. No podemos confirmar si hay deudas.'}</p>
       <button className="min-h-11 px-3 font-medium underline" onClick={onPedidosChange}>Reintentar</button>
     </div>}
+    {actoresFallaron && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+      <p><b>No pudimos cargar quién entregó y cobró.</b> Los saldos siguen vigentes y puede seguir cobrando.</p>
+      <button className="min-h-11 rounded-lg border bg-white px-3 font-medium" onClick={onPedidosChange}>Reintentar</button></div>}
     {refetching && <p role="status" className="text-sm text-gray-500">Actualizando fiados…</p>}
-    <div className="grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-2 lg:grid-cols-6">
+      <label className="text-xs font-medium text-gray-600">Entregado por<select aria-label="Entregado por" value={entregadoPor} onChange={e => setEntregadoPor(e.target.value)} className={`mt-1 min-h-11 w-full rounded-lg border p-2 text-sm ${entregadoPor ? 'border-red-500 ring-2 ring-red-100' : ''}`}>
+        <option value="">Todos</option>
+        {opciones.personas.map(x => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+        {opciones.haySinIdentificar && <option value={ENTREGO_SIN_IDENTIFICAR}>Sin identificar</option>}
+        {entregadoPor && entregadoPor !== ENTREGO_SIN_IDENTIFICAR && !personaFiltro && <option value={entregadoPor}>Persona sin deudas en consulta</option>}</select></label>
       <label className="text-xs font-medium text-gray-600 sm:col-span-2 lg:col-span-2">Buscar cliente<input aria-label="Buscar cliente" placeholder="Buscar cliente..." value={search} onChange={e => setSearch(e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border p-2 text-sm" /></label>
       <label className="text-xs font-medium text-gray-600">Deuda mínima<input type="number" min="0" placeholder="Deuda min" value={min} onChange={e => setMin(e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border p-2 text-sm" /></label>
       <label className="text-xs font-medium text-gray-600">Deuda máxima<input type="number" min="0" placeholder="Deuda max" value={max} onChange={e => setMax(e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border p-2 text-sm" /></label>
@@ -165,11 +183,11 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
       const r = resumenFiados(filtrados)
       const etiquetaPeriodo = PERIODOS.find(p => p.key === periodo)?.label ?? ''
       return <div className={`rounded-xl border border-red-200 bg-red-50 p-4 ${refetching ? 'opacity-60' : ''}`} data-testid="fiados-total" aria-busy={Boolean(refetching)}>
-        <p className="text-xs font-medium text-red-800">Deuda pendiente{hayFiltros ? ' (según los filtros)' : ''}</p>
+        <p className="text-xs font-medium text-red-800">Deuda pendiente{hayFiltros ? ' (según los filtros)' : ''}{entregadoPor && ` · entregada por ${entregadoPor === ENTREGO_SIN_IDENTIFICAR ? 'persona sin identificar' : personaFiltro?.nombre ?? 'la persona elegida'}`}</p>
         <p className="text-2xl font-bold text-red-700"><MoneyDisplay value={r.total} userRole={userRole} /> <span className="text-sm font-normal text-red-800">· {r.clientes} cliente{r.clientes === 1 ? '' : 's'} · {r.pedidos} pedido{r.pedidos === 1 ? '' : 's'}</span></p>
         <p className="mt-1 text-xs text-red-800">{periodo === 'todos'
           ? 'Pedidos entregados de todas las fechas con saldo pendiente hoy.'
-          : `Pedidos entregados del período «${etiquetaPeriodo}» con saldo pendiente hoy.`} No incluye lo aún no entregado.</p>
+          : `Pedidos entregados del período «${etiquetaPeriodo}» con saldo pendiente hoy.`} No incluye lo aún no entregado.{entregadoPor && ' Los totales de cada persona pueden coincidir en pedidos compartidos: no se suman entre sí.'}</p>
       </div>
     })()}
     {loading && !pedidos.length ? <p role="status" className="rounded-xl border bg-white p-8 text-center">Cargando fiados…</p>
