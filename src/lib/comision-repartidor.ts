@@ -294,14 +294,20 @@ export async function comisionDeEmbarque(tx: TxComision, embarqueId: string): Pr
   return calcularPorFuentes(fuentes, tarifas, revisiones)
 }
 
-/** Comisión en [ini, fin]; quien llama decide la elegibilidad COMISION/MIXTO. */
-export async function calcularComisionRepartidor(tx: TxEntregasComision, trabajadorId: string, ini: Date, fin: Date, tarifas: TarifasRepartidor, opciones: { detallePedidos?: boolean } = {}): Promise<ComisionRepartidor> {
+/** Fuente canónica sin valorar: conserva identidad y atribución de #499/#669. */
+export async function leerFuentesComisionRepartidor(tx: TxEntregasComision, trabajadorId: string, ini: Date, fin: Date, opciones: { detallePedidos?: boolean } = {}): Promise<{ fuentes: FuenteComision[]; revisiones: RevisionComision[] }> {
   const detalle = opciones.detallePedidos === true // #622: solo cierre y cierre de embarque; la nómina no lo necesita
   const embarques = await tx.embarque.findMany({ where: { trabajadorId, fecha: { gte: ini, lte: fin }, estado: 'CERRADO' }, include: seleccion })
   const { fuentes, revisiones } = await fuentesDeMisiones(tx, embarques, detalle)
   const sinEmbarque = await fuentesSinEmbarque(tx, trabajadorId, ini, fin, detalle)
   fuentes.push(...sinEmbarque.fuentes)
   revisiones.push(...sinEmbarque.revisiones)
+  return { fuentes, revisiones }
+}
+
+/** Comisión en [ini, fin]; quien llama decide la elegibilidad COMISION/MIXTO. */
+export async function calcularComisionRepartidor(tx: TxEntregasComision, trabajadorId: string, ini: Date, fin: Date, tarifas: TarifasRepartidor, opciones: { detallePedidos?: boolean } = {}): Promise<ComisionRepartidor> {
+  const { fuentes, revisiones } = await leerFuentesComisionRepartidor(tx, trabajadorId, ini, fin, opciones)
   return calcularPorFuentes(fuentes, tarifas, revisiones)
 }
 
