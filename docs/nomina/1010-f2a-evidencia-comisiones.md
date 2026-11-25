@@ -23,6 +23,14 @@ La migración es aditiva: crea tabla nueva y FK, sin reescritura ni backfill. Tr
 3. Aplicar expansión aprobada y verificar tabla, FK, trigger y permisos **antes de desplegar código escritor**. El workflow migrate-deploy se dispara por push a main y Vercel puede desplegar en paralelo; no depender de ese orden implícito. Coordinar expansión y promoción para que no haya ventana en que falte la tabla. No silenciar errores de captura para permitir pagos sin evidencia.
 4. Validar CI/QA financiero del SHA y autorización de merge. Si debe revertirse el código, dejar la tabla y evidencia ya escrita intactas; no hacer DROP ni reconstruir el pasado.
 
+## Preflight productivo de solo lectura (25 nov 2026)
+
+- Proyecto Supabase activo: existe PagoComisionRepartidor, no existe PagoComisionEvidencia; historial Prisma disponible. No se ejecutó DDL.
+- PagoComisionRepartidor y PagoComisionFechaCorreccion: propietario postgres, RLS activado, sin políticas. postgres tiene BYPASSRLS; app_write existe sin login ni BYPASSRLS; app_read no existe. La única membresía observada de app_write es postgres.
+- Los ACL por defecto de postgres/supabase_admin conceden privilegios a anon, authenticated y service_role. Por eso la migración incorpora ENABLE ROW LEVEL SECURITY sin políticas de acceso público y REVOKE ALL explícito sobre tabla y función de trigger para PUBLIC y los roles Data API existentes. app_write conserva solo SELECT/INSERT a nivel GRANT, sujeto a RLS; app_read (si existe) solo SELECT, también sujeto a RLS. No habilitar una política permisiva para resolver un error de acceso.
+- La lectura mediante el conector se realizó como postgres; aún no acredita por sí sola la identidad de la conexión de Vercel. Verificar la identidad efectiva del backend antes de expandir y confirmar acceso servidor y denegación efectiva de roles públicos después de expansión, sin escribir datos de negocio.
+- Mantener el orden: CI del nuevo SHA verde → aprobación explícita de DDL → expansión SQL exacta en producción → verificar catálogos, privilegios, trigger y compatibilidad → merge autorizado → comprobar migrate deploy/Prisma y Vercel. La expansión debe poder reaplicarse por Prisma sin duplicar objetos. El rollback de código conserva la evidencia.
+
 ## Validación
 
 Pruebas nuevas: evidencia versionada, diferencias, tarifa implícita, reparto con tarifa posterior diferente, reintento, producción con pagos sucesivos, lectura de legado. Deben pasar pruebas existentes de pago, concurrencia, cierre, nómina, fechas efectivas y UI. Pendientes específicos: rollback ante fallo de persistencia, corrección por endpoint real con evidencia, migración SQL/GRANT reales, QA navegador independiente. CI y despliegue aún no certificados. No autoriza migración real, modificación de fórmula ni merge.
