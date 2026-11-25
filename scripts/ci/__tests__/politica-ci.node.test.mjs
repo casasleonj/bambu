@@ -11,12 +11,12 @@ const pr = { event: 'pull_request', action: 'opened', draft: 'true', fastDraft: 
 const verde = { detect: 'success', quality: 'success', integration: 'success', integrationOk: 'true', e2e: 'success', hub: 'success', run: 'true', deferred: 'false' }
 const saltado = { ...verde, e2e: 'skipped', hub: 'skipped', run: 'false' }
 
-test('diff del piloto: solo rutas permitidas y archivos normales A/M/D', () => {
+test('diff de borrador: archivos normales A/M/D; estructura rara y maquinaria del gate no', () => {
   const f = { estado: 'M', modoAnterior: '100644', modoNuevo: '100644', ruta: 'src/components/a.tsx' }
   assert.equal(diffAptoBorrador([f]), true)
   assert.equal(diffAptoBorrador([{ ...f, estado: 'A', modoAnterior: '000000' }]), true)
   assert.equal(diffAptoBorrador([{ ...f, estado: 'D', modoNuevo: '000000' }]), true)
-  for (const e of [null, { ...f, invalida: true }, { ...f, estado: 'R100' }, { ...f, modoNuevo: '100755' }, { ...f, modoNuevo: '120000' }, { ...f, ruta: '.github/workflows/ci.yml' }, { ...f, ruta: 'prisma/schema.prisma' }, { ...f, ruta: 'package-lock.json' }, { ...f, ruta: 'e2e/example.spec.ts' }, { ...f, ruta: 'src/archivo\nextra.ts' }]) {
+  for (const e of [null, { ...f, invalida: true }, { ...f, estado: 'R100' }, { ...f, modoNuevo: '100755' }, { ...f, modoNuevo: '120000' }, { ...f, ruta: '.github/workflows/ci.yml' }, { ...f, ruta: 'src/archivo\nextra.ts' }]) {
     assert.equal(diffAptoBorrador([f, e]), false)
   }
   assert.equal(diffAptoBorrador([]), false)
@@ -139,14 +139,57 @@ test('activar por defecto solo difiere borradores aptos; desactivar restaura ful
 
 // #1023/#1025 · la evidencia `.qa/pr-<N>.md` también cuenta en el diff apto de borrador,
 // con la MISMA regex exacta del clasificador (un solo criterio, dos consumidores).
-test('borrador: src/ + .qa/pr-<N>.md exacta es apto; el resto de .qa/ no', () => {
+test('borrador: src/ + evidencia .qa es apto; en .qa/ solo la estructura dudosa no (política #1023)', () => {
   const f = (ruta, extra = {}) => ({ estado: 'M', modoAnterior: '100644', modoNuevo: '100644', ruta, ...extra })
   assert.equal(diffAptoBorrador([f('src/lib/x.ts'), f('.qa/pr-1027.md', { estado: 'A', modoAnterior: '000000' })]), true)
   assert.equal(diffAptoBorrador([f('.qa/pr-1.md')]), true)
-  for (const ruta of ['.qa/README.md', '.qa/pr-abc.md', '.qa/pr-1.md.sh', '.qa/sub/pr-1.md', '.QA/pr-1.md', '.qa/pr-１.md', '.qa/pr-1.md\n']) {
-    assert.equal(diffAptoBorrador([f('src/lib/x.ts'), f(ruta)]), false, ruta)
+  // Hasta #1026 solo la ruta exacta `.qa/pr-<N>.md` era apta; desde #1023 lo es cualquier archivo normal.
+  for (const ruta of ['.qa/README.md', '.qa/pr-abc.md', '.qa/sub/pr-1.md']) {
+    assert.equal(diffAptoBorrador([f('src/lib/x.ts'), f(ruta)]), true, ruta)
   }
   for (const extra of [{ modoNuevo: '100755' }, { modoNuevo: '120000' }, { estado: 'R100' }]) {
     assert.equal(diffAptoBorrador([f('src/lib/x.ts'), f('.qa/pr-1.md', extra)]), false, JSON.stringify(extra))
   }
+  assert.equal(diffAptoBorrador([f('src/lib/x.ts'), f('.qa/pr-1.md\n')]), false) // carácter de control
+})
+
+// #1023 · el E2E largo se difiere en borrador para CUALQUIER diff con archivos normales,
+// salvo la maquinaria que define qué significa «pasar» (ci.yml, scripts/ci/**, su prueba vitest).
+// Al pasar a «Ready for review» el E2E completo corre siempre (planCI no difiere ese evento).
+test('borrador: cualquier ruta de producto o prueba es apta (prisma, e2e, config, lockfile)', () => {
+  const f = ruta => ({ estado: 'M', modoAnterior: '100644', modoNuevo: '100644', ruta })
+  for (const ruta of ['prisma/schema.prisma', 'prisma/migrations/20261126_x/migration.sql', 'e2e/example.spec.ts',
+    'package.json', 'package-lock.json', 'playwright.config.ts', 'vercel.json', 'tsconfig.json',
+    'scripts/otro/herramienta.ts', '.github/workflows/migrate-deploy.yml', 'src/lib/x.ts', 'docs/a.md', '.qa/pr-9.md']) {
+    assert.equal(diffAptoBorrador([f(ruta)]), true, ruta)
+  }
+  assert.equal(diffAptoBorrador([f('src/lib/x.ts'), f('prisma/schema.prisma'), f('e2e/a.spec.ts'), f('package.json')]), true)
+})
+test('borrador: la maquinaria del gate fuerza el E2E completo aunque venga mezclada con archivos aptos', () => {
+  const f = ruta => ({ estado: 'M', modoAnterior: '100644', modoNuevo: '100644', ruta })
+  for (const ruta of ['.github/workflows/ci.yml', '.GITHUB/workflows/CI.yml', 'scripts/ci/politica-ci.mjs',
+    'scripts/ci/clasificar-cambios.mjs', 'scripts/ci/__tests__/politica-ci.node.test.mjs',
+    'scripts/ci/migration-ledger-recover.mjs', 'SCRIPTS/CI/x.mjs', 'scripts/__tests__/clasificar-cambios.test.ts']) {
+    assert.equal(diffAptoBorrador([f(ruta)]), false, ruta)
+    assert.equal(diffAptoBorrador([f('src/lib/x.ts'), f(ruta)]), false, 'mezclado ' + ruta)
+  }
+})
+test('borrador: estructura dudosa sigue siendo no apta aunque la ruta sea de producto', () => {
+  const f = (ruta, extra = {}) => ({ estado: 'M', modoAnterior: '100644', modoNuevo: '100644', ruta, ...extra })
+  for (const e of [f('prisma/schema.prisma', { modoNuevo: '100755' }), f('e2e/a.spec.ts', { modoNuevo: '120000' }),
+    f('src/a.ts', { estado: 'R100' }), f('src/a.ts', { estado: 'C75' }), f('src/a.ts', { estado: 'T' }),
+    f('src/a.ts', { modoAnterior: '100755' }), f('', {}), f('/etc/passwd'), f('src/a\u0000.ts'), f('src/a\u007f.ts'),
+    { ...f('src/a.ts'), ruta: 123 }, { ...f('src/a.ts'), invalida: true }]) {
+    assert.equal(diffAptoBorrador([e]), false, JSON.stringify(e))
+  }
+  assert.equal(diffAptoBorrador([f('src/a.ts'), null]), false)
+})
+test('al pasar a listo el E2E completo siempre corre, sea cual sea el diff', () => {
+  for (const diffOk of ['true', 'false']) {
+    assert.deepEqual(planCI({ ...pr, action: 'ready_for_review', draft: 'false', diffOk }),
+      { e2e_run: 'true', draft_deferred: 'false', draft_candidate: 'false' })
+  }
+  // y un borrador apto difiere, mientras que uno que toca la maquinaria no.
+  assert.equal(planCI({ ...pr, diffOk: 'true' }).draft_deferred, 'true')
+  assert.equal(planCI({ ...pr, diffOk: 'false' }).draft_deferred, 'false')
 })
