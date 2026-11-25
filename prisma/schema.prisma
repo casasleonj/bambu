@@ -845,6 +845,7 @@ model Trabajador {
   // TEMPORAL-SIN-EMBARQUE(#472)
   pedidosEntregados Pedido[]                 @relation("PedidoEntregadoPor")
   pagosComision     PagoComisionRepartidor[] @relation("PagoComisionTrabajador")
+  tarifasComision   ComisionTarifaVersion[]
   pagosRecibidos    Pago[]                   @relation("PagoRecibidoPor")
 
   createdAt DateTime @default(now()) @db.Timestamptz()
@@ -857,6 +858,22 @@ model Trabajador {
 // ====================
 // NOMINA
 // ====================
+
+/// #1010 F2B.1 — diario prospectivo de configuración de comisiones.
+/// Los consumidores monetarios aún no usan estas versiones.
+model ComisionTarifaVersion {
+  id             BigInt      @id @default(autoincrement())
+  ambito         String
+  trabajadorId   String?
+  trabajador     Trabajador? @relation(fields: [trabajadorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  fechaVigencia  DateTime    @db.Date
+  registradoAt   DateTime    @default(now()) @db.Timestamptz()
+  origen         String
+  rolDb          String
+  datos          Json
+
+  @@index([ambito, trabajadorId, fechaVigencia, id], map: "ComisionTarifaVersion_consulta_idx")
+}
 
 /// #499 — Comisión del repartidor pagada de la caja un día. Un registro por pago (si
 /// luego sube la comisión del mismo día, se paga la diferencia con otro registro).
