@@ -37,10 +37,10 @@ describe('PedidoDetalle — cobro según la cartera del cliente (#1001)', () => 
     expect(p.onAccion).toHaveBeenCalledWith('registrar-pago')
   })
 
-  it('parcial sin cartera pero vendido fiado a propósito (promesa de pago): no ofrece un cobro que el servidor rechaza', () => {
+  it('parcial sin cartera y con promesa de pago: también «Registrar pago» (el servidor ya lo acepta, #1001)', () => {
     render(<PedidoDetalle {...props({ ...parcial, promesaPagoFecha: '2026-11-30T05:00:00.000Z' } as unknown as Pedido, 'sin')} />)
-    expect(screen.queryByTestId('detalle-registrar-pago')).toBeNull()
-    expect(screen.getByText('Consultar y cobrar en Fiados')).toBeTruthy()
+    expect(screen.getByTestId('detalle-registrar-pago').textContent).toBe('Registrar pago')
+    expect(screen.queryByText('Consultar y cobrar en Fiados')).toBeNull()
   })
 
   it.each(['con', 'desconocida', undefined] as const)('parcial con cartera o sin saber (%s): enlace a Fiados, nunca «no debe»', (cartera) => {

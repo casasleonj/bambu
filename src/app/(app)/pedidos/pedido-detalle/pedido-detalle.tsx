@@ -43,7 +43,6 @@ interface Props {
   /**
    * #1001: si el CLIENTE ya figura en Fiados (misma fuente que la pestaña). Sin cartera, lo de hoy se cobra con
    * «Registrar pago»; con cartera, o si no se sabe, el enlace avisa y lleva a Fiados. Nunca se afirma «no debe» sin saberlo.
-   * Un pedido vendido fiado a propósito (con promesa de pago) no se cobra aquí: el servidor lo rechaza (#597).
    */
   cartera?: 'con' | 'sin' | 'desconocida'
 }
@@ -105,7 +104,7 @@ export function PedidoDetalle({
   const saldo = Number(pedido.saldo)
   const importes = importesEntregaPedido(pedido)
   const entregado = pedido.estadoEntrega === 'ENTREGADO'
-  const cobraAqui = cartera === 'sin' && !pedido.promesaPagoFecha
+  const cobraAqui = cartera === 'sin'
   const pct = porcentajePagado(total, pagado)
   const links = linksContacto(pedido)
   const acciones = accionesDetalle(pedido.estadoEntrega, pedido.embarqueResumen?.estado, { gestionAdmin })
