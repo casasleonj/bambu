@@ -5,7 +5,10 @@ import type { Prisma } from '@prisma/client'
 import { exigiblesActivos } from '@/lib/exigibles-flag'
 import { clasificarCobrosDePedido, type ClasificacionCobro, type CobroDePedido } from '@/lib/cobro-clasificacion'
 
-type Db = Pick<Prisma.TransactionClient, 'pedido'>
+import { leerCierresOperativos } from './fiados-corte-operativo-db'
+import { dayInBogota } from './date-helpers'
+
+type Db = Pick<Prisma.TransactionClient, 'pedido' | 'cierreDia'>
 
 /** Clave de cobro: el id del Pago, o `abono:<id>` para un abono independiente (sin Pago de origen). */
 export const claveAbonoIndependiente = (abonoId: string): string => `abono:${abonoId}`
@@ -34,6 +37,12 @@ export async function clasificarCobrosDePedidos(db: Db, pedidoIds: readonly stri
       ...(exigiblesActivos() ? { entregasExigibles: { select: { id: true, entregadoAt: true, valorEntregado: true } } } : {}),
     },
   })
+  const dias = pedidos.flatMap(p => [
+    dayInBogota(p.entregadoAt ?? p.fecha),
+    ...('entregasExigibles' in p && Array.isArray(p.entregasExigibles)
+      ? p.entregasExigibles.map((e: { entregadoAt: Date }) => dayInBogota(e.entregadoAt)) : []),
+  ])
+  const cierresPorDia = await leerCierresOperativos(db, dias)
   for (const p of pedidos) {
     const cobros: CobroDePedido[] = [
       ...p.pagos.map((g) => ({ id: g.id, at: g.createdAt, monto: g.monto })),
@@ -43,7 +52,7 @@ export async function clasificarCobrosDePedidos(db: Db, pedidoIds: readonly stri
       ? p.entregasExigibles.map((e: { id: string; entregadoAt: Date; valorEntregado: unknown }) => ({ id: e.id, entregadoAt: e.entregadoAt, valor: e.valorEntregado }))
       : []
     const r = clasificarCobrosDePedido(
-      { fecha: p.fecha, estadoEntrega: p.estadoEntrega, total: p.total, entregadoAt: p.entregadoAt, porciones },
+      { fecha: p.fecha, estadoEntrega: p.estadoEntrega, total: p.total, entregadoAt: p.entregadoAt, porciones, cierresPorDia },
       cobros,
     )
     porPedido.set(p.id, r)

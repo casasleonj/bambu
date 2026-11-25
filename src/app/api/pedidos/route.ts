@@ -1,3 +1,4 @@
+import { leerFiadosVigentes } from '@/lib/fiados-vigentes-db'
 import { leerExigibles } from '@/lib/entregas-exigibles-db'
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
@@ -202,7 +203,15 @@ export async function GET(request: NextRequest) {
     const negocioById = new Map(negocios.map(n => [n.id, n]))
     const facturaByPedido = new Map(facturas.map(f => [f.pedidoId, f]))
 
-    const exigibles = await leerExigibles(prisma, { id: { in: result.pedidos.map(p => p.id) } })
+    const whereDeuda = { id: { in: result.pedidos.map(p => p.id) } }
+    const deuda = scopeFilter === 'fiados'
+      ? await prisma.$transaction(tx => leerFiadosVigentes(tx, whereDeuda), {
+          isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        })
+      : null
+    const exigibles = deuda
+      ? new Map([...deuda.porPedido].map(([id, d]) => [id, d.exigible]))
+      : await leerExigibles(prisma, whereDeuda)
     const enriched = result.pedidos.map(p => {
       const cliente = clienteById.get(p.clienteId)
       const negocio = p.negocioId ? negocioById.get(p.negocioId) : undefined
@@ -224,6 +233,7 @@ export async function GET(request: NextRequest) {
       return {
         ...p,
         exigible: exigibles.get(p.id) ?? 0,
+        ...(deuda ? { corteOperativo: deuda.porPedido.get(p.id) ?? null } : {}),
         ...(scoped ? { factura: facturaByPedido.get(p.id) ?? null } : {}),
         nombreCli: getAnonymousClientDisplayName(p.clienteId, 'short') ?? (cliente?.nombre || 'Desconocido'),
         apellidoCli: cliente?.apellido || null,

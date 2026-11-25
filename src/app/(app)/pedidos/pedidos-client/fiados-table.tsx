@@ -27,15 +27,28 @@ export interface FiadoRow {
   negocioId?: string | null; nombreNegocioCli?: string | null; pedidos: Pedido[]; deuda: number; antigua: Date
 }
 /** Filas de la consulta de Fiados: una por cliente, solo deuda exigible de lo entregado. Fuente única del total (#613, #781). */
+/** El saldo exigible permanece intacto para cobro y límites. El legado sin clasificación sigue visible. */
+export function importeFiadoVisible(p: Pedido): number {
+  return p.corteOperativo ? p.corteOperativo.fiado + p.corteOperativo.sinClasificar
+    : p.exigible ?? (p.estadoEntrega === 'ENTREGADO' ? Number(p.saldo) : 0)
+}
+/** #1002: pedidos de la fila cuya deuda no se pudo clasificar (se muestra «por clasificar» en texto plano). */
+export function pedidosPorClasificar(row: Pick<FiadoRow, 'pedidos'>): number {
+  return row.pedidos.filter(p => (p.corteOperativo?.sinClasificar ?? 0) > 0).length
+}
+/** #1001: el cliente «tiene cartera» si figura en la pestaña Fiados (misma fuente y mismas filas). */
+export function clienteTieneCartera(pedidosFiados: Pedido[], clienteId: string): boolean {
+  return filasFiados(pedidosFiados, 'todos').some(row => row.clienteId === clienteId)
+}
 export function filasFiados(pedidos: Pedido[], periodo: PeriodoFiltro): FiadoRow[] {
   const grouped = new Map<string, FiadoRow>()
   for (const p of filtrarPorPeriodo(pedidos, periodo)) {
-    if (['ANULADO', 'CANCELADO'].includes(p.estadoEntrega) || (p.exigible ?? (p.estadoEntrega === 'ENTREGADO' ? Number(p.saldo) : 0)) <= 0 || p.clienteId === 'CONSUMIDOR_FINAL') continue
+    if (['ANULADO', 'CANCELADO'].includes(p.estadoEntrega) || importeFiadoVisible(p) <= 0 || p.clienteId === 'CONSUMIDOR_FINAL') continue
     const row = grouped.get(p.clienteId)
-    if (row) { row.pedidos.push(p); row.deuda += p.exigible ?? Number(p.saldo); if (new Date(p.fecha) < row.antigua) row.antigua = new Date(p.fecha) }
+    if (row) { row.pedidos.push(p); row.deuda += importeFiadoVisible(p); if (new Date(p.fecha) < row.antigua) row.antigua = new Date(p.fecha) }
     else grouped.set(p.clienteId, { clienteId: p.clienteId, nombreCli: p.nombreCli, apellidoCli: p.apellidoCli,
       telefonoCli: p.telefonoCli, negocioId: p.negocioId, nombreNegocioCli: p.nombreNegocioCli,
-      pedidos: [p], deuda: p.exigible ?? Number(p.saldo), antigua: new Date(p.fecha) })
+      pedidos: [p], deuda: importeFiadoVisible(p), antigua: new Date(p.fecha) })
   }
   return [...grouped.values()]
 }
@@ -116,7 +129,7 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
   const detalle = (row: FiadoRow) => <div className="space-y-3 rounded-lg bg-gray-50 p-3">
     {[...row.pedidos].sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero - b.numero).map(p => <div key={p.id} className="border-b py-2 last:border-0">
       <p className="text-sm font-medium">Pedido #{p.numero} · {new Date(p.fecha).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}</p>
-      <p className="text-sm text-gray-600">Por cobrar <MoneyDisplay value={p.exigible ?? Number(p.saldo)} userRole={userRole} /> · Saldo del pedido <MoneyDisplay value={Number(p.saldo)} userRole={userRole} /> · Total <MoneyDisplay value={Number(p.total)} userRole={userRole} /></p>
+      <p className="text-sm text-gray-600">Fiado en consulta <MoneyDisplay value={p.corteOperativo?.fiado ?? importeFiadoVisible(p)} userRole={userRole} />{Boolean(p.corteOperativo?.sinClasificar) && <> · Por clasificar <MoneyDisplay value={p.corteOperativo!.sinClasificar} userRole={userRole} /></>} · Saldo del pedido <MoneyDisplay value={Number(p.saldo)} userRole={userRole} /> · Total <MoneyDisplay value={Number(p.total)} userRole={userRole} /></p>
       <p className="text-sm text-gray-600">Pagado <MoneyDisplay value={Number(p.totalPagado)} userRole={userRole} /> · {p.estadoEntrega === 'ENTREGADO' ? 'Entrega completa' : 'Entrega parcial'}</p>
       <PedidoDocumentLinks pedidoId={p.id} numero={p.numero} facturaId={p.factura?.id} facturaNumero={p.factura?.numero}
         userRole={userRole} onOpenPedido={onOpenPedido} onOpenFactura={onOpenFactura} />
@@ -167,9 +180,9 @@ export function FiadosTable({ clientes, limiteGlobal, pedidos, loading, refetchi
       </div> : <div className="rounded-xl border bg-white p-4">
         <p className="mb-3 text-sm font-semibold">{filtrados.length} cliente{filtrados.length === 1 ? '' : 's'} con deuda entregada{periodo !== 'todos' ? ' en el período elegido' : ''}</p>
         <div className="hidden overflow-x-auto md:block" data-testid="fiados-desktop"><table className="w-full text-sm"><thead><tr className="border-b bg-gray-50 text-left text-gray-600"><th className="p-3">Cliente</th><th className="p-3">{periodo === 'todos' ? 'Deuda total' : 'Deuda en el período'}</th><th className="p-3">Pedidos</th><th className="p-3">Días fiado</th><th className="p-3">Acción</th></tr></thead>
-          {filtrados.map(row => <tbody key={row.clienteId}><tr className="border-b"><td className="p-3"><PedidoClienteDisplay {...row} variant="row" /><small className="text-gray-500">{row.telefonoCli}</small></td><td className="p-3 font-bold text-red-600"><MoneyDisplay value={row.deuda} userRole={userRole} /></td><td className="p-3">{row.pedidos.length} en consulta<div>{limiteBadge(row)}</div></td><td className="p-3">{diasFiadoDesde(row.antigua)}</td><td className="p-3">{acciones(row)}</td></tr>{expandido === row.clienteId && <tr><td colSpan={5} className="p-3">{detalle(row)}</td></tr>}</tbody>)}
+          {filtrados.map(row => <tbody key={row.clienteId}><tr className="border-b"><td className="p-3"><PedidoClienteDisplay {...row} variant="row" /><small className="text-gray-500">{row.telefonoCli}</small></td><td className="p-3 font-bold text-red-600"><MoneyDisplay value={row.deuda} userRole={userRole} /></td><td className="p-3">{row.pedidos.length} en consulta{pedidosPorClasificar(row) > 0 && <>, {pedidosPorClasificar(row)} por clasificar</>}<div>{limiteBadge(row)}</div></td><td className="p-3">{diasFiadoDesde(row.antigua)}</td><td className="p-3">{acciones(row)}</td></tr>{expandido === row.clienteId && <tr><td colSpan={5} className="p-3">{detalle(row)}</td></tr>}</tbody>)}
         </table></div>
-        <div className="space-y-4 md:hidden" data-testid="fiados-mobile">{filtrados.map(row => <article key={row.clienteId} className="space-y-3 border-b pb-4 last:border-0"><div className="flex justify-between gap-2"><div><PedidoClienteDisplay {...row} variant="row" /><small className="text-gray-500">{row.telefonoCli}</small></div><strong className="text-red-600"><MoneyDisplay value={row.deuda} userRole={userRole} /></strong></div><p className="text-sm text-gray-600">{row.pedidos.length} pedidos · {diasFiadoDesde(row.antigua)} días</p>{limiteBadge(row)}{acciones(row)}{expandido === row.clienteId && detalle(row)}</article>)}</div>
+        <div className="space-y-4 md:hidden" data-testid="fiados-mobile">{filtrados.map(row => <article key={row.clienteId} className="space-y-3 border-b pb-4 last:border-0"><div className="flex justify-between gap-2"><div><PedidoClienteDisplay {...row} variant="row" /><small className="text-gray-500">{row.telefonoCli}</small></div><strong className="text-red-600"><MoneyDisplay value={row.deuda} userRole={userRole} /></strong></div><p className="text-sm text-gray-600">{row.pedidos.length} pedidos{pedidosPorClasificar(row) > 0 && <>, {pedidosPorClasificar(row)} por clasificar</>} · {diasFiadoDesde(row.antigua)} días</p>{limiteBadge(row)}{acciones(row)}{expandido === row.clienteId && detalle(row)}</article>)}</div>
       </div>}
     {convertir && <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4"><h3 className="font-semibold">Crear deuda de trabajador</h3><p className="text-sm">Se creará una deuda de trabajador tipo FIADO. Se descontará de nómina según el plan configurado.</p><label className="block text-sm">Trabajador responsable<select value={trabajadorId} onChange={e => setTrabajadorId(e.target.value)} className="mt-1 min-h-11 w-full rounded border p-2"><option value="">Seleccionar…</option>{trabajadores.map(t => <option key={t.id} value={t.id}>{t.nombre} · {t.rol}</option>)}</select></label><label className="block text-sm">Monto<input type="number" value={montoDeuda} onChange={e => setMontoDeuda(e.target.value)} className="mt-1 min-h-11 w-full rounded border p-2" /></label><label className="block text-sm">Descripción<input value={descripcion} onChange={e => setDescripcion(e.target.value)} className="mt-1 min-h-11 w-full rounded border p-2" /></label><div className="flex gap-2"><button className="min-h-11 rounded border px-4" onClick={() => setConvertir(null)}>Cancelar</button><button className="min-h-11 rounded bg-amber-600 px-4 text-white" disabled={guardandoDeuda} onClick={() => void crearDeuda()}>{guardandoDeuda ? 'Procesando…' : 'Crear deuda'}</button></div></div>}
   </section>

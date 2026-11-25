@@ -53,7 +53,8 @@ test.describe('Importes de entregas parciales', () => {
     await expect(row).toContainText('6 pedidas · 4 entregadas · 2 por entregar')
     await expect(row).toContainText(/Por cobrar de lo entregado\s*\$\s*8\.000/)
     await expect(row).toContainText(/Pendiente de entrega:\s*\$\s*4\.000/)
-    await expect(appMain(page).getByTestId('tab-fiados')).toContainText('1')
+    // #796: lo entregado hoy es exigible (arriba) pero aún no es fiado: la pestaña no cuenta este cliente.
+    await expect(appMain(page).getByTestId('tab-fiados')).toHaveText(/^\s*Fiados\s*$/)
     await expect(row.getByRole('button', { name: /Planificar en embarque/ })).toBeVisible()
     const resumen = appMain(page).getByTestId('consulta-resumen')
     await expect(resumen).toContainText(/Por cobrar de lo entregado/)
@@ -63,7 +64,9 @@ test.describe('Importes de entregas parciales', () => {
     await factura.getByRole('button', { name: `Volver al pedido #${pedido.numero}`, exact: true }).click()
     const detalle = page.getByRole('dialog', { name: `Pedido #${pedido.numero}`, exact: true })
     await expect(detalle.getByTestId('detalle-importes-parcial')).toContainText(/Por cobrar de lo entregado\s*\$\s*8\.000/)
-    await expect(detalle.getByRole('link', { name: 'Consultar y cobrar en Fiados' })).toHaveAttribute('href', `/pedidos?tab=fiados&clienteId=${cliente.id}`)
+    // #1001: el cliente no tiene cartera (solo lo de hoy): se cobra con «Registrar pago», no se manda a Fiados.
+    await expect(detalle.getByTestId('detalle-registrar-pago')).toHaveText('Registrar pago')
+    await expect(detalle.getByRole('link', { name: 'Consultar y cobrar en Fiados' })).toHaveCount(0)
     await detalle.getByRole('button', { name: 'Volver a Pedidos', exact: true }).click()
     await page.reload()
     await expect(row).toContainText(/Por cobrar de lo entregado\s*\$\s*8\.000/)

@@ -20,7 +20,7 @@ type PagoMetodoMonto = { metodo: MetodoPago; monto: unknown }
 const LIMITE_DETALLE_POR_CONFIRMAR = 50
 const SELECT_POR_CONFIRMAR = {
   id: true, metodo: true, monto: true, createdAt: true,
-  pedido: { select: { id: true, numero: true, cliente: { select: { id: true, nombre: true, apellido: true } }, factura: { select: { numero: true } } } },
+  pedido: { select: { id: true, numero: true, negocioId: true, negocio: { select: { nombre: true } }, cliente: { select: { id: true, nombre: true, apellido: true } }, factura: { select: { numero: true } } } },
 } satisfies Prisma.PagoSelect
 type DiasPreviosAgg = { _count: number; _sum: { monto: unknown } }
 
@@ -83,7 +83,7 @@ export async function construirResumenCierre(prisma: Prisma.TransactionClient, f
           estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] },
         },
         // #631: el nombre del cliente es para la lista «A quién se fió hoy».
-        include: { cliente: { select: { nombre: true, apellido: true } }, items: true },
+        include: { cliente: { select: { nombre: true, apellido: true } }, negocio: { select: { nombre: true } }, items: true },
         // F-B: los métodos de pago ya no salen de aquí (ver `pagosCapturadosHoy`).
       }),
       // #645: puede haber varias producciones el mismo día (otro sellador u otro turno); el cierre las suma.

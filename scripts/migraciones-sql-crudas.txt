@@ -47,3 +47,5 @@
 20261120_pedido_hora_acordada
 # #795: cantidades gratuitas y evidencia independiente de autorización (CHECK).
 20261118_pedido_regalos
+# #1010 F2A: protección inmutable de evidencia por pago, también en CI.
+20261125000100_evidencia_comision_pago
