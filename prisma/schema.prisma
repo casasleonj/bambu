@@ -881,6 +881,7 @@ model PagoComisionRepartidor {
   createdAt     DateTime                      @default(now()) @db.Timestamptz()
   /// #834: correcciones administrativas del día real (solo añaden filas; `createdAt` y `fecha` nunca cambian).
   correcciones  PagoComisionFechaCorreccion[]
+  evidencia     PagoComisionEvidencia?
 
   @@index([trabajadorId, fecha])
   @@index([fechaPagoReal])
@@ -891,6 +892,13 @@ model PagoComisionRepartidor {
 /// Append-only: guarda el día real anterior (NULL = estaba «sin verificar» y la caja contaba la captura) y el nuevo, quién,
 /// cuándo y por qué. No reabre cierres: un día ya cerrado conserva su cifra y V16 compara con el día que el pago tenía
 /// cuando se hizo el cierre.
+/// #1010 F2A: evidencia del cálculo AL REGISTRAR un pago, no un segundo movimiento de dinero.
+model PagoComisionEvidencia {
+  pagoId String @id
+  pago PagoComisionRepartidor @relation(fields: [pagoId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  datos Json
+}
+
 model PagoComisionFechaCorreccion {
   id                String                 @id @default(cuid())
   pagoId            String
