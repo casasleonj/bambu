@@ -57,8 +57,8 @@ export function CierreConfirmacion({ resumen, onResolver }: {
           <p data-testid="cierre-confirmacion-cobrado" className="mt-3 rounded-lg bg-blue-50 p-3 text-xs leading-relaxed text-blue-900">
             {resumen.cobrado && <>Cobrado hoy: <b>{formatCurrency(resumen.cobrado.efectivo + resumen.cobrado.digital)}</b> (efectivo {formatCurrency(resumen.cobrado.efectivo)}{resumen.cobrado.digital !== 0 ? <> · digital {formatCurrency(resumen.cobrado.digital)}</> : null}). </>}
             {resumen.fiado && (resumen.fiado.pedidos > 0
-              ? <>Quedó fiado hoy: <b>{formatCurrency(resumen.fiado.total)}</b> en {resumen.fiado.pedidos} pedido{resumen.fiado.pedidos === 1 ? '' : 's'}.</>
-              : <>Hoy no se fió ningún pedido.</>)}
+              ? <>Al cerrar, pasan a Fiados: <b>{formatCurrency(resumen.fiado.total)}</b> en {resumen.fiado.pedidos} pedido{resumen.fiado.pedidos === 1 ? '' : 's'}.</>
+              : <>Al cerrar, ningún pedido pasa a Fiados.</>)}
           </p>
         )}
         <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">Después de cerrar no podrás cambiar pedidos, gastos ni el conteo de este día. El cierre se registra una sola vez.</p>

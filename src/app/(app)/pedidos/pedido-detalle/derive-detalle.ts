@@ -2,7 +2,7 @@ import type { Pedido } from '../pedidos-client/types'
 import { formatoTramo } from '@/lib/tramo-volumen'
 import { telefonoWhatsapp } from '@/lib/whatsapp'
 
-export type AccionDetalleKey = 'editar' | 'enviar' | 'cancelar' | 'entregar' | 'entregar-retiro' | 'volver-pendiente' | 'anular' | 'registrar-entrega' | 'corregir-canal'
+export type AccionDetalleKey = 'editar' | 'enviar' | 'cancelar' | 'entregar' | 'entregar-retiro' | 'volver-pendiente' | 'anular' | 'registrar-entrega' | 'corregir-canal' | 'registrar-pago'
 
 export interface AccionDetalle {
   key: AccionDetalleKey

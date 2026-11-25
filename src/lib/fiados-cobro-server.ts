@@ -73,8 +73,11 @@ export interface ErrorCobroPedido { code: string; message: string; status: 400 |
 
 /**
  * #597: el cobro de UN pedido (lista de Pedidos) solo aplica a un pedido entregado HOY, con saldo, de un
- * cliente real, que no se vendió fiado a propósito y sin otra deuda que el reparto por antigüedad pagaría
- * antes (si no, el dinero iría al pedido equivocado). Todo lo demás es un fiado y se cobra en Fiados.
+ * cliente real y sin otra deuda que el reparto por antigüedad pagaría antes (si no, el dinero iría al pedido
+ * equivocado). Todo lo demás es un fiado y se cobra en Fiados.
+ * #1001 (decisión del PO, 24-nov-2026): una promesa de pago (venta fiada a propósito) YA NO bloquea el cobro de lo
+ * entregado hoy. Hasta el corte ese cliente no figura en Fiados, así que sin esto no había dónde cobrarlo. Los
+ * resguardos de integridad (solo este pedido, entregado hoy, sin deuda anterior, monto ≤ saldo) no cambian.
  * `montoCentavos` se valida solo al registrar: el cobro de un pedido nunca genera saldo a favor.
  */
 export function errorCobroPedido(prep: PreparacionCobroFiado, clienteId: string, montoCentavos?: number): ErrorCobroPedido | null {
@@ -86,8 +89,6 @@ export function errorCobroPedido(prep: PreparacionCobroFiado, clienteId: string,
   // Día de la entrega; si no se registró (ventas inmediatas antiguas), el del pedido.
   if (diaBogota(new Date(pedido.entregadoAt ?? pedido.fecha)) !== todayStringBogota()) return { code: 'PEDIDO_NO_ES_DEL_DIA', status: 409,
     message: 'Este pedido no se entregó hoy, por eso es un fiado. Cóbralo en la pestaña Fiados.' }
-  if (pedido.promesaPagoFecha) return { code: 'PEDIDO_VENDIDO_FIADO', status: 409,
-    message: 'Este pedido se vendió fiado. Cóbralo en la pestaña Fiados.' }
   if (prep.deudaAnterior && prep.deudaAnterior.cantidad > 0) return { code: 'CLIENTE_CON_DEUDA_ANTERIOR', status: 409,
     message: `Este cliente tiene deuda anterior (la más antigua es el pedido #${prep.deudaAnterior.masAntiguaNumero}). El pago se aplica primero a la más antigua: cóbralo en la pestaña Fiados.` }
   if (montoCentavos !== undefined && montoCentavos > Math.round((pedido.exigible ?? pedido.saldo) * 100)) return { code: 'MONTO_EXCEDE_PEDIDO', status: 400,

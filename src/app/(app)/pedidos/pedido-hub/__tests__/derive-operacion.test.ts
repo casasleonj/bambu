@@ -57,8 +57,13 @@ describe('deriveOperacion', () => {
     expect(ayer.accionDestacada?.key).toBe('cobrar-en-fiados')
   })
 
-  it('un pedido de hoy vendido fiado a propósito (promesa de pago) se cobra en Fiados (#597)', () => {
+  it('un pedido de hoy con promesa de pago también se cobra con «Registrar pago»: hasta el corte no está en Fiados (#1001, reemplaza la excepción de #597)', () => {
     const d = deriveOperacion(base({ estadoEntrega: 'ENTREGADO', saldo: 6000, fecha: '2026-09-07T15:00:00.000Z', promesaPagoFecha: '2026-09-10T05:00:00.000Z' }), ctx)
+    expect(d.accionDestacada?.key).toBe('registrar-pago')
+  })
+
+  it('un pedido de un día anterior con promesa de pago sigue siendo un fiado (#1001)', () => {
+    const d = deriveOperacion(base({ estadoEntrega: 'ENTREGADO', saldo: 6000, fecha: '2026-09-05T15:00:00.000Z', promesaPagoFecha: '2026-09-10T05:00:00.000Z' }), ctx)
     expect(d.accionDestacada?.key).toBe('cobrar-en-fiados')
   })
 
