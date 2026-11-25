@@ -54,6 +54,19 @@ Comando: `/qa <issues o rutas> [entorno]`.
 - contiene: objetivo · resumen de cambios · criterios de aceptación · dependencias · validaciones ejecutadas · limitaciones conocidas · info para QA
 - describir autoría y asistencia realmente utilizada. **Nunca atribuir a Claude Code, Codex u otro agente un trabajo que no realizó**; no imponer una firma falsa como requisito universal.
 
+### 5.1 CADENCIA DE PRs Y CI PROGRESIVO (#1023, parte de #896)
+
+**Por qué:** el ruleset de `main` exige la rama al día (`strict=true`). Cuando otro PR se fusiona, un PR ya verde vuelve a correr el CI completo. En la muestra del 2026-11-25 (9 corridas completas exitosas de PR, un solo día con mucho tráfico) tardaron entre 22 y 40 min. No son p50/p95 representativos; la línea base real está pendiente en #1023. El repo es público y los runners estándar no se cobran, así que el costo es **latencia**. **Costo adicional cero:** sin runners "larger", sin Apps de pago y sin mover el repo a una organización.
+
+**Regla (la cumplen por defecto personas y agentes):**
+1. **Abrir como borrador (Draft) mientras se itera.** `ci.yml` no repite el E2E completo por commit en borrador (CI progresivo #896).
+2. **Pasar a «Ready for review» una sola vez**, con todo ya incluido en el árbol: código, pruebas, docs, `.qa/pr-N.md` y descripción. Cada push posterior cancela y reinicia la corrida certificadora.
+3. **Un PR listo a la vez hacia `main`.** Antes de marcar listo un PR, comprobar que no haya otro PR abierto, no borrador, hacia `main` con CI en curso. Si lo hay, esperar a que se fusione o vuelva a borrador. Excepción: un P0 con autorización expresa del PO.
+4. **Si `main` avanza antes del merge:** integrar `main`, repetir las pruebas y esperar el CI del nuevo head. No bajar `strict`, no saltar gates y no fusionar con evidencia caducada.
+5. **Límites:** esta regla no cambia el ruleset ni los gates. No hay un check que la fuerce; se cumple por proceso y revisión. Las sesiones de agentes no se coordinan entre sí salvo a través de GitHub, por eso el punto 3 se comprueba allí.
+
+**Pendiente (fuera de esta regla):** línea base p50/p95, causa de corridas duplicadas del mismo SHA (p. ej. #1019, corridas 2411 y 2412) y posible contención de runners. Se siguen en #1023.
+
 ### 6. CI / REVIEW
 - esperar y revisar todos los checks: Typecheck · Lint · Unit · Integration · E2E · build/deploy checks cuando correspondan
 - **bloqueantes verdes:** Typecheck + Unit + Integration
