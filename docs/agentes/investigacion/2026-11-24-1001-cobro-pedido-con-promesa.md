@@ -1,6 +1,6 @@
 # #1001 · Cobro directo de un pedido entregado hoy con promesa de pago
 
-**Estado:** `IMPLEMENTADO` · `VALIDADO` en pruebas automáticas y en navegador local · `QA PENDIENTE` en preview · sin merge.
+**Estado:** `IMPLEMENTADO` · `VALIDADO` en pruebas automáticas y en navegador local · `QA PENDIENTE` en preview/CI · sin PR ni merge.
 
 ## Qué reemplaza
 
@@ -31,6 +31,12 @@ PO, en la sesión del 24-nov-2026, opción «a» de #1001, reconfirmada tras exp
 ## Pruebas
 
 `src/lib/__tests__/integration/cobro-pedido-del-dia-597.test.ts`: 6 casos nuevos con promesa (cobro completo, parcial con promesa vigente, reintento idéntico, deuda anterior sigue bloqueando, entrega de otro día sigue bloqueando, monto excedido). Contra la regla vieja fallan 5 de esos 6; el de «otro día» pasa en ambas porque ese resguardo no cambió.
+
+## Evidencia ejecutada (local, datos sintéticos)
+
+- **Integración, suite completa (206 archivos):** 187 pasan y 19 fallan (44 tests). Con el archivo del servidor **original** fallan exactamente los mismos 19 archivos y los mismos 44 tests: no hay fallos nuevos. Son del entorno local (base creada con `db push`: faltan `pg_trgm`, `search_clientes`, CHECK, triggers e índices de las migraciones); el CI usa la base migrada.
+- **Navegador (Chromium, ADMIN, escritorio):** dos pedidos de hoy con promesa de pago. El diálogo abre sin bloqueo («El pago se aplica solo a este pedido»); cobro completo ($6.000) y parcial ($4.000 de $10.000) responden 200 y aplican solo al pedido; saldo 0 / PAGADO y saldo 6.000 con promesa conservada; 2 pagos; saldo a favor 0. El Cierre del día muestra Ventas $16.000 = Cobrado hoy $10.000 + Quedó fiado $6.000 («Cuadra con Cobrado hoy») y «Pasarán a Fiados al cerrar» lista solo el pedido parcial.
+- **No ejecutado:** móvil en este recorrido de cobro, el cron de vencimientos real y CI/preview.
 
 ## Reversión
 
