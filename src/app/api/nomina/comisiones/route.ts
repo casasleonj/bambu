@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireRole } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { parseDateParam, todayStringBogota } from '@/lib/dates'
@@ -15,7 +15,9 @@ const textoValido = (v: string) => v.length > 0 && v.length <= 128 && v.trim() =
 
 /** #1010 F1: consulta independiente de liquidaciones; ninguna escritura. */
 export async function GET(request: NextRequest) {
-  const auth = await requireRole(['ADMIN', 'CONTADOR'])
+  const session = await requireAuth()
+  if (session instanceof Response) return session
+  const auth = await requireRole(['ADMIN', 'CONTADOR'], session)
   if (auth instanceof Response) return auth
   const p = new URL(request.url).searchParams
   const modo = p.get('modo') ?? 'lista'
