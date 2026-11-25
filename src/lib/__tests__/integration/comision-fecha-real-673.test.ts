@@ -9,7 +9,7 @@ vi.mock('@/lib/auth', () => ({ auth: () => mockAuth() }))
 vi.mock('@/lib/notifications/notify-event', () => ({ notifyEvent: vi.fn(async () => {}) }))
 vi.mock('@/lib/realtime', () => ({ publishRealtimeEvent: vi.fn(async () => {}) }))
 
-import { testPrisma as db, resetAndSeed, disconnect, getAdminUser, registrarBaseDia } from './setup'
+import { testPrisma as db, resetAndSeed, disconnect, getAdminUser, registrarBaseDia, limpiarPagosComisionDePrueba } from './setup'
 import { POST } from '@/app/api/nomina/dia/pagar/route'
 import { GET as consultarCierre, POST as cerrar } from '@/app/api/cierre/route'
 import { comisionPagadaEnCaja, comisionPagadaOtrosMedios, pagadoComisionDia, leerPagosComisionCaja } from '@/lib/comision-pagada'
@@ -40,7 +40,7 @@ describe('#673 — fecha real de desembolso de comisiones', () => {
   beforeAll(async () => { await resetAndSeed(); adminId = (await getAdminUser()).id })
   beforeEach(async () => {
     mockAuth.mockResolvedValue({ user: { id: adminId, role: 'ADMIN' }, expires: '2099-01-01T00:00:00Z' })
-    await db.pagoComisionRepartidor.deleteMany({})
+    await limpiarPagosComisionDePrueba()
     await db.cierreDia.deleteMany({})
     await db.historial.deleteMany({ where: { entidad: 'PagoComisionRepartidor' } })
   })
