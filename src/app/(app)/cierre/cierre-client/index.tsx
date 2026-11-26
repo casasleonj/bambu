@@ -601,9 +601,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       ok: esperadoAgua === stockFinAgua && esperadoHielo === stockFinHielo && esperadoBotellon === stockFinBotellon,
       optional: true,
       detail: (() => {
-        const diffAgua = esperadoAgua - stockFinAgua
-        const diffHielo = esperadoHielo - stockFinHielo
-        const diffBotellon = esperadoBotellon - stockFinBotellon
+        const diffAgua = stockFinAgua - esperadoAgua
+        const diffHielo = stockFinHielo - esperadoHielo
+        const diffBotellon = stockFinBotellon - esperadoBotellon
         if (diffAgua === 0 && diffHielo === 0 && diffBotellon === 0) return 'Stock de agua, hielo y botellones cuadrado'
         const parts: string[] = []
         if (diffAgua !== 0) parts.push(`Agua: ${diffAgua > 0 ? '+' : ''}${diffAgua}`)
