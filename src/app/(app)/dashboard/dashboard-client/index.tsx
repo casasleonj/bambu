@@ -121,7 +121,7 @@ export function DashboardClient({
       ref.controller?.abort()
     }
   }, [])
-  const actualizar = useCallback(async () => {
+  const actualizar = useCallback(async (rango: { from: string; to: string } | null) => {
     if (!navigator.onLine) {
       setOffline(true)
       return
@@ -134,12 +134,14 @@ export function DashboardClient({
     setRefreshError(null)
     const timer = setTimeout(() => controller.abort(), 15000)
     try {
-      const params = rangoSeleccionado ? `?from=${encodeURIComponent(rangoSeleccionado.from)}&to=${encodeURIComponent(rangoSeleccionado.to)}` : ''
+      const params = rango ? `?from=${encodeURIComponent(rango.from)}&to=${encodeURIComponent(rango.to)}` : ''
       const res = await fetch(`/api/dashboard${params}`, {
         cache: 'no-store',
         signal: controller.signal,
       })
       if (!res.ok) {
+        // 409 ya no se devuelve (#922): el histórico se sirve. Se conserva la
+        // rama por si un despliegue anterior sigue en vuelo durante un rollout.
         if (res.status === 409) throw new Error('Histórico pendiente de conciliación')
         throw new Error('No se pudo actualizar')
       }
@@ -173,17 +175,15 @@ export function DashboardClient({
       clearTimeout(timer)
       if (seq === solicitud.current.seq) setRefreshing(false)
     }
-  }, [rangoSeleccionado])
-  useEffect(() => {
-    if (rangoSeleccionado) void actualizar()
-  }, [rangoSeleccionado, actualizar])
+  }, [])
+
   const programarActualizacionBase = useCallback(() => {
     if (!vivo.current) return
     if (temporizadorBase.current) clearTimeout(temporizadorBase.current)
     temporizadorBase.current = setTimeout(() => {
-      if (vivo.current) void actualizar()
+      if (vivo.current) void actualizar(rangoSeleccionado)
     }, 300)
-  }, [actualizar])
+  }, [actualizar, rangoSeleccionado])
   useRealtimeListener(['config.updated'], programarActualizacionBase, {
     debounceMs: 0,
   })
@@ -208,6 +208,9 @@ export function DashboardClient({
     setData(null)
     setRefreshError(null)
     setRangoSeleccionado(siguiente)
+    // #922 — la carga se dispara aquí, no en un efecto: evita el setState
+    // sincrónico dentro de useEffect (react-hooks/set-state-in-effect).
+    void actualizar(siguiente)
   }
   const selectorFechas = (
     <div className="flex flex-wrap items-center gap-2 text-sm" aria-label="Filtro global de fecha del dashboard">
@@ -223,7 +226,9 @@ export function DashboardClient({
           solicitud.current.seq++
           setData(null)
           setRefreshError(null)
-          setRangoSeleccionado({ from: desde, to: hasta })
+          const rango = { from: desde, to: hasta }
+          setRangoSeleccionado(rango)
+          void actualizar(rango)
         }}>Aplicar</button>
       </>}
       <span className="text-xs text-gray-500">{rangoSeleccionado ? `${rangoSeleccionado.from} a ${rangoSeleccionado.to}` : `Hoy · ${hoyBogota()}`}</span>
@@ -231,7 +236,7 @@ export function DashboardClient({
   )
   const botonActualizar = (
     <button
-      onClick={actualizar}
+      onClick={() => void actualizar(rangoSeleccionado)}
       disabled={refreshing || offline}
       className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border bg-white px-3 text-xs font-medium text-gray-700 disabled:opacity-60"
       aria-label="Actualizar dashboard"
