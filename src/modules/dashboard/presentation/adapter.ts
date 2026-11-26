@@ -85,5 +85,7 @@ export function toLegacyDashboardData(
     fechaHoy: ddd.fechaHoy,
     alertasRiesgo: ddd.alertasRiesgo,
     casosActivos: ddd.casosActivos,
+    // #922 — qué responde al rango y qué es estado actual (para rotular).
+    alcance: ddd.alcance,
   }
 }

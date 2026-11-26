@@ -32,6 +32,8 @@ interface Props {
   cobros: CobrosPeriodo | null | undefined
   deuda: number
   deudaHoy: number
+  /** #922 — en histórico, la cartera es el saldo de hoy, no del rango. */
+  deudaEsActual?: boolean
   userRole?: string | null
   detalle: string | null
   onDetalle: (medio: string | null) => void
@@ -40,6 +42,7 @@ export function CobrosDashboard({
   cobros,
   deuda,
   deudaHoy,
+  deudaEsActual = false,
   userRole,
   detalle,
   onDetalle,
@@ -251,6 +254,7 @@ export function CobrosDashboard({
                 </p>
                 <p className="mt-1 text-xs text-gray-600">
                   Deuda entregada · todas las fechas
+                  {deudaEsActual && ' · saldo actual, no del rango'}
                 </p>
                 {deudaHoy > 0 && (
                   <p className="mt-2 text-xs text-gray-600">

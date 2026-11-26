@@ -10,11 +10,14 @@ export type {
   ProduccionDiaria,
   DashboardKPIs,
   DashboardData,
+  AlcanceMetrica,
+  AlcanceDashboard,
 } from './types'
 
 // Domain Services
 export { calcularStock, determinarStockInicial } from './stock.service'
 export type { StockInput } from './stock.service'
+export { calcularAlcance } from './alcance.service'
 
 export {
   pedidosValidos,

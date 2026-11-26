@@ -70,4 +70,13 @@ export interface DashboardData {
     criticos: number
     sinResolver48h: number
   }
+  /** #922 — alcance de cada familia de métricas frente al filtro global. */
+  alcance: {
+    esPeriodoActual: boolean
+    stock: 'PERIODO' | 'ACTUAL' | 'NO_DISPONIBLE'
+    saldos: 'PERIODO' | 'ACTUAL' | 'NO_DISPONIBLE'
+    alertas: 'PERIODO' | 'ACTUAL' | 'NO_DISPONIBLE'
+    embarques: 'PERIODO' | 'ACTUAL' | 'NO_DISPONIBLE'
+    motivo: string | null
+  }
 }

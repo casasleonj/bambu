@@ -25,6 +25,8 @@ function makeDeps(overrides = {}) {
     config: {
       getBaseDia: vi.fn().mockResolvedValue(0),
       getLastCierre: vi.fn().mockResolvedValue(null),
+      // #922 — el caso de uso pide el cierre del rango además del último.
+      getCierreBefore: vi.fn().mockResolvedValue(null),
       getStockConfigs: vi.fn().mockResolvedValue({}),
     },
     alertas: {

@@ -1,7 +1,6 @@
 import { requireAuth, requirePermission } from '@/lib/auth-check'
 import { apiError, apiSuccess } from '@/lib/api-response'
 import { fetchCurrentDashboardData, fetchDashboardDateRange } from '@/modules/dashboard'
-import { dashboardToday } from '@/lib/dashboard-date-range'
 import { toLegacyDashboardData } from '@/modules/dashboard/presentation'
 import { logger } from '@/lib/logger'
 
@@ -16,12 +15,10 @@ export async function GET(request: Request) {
   if ((!from && to) || (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to))) {
     return apiError('Rango de fechas inválido', 400)
   }
-  // Fail closed until historical stock, open alerts and balances have as-of semantics.
-  // Serving the current snapshot under a historical heading would misstate finances.
-  const today = dashboardToday().from
-  if (from && (from !== today || (to ?? from) !== today)) {
-    return apiError('La consulta histórica requiere conciliación de saldos y existencias antes de habilitarse.', 409)
-  }
+  // #922 — El rango histórico ya se sirve: las métricas periodizables responden
+  // al rango y las que sólo tienen estado actual (cartera, alertas, casos,
+  // embarques) viajan con `alcance` para rotularse. El stock histórico sale del
+  // cierre validado del rango; si no existe, `alcance.stock = NO_DISPONIBLE`.
   try {
     const dashboard = toLegacyDashboardData(
       from ? await fetchDashboardDateRange(from, to ?? from) : await fetchCurrentDashboardData(),
