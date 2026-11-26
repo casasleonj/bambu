@@ -25,12 +25,12 @@ beforeEach(() => {
 describe('GET dashboard: consulta autorizada, sin falsos ceros', () => {
   it('sesión inválida no consulta datos financieros', async () => {
     mocks.auth.mockResolvedValue(new Response(null, { status: 401 }))
-    expect((await GET()).status).toBe(401)
+    expect((await GET(new Request('http://localhost/api/dashboard'))).status).toBe(401)
     expect(mocks.fetch).not.toHaveBeenCalled()
   })
   it('aplica la matriz de permisos vigente después de autenticar', async () => {
     mocks.permission.mockResolvedValue(new Response(null, { status: 403 }))
-    expect((await GET()).status).toBe(403)
+    expect((await GET(new Request('http://localhost/api/dashboard'))).status).toBe(403)
     expect(mocks.permission).toHaveBeenCalledWith(
       'view:dashboard',
       expect.objectContaining({ user: { id: 'u', role: 'ADMIN' } }),
@@ -43,7 +43,7 @@ describe('GET dashboard: consulta autorizada, sin falsos ceros', () => {
       consultadoAt: '2026-10-29T15:00:00Z',
       ventas: 100000,
     })
-    const r = await GET()
+    const r = await GET(new Request('http://localhost/api/dashboard'))
     expect(r.status).toBe(200)
     expect(r.headers.get('Cache-Control')).toBe('private, no-store')
     expect(await r.json()).toMatchObject({
@@ -53,7 +53,7 @@ describe('GET dashboard: consulta autorizada, sin falsos ceros', () => {
   })
   it('fallo de fuente da503, sin sustituir dinero desconocido por0', async () => {
     mocks.fetch.mockRejectedValue(new Error('fallo'))
-    const r = await GET()
+    const r = await GET(new Request('http://localhost/api/dashboard'))
     expect(r.status).toBe(503)
     expect(await r.json()).toMatchObject({ success: false })
     expect(mocks.adapt).not.toHaveBeenCalled()
