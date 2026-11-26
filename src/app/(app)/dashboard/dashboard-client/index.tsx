@@ -290,6 +290,11 @@ export function DashboardClient({
             </div>
           ))}
         </div>
+        {/* La tarjeta de entregas se consulta aparte y no depende de `data`:
+            con un rango histórico el resto del dashboard falla cerrado (409),
+            pero las entregas sí son consultables. Ocultarla aquí la hacía
+            desaparecer del layout al elegir Ayer/7 días/personalizado. */}
+        <EntregasHoyCard rango={rangoSeleccionado} />
       </div>
     )
   const baseDia = data.baseDia
