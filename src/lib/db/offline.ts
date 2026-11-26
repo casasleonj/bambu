@@ -145,6 +145,9 @@ export async function queuePedidoOffline(data: Omit<OfflinePedido, 'id' | 'local
     gpsLat: data.gpsLat,
     gpsLng: data.gpsLng,
     offlineId: localId,
+    // El mismo instante local viaja a requestQueue; nunca la fecha del sync.
+    occurredAt: now.toISOString(),
+    capturedAt: now.toISOString(),
   }
 
   await offlineDb.transaction('rw', offlineDb.pedidos, offlineDb.requestQueue, async () => {

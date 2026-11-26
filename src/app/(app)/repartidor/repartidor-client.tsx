@@ -244,6 +244,8 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
 
     setSubmitting(true)
 
+    // #630 B1a: hora capturada en el momento de confirmar la venta.
+    const instanteCaptura = new Date().toISOString()
     const items = Object.entries(cantidades)
       .filter(([, cant]) => cant > 0)
       .map(([producto, cantidad]) => ({ producto, cantidad }))
@@ -266,6 +268,8 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
               gpsLat: coordinates.lat,
               gpsLng: coordinates.lng,
               offlineId: generateUUID(),
+              occurredAt: instanteCaptura,
+              capturedAt: instanteCaptura,
             },
             localEndpoint: 'venta-libre',
           }
