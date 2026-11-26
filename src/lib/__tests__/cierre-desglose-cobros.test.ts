@@ -24,6 +24,20 @@ describe('#631 desglosarCobros', () => {
     expect(d.cuadra).toBe(true)
   })
 
+  it('#745: un BONO de hoy o de fiado anterior se conserva como crédito, no dinero digital', () => {
+    const d = desglosarCobros([
+      { metodo: 'BONO', monto: 8000, pedidoFecha: hoy },
+      { metodo: 'BONO', monto: 4000, pedidoFecha: ayer },
+      { metodo: 'NEQUI', monto: 3000, pedidoFecha: hoy },
+      { metodo: 'EFECTIVO', monto: 1000, pedidoFecha: ayer },
+    ], desde, hasta, sinAbonos, 4000)
+    expect(d.ventasHoy).toEqual({ efectivo: 0, digital: 3000, total: 3000, porMetodo: { NEQUI: 3000 } })
+    expect(d.fiadosAnteriores).toEqual({ efectivo: 1000, digital: 0, total: 1000, porMetodo: {} })
+    expect(d.digital).toBe(3000)
+    expect(d.efectivo).toBe(1000)
+    expect(d.cuadra).toBe(true)
+  })
+
   it('el límite del día es [desde, hasta): un pedido a las 00:00 de mañana es de otro día', () => {
     const manana = new Date(hasta)
     const d = desglosarCobros([{ metodo: 'EFECTIVO', monto: 5000, pedidoFecha: manana }], desde, hasta, sinAbonos, 5000)
