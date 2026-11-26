@@ -21,6 +21,7 @@ import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { POST as entregaOficina } from '@/app/api/pedidos/[id]/gestion-admin/entrega/route'
 import { POST as crearNomina } from '@/app/api/nomina/route'
 import { comisionRepartidoresDelDia } from '@/lib/comision-repartidor'
+import { diagnosticarRepartoHistorico } from '@/lib/comision-reparto-historico'
 import { crearPedidoUseCase } from '@/modules/pedidos'
 import { CLAVE_GESTION_ADMIN_SIN_EMBARQUE } from '@/lib/gestion-admin'
 
@@ -190,4 +191,28 @@ describe('#472 — comisión de nómina por entregas sin embarque (Postgres real
     const eventos = await testPrisma.historial.findMany({ where: { entidad: 'Pedido', registroId: id, accion: 'UPDATE' } })
     expect(eventos.map(e => JSON.parse(e.datos)).filter(e => e.accion === 'ENTREGA_OFICINA').map(e => e.repartidorId)).toEqual([a, a])
   })
+  it('#1010: diagnóstico de dos jornadas de un parcial real conserva las tarifas y no crea pagos', async () => {
+    const trabajadorId = await nuevoRepartidor('Diagnóstico histórico sintético')
+    const desde = diaBogota(2), hasta = diaBogota(1)
+    // Fixtures sintéticos: simulan un trabajador conocido antes de ambos hechos.
+    // No hay backfill en producción ni se altera la versión de alta de hoy.
+    for (const [dia, tarifa] of [[desde, '300'], [hasta, '330']]) {
+      await testPrisma.comisionTarifaVersion.create({ data: {
+        ambito: 'TRABAJADOR', trabajadorId, fechaVigencia: new Date(dia+'T00:00:00Z'),
+        registradoAt: new Date(dia+'T00:00:00-05:00'), origen: 'CAMBIO', rolDb: 'fixture',
+        datos: {version:1,rol:'REPARTIDOR',tipoPago:'COMISION',usaMoto:true,
+          comPacaAgua:'300',comPacaHielo:'300',comBotellon:'300',comRepartAgua:tarifa,comRepartHielo:'300',comRepartBotellon:'500'},
+      } })
+    }
+    const pedidoId = await crearPedido({ cant: 15 })
+    await entregarDesdeOficina(pedidoId, trabajadorId, 10, new Date(desde+'T10:00:00-05:00'))
+    await entregarDesdeOficina(pedidoId, trabajadorId, 5, new Date(hasta+'T10:00:00-05:00'))
+    const resultado = await testPrisma.$transaction(tx=>diagnosticarRepartoHistorico(tx,trabajadorId,desde,hasta),{isolationLevel:'RepeatableRead',timeout:15000})
+    expect(resultado).toMatchObject({totalCandidato:4650,fuentesCuadran:true,liquidable:false})
+    expect(resultado.jornadas.map(j=>j.calculo?.entregasAgua)).toEqual([10,5])
+    expect(resultado.jornadas.map(j=>j.calculo?.tarifas.agua)).toEqual([300,330])
+    expect(await testPrisma.pagoComisionRepartidor.count({where:{trabajadorId}})).toBe(0)
+    expect(await testPrisma.nomina.count({where:{trabajadorId}})).toBe(0)
+  })
+
 })
