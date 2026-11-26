@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>#1037 · Panel «Cobro pendiente»: origen sin negocio y titular nombrado (maqueta para aprobación)</title>
+<style>
+*{box-sizing:border-box}body{font-family:system-ui,sans-serif;margin:0;padding:24px;background:#f3f4f6;color:#111827}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:32px 0 8px}p.n{color:#6b7280;font-size:13px;margin:4px 0 12px;max-width:920px}
+.fila{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}.marco{background:#fff;border:1px solid #d1d5db;border-radius:14px;padding:16px}
+.tel{width:360px}.esc{width:420px}.etq{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#374151;margin-bottom:8px}
+.antes{border-color:#fca5a5}.nuevo{border-color:#86efac}
+.nombre{font-weight:700;font-size:16px}.meta{color:#4b5563;font-size:13px;margin:2px 0 6px}
+.badge{display:inline-block;border:1px solid #fcd34d;background:#fffbeb;color:#78350f;border-radius:99px;padding:2px 10px;font-size:12px;font-weight:600}
+.panel{margin-top:8px;border:1px solid #fcd34d;border-radius:8px;padding:12px;font-size:12px;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,.12)}
+.panel p{margin:8px 0 2px;font-weight:600}.panel p:first-child{margin-top:0}
+.fl{display:flex;justify-content:space-between;gap:8px;margin:4px 0}.fl.t{border-top:1px solid #e5e7eb;padding-top:4px;font-weight:600}
+.cambio{background:#dcfce7;border-radius:3px;padding:0 2px}.link{display:inline-block;margin-top:8px;border:1px solid #fcd34d;border-radius:6px;padding:8px;font-weight:600;color:#78350f;text-decoration:underline}
+.skel{background:linear-gradient(90deg,#e5e7eb,#f3f4f6,#e5e7eb);border-radius:6px;height:18px;margin:8px 0}
+.aviso{display:inline-block;border:1px solid #d6d3d1;background:#fafaf9;border-radius:99px;padding:2px 10px;font-size:12px;font-weight:500;color:#44403c}
+.nota{font-size:12px;color:#6b7280;margin-top:8px}
+</style></head><body>
+<h1>#1037 · Panel «Cobro pendiente»: origen sin negocio y titular nombrado</h1>
+<p class="n"><b>Estado: PENDIENTE DE APROBACIÓN del PO.</b> Maqueta HTML estática hecha a mano a partir de la captura reportada; no es la aplicación. Solo cambia texto del panel: importes, agrupación por titular (`clienteId`), orden, enlace a Fiados y estados no cambian. Datos del ejemplo: pedido #1571 (negocio «Lavadero santiago», pagado) y origen #1570 (sin negocio, $12.500), titular de ejemplo «Yenis».</p>
+
+<h2>1 · Escritorio (hover/foco) y móvil (toque) — ANTES vs DESPUÉS</h2>
+<div class="fila">
+  <div class="marco antes esc"><div class="etq">Antes · escritorio</div>
+    <div class="nombre">🏪 Lavadero santiago</div><div class="meta">Pedido #1571 · Negocio de Yenis</div><span class="badge">💰 Cobro pendiente</span>
+    <div class="panel"><p>Otros pedidos con cobro pendiente</p>
+      <div class="fl"><span>Otros pedidos (1)</span><b>$ 12.500</b></div><div class="fl"><span>Este pedido</span><b>$ 0</b></div>
+      <div class="fl t"><span>Total pendiente del titular</span><span>$ 12.500</span></div>
+      <p>Pedidos de origen</p><div>Pedido #1570 · $ 12.500</div>
+      <p>Productos entregados asociados</p><div>• 5 Paca Agua</div><span class="link">Ver fiados del cliente</span></div>
+    <div class="nota">Problema: #1570 no dice de quién es; parece del Lavadero.</div></div>
+  <div class="marco nuevo esc"><div class="etq">Después · escritorio</div>
+    <div class="nombre">🏪 Lavadero santiago</div><div class="meta">Pedido #1571 · Negocio de Yenis</div><span class="badge">💰 Cobro pendiente</span>
+    <div class="panel"><p>Otros pedidos de <span class="cambio">Yenis (titular)</span> con cobro pendiente</p>
+      <div class="fl"><span>Otros pedidos (1)</span><b>$ 12.500</b></div><div class="fl"><span>Este pedido</span><b>$ 0</b></div>
+      <div class="fl t"><span>Total pendiente de <span class="cambio">Yenis</span></span><span>$ 12.500</span></div>
+      <p>Pedidos de origen</p><div>Pedido #1570 · <span class="cambio">Sin negocio (directo a Yenis)</span> · $ 12.500</div>
+      <p>Productos entregados asociados</p><div>• 5 Paca Agua</div><span class="link">Ver fiados del cliente</span></div>
+    <div class="nota">Cambios resaltados en verde (el resaltado es solo de esta maqueta).</div></div>
+</div>
+<div class="fila" style="margin-top:16px">
+  <div class="marco antes tel"><div class="etq">Antes · móvil (panel en línea)</div>
+    <div class="nombre">🏪 Lavadero santiago</div><div class="meta">Pedido #1571 · Negocio de Yenis</div><span class="badge">💰 Cobro pendiente</span>
+    <div class="panel"><p>Otros pedidos con cobro pendiente</p>
+      <div class="fl"><span>Otros pedidos (1)</span><b>$ 12.500</b></div><div class="fl"><span>Este pedido</span><b>$ 0</b></div>
+      <div class="fl t"><span>Total pendiente del titular</span><span>$ 12.500</span></div>
+      <p>Pedidos de origen</p><div>Pedido #1570 · $ 12.500</div></div></div>
+  <div class="marco nuevo tel"><div class="etq">Después · móvil (panel en línea)</div>
+    <div class="nombre">🏪 Lavadero santiago</div><div class="meta">Pedido #1571 · Negocio de Yenis</div><span class="badge">💰 Cobro pendiente</span>
+    <div class="panel"><p>Otros pedidos de <span class="cambio">Yenis (titular)</span> con cobro pendiente</p>
+      <div class="fl"><span>Otros pedidos (1)</span><b>$ 12.500</b></div><div class="fl"><span>Este pedido</span><b>$ 0</b></div>
+      <div class="fl t"><span>Total pendiente de <span class="cambio">Yenis</span></span><span>$ 12.500</span></div>
+      <p>Pedidos de origen</p><div>Pedido #1570 · <span class="cambio">Sin negocio (directo a Yenis)</span> · $ 12.500</div></div>
+    <div class="nota">Nombres largos se parten en varias líneas (break-words), sin desbordar.</div></div>
+</div>
+
+<h2>2 · Otras combinaciones de origen (después)</h2>
+<div class="fila"><div class="marco nuevo esc"><div class="panel" style="box-shadow:none;margin:0">
+  <div>Pedido #150 · Tienda A · $ 20.000</div><div>Pedido #151 · <span class="cambio">Sin negocio (directo a Yenis)</span> · $ 7.000</div></div>
+  <div class="nota">Dos orígenes: uno con negocio (se muestra igual que hoy) y otro sin negocio.</div></div></div>
+
+<h2>3 · Estados (sin cambio respecto a hoy)</h2>
+<div class="fila">
+  <div class="marco tel"><div class="etq">Carga</div><div class="skel"></div><div class="skel" style="width:60%"></div><div class="nota">La lista carga sin el aviso; no se muestra «sin deuda» ni $0 mientras tanto.</div></div>
+  <div class="marco tel"><div class="etq">Error de la consulta</div><span class="aviso">⚠ Cobros sin verificar</span><div class="nota">Igual que hoy: la lista sigue funcional y no se afirma deuda cero.</div></div>
+  <div class="marco tel"><div class="etq">Confirmación</div><div class="nota">NO APLICA: el panel solo informa; no cobra ni modifica nada. «Ver fiados del cliente» abre el flujo existente.</div></div>
+</div>
+</body></html>
