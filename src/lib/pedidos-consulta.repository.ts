@@ -432,7 +432,7 @@ export async function consultarPedidos(
         const detalles = await tx.pedido.findMany({
           where: { id: { in: conDeuda.slice(i, i + lote).map(p => p.id) } },
           select: {
-            id: true, numero: true, clienteId: true,
+            id: true, numero: true, clienteId: true, negocioId: true,
             negocio: { select: { nombre: true } },
             items: { select: { producto: true, cantEntrega: true, cantRegaloEntrega: true } },
             cPacaAguaEnt: true, cPacaHieloEnt: true,
@@ -443,7 +443,7 @@ export async function consultarPedidos(
         })
         for (const p of detalles) {
           deudas.push({
-            id: p.id, numero: p.numero, clienteId: p.clienteId,
+            id: p.id, numero: p.numero, clienteId: p.clienteId, negocioId: p.negocioId,
             exigible: montos.get(p.id) ?? 0,
             negocioNombre: p.negocio?.nombre ?? null,
             pagoPorConfirmar: p.pagos.length > 0,
@@ -463,7 +463,7 @@ export async function consultarPedidos(
         }
       }
       return resumirFiadosAnteriores(
-        visibles.map(p => ({ id: p.id, clienteId: p.clienteId })),
+        visibles.map(p => ({ id: p.id, clienteId: p.clienteId, negocioId: p.negocioId ?? null })),
         deudas,
       )
     }, {
