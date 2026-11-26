@@ -108,7 +108,7 @@ export function LoginForm() {
             className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
             placeholder="Ingrese contraseña"
             required
-            aria-describedby={errorMessage || showDevHint ? 'login-error' : undefined}
+            aria-describedby={errorMessage ? 'login-error' : showDevHint ? 'login-dev-hint' : undefined}
           />
           <button
             type="button"
@@ -130,9 +130,15 @@ export function LoginForm() {
         </div>
       </div>
 
-      {(errorMessage || (showDevHint && process.env.NODE_ENV === 'development')) && (
+      {errorMessage && (
         <div id="login-error" className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm" role="alert">
-          {errorMessage || 'Modo desarrollo — usa las credenciales del seed.'}
+          {errorMessage}
+        </div>
+      )}
+
+      {!errorMessage && showDevHint && process.env.NODE_ENV === 'development' && (
+        <div id="login-dev-hint" className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm" role="status">
+          Modo desarrollo — usa las credenciales del seed.
         </div>
       )}
 
