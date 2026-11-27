@@ -178,7 +178,8 @@ function lista(
  * claves válidas y longitud combinada de 6000 caracteres en la URL.
  */
 function listaRecorrido(p: URLSearchParams): string[] {
-  const items = [...new Set(p.getAll("recorrido"))];
+  // Compatibilidad #913: la venta anónima no es barrio, se ignora como antes.
+  const items = [...new Set(p.getAll("recorrido").filter(v => v !== "venta-anonima"))];
   if (items.length > 80 ||
       items.reduce((n, valor) => n + valor.length, 0) > 6000 ||
       items.some(v => !v || v.length > 100 ||
