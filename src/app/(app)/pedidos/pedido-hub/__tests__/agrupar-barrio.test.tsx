@@ -279,6 +279,9 @@ describe("#913 — Recorrido inmediato y sin viaje al servidor", () => {
     expect(screen.getByTestId("grupo-barrio-venta-anonima")).not.toHaveTextContent("Por entregar");
     // la fila anónima no se rotula «Sin barrio»; la de un cliente registrado sin barrio sí
     expect(screen.queryByTestId("operacion-barrio-c")).toBeNull();
+    // En Recorrido los pedidos arrancan plegados; abrir el grupo registrado para verificar su etiqueta.
+    expect(screen.queryByTestId("operacion-barrio-b")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Desplegar pedidos de Sin barrio" }));
     expect(screen.getByTestId("operacion-barrio-b")).toHaveTextContent("Sin barrio");
     expect(orden().at(-1)).toBe("Barrio Ventas en punto sin cliente");
   });
@@ -344,6 +347,8 @@ describe("#859 — barrios plegables y movimiento directo en Recorrido", () => {
 });
 
 describe("#915 — arrastres y entregas anteriores dentro del grupo de su barrio", () => {
+  // Aislar el modo Recorrido de los casos previos: la navegación shallow conserva el query string.
+  beforeEach(() => window.history.replaceState({}, "", "/pedidos"));
   const entrega = (pedidoId: string, numero: number, g: { clave: string; etiqueta: string }) => ({
     pedidoId, numero, nombre: `Cliente ${numero}`, fechaPedido: "2026-10-28", estadoAlCorte: "PRIMERA_ENTREGA" as const,
     cantidadesDelRango: [{ producto: "PACA_AGUA", cantidad: 4 }], cantidadesAlCorte: [{ producto: "PACA_AGUA", cantidad: 4 }],
