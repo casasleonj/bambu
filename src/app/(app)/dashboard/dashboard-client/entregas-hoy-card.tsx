@@ -30,10 +30,12 @@ export function EntregasHoyCard({ rango }: { rango?: { from: string; to: string 
   const clavePeriodo = rango ? `${rango.from}/${rango.to}` : 'hoy'
   const [claveLectura, setClaveLectura] = useState('hoy')
 
-  // Cada cambio de `intento` (montaje, reintento, evento de pedido) relee.
+  // Cada cambio de `intento` (montaje, reintento, evento de pedido) relee. El
+  // estado «cargando» lo fijan quienes disparan la lectura (reintentar y el
+  // evento de pedido), no este efecto, para no llamar setState de forma síncrona
+  // dentro de él; al cambiar de período lo deriva `visible` por `claveLectura`.
   useEffect(() => {
     let vigente = true
-    setEstado({ tipo: 'cargando' })
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 10000)
     const leer = async () => {
@@ -75,6 +77,7 @@ export function EntregasHoyCard({ rango }: { rango?: { from: string; to: string 
   }, [intento, rango?.from, rango?.to, clavePeriodo])
 
   useRealtimeListener(['pedido.created', 'pedido.updated'], () => {
+    setEstado({ tipo: 'cargando' })
     setIntento((n) => n + 1)
   })
 
