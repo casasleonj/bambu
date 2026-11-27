@@ -307,6 +307,26 @@ describe("#859 — barrios plegables y movimiento directo en Recorrido", () => {
     expect(screen.getByTestId("operacion-row-b")).toBeInTheDocument();
   });
 
+  it("permite mover un barrio que no tiene filas en la página actual", () => {
+    const LEJANO = { clave: "b:lejano", etiqueta: "Barrio Lejano" };
+    montar([fila("a", 1, CENTRO), fila("b", 2, VILLA)], {
+      grupos: [
+        { ...CENTRO, total: 1 },
+        { ...VILLA, total: 1 },
+        { ...LEJANO, total: 30 },
+      ],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Recorrido" }));
+    fireEvent.change(screen.getByTestId("recorrido-barrio-select"), { target: { value: "b:lejano" } });
+    const destino = screen.getByTestId("recorrido-posicion-global");
+    expect(destino).toHaveValue("3");
+    fireEvent.change(destino, { target: { value: "2" } });
+    expect(new URLSearchParams(window.location.search).getAll("recorrido")).toEqual([
+      "b:centro", "b:lejano", "b:villa",
+    ]);
+    expect(destino).toHaveValue("2");
+  });
+
   it("mueve un barrio de primera a tercera posición sin pasar por todas las filas", () => {
     montar([fila("a", 1, CENTRO), fila("b", 2, VILLA), fila("c", 3, SIN)]);
     fireEvent.click(screen.getByRole("button", { name: "Recorrido" }));
