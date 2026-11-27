@@ -4,8 +4,8 @@
  * Por qué no OSRM / VROOM (decisión de Iter 0, confirmada con el usuario):
  *  - $0/mes, sin Docker, sin VPS, sin internet.
  *  - Suficiente para 1-25 stops por ruta (caso actual).
- *  - Peor que OSRM en ~5-15% en distancia, pero estrictamente mejor que
- *    ruteo manual / orden de creación / alfabético.
+ *  - Es una aproximación geométrica, NO una estimación por calles.
+ *    Para el modo Cercanía de Pedidos se utiliza el proveedor vial #930.
  *
  * Algoritmo:
  *  1. Nearest-Neighbor (greedy): O(N²). Para N=25, ~625 ops. Trivial.
@@ -30,17 +30,24 @@ export function nearestNeighborOrder(
   start?: TSPPoint,
 ): { orden: TSPPoint[]; distanciaKm: number } {
   if (points.length === 0) return { orden: [], distanciaKm: 0 }
-  if (points.length === 1) return { orden: [...points], distanciaKm: 0 }
-
   const remaining = [...points]
   const orden: TSPPoint[] = []
-  let current = start ?? remaining[0]
-  // Si start no está en points, usamos el primero.
-  if (!remaining.includes(current)) {
-    current = remaining[0]
+  let current: TSPPoint
+  if (start) {
+    const startIndex = remaining.findIndex(p => p.id === start.id)
+    if (startIndex >= 0) {
+      // Si el origen es una visita, se conserva como primera parada.
+      current = remaining.splice(startIndex, 1)[0]
+      orden.push(current)
+    } else {
+      // Origen externo (p. ej. planta San José): NO es pedido ni parada.
+      current = start
+    }
+  } else {
+    // Compatibilidad con consumidores que no envían punto de partida.
+    current = remaining.shift()!
+    orden.push(current)
   }
-  remaining.splice(remaining.indexOf(current), 1)
-  orden.push(current)
 
   let totalDist = 0
   while (remaining.length > 0) {
@@ -69,23 +76,29 @@ export function nearestNeighborOrder(
 export function twoOpt(
   initial: TSPPoint[],
   maxIter = 100,
+  start?: TSPPoint,
 ): { orden: TSPPoint[]; distanciaKm: number; iteraciones: number } {
-  if (initial.length < 3) {
+  // Sin origen externo, preservar el contrato histórico para 1–2 puntos.
+  // Con dos paradas y origen externo puede convenir intercambiarlas.
+  const puedeMejorarDos = initial.length === 2 && start !== undefined &&
+    start.id !== initial[0].id && start.id !== initial[1].id
+  if (initial.length < 3 && !puedeMejorarDos) {
     return {
       orden: [...initial],
-      distanciaKm: routeDistance(initial),
+      distanciaKm: routeDistance(initial, start),
       iteraciones: 0,
     }
   }
 
   let best = [...initial]
-  let bestDist = routeDistance(best)
+  let bestDist = routeDistance(best, start)
   let iteraciones = 0
   let improved = true
+  const lockedStart = start !== undefined && best[0].id === start.id
 
   while (improved && iteraciones < maxIter) {
     improved = false
-    for (let i = 0; i < best.length - 1; i++) {
+    for (let i = lockedStart ? 1 : 0; i < best.length - 1; i++) {
       for (let j = i + 1; j < best.length; j++) {
         // 2-opt swap: invertir segmento [i..j]
         const candidate = [
@@ -93,7 +106,7 @@ export function twoOpt(
           ...best.slice(i, j + 1).reverse(),
           ...best.slice(j + 1),
         ]
-        const candDist = routeDistance(candidate)
+        const candDist = routeDistance(candidate, start)
         if (candDist < bestDist - 1e-9) {
           best = candidate
           bestDist = candDist
@@ -116,11 +129,13 @@ export function optimizeRuta(
   start?: TSPPoint,
 ): { orden: TSPPoint[]; distanciaKm: number; iteraciones: number } {
   const nn = nearestNeighborOrder(points, start)
-  return twoOpt(nn.orden)
+  return twoOpt(nn.orden, 100, start)
 }
 
-export function routeDistance(points: TSPPoint[]): number {
-  let d = 0
+export function routeDistance(points: TSPPoint[], start?: TSPPoint): number {
+  if (points.length === 0) return 0
+  // El costo incluye planta→primera parada cuando la planta es externa.
+  let d = start && start.id !== points[0].id ? haversineKm(start, points[0]) : 0
   for (let i = 1; i < points.length; i++) {
     d += haversineKm(points[i - 1], points[i])
   }
