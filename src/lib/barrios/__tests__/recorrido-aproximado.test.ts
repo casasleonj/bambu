@@ -99,4 +99,30 @@ describe('#859 Recorrido por barrios: propuesta cartográfica aislada', () => {
     const ruta = sugerirRecorridoBarrios([g('a','Instituto'),g('a','Instituto')])
     expect(ruta.claves).toEqual(['a'])
   })
+  it('elige el barrio más cercano en cada parada, sin 2-opt global', () => {
+    // Caso de campo 27/11/2026: Centro debe preceder a Las Flores desde Martínez Barbosa.
+    const barrios = [
+      g('altos','Altos del Tesoro'),
+      g('flores','Las Flores'),
+      g('centro','Centro'),
+      g('san','San José'),
+      g('camilo','Camilo Torres'),
+      g('martinez','Martínez Barbosa'),
+    ]
+    const ruta = sugerirRecorridoBarrios(barrios)
+    expect(ruta.claves).toEqual(['san','martinez','centro','flores','camilo','altos'])
+    expect(ruta.secuenciaGeometricaCompleta).toBe(true)
+  })
+
+  it('respeta una primera parada elegida y a partir de ella sigue al más cercano', () => {
+    const barrios = [
+      g('flores','Las Flores'),
+      g('centro','Centro'),
+      g('martinez','Martínez Barbosa'),
+      g('san','San José'),
+    ]
+    const ruta = sugerirRecorridoBarrios(barrios,'martinez')
+    expect(ruta.claves).toEqual(['martinez','san','centro','flores'])
+  })
+
 })
