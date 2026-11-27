@@ -38,6 +38,29 @@ test.describe('#859 Recorrido temporal por barrios', () => {
     ['escritorio', {width:1280,height:850}],
     ['móvil',{width:390,height:844}],
   ] as const) {
+    test(vista + ': Recorrido contrae pedidos y permite mover barrio a posición', async ({page}) => {
+      await page.setViewportSize(viewport)
+      const centroId = await generarPedidoEnBarrio('Centro')
+      const villaId = await generarPedidoEnBarrio('Villa Nueva')
+      await loginAs(page,'admin')
+      await goto(page,'/pedidos?all=true&agrupar=barrio&pageSize=25')
+      const app = appMain(page)
+      await expect(app.getByTestId('pedidos-agrupados-barrio')).toBeVisible()
+      await app.getByTestId('recorrido-toggle').click()
+      const centroToggle = app.getByTestId('grupo-barrio-toggle-b:'+centroId)
+      await expect(centroToggle).toHaveAttribute('aria-expanded','false')
+      await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(0)
+      await centroToggle.click()
+      await expect(centroToggle).toHaveAttribute('aria-expanded','true')
+      await expect(app.locator('[data-testid^="operacion-row-"]')).toHaveCount(1)
+      await centroToggle.click()
+
+      await app.getByTestId('recorrido-barrio-select').selectOption('b:'+villaId)
+      await app.getByTestId('recorrido-posicion-global').selectOption('1')
+      await expect.poll(() => new URL(page.url()).searchParams.getAll('recorrido')[0]).toBe('b:'+villaId)
+      await expect(app.getByTestId('grupo-barrio-toggle-b:'+villaId)).toHaveAttribute('aria-expanded','false')
+    })
+
     test(vista + ': Llevar primero se conserva al entrar a Cercanía y se restablece', async ({page}) => {
       await page.setViewportSize(viewport)
       const centroId = await generarPedidoEnBarrio('Centro')
