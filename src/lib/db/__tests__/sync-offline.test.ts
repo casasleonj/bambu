@@ -107,6 +107,9 @@ describe('queuePedidoOffline', () => {
     expect(body.clienteId).toBe('CONSUMIDOR_FINAL')
     expect(body.offlineId).toBe(localId)
     expect(body.items).toEqual(data.items)
+    // B1a: en una operación offline el instante almacenado queda fijo.
+    expect(body.occurredAt).toBe(req.createdAt.toISOString())
+    expect(body.capturedAt).toBe(body.occurredAt)
     expect(body).not.toHaveProperty('syncStatus')
     expect(body).not.toHaveProperty('estado')
   })
@@ -191,6 +194,34 @@ describe('syncWithServer', () => {
       expect.objectContaining({ syncStatus: 'synced', numero: 123 })
     )
     expect(mockDb.requestQueue.delete).toHaveBeenCalledWith(1)
+  })
+
+  it('#630 B1a: un replay offline preserva los timestamps originales, no los del intento', async () => {
+    const instant = '2032-04-12T04:59:00.000Z'
+    const body = JSON.stringify({
+      clienteId: 'CONSUMIDOR_FINAL',
+      offlineId: 'vl-b1a',
+      occurredAt: instant,
+      capturedAt: instant,
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
+    })
+    const req = {
+      id: 771, url: '/api/pedidos/venta-libre', method: 'POST',
+      body, offlineId: 'vl-b1a', localEndpoint: 'venta-libre',
+      createdAt: new Date('2032-04-13T05:00:00.000Z'), attempts: 2,
+    }
+    mockOrderByToArray(mockDb.requestQueue, [req])
+    mockWhereFirst(mockDb.pedidos, { id: 88, localId: req.offlineId, syncStatus: 'pending' })
+    mockFetch.mockResolvedValueOnce({
+      ok: true, status: 201, json: async () => ({ pedido: { id: 'server-b1a', numero: 77 } }),
+    })
+    const result = await syncWithServer()
+    expect(result.synced).toBe(1)
+    expect(mockFetch).toHaveBeenCalledWith('/api/pedidos/venta-libre', expect.objectContaining({ body }))
+    expect(JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string)).toMatchObject({
+      occurredAt: instant, capturedAt: instant, offlineId: 'vl-b1a',
+    })
+    expect(mockDb.requestQueue.delete).toHaveBeenCalledWith(771)
   })
 
   it('401: no purga colas y redirige', async () => {

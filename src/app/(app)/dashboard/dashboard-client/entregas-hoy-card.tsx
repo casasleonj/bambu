@@ -24,18 +24,21 @@ const esNumero = (v: unknown): v is number =>
  * muestra el error y las demás cifras no se tocan. Un error nunca se pinta
  * como cero.
  */
-export function EntregasHoyCard() {
+export function EntregasHoyCard({ rango }: { rango?: { from: string; to: string } | null }) {
   const [estado, setEstado] = useState<Estado>({ tipo: 'cargando' })
   const [intento, setIntento] = useState(0)
+  const clavePeriodo = rango ? `${rango.from}/${rango.to}` : 'hoy'
+  const [claveLectura, setClaveLectura] = useState('hoy')
 
   // Cada cambio de `intento` (montaje, reintento, evento de pedido) relee.
   useEffect(() => {
     let vigente = true
+    setEstado({ tipo: 'cargando' })
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 10000)
     const leer = async () => {
       try {
-        const res = await fetch('/api/dashboard/entregas-hoy', {
+        const res = await fetch(rango ? `/api/dashboard/entregas-hoy?from=${encodeURIComponent(rango.from)}&to=${encodeURIComponent(rango.to)}` : '/api/dashboard/entregas-hoy', {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -49,12 +52,15 @@ export function EntregasHoyCard() {
           !esNumero(e?.deDiasAnteriores)
         )
           throw new Error('lectura incompleta')
-        if (vigente) setEstado({ tipo: 'ok', entregas: e })
+        if (vigente) {
+          setClaveLectura(clavePeriodo)
+          setEstado({ tipo: 'ok', entregas: e })
+        }
       } catch {
         // Con una lectura buena previa se conserva; solo la primera falla es error.
         if (vigente)
           setEstado((previo) =>
-            previo.tipo === 'ok' ? previo : { tipo: 'error' },
+            previo.tipo === 'ok' && claveLectura === clavePeriodo ? previo : { tipo: 'error' },
           )
       } finally {
         clearTimeout(timer)
@@ -66,7 +72,7 @@ export function EntregasHoyCard() {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [intento])
+  }, [intento, rango?.from, rango?.to, clavePeriodo])
 
   useRealtimeListener(['pedido.created', 'pedido.updated'], () => {
     setIntento((n) => n + 1)
@@ -77,19 +83,20 @@ export function EntregasHoyCard() {
     setIntento((n) => n + 1)
   }
 
+  const visible = claveLectura === clavePeriodo ? estado : { tipo: 'cargando' as const }
   return (
     <div
       className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-sky-500"
       data-testid="entregas-hoy-card"
     >
       <p className="flex items-center justify-between gap-2 text-sm text-gray-500">
-        Entregas de hoy
+        {rango ? 'Entregas del período' : 'Entregas de hoy'}
         <Truck aria-hidden="true" className="h-6 w-6 text-sky-600" />
       </p>
       <p className="text-xs text-gray-400">
-        Pedidos con entrega registrada hoy
+        Pedidos con entrega registrada {rango ? 'en el período' : 'hoy'}
       </p>
-      {estado.tipo === 'cargando' && (
+      {visible.tipo === 'cargando' && (
         <div
           role="status"
           aria-label="Cargando entregas de hoy"
@@ -100,7 +107,7 @@ export function EntregasHoyCard() {
           <div className="h-3 w-48 rounded bg-gray-100" />
         </div>
       )}
-      {estado.tipo === 'error' && (
+      {visible.tipo === 'error' && (
         <div aria-live="polite" className="mt-2">
           <p className="text-xs text-red-700">
             No se pudo cargar. Las demás tarjetas siguen correctas.
@@ -114,19 +121,19 @@ export function EntregasHoyCard() {
           </button>
         </div>
       )}
-      {estado.tipo === 'ok' && (
+      {visible.tipo === 'ok' && (
         <>
           <p
             className="text-3xl font-bold text-gray-800"
             data-testid="entregas-hoy-total"
           >
-            {estado.entregas.total}
+            {(visible.tipo === 'ok' ? visible.entregas : { total: 0, deHoy: 0, deDiasAnteriores: 0 }).total}
           </p>
           <p className="text-xs text-gray-400 mt-1">
-            {estado.entregas.deHoy} de pedidos de hoy
+            {(visible.tipo === 'ok' ? visible.entregas : { total: 0, deHoy: 0, deDiasAnteriores: 0 }).deHoy} de pedidos de hoy
           </p>
           <p className="text-xs text-gray-400">
-            {estado.entregas.deDiasAnteriores} de pedidos de días anteriores
+            {(visible.tipo === 'ok' ? visible.entregas : { total: 0, deHoy: 0, deDiasAnteriores: 0 }).deDiasAnteriores} de pedidos de días anteriores
           </p>
         </>
       )}

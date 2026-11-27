@@ -9,6 +9,9 @@ on:
       - '.github/workflows/release-migration-gate.yml'
       - '.github/workflows/release-migration-policy-tests.yml'
       - '.github/workflows/migrate-deploy.yml'
+      - '.github/workflows/migrate-recover.yml'
+      - 'scripts/ci/migration-ledger-recover.mjs'
+      - 'scripts/ci/__tests__/migration-ledger-recover.node.test.mjs'
       - 'scripts/ci/release-migration-gate.mjs'
       - 'scripts/ci/release-migration-policy.mjs'
       - 'scripts/ci/verify-vercel-prod-env.mjs'
@@ -42,6 +45,7 @@ jobs:
           scripts/ci/__tests__/verify-vercel-prod-env.node.test.mjs
           scripts/ci/__tests__/verify-vercel-project-access.node.test.mjs
           scripts/ci/__tests__/migration-ledger-preflight.node.test.mjs
+          scripts/ci/__tests__/migration-ledger-recover.node.test.mjs
 
   cli-smoke:
     name: Vercel CLI pin smoke (sin credenciales)

@@ -15,9 +15,14 @@ describe('dashboard sin primera consulta', () => {
       ),
     )
     render(<DashboardClient data={null} userRole="ADMIN" />)
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'No hay una lectura disponible',
-    )
+    // La tarjeta de entregas también expone role="status" mientras carga, así
+    // que se selecciona el aviso por su texto (role="status" no toma nombre
+    // accesible del contenido) y se exige que haya exactamente uno.
+    const avisos = screen
+      .getAllByRole('status')
+      .filter((el) => el.textContent?.includes('No hay una lectura disponible'))
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0]).toHaveTextContent('No hay una lectura disponible')
     expect(
       screen.queryByText('No hay ventas entregadas de pedidos de hoy.'),
     ).toBeNull()

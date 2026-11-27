@@ -106,7 +106,7 @@ describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§5 con
     await testPrisma.pago.deleteMany({ where: { pedidoId: pedido.id } })
     await testPrisma.pedido.delete({ where: { id: pedido.id } })
     await testPrisma.embarque.delete({ where: { id: embarque.id } })
-    await testPrisma.trabajador.delete({ where: { id: embarque.trabajadorId } })
+    await testPrisma.trabajador.update({ where: { id: embarque.trabajadorId }, data: { activo: false } })
   })
 
   it('un pedido diferido ANULADO no aporta su Pago al cierre (efecto neto $0 — A1)', async () => {
@@ -147,7 +147,7 @@ describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§5 con
     await testPrisma.pago.deleteMany({ where: { pedidoId: pedido.id } })
     await testPrisma.pedido.delete({ where: { id: pedido.id } })
     await testPrisma.embarque.delete({ where: { id: embarque.id } })
-    await testPrisma.trabajador.delete({ where: { id: embarque.trabajadorId } })
+    await testPrisma.trabajador.update({ where: { id: embarque.trabajadorId }, data: { activo: false } })
   })
 
   it('un pedido físicamente en el embarque pero con el Pago capturado en OTRO no aporta a esta caja', async () => {
@@ -202,8 +202,8 @@ describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§5 con
     await testPrisma.pago.deleteMany({ where: { pedidoId: pedido.id } })
     await testPrisma.pedido.delete({ where: { id: pedido.id } })
     await testPrisma.embarque.delete({ where: { id: embarque.id } })
-    await testPrisma.trabajador.delete({ where: { id: embarque.trabajadorId } })
+    await testPrisma.trabajador.update({ where: { id: embarque.trabajadorId }, data: { activo: false } })
     await testPrisma.embarque.delete({ where: { id: origen.embarque.id } })
-    await testPrisma.trabajador.delete({ where: { id: origen.embarque.trabajadorId } })
+    await testPrisma.trabajador.update({ where: { id: origen.embarque.trabajadorId }, data: { activo: false } })
   })
 })

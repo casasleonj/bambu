@@ -49,3 +49,6 @@
 20261118_pedido_regalos
 # #1010 F2A: protección inmutable de evidencia por pago, también en CI.
 20261125000100_evidencia_comision_pago
+
+# #1010 F2B.1: diario prospectivo de vigencias, triggers y ACL
+20261125000200_vigencia_tarifas_comision

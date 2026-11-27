@@ -193,7 +193,7 @@ describe('Pedidos de hoy en riesgo (3+ embarques CERRADO de su ruta, nunca asign
 
     await testPrisma.pedido.delete({ where: { id: pedido.id } })
     await testPrisma.embarque.deleteMany({ where: { id: { in: embarques.map((e) => e.id) } } })
-    await testPrisma.trabajador.deleteMany({ where: { id: { in: trabajadores.map((t) => t.id) } } })
+    await testPrisma.trabajador.updateMany({ where: { id: { in: trabajadores.map((t) => t.id) } }, data: { activo: false } })
     await testPrisma.cliente.delete({ where: { id: cliente.id } })
     await testPrisma.ruta.delete({ where: { id: ruta.id } })
   })
@@ -220,7 +220,7 @@ describe('Pedidos de hoy en riesgo (3+ embarques CERRADO de su ruta, nunca asign
 
     await testPrisma.pedido.delete({ where: { id: pedido.id } })
     await testPrisma.embarque.deleteMany({ where: { id: { in: embarques.map((e) => e.id) } } })
-    await testPrisma.trabajador.deleteMany({ where: { id: { in: trabajadores.map((t) => t.id) } } })
+    await testPrisma.trabajador.updateMany({ where: { id: { in: trabajadores.map((t) => t.id) } }, data: { activo: false } })
     await testPrisma.cliente.delete({ where: { id: cliente.id } })
     await testPrisma.ruta.delete({ where: { id: ruta.id } })
   })
@@ -249,7 +249,7 @@ describe('Pedidos de hoy en riesgo (3+ embarques CERRADO de su ruta, nunca asign
 
     await testPrisma.pedido.delete({ where: { id: pedido.id } })
     await testPrisma.embarque.deleteMany({ where: { id: { in: embarques.map((e) => e.id) } } })
-    await testPrisma.trabajador.deleteMany({ where: { id: { in: trabajadores.map((t) => t.id) } } })
+    await testPrisma.trabajador.updateMany({ where: { id: { in: trabajadores.map((t) => t.id) } }, data: { activo: false } })
     await testPrisma.cliente.delete({ where: { id: cliente.id } })
   })
 })
@@ -376,7 +376,7 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
 
     await testPrisma.pedido.delete({ where: { id: p.id } })
     await testPrisma.embarque.delete({ where: { id: embarque.id } })
-    await testPrisma.trabajador.delete({ where: { id: trabajador.id } })
+    await testPrisma.trabajador.update({ where: { id: trabajador.id }, data: { activo: false } })
     await testPrisma.cliente.delete({ where: { id: cliente.id } })
   })
 
@@ -413,7 +413,7 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
 
     await testPrisma.pedido.delete({ where: { id: p.id } })
     await testPrisma.embarque.delete({ where: { id: embarque.id } })
-    await testPrisma.trabajador.delete({ where: { id: trabajador.id } })
+    await testPrisma.trabajador.update({ where: { id: trabajador.id }, data: { activo: false } })
     await testPrisma.cliente.delete({ where: { id: cliente.id } })
   })
 

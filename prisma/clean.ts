@@ -139,6 +139,7 @@ async function clean() {
     'Produccion',
     'Embarque',
     'Ruta',
+    'ComisionTarifaVersion', // #1010 F2B.1: incluye también el historial de la tarifa general
     'Trabajador',
     'Cliente',
     // F4: catálogo canónico de Barrio. Es padre de Cliente/Negocio, así que el

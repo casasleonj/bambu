@@ -10,6 +10,8 @@ const diaVisible = new Date('2026-11-05T17:00:00.000Z')
 const diaPosterior = new Date('2026-11-06T17:00:00.000Z')
 let clienteId: string
 let visibleId: string
+let negocioId: string
+let visibleNegocioId: string
 let montoEsperado = 0
 
 const filtros = () => leerFiltrosConsulta(new URLSearchParams(
@@ -62,6 +64,24 @@ describe('#932: consulta de cobros de otros pedidos sin corte cronológico', () 
         total: 10000, totalPagado: 0, saldo: 10000, cPacaAguaPed: 5,
       },
     })
+    // #1037: un negocio del mismo titular con su propia deuda NO se cruza con el grupo sin negocio.
+    const negocio = await db.negocio.create({ data: { clienteId, nombre: 'Negocio de prueba 1037' } })
+    negocioId = negocio.id
+    await db.pedido.create({
+      data: {
+        clienteId, negocioId, fecha: diaPosterior, createdAt: diaPosterior,
+        estadoEntrega: 'ENTREGADO', estadoPago: 'PENDIENTE',
+        total: 8000, totalPagado: 0, saldo: 8000, cPacaAguaPed: 2, cPacaAguaEnt: 2, precioPacaAgua: 4000,
+      },
+    })
+    const delNegocio = await db.pedido.create({
+      data: {
+        clienteId, negocioId, fecha: diaVisible, createdAt: diaVisible,
+        estadoEntrega: 'ENTREGADO', estadoPago: 'PAGADO',
+        total: 4000, totalPagado: 4000, saldo: 0, cPacaAguaPed: 1, cPacaAguaEnt: 1, precioPacaAgua: 4000,
+      },
+    })
+    visibleNegocioId = delNegocio.id
     // Cliente distinto con deuda. Ni coincidencia de nombre ni página puede cruzarla.
     const ajeno = await db.cliente.create({
       data: { nombre: 'Titular de prueba 932', telefono: randomUUID() },
@@ -88,5 +108,14 @@ describe('#932: consulta de cobros de otros pedidos sin corte cronológico', () 
       { producto: 'PACA_AGUA', cantidad: 32 },
     ])
     expect(visible?.fiadosAnteriores?.origenes).toHaveLength(31)
+    expect(visible?.fiadosAnteriores?.negocio).toBeNull()
+  })
+
+  it('#1037: el pedido del negocio ve solo la deuda de su negocio, no la del grupo sin negocio', async () => {
+    const resultado = await consultarPedidos(filtros(), 'ADMIN', db)
+    const delNegocio = resultado.pedidos.find(p => p.id === visibleNegocioId)
+    expect(delNegocio?.fiadosAnteriores).toMatchObject({
+      total: 8000, totalCliente: 8000, pedidos: 1, negocio: 'Negocio de prueba 1037',
+    })
   })
 })

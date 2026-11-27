@@ -5,8 +5,14 @@ import { formatCurrency } from '@/lib/utils'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import type { ResumenFiadosAnteriores } from '@/lib/fiados-anteriores-pedido'
 
+/** Nombre de la persona titular, con la misma composición que usa la tarjeta. */
+export function nombreTitular(p: { nombreCli?: string | null; apellidoCli?: string | null }): string {
+  return `${p.nombreCli ?? ''} ${p.apellidoCli ?? ''}`.trim()
+}
+
 /**
- * #932: aviso de COBROS PENDIENTES DE OTROS PEDIDOS del titular.
+ * #932/#1037: aviso de COBROS PENDIENTES DE OTROS PEDIDOS del mismo grupo
+ * (mismo negocio, o pedidos sin negocio de la misma persona).
  * No afirma que el pedido de origen sea más antiguo o que el dinero ya esté
  * conciliado. El panel se despliega inline en móvil para evitar overflow.
  */
@@ -14,11 +20,14 @@ export function FiadosAnterioresBadge({
   resumen,
   pedidoId,
   clienteId,
+  titular,
   consultaError = false,
 }: {
   resumen: ResumenFiadosAnteriores | undefined
   pedidoId: string
   clienteId: string
+  /** Nombre de la persona titular; solo se usa para nombrar los pedidos sin negocio. */
+  titular?: string
   consultaError?: boolean
 }) {
   const contenedor = useRef<HTMLDivElement>(null)
@@ -55,6 +64,10 @@ export function FiadosAnterioresBadge({
 
   const productos = resumen.productos.map(p =>
     String(p.cantidad) + ' ' + getProductoIconConfig(p.producto).label)
+  // Nombre del grupo de deuda: el negocio o, sin negocio, la persona titular.
+  const nombreTitular = titular?.trim()
+  const grupo = resumen.negocio?.trim() ||
+    (nombreTitular ? nombreTitular + ' (sin negocio)' : 'pedidos sin negocio')
   const linkFiados = '/pedidos?tab=fiados&fiadosCliente=' + encodeURIComponent(clienteId)
 
   return (
@@ -80,7 +93,11 @@ export function FiadosAnterioresBadge({
         role="region"
         aria-label="Detalle de otros cobros pendientes"
       >
-        <p className="font-semibold">Otros pedidos con cobro pendiente</p>
+        <p className="break-words font-semibold">
+          {resumen.negocio?.trim() || nombreTitular
+            ? <>Otros pedidos de {grupo} con cobro pendiente</>
+            : 'Otros pedidos sin negocio con cobro pendiente'}
+        </p>
         <dl className="mt-2 space-y-1">
           <div className="flex justify-between gap-2">
             <dt>Otros pedidos ({resumen.pedidos})</dt>
@@ -91,7 +108,7 @@ export function FiadosAnterioresBadge({
             <dd className="font-semibold">{formatCurrency(resumen.propio)}</dd>
           </div>
           <div className="flex justify-between gap-2 border-t border-stone-200 pt-1 font-semibold">
-            <dt>Total pendiente del titular</dt>
+            <dt className="min-w-0 break-words">Total pendiente{resumen.negocio?.trim() || nombreTitular ? ' de ' + grupo : ''}</dt>
             <dd>{formatCurrency(resumen.totalCliente)}</dd>
           </div>
         </dl>
@@ -99,9 +116,7 @@ export function FiadosAnterioresBadge({
         <ul className="mt-1 space-y-1">
           {resumen.origenes.map(origen => (
             <li key={origen.id} className="break-words">
-              Pedido #{origen.numero}
-              {origen.negocio ? ' · ' + origen.negocio : ''}
-              {' · ' + formatCurrency(origen.importe)}
+              Pedido #{origen.numero}{' · ' + formatCurrency(origen.importe)}
             </li>
           ))}
         </ul>

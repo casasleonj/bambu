@@ -368,3 +368,43 @@ test('lee varias entradas seguidas', () => {
   assert.equal(r.length, 2)
   assert.equal(clasificar(r).e2e_required, true)
 })
+
+// ── #1025: evidencia de QA por PR (`.qa/pr-<N>.md`) es documentación ───────
+// Solo la ruta EXACTA con N numérico y archivo normal. Todo lo demás de `.qa/`
+// sigue siendo incierto o ejecutable y fuerza el E2E completo (fail-closed).
+test('#1025 .qa/pr-<N>.md es documentación declarativa', () => {
+  assert.equal(esRutaDeDocs('.qa/pr-1024.md'), true)
+  assert.equal(esRutaDeDocs('./.qa/pr-7.md'), true)
+  const r = clasificar([f('docs/agentes/flujo-entrega.md'), f('.qa/pr-1024.md', 'A')])
+  assert.equal(r.e2e_required, false)
+  assert.equal(r.detalle.docs.length, 2)
+})
+
+test('#1025 solo evidencia de QA tampoco exige E2E; borrarla o renombrarla entre docs tampoco', () => {
+  assert.equal(clasificar([f('.qa/pr-1.md', 'D')]).e2e_required, false)
+  assert.equal(clasificar([ren('.qa/pr-1.md', 'docs/qa-1.md')]).e2e_required, false)
+})
+
+test('#1025 el resto de .qa/ y las variantes de nombre siguen forzando E2E', () => {
+  for (const ruta of [
+    '.qa/README.md', '.qa/.gitignore', '.qa/pr-.md', '.qa/pr-abc.md', '.qa/pr-1.md.sh',
+    '.qa/pr-1.mdx', '.qa/sub/pr-1.md', '.qa/pr-1.md/x', '.qa/PR-1.md', '.QA/pr-1.md',
+    '.qa/pr-１.md', 'qa/pr-1.md', 'x.qa/pr-1.md', '.qa/pr-1.md\n',
+  ]) {
+    assert.equal(esRutaDeDocs(ruta), false, ruta)
+    assert.equal(clasificar([f(ruta)]).e2e_required, true, ruta)
+  }
+})
+
+test('#1025 evidencia con modo ejecutable, symlink o cambio de modo fuerza E2E', () => {
+  assert.equal(clasificar([f('.qa/pr-1.md', 'A', { modoNuevo: '100755' })]).e2e_required, true)
+  assert.equal(clasificar([f('.qa/pr-1.md', 'A', { modoNuevo: MODO_SYMLINK })]).e2e_required, true)
+  assert.equal(clasificar([f('.qa/pr-1.md', 'M', { modoAnterior: '100644', modoNuevo: '100755' })]).e2e_required, true)
+})
+
+test('#1025 evidencia junto a código o un rename desde/hacia código fuerza E2E', () => {
+  assert.equal(clasificar([f('.qa/pr-1.md'), f('src/lib/x.ts')]).e2e_required, true)
+  assert.equal(clasificar([f('.qa/pr-1.md'), f('scripts/ci/clasificar-cambios.mjs')]).e2e_required, true)
+  assert.equal(clasificar([ren('.qa/pr-1.md', 'src/x.ts')]).e2e_required, true)
+  assert.equal(clasificar([ren('src/x.ts', '.qa/pr-1.md')]).e2e_required, true)
+})
