@@ -23,7 +23,7 @@ import type { EntregaDestacada } from "@/lib/pedidos-entregas-historial";
 import styles from "./operacion-consulta.module.css";
 import { esVentaAnonima } from "@/lib/barrios/grupo-barrio";
 import { textoRiesgoOperativo } from "@/lib/pedidos-riesgo-operativo";
-import { FiadosAnterioresBadge } from "./fiados-anteriores-badge";
+import { FiadosAnterioresBadge, nombreTitular } from "./fiados-anteriores-badge";
 
 export interface SeleccionConsulta {
   marcado: boolean;
@@ -240,7 +240,7 @@ export function OperacionConsulta({
                   Pedido #{p.numero} ·{" "}
                   {p.negocioId ? `Negocio de ${p.nombreCli}` : "Persona"}
                 </p>
-                <FiadosAnterioresBadge resumen={p.fiadosAnteriores} pedidoId={p.id} clienteId={p.clienteId} consultaError={p.fiadosConsultaError} />
+                <FiadosAnterioresBadge resumen={p.fiadosAnteriores} pedidoId={p.id} clienteId={p.clienteId} titular={nombreTitular(p)} consultaError={p.fiadosConsultaError} />
                 {arrastre && (
                   <p
                     className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"
