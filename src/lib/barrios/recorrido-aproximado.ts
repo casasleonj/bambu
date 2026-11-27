@@ -57,7 +57,7 @@ const CENTROS_DU15: ReadonlyArray<readonly [string, number, number]> = [
   ['Urbanización El Lago',4973255,2666050],
   ['Urbanización Las Margaritas',4972961,2666436],
 ]
-const centros = new Map(CENTROS_DU15.map(([nombre,x,y]) => [normalizeBarrioNombre(nombre), {x,y}]))
+const centros = new Map<string, Punto>(CENTROS_DU15.map(([nombre,x,y]): [string, Punto] => [normalizeBarrioNombre(nombre), {x,y}]))
 
 /** ÚNICAS equivalencias reconocidas por el PO, no matching difuso. */
 const equivalencias = new Map([
