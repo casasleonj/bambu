@@ -21,7 +21,8 @@ async function generarPedidoEnBarrio(nombreBarrio: string) {
       clienteId: cliente.id, createdById: admin.id, canal: 'DOMICILIO',
       origen: 'PEDIDO', fecha, createdAt: fecha,
       estado: 'PENDIENTE', estadoEntrega: 'PENDIENTE', estadoPago: 'PENDIENTE',
-      total: 1000, totalPagado: 0, saldo: 1000,
+      total: 2300, totalPagado: 0, saldo: 2300,
+      items: { create: { producto: 'PACA_AGUA', cantPedido: 1, cantEntrega: 0, precio: 2300, subtotal: 2300 } },
     },
   })
   return barrio.id
