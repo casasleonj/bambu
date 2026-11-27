@@ -241,9 +241,20 @@ describe("#913 — Recorrido inmediato y sin viaje al servidor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Recorrido" }));
     fireEvent.change(screen.getByTestId("recorrido-barrio-select"), { target: { value: "b:villa" } });
     fireEvent.click(screen.getByTestId("recorrido-priorizar"));
-    expect(new URLSearchParams(window.location.search).getAll("recorrido")).toEqual(["b:villa"]);
+    expect(new URLSearchParams(window.location.search).getAll("recorrido")).toEqual(["b:villa", "b:centro", "sin-barrio"]);
     expect(new URLSearchParams(window.location.search).get("agrupar")).toBe("barrio");
     expect(orden()).toEqual(["Barrio Villa Nueva", "Barrio Centro"]);
+  });
+
+  it("«Restablecer recorrido» limpia el primer barrio fijado y vuelve a empezar desde San José", () => {
+    montar([fila("a", 1, CENTRO), fila("b", 2, VILLA)]);
+    fireEvent.click(screen.getByRole("button", { name: "Recorrido" }));
+    fireEvent.change(screen.getByTestId("recorrido-barrio-select"), { target: { value: "b:villa" } });
+    fireEvent.click(screen.getByTestId("recorrido-priorizar"));
+    expect(orden()[0]).toBe("Barrio Villa Nueva");
+    fireEvent.click(screen.getByTestId("recorrido-restablecer"));
+    expect(orden()[0]).toBe("Barrio Centro");
+    expect(new URLSearchParams(window.location.search).getAll("recorrido")).toEqual(["b:centro","b:villa","sin-barrio"]);
   });
 
   it("Bajar y Subir mueven un barrio y lo reflejan en la lista sin esperar al servidor", () => {

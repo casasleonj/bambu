@@ -844,6 +844,7 @@ jobs:
           e2e/pedidos-alerta-riesgo-929.spec.ts
           e2e/pedidos-cobro-pendiente-932.spec.ts
           e2e/pedidos-prioridad-936.spec.ts
+          e2e/pedidos-recorrido-859.spec.ts
 
       - name: Run Playwright with real session limits
         run: npx playwright test --config=playwright.sessions.config.ts --project=chromium

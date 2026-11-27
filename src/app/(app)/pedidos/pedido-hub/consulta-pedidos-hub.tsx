@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { sugerirRecorridoBarrios } from "@/lib/barrios/recorrido-aproximado";
 import { useShallowSearchParams } from "@/hooks/use-shallow-search-params";
 import { useConsultaPedidos } from "@/hooks/use-consulta-pedidos";
 import { useOnlineStatus } from "@/hooks/use-online-status";
@@ -114,10 +115,26 @@ export function ConsultaPedidosHub(props: Props) {
   // mientras la búsqueda sea la misma que lo originó).
   const [cercaniaActivo, setCercaniaActivo] = useState(false);
   const [modoRecorridoLocal, setModoRecorrido] = useState(false);
-  const prioridadesUrl = new URLSearchParams(paramKey).getAll("recorrido").length > 0;
-  // Una URL con barrios priorizados tiene autoridad para activar Recorrido;
-  // el estado local permite usar el modo incluso sin prioridades todavía.
-  const modoRecorrido = modoRecorridoLocal || prioridadesUrl;
+  const prioridadesActuales = useMemo(() => new URLSearchParams(paramKey).getAll("recorrido"), [paramKey]);
+  // Las preferencias de ESTE recorrido se mantienen solo mientras la vista está montada:
+  // no se guardan globalmente para otro repartidor, día o viaje.
+  const prioridadesGuardadas = useRef<string[]>(prioridadesActuales);
+  // Cercanía es otro modo: que la URL tenga prioridades no puede activarlo a la vez.
+  const modoRecorrido = !cercaniaActivo && (modoRecorridoLocal || prioridadesActuales.length > 0);
+  useEffect(() => {
+    if (prioridadesActuales.length > 0 && !cercaniaActivo) {
+      prioridadesGuardadas.current = [...prioridadesActuales];
+    }
+  }, [prioridadesActuales, cercaniaActivo]);
+  // Si el usuario activa Recorrido antes de que llegue la agregación global de
+  // barrios, esperar esos datos completos; nunca inferir ruta desde la página.
+  useEffect(() => {
+    if (!modoRecorridoLocal || cercaniaActivo || prioridadesActuales.length > 0 || !datos?.grupos?.length) return;
+    const sugerencia = sugerirRecorridoBarrios(datos.grupos).claves;
+    if (!sugerencia.length) return;
+    prioridadesGuardadas.current = sugerencia;
+    params.set({ recorrido: sugerencia, agrupar: "barrio", page: "1" }, { history: "replace" });
+  }, [modoRecorridoLocal, cercaniaActivo, prioridadesActuales, datos?.grupos, params]);
   // Atrás/Adelante debe reconciliar el modo local con la URL visitada.
   // El cambio de estado ocurre en el evento externo, no dentro del cuerpo del efecto.
   useEffect(() => {
@@ -370,8 +387,12 @@ export function ConsultaPedidosHub(props: Props) {
           className={`min-h-11 rounded-lg border px-3 text-sm font-semibold ${modoRecorrido ? "border-blue-700 bg-blue-700 text-white" : "border-stone-300 bg-white text-slate-800"}`}
           onClick={() => {
             const activar = !modoRecorrido;
+            if (prioridadesActuales.length > 0) prioridadesGuardadas.current = [...prioridadesActuales];
+            const sugerencia = activar && !prioridadesGuardadas.current.length
+              ? sugerirRecorridoBarrios(datos?.grupos ?? []).claves
+              : prioridadesGuardadas.current;
             params.set({
-              recorrido: undefined,
+              recorrido: activar ? sugerencia : undefined,
               agrupar: 'barrio',
               page: '1',
             }, { history: 'push' });
@@ -384,6 +405,9 @@ export function ConsultaPedidosHub(props: Props) {
           className={`min-h-11 rounded-lg border px-3 text-sm font-semibold ${cercaniaActivo ? "border-blue-700 bg-blue-700 text-white" : "border-stone-300 bg-white text-slate-800"}`}
           onClick={() => {
             if (!cercaniaActivo) {
+              // Solo se suspende la prioridad en la URL mientras está activo GPS.
+              // Al regresar a Recorrido se restaura exactamente el orden elegido.
+              if (prioridadesActuales.length > 0) prioridadesGuardadas.current = [...prioridadesActuales];
               params.set({ recorrido: undefined }, { history: "push" });
               setModoRecorrido(false);
             }
