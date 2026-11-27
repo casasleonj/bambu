@@ -11,6 +11,7 @@ import { EntregasDestacadas } from './entregas-destacadas'
 import type { EntregaDestacada } from '@/lib/pedidos-entregas-historial'
 import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import { CLAVE_VENTA_ANONIMA } from '@/lib/barrios/grupo-barrio'
+import { centroCartograficoProvisional, sugerirRecorridoBarrios } from '@/lib/barrios/recorrido-aproximado'
 import { useAhora } from '@/hooks/use-ahora'
 import { ordenarPorFranja, type Franja } from '@/lib/pedidos-franja'
 import { FiadosAnterioresBadge, nombreTitular } from './fiados-anteriores-badge'
@@ -230,7 +231,7 @@ export function OperacionList({
   }, [hayPrioridadesUrl])
   // Persist only explicit priorities: the server appends all other barrios in FIFO order.
   const aplicarRecorrido = (orden: string[]) =>
-    urlParams.set({ recorrido: orden.slice(0, 20), agrupar: 'barrio', page: '1' }, { history: 'push' })
+    urlParams.set({ recorrido: orden, agrupar: 'barrio', page: '1' }, { history: 'push' })
   if (pedidos.length === 0) {
     return (
       <EmptyState
@@ -284,14 +285,16 @@ export function OperacionList({
     // confirma después con el mismo orden. Sin prioridades se respeta el orden FIFO que ya trae el servidor.
     const posManual = (clave: string) => { const i = clavesManuales.indexOf(clave); return i < 0 ? Number.MAX_SAFE_INTEGER : i }
     const bloquesVisibles = clavesManuales.length ? [...bloques].sort((a, b) => posManual(a.clave) - posManual(b.clave)) : bloques
-    const priorizar = (clave: string) => aplicarRecorrido([clave, ...clavesManuales.filter(k => k !== clave)])
+    const priorizar = (clave: string) => aplicarRecorrido(sugerirRecorridoBarrios(gruposRecorrido, clave).claves)
+    const restablecer = () => aplicarRecorrido(sugerirRecorridoBarrios(gruposRecorrido).claves)
+    const sinCentro = gruposRecorrido.filter(g => g.unidadesPendientes !== 0 && !centroCartograficoProvisional(g.etiqueta)).length
     const mover = (clave: string, desplazamiento: number) => {
       const actual = [...ordenEfectivo]
       const indice = actual.indexOf(clave)
       const destino = indice + desplazamiento
       if (indice < 0 || destino < 0 || destino >= actual.length) return
       ;[actual[indice], actual[destino]] = [actual[destino], actual[indice]]
-      aplicarRecorrido(actual.slice(0, destino + 1))
+      aplicarRecorrido(actual)
     }
     return (
       <div data-testid="pedidos-agrupados-barrio">
@@ -320,7 +323,14 @@ export function OperacionList({
               ) : (
                 <span aria-disabled="true" className="rounded-md bg-stone-400 px-3 py-1.5 text-white">Llevar al primero</span>
               )}
-              <span className="text-stone-500">Orden global temporal, sin guardar preferencias.</span>
+              <button type="button" onClick={restablecer} data-testid="recorrido-restablecer"
+                className="rounded-md border border-stone-400 bg-white px-3 py-1.5 text-stone-800">
+                ↻ Restablecer recorrido
+              </button>
+              <span className="text-stone-500">
+                Proximidad cartográfica aproximada entre centros. No es ruta vial ni ETA.
+                {sinCentro > 0 ? ' ' + sinCentro + ' sectores sin centro validado; se mantienen en la lista.' : ''}
+              </span>
             </>
           )}
         </div>
