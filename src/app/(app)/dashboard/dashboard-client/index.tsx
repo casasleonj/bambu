@@ -121,7 +121,7 @@ export function DashboardClient({
       ref.controller?.abort()
     }
   }, [])
-  const actualizar = useCallback(async () => {
+  const actualizar = useCallback(async (rango: { from: string; to: string } | null) => {
     if (!navigator.onLine) {
       setOffline(true)
       return
@@ -134,12 +134,14 @@ export function DashboardClient({
     setRefreshError(null)
     const timer = setTimeout(() => controller.abort(), 15000)
     try {
-      const params = rangoSeleccionado ? `?from=${encodeURIComponent(rangoSeleccionado.from)}&to=${encodeURIComponent(rangoSeleccionado.to)}` : ''
+      const params = rango ? `?from=${encodeURIComponent(rango.from)}&to=${encodeURIComponent(rango.to)}` : ''
       const res = await fetch(`/api/dashboard${params}`, {
         cache: 'no-store',
         signal: controller.signal,
       })
       if (!res.ok) {
+        // 409 ya no se devuelve (#922): el histórico se sirve. Se conserva la
+        // rama por si un despliegue anterior sigue en vuelo durante un rollout.
         if (res.status === 409) throw new Error('Histórico pendiente de conciliación')
         throw new Error('No se pudo actualizar')
       }
@@ -173,17 +175,15 @@ export function DashboardClient({
       clearTimeout(timer)
       if (seq === solicitud.current.seq) setRefreshing(false)
     }
-  }, [rangoSeleccionado])
-  useEffect(() => {
-    if (rangoSeleccionado) void actualizar()
-  }, [rangoSeleccionado, actualizar])
+  }, [])
+
   const programarActualizacionBase = useCallback(() => {
     if (!vivo.current) return
     if (temporizadorBase.current) clearTimeout(temporizadorBase.current)
     temporizadorBase.current = setTimeout(() => {
-      if (vivo.current) void actualizar()
+      if (vivo.current) void actualizar(rangoSeleccionado)
     }, 300)
-  }, [actualizar])
+  }, [actualizar, rangoSeleccionado])
   useRealtimeListener(['config.updated'], programarActualizacionBase, {
     debounceMs: 0,
   })
@@ -208,6 +208,9 @@ export function DashboardClient({
     setData(null)
     setRefreshError(null)
     setRangoSeleccionado(siguiente)
+    // #922 — la carga se dispara aquí, no en un efecto: evita el setState
+    // sincrónico dentro de useEffect (react-hooks/set-state-in-effect).
+    void actualizar(siguiente)
   }
   const selectorFechas = (
     <div className="flex flex-wrap items-center gap-2 text-sm" aria-label="Filtro global de fecha del dashboard">
@@ -223,7 +226,9 @@ export function DashboardClient({
           solicitud.current.seq++
           setData(null)
           setRefreshError(null)
-          setRangoSeleccionado({ from: desde, to: hasta })
+          const rango = { from: desde, to: hasta }
+          setRangoSeleccionado(rango)
+          void actualizar(rango)
         }}>Aplicar</button>
       </>}
       <span className="text-xs text-gray-500">{rangoSeleccionado ? `${rangoSeleccionado.from} a ${rangoSeleccionado.to}` : `Hoy · ${hoyBogota()}`}</span>
@@ -231,7 +236,7 @@ export function DashboardClient({
   )
   const botonActualizar = (
     <button
-      onClick={actualizar}
+      onClick={() => void actualizar(rangoSeleccionado)}
       disabled={refreshing || offline}
       className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border bg-white px-3 text-xs font-medium text-gray-700 disabled:opacity-60"
       aria-label="Actualizar dashboard"
@@ -323,6 +328,7 @@ export function DashboardClient({
     fechaHoy,
     alertasRiesgo,
     casosActivos,
+    alcance,
     prodPiezasHoy,
     prodPerdidasHoy,
     prodEficienciaHoy,
@@ -357,6 +363,18 @@ export function DashboardClient({
         </div>
         <div className="flex flex-wrap items-center gap-2">{selectorFechas}{botonActualizar}</div>
       </div>
+
+      {/* #922 — Sin esto, un rango histórico se lee como si todas las cifras
+          fueran del rango; cartera, alertas, casos y embarques son de hoy. */}
+      {alcance.motivo && (
+        <div
+          role="status"
+          className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900"
+        >
+          <span className="font-medium">Vista por período. </span>
+          {alcance.motivo}
+        </div>
+      )}
 
       {offline && (
         <div
@@ -485,6 +503,7 @@ export function DashboardClient({
         cobros={cobros}
         deuda={fiadosTotal}
         deudaHoy={fiadosHoy}
+        deudaEsActual={alcance.saldos === 'ACTUAL'}
         userRole={userRole}
         detalle={detalleCobros}
         onDetalle={setDetalleCobros}
@@ -526,7 +545,14 @@ export function DashboardClient({
 
       {/* Alertas de Riesgo — siempre visible */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-800 mb-3">Alertas de Riesgo</h2>
+        <h2 className="text-lg font-semibold text-gray-800 mb-3">
+          Alertas de Riesgo
+          {alcance.alertas === 'ACTUAL' && !alcance.esPeriodoActual && (
+            <span className="ml-2 align-middle rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+              Estado actual, no del rango
+            </span>
+          )}
+        </h2>
         {totalAlertasRiesgo === 0 ? (
           <div className="bg-green-50 border border-green-200 rounded-xl p-5 flex items-center gap-3">
             <span className="w-2 h-2 rounded-full bg-green-500" />
@@ -925,6 +951,15 @@ export function DashboardClient({
         {/* Stock */}
         <div className="bg-white p-5 rounded-xl shadow-sm">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Inventario</h2>
+          {alcance.stock === 'NO_DISPONIBLE' ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-center">
+              <p className="text-sm font-medium text-amber-900">Sin cierre conciliado</p>
+              <p className="mt-1 text-xs text-amber-800">
+                No hay cierre validado al final del rango. El stock de hoy no
+                representa el de esa fecha, así que no se muestra.
+              </p>
+            </div>
+          ) : (
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-blue-50 p-4 rounded-xl text-center">
               <p className="text-sm text-gray-500 mb-1">Agua</p>
@@ -937,7 +972,14 @@ export function DashboardClient({
               <p className="text-xs text-gray-400">pacas</p>
             </div>
           </div>
-          <p className="text-xs text-gray-400 mt-3 text-center">Stock inicial + Producción - Ventas entregadas</p>
+          )}
+          <p className="text-xs text-gray-400 mt-3 text-center">
+            {alcance.stock === 'NO_DISPONIBLE'
+              ? 'Requiere el cierre del día consultado, validado contra pedidos y pagos'
+              : alcance.stock === 'PERIODO' && !alcance.esPeriodoActual
+                ? 'Cierre registrado al final del rango'
+                : 'Stock inicial + Producción - Ventas entregadas'}
+          </p>
           <Link href="/produccion" className="block mt-3 text-center text-sm text-blue-600 hover:underline">Registrar producción</Link>
         </div>
 

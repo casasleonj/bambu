@@ -15,6 +15,9 @@ type Estado =
   | { tipo: 'error' }
   | { tipo: 'ok'; entregas: EntregasHoy }
 
+/** Última lectura completada, atada al rango y al intento que la produjeron. */
+type Lectura = { clave: string; intento: number; estado: Estado }
+
 const esNumero = (v: unknown): v is number =>
   typeof v === 'number' && Number.isFinite(v)
 
@@ -25,17 +28,19 @@ const esNumero = (v: unknown): v is number =>
  * como cero.
  */
 export function EntregasHoyCard({ rango }: { rango?: { from: string; to: string } | null }) {
-  const [estado, setEstado] = useState<Estado>({ tipo: 'cargando' })
+  // El estado de carga NO se escribe dentro del efecto: se deriva comparando
+  // la lectura con el rango y el intento vigentes. Así un cambio de período o
+  // un reintento pintan "cargando" sin setState sincrónico en useEffect.
+  const [lectura, setLectura] = useState<Lectura | null>(null)
   const [intento, setIntento] = useState(0)
   const clavePeriodo = rango ? `${rango.from}/${rango.to}` : 'hoy'
-  const [claveLectura, setClaveLectura] = useState('hoy')
 
   // Cada cambio de `intento` (montaje, reintento, evento de pedido) relee.
   useEffect(() => {
     let vigente = true
-    setEstado({ tipo: 'cargando' })
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 10000)
+    const clave = rango ? `${rango.from}/${rango.to}` : 'hoy'
     const leer = async () => {
       try {
         const res = await fetch(rango ? `/api/dashboard/entregas-hoy?from=${encodeURIComponent(rango.from)}&to=${encodeURIComponent(rango.to)}` : '/api/dashboard/entregas-hoy', {
@@ -52,15 +57,15 @@ export function EntregasHoyCard({ rango }: { rango?: { from: string; to: string 
           !esNumero(e?.deDiasAnteriores)
         )
           throw new Error('lectura incompleta')
-        if (vigente) {
-          setClaveLectura(clavePeriodo)
-          setEstado({ tipo: 'ok', entregas: e })
-        }
+        if (vigente) setLectura({ clave, intento, estado: { tipo: 'ok', entregas: e } })
       } catch {
-        // Con una lectura buena previa se conserva; solo la primera falla es error.
+        // Con una lectura buena previa del MISMO rango se conserva; sólo la
+        // primera falla (o la de un rango nuevo) se presenta como error.
         if (vigente)
-          setEstado((previo) =>
-            previo.tipo === 'ok' && claveLectura === clavePeriodo ? previo : { tipo: 'error' },
+          setLectura((previo) =>
+            previo && previo.clave === clave && previo.estado.tipo === 'ok'
+              ? { ...previo, intento }
+              : { clave, intento, estado: { tipo: 'error' } },
           )
       } finally {
         clearTimeout(timer)
@@ -72,18 +77,17 @@ export function EntregasHoyCard({ rango }: { rango?: { from: string; to: string 
       clearTimeout(timer)
       controller.abort()
     }
-  }, [intento, rango?.from, rango?.to, clavePeriodo])
+  }, [intento, rango])
 
   useRealtimeListener(['pedido.created', 'pedido.updated'], () => {
     setIntento((n) => n + 1)
   })
 
-  const reintentar = () => {
-    setEstado({ tipo: 'cargando' })
-    setIntento((n) => n + 1)
-  }
+  const reintentar = () => setIntento((n) => n + 1)
 
-  const visible = claveLectura === clavePeriodo ? estado : { tipo: 'cargando' as const }
+  const alDia =
+    lectura !== null && lectura.clave === clavePeriodo && lectura.intento === intento
+  const visible: Estado = alDia ? lectura.estado : { tipo: 'cargando' }
   return (
     <div
       className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-sky-500"

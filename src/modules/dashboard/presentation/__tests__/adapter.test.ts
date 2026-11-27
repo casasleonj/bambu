@@ -53,6 +53,15 @@ function makeDDDData(overrides: Partial<DDDData> = {}): DDDData {
       pedidosHoyEnRiesgo: 0,
     },
     casosActivos: { total: 0, criticos: 0, sinResolver48h: 0 },
+    // #922 — fixture: el tablero completo responde al período (caso "hoy").
+    alcance: {
+      esPeriodoActual: true,
+      stock: 'PERIODO',
+      saldos: 'PERIODO',
+      alertas: 'PERIODO',
+      embarques: 'PERIODO',
+      motivo: null,
+    },
     fechaHoy: 'jueves, 25 de junio de 2026',
     ...overrides,
   }

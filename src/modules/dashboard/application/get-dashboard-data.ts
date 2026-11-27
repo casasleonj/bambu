@@ -17,6 +17,7 @@ import {
   calcularStock,
   calcularFranjasHorarias,
   determinarStockInicial,
+  calcularAlcance,
 } from '../domain'
 import type {
   PedidoRepository,
@@ -80,6 +81,7 @@ export async function getDashboardData(
   const [
     finanzas,
     lastCierre,
+    cierreDelRango,
     embarquesAbiertos,
     stockAlertas,
     produccionHoy,
@@ -90,6 +92,9 @@ export async function getDashboardData(
   ] = await Promise.all([
     financiero,
     deps.config.getLastCierre(),
+    // #922 — Corte histórico: último cierre validado ANTERIOR al fin del rango.
+    // Es la única evidencia que permite afirmar cuánto había al cerrar ese día.
+    deps.config.getCierreBefore(todayRange.end),
     deps.embarques.countAbiertos(),
     deps.alertas.getStockAlertas(),
     deps.produccion.aggregateByDateRange(todayRange.start, todayRange.end),
@@ -133,13 +138,52 @@ export async function getDashboardData(
     stockConfigs,
   )
 
-  const stock = calcularStock({
-    stockIniAgua: stockInicial.stockIniAgua,
-    stockIniHielo: stockInicial.stockIniHielo,
-    produccion: produccionHoy,
-    aguaVendida: vendidos.agua,
-    hieloVendido: vendidos.hielo,
+  // ── #922: alcance del tablero frente al rango seleccionado ────────────
+  // `esPeriodoActual` evita tratar como histórico un rango que empieza hoy.
+  const hoyBogotaKey = new Date().toLocaleDateString('en-CA', {
+    timeZone: 'America/Bogota',
   })
+  const inicioBogotaKey = todayRange.start.toLocaleDateString('en-CA', {
+    timeZone: 'America/Bogota',
+  })
+  const finBogotaKey = new Date(+todayRange.end - 1).toLocaleDateString(
+    'en-CA',
+    { timeZone: 'America/Bogota' },
+  )
+  const esPeriodoActual =
+    inicioBogotaKey === hoyBogotaKey && finBogotaKey === hoyBogotaKey
+
+  // Un cierre es evidencia del rango sólo si cubre su último día: para el
+  // período actual se usa el cierre de hoy; para un rango histórico, el
+  // último cierre validado anterior al fin (ya excluye necesitaValidacion).
+  const cierreCubreRango = esPeriodoActual
+    ? tieneCierrePrevio
+    : cierreDelRango !== null
+
+  const alcance = calcularAlcance({
+    esPeriodoActual,
+    tieneCierreDelRango: cierreCubreRango,
+  })
+
+  // Stock histórico: si hay cierre validado del rango se reporta ESE corte,
+  // no el stock vivo de hoy. Sin cierre, el valor queda sin significado y se
+  // marca NO_DISPONIBLE en `alcance`; el número se conserva para el período
+  // actual y se lleva a 0 en histórico para que ningún consumidor lo pinte
+  // como saldo real.
+  const stock = alcance.stock === 'NO_DISPONIBLE'
+    ? { agua: 0, hielo: 0 }
+    : esPeriodoActual
+      ? calcularStock({
+          stockIniAgua: stockInicial.stockIniAgua,
+          stockIniHielo: stockInicial.stockIniHielo,
+          produccion: produccionHoy,
+          aguaVendida: vendidos.agua,
+          hieloVendido: vendidos.hielo,
+        })
+      : {
+          agua: cierreDelRango?.stockFinAgua ?? 0,
+          hielo: cierreDelRango?.stockFinHielo ?? 0,
+        }
 
   // ── KPIs ──────────────────────────────────────────────────────────────
   const kpis: DashboardKPIs = {
@@ -200,6 +244,7 @@ export async function getDashboardData(
     stockAlertas,
     alertasRiesgo,
     casosActivos,
+    alcance,
     fechaHoy,
   }
 }

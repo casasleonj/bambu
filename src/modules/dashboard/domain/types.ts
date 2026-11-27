@@ -85,6 +85,33 @@ export interface CasosActivos {
   sinResolver48h: number
 }
 
+/**
+ * #922 — Alcance de cada familia de métricas frente al filtro global de fecha.
+ *
+ * `PERIODO`: la cifra corresponde al rango seleccionado.
+ * `ACTUAL`: la cifra es el estado de hoy y NO se vuelve histórica al cambiar
+ *           el rango; se rotula para que no se confunda con un corte pasado.
+ * `NO_DISPONIBLE`: no hay evidencia conciliada para el rango; se muestra
+ *           "por conciliar" en lugar de inventar un saldo.
+ */
+export type AlcanceMetrica = 'PERIODO' | 'ACTUAL' | 'NO_DISPONIBLE'
+
+export interface AlcanceDashboard {
+  /** true cuando el rango seleccionado es exactamente el día de hoy (Bogotá). */
+  esPeriodoActual: boolean
+  stock: AlcanceMetrica
+  /** fiadosTotal / clientesConFiado: saldo de cartera a fecha de consulta. */
+  saldos: AlcanceMetrica
+  /** alertasRiesgo / casosActivos / stockAlertas. */
+  alertas: AlcanceMetrica
+  embarques: AlcanceMetrica
+  /**
+   * Motivo legible cuando alguna métrica queda fuera del rango.
+   * `null` si todo el tablero responde al período.
+   */
+  motivo: string | null
+}
+
 export interface ProduccionDiaria {
   aguaProducida: number
   hieloProducido: number
@@ -141,5 +168,7 @@ export interface DashboardData {
   stockAlertas: InsumoAlerta[]
   alertasRiesgo: AlertasRiesgo
   casosActivos: CasosActivos
+  /** #922 — qué parte del tablero responde al rango y qué es estado actual. */
+  alcance: AlcanceDashboard
   fechaHoy: string
 }

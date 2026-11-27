@@ -91,6 +91,14 @@ const lectura = (baseDia: number, minuto: string): DashboardData => ({
     pedidosHoyEnRiesgo: 0,
   },
   casosActivos: { total: 0, criticos: 0, sinResolver48h: 0 },
+  alcance: {
+    esPeriodoActual: true,
+    stock: 'PERIODO',
+    saldos: 'PERIODO',
+    alertas: 'PERIODO',
+    embarques: 'PERIODO',
+    motivo: null,
+  },
 })
 it('una nueva lectura SSR actualiza la base aunque haya existido una actualización local anterior', async () => {
   const fetcher = vi.fn(
