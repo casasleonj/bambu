@@ -349,6 +349,20 @@ export function OperacionList({
               ) : (
                 <span aria-disabled="true" className="rounded-md bg-stone-400 px-3 py-1.5 text-white">Llevar al primero</span>
               )}
+              <label htmlFor="recorrido-posicion-global" className="flex items-center gap-1 font-medium text-stone-700">
+                Mover a posición
+                <select id="recorrido-posicion-global"
+                  data-testid="recorrido-posicion-global"
+                  disabled={!barrioSeleccionado || !ordenEfectivo.includes(barrioSeleccionado)}
+                  value={barrioSeleccionado && ordenEfectivo.includes(barrioSeleccionado) ? String(ordenEfectivo.indexOf(barrioSeleccionado) + 1) : ''}
+                  onChange={e => { if (barrioSeleccionado) moverAPosicion(barrioSeleccionado, Number(e.target.value)) }}
+                  className="min-h-10 rounded-md border border-stone-400 bg-white px-2 py-1.5 text-xs disabled:opacity-50">
+                  <option value="">Selecciona barrio</option>
+                  {ordenEfectivo.map((_, indice) => (
+                    <option key={indice} value={indice + 1}>{indice + 1}</option>
+                  ))}
+                </select>
+              </label>
               <button type="button" onClick={restablecer} data-testid="recorrido-restablecer"
                 className="rounded-md border border-stone-400 bg-white px-3 py-1.5 text-stone-800">
                 ↻ Restablecer recorrido
