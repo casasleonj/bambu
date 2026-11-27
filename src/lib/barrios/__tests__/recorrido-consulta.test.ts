@@ -29,8 +29,8 @@ describe('#859 Recorrido: URL conserva prioridades sin truncar', () => {
   })
 
   it('no permite que las ventas anónimas ni claves con control entren a la ruta', () => {
-    const p = new URLSearchParams('recorrido=venta-anonima')
-    expect(() => leerFiltrosConsulta(p,'2026-11-27')).toThrow(FiltroPedidosError)
+    const p = new URLSearchParams('recorrido=venta-anonima&recorrido=b:centro')
+    expect(leerFiltrosConsulta(p,'2026-11-27').recorrido).toEqual(['b:centro'])
     const q = new URLSearchParams()
     q.append('recorrido','t:x\nabc')
     expect(() => leerFiltrosConsulta(q,'2026-11-27')).toThrow(FiltroPedidosError)
