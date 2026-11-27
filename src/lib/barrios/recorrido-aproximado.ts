@@ -146,7 +146,7 @@ export function sugerirRecorridoBarrios(
   const unicos = [...new Map(grupos.map(g => [g.clave,g])).values()]
   const enRuta = unicos.filter(g => g.clave !== 'venta-anonima' &&
     g.clave !== 'sin-barrio' && g.unidadesPendientes !== 0)
-  const fueraDeRuta = unicos.filter(g => !enRuta.includes(g))
+  const fueraDeRuta = unicos.filter(g => !enRuta.includes(g) && g.clave !== 'venta-anonima')
   const fijado = primeroClave ? enRuta.find(g => g.clave === primeroClave) : undefined
   const visitables: Visita[] = []
   const sinCentro: string[] = []
@@ -157,7 +157,7 @@ export function sugerirRecorridoBarrios(
   }
   // Sin coordenada de la primera parada, no afirmar cercanía desde ella.
   if (fijado && sinCentro.includes(fijado.clave)) {
-    const claves = [fijado.clave,...unicos.filter(g => g.clave !== fijado.clave).map(g => g.clave)]
+    const claves = [fijado.clave,...unicos.filter(g => g.clave !== fijado.clave && g.clave !== 'venta-anonima').map(g => g.clave)]
     return {claves,sinCentro,costoRectaCentrosMetros:0,secuenciaGeometricaCompleta:false}
   }
   const fija = fijado ? visitables.find(v => v.clave === fijado.clave) : undefined
