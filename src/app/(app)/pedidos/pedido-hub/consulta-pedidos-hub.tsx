@@ -115,7 +115,7 @@ export function ConsultaPedidosHub(props: Props) {
   // mientras la búsqueda sea la misma que lo originó).
   const [cercaniaActivo, setCercaniaActivo] = useState(false);
   const [modoRecorridoLocal, setModoRecorrido] = useState(false);
-  const prioridadesActuales = new URLSearchParams(paramKey).getAll("recorrido");
+  const prioridadesActuales = useMemo(() => new URLSearchParams(paramKey).getAll("recorrido"), [paramKey]);
   // Las preferencias de ESTE recorrido se mantienen solo mientras la vista está montada:
   // no se guardan globalmente para otro repartidor, día o viaje.
   const prioridadesGuardadas = useRef<string[]>(prioridadesActuales);
@@ -125,7 +125,7 @@ export function ConsultaPedidosHub(props: Props) {
     if (prioridadesActuales.length > 0 && !cercaniaActivo) {
       prioridadesGuardadas.current = [...prioridadesActuales];
     }
-  }, [paramKey, cercaniaActivo]);
+  }, [prioridadesActuales, cercaniaActivo]);
   // Si el usuario activa Recorrido antes de que llegue la agregación global de
   // barrios, esperar esos datos completos; nunca inferir ruta desde la página.
   useEffect(() => {
@@ -134,7 +134,7 @@ export function ConsultaPedidosHub(props: Props) {
     if (!sugerencia.length) return;
     prioridadesGuardadas.current = sugerencia;
     params.set({ recorrido: sugerencia, agrupar: "barrio", page: "1" }, { history: "replace" });
-  }, [modoRecorridoLocal, cercaniaActivo, paramKey, datos?.grupos, params]);
+  }, [modoRecorridoLocal, cercaniaActivo, prioridadesActuales, datos?.grupos, params]);
   // Atrás/Adelante debe reconciliar el modo local con la URL visitada.
   // El cambio de estado ocurre en el evento externo, no dentro del cuerpo del efecto.
   useEffect(() => {
