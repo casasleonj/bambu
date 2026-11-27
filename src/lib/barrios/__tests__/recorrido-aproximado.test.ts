@@ -58,10 +58,10 @@ describe('#859 Recorrido por barrios: propuesta cartográfica aislada', () => {
       g('centro','Centro'),
     ]
     const ruta = sugerirRecorridoBarrios(barrios)
-    expect(ruta.claves).toHaveLength(barrios.length)
+    expect(ruta.claves).toHaveLength(barrios.length - 1)
     expect(ruta.claves).toContain('tiburon')
     expect(ruta.claves).toContain('sin-barrio')
-    expect(ruta.claves).toContain('venta-anonima')
+    expect(ruta.claves).not.toContain('venta-anonima')
     expect(ruta.sinCentro).toEqual(['tiburon'])
     expect(ruta.secuenciaGeometricaCompleta).toBe(false)
   })
