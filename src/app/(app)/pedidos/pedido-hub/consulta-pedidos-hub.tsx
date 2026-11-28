@@ -449,6 +449,9 @@ export function ConsultaPedidosHub(props: Props) {
               if (prioridadesActuales.length > 0) prioridadesGuardadas.current = [...prioridadesActuales];
               params.set({ recorrido: undefined, page: "1" }, { history: "push" });
               setModoRecorrido(false);
+            } else if (consulta.filtros.page !== 1) {
+              // La carga incremental siempre empieza desde la primera página.
+              params.set({ page: "1" }, { history: "replace" });
             }
             setCercaniaActivo(valor => !valor);
           }}>
