@@ -272,3 +272,32 @@ test('cierre con lectura de caché colgada: mensaje correcto, reintento y revoca
   await page.goto('/mi-perfil')
   await expect(page).toHaveURL(/\/login/)
 })
+
+test('logout móvil: revocación no confirmada, reintento y regreso seguro al login', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await skipBaseCaja(page)
+  await login(page, 'admin', 'admin123')
+  await page.goto('/mi-perfil')
+  const original = await readSession(page)
+  expect(original.user?.sessionId).toBeTruthy()
+  await page.route('**/api/auth/logout-session', route => route.fulfill({
+    status: 503,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: { code: 'SESSION_UNAVAILABLE' } }),
+  }), { times: 1 })
+  await page.getByTestId('user-menu').click()
+  await page.getByTestId('logout-button').click()
+  const overlay = page.getByTestId('session-recovery')
+  await expect(overlay.getByText('No se pudo confirmar el cierre', { exact: true })).toBeVisible()
+  expect(await db.sesionActiva.findUnique({ where: { sessionId: original.user!.sessionId! } })).not.toBeNull()
+  await expect(page).toHaveURL(/\/mi-perfil/)
+  const retry = overlay.getByRole('button', { name: 'Reintentar cierre' })
+  await expect(retry).toBeInViewport()
+  await retry.click()
+  await expect(page).toHaveURL(/\/login\?reason=signedout/, { timeout: 30_000 })
+  expect(await db.sesionActiva.findUnique({ where: { sessionId: original.user!.sessionId! } })).toBeNull()
+  await page.reload()
+  await expect(page.getByText('Cerraste la sesión en este navegador.')).toBeVisible()
+  await page.goto('/mi-perfil')
+  await expect(page).toHaveURL(/\/login/)
+})
