@@ -672,7 +672,7 @@ export function ConsultaPedidosHub(props: Props) {
                     </button>
                   </div>
                 )}
-                {!scroll.hayMas && datos.total > 0 && (
+                {!scroll.hayMas && !pendiente && !cambiando && scroll.datos && datos.total > 0 && (
                   <p className="text-center text-xs text-slate-500">Todos los pedidos de esta consulta están cargados.</p>
                 )}
               </div>
