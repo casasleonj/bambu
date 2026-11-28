@@ -30,7 +30,7 @@ export function LogoutButton({ children, ...props }: Omit<ComponentProps<'button
   }
   return (
     <>
-      <button {...props} type="button" disabled={pending} onClick={() => { void leave() }}>
+      <button {...props} type="button" disabled={pending} onClick={() => { void leave(session?.user?.sessionId) }}>
         {pending ? 'Cerrando sesión…' : children}
       </button>
     </>
