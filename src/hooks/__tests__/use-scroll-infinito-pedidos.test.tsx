@@ -19,7 +19,7 @@ const primera = (f: FiltrosConsultaPedidos, total = 51, sello = "2026-11-27T20:0
   ({
     consultaKey: parametrosConsulta(f).toString(),
     pedidos: filas(1, 25), total, page: 1, pageSize: f.pageSize, leidoAt: sello,
-    grupos: [], resumen: null,
+    grupos: [], resumen: null, repartidores: [],
   }) as ResultadoConsultaPedidos;
 
 const respuesta = (f: FiltrosConsultaPedidos, page: number, total: number, pedidos: Pedido[]) => ({
