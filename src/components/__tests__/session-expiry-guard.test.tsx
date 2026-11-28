@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, waitFor, fireEvent, screen, act } from '@testing-library/react'
 import { SessionExpiryGuard, shouldRedirectOnUnauth } from '@/components/session-expiry-guard'
-import { AUTH_EXPIRED_EVENT, isIntentionalSignOut, markIntentionalSignOut, resetIntentionalSignOut } from '@/lib/auth-events'
+import { AUTH_LOGOUT_STATE_EVENT, AUTH_EXPIRED_EVENT, isIntentionalSignOut, markIntentionalSignOut, resetIntentionalSignOut } from '@/lib/auth-events'
 import type { Session } from 'next-auth'
 
 const replaceMock = vi.fn()
@@ -187,4 +187,25 @@ describe('SessionExpiryGuard', () => {
 
     expect(replaceMock).not.toHaveBeenCalled()
   })
+})
+
+it('shows the explicit logout state and does not redirect on an older verification', async () => {
+  mockSession = { user: { id: 'user-1' } } as unknown as Session
+  mockStatus = 'authenticated'
+  mockPathname = '/pedidos'
+  mockTransport = 'valid'
+  replaceMock.mockClear()
+  let finish!: (session: Session | null) => void
+  mockUpdate.mockImplementation(() => new Promise<Session | null>(resolve => { finish = resolve }))
+  render(<SessionExpiryGuard />)
+  act(() => { window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT)) })
+  await waitFor(() => expect(finish).toBeDefined())
+  const retry = vi.fn()
+  act(() => { window.dispatchEvent(new CustomEvent(AUTH_LOGOUT_STATE_EVENT, { detail: { pending: true, retry } })) })
+  expect(screen.getByRole('button', { name: 'Cerrando sesión…' })).toBeDisabled()
+  await act(async () => { mockTransport = 'invalid'; finish(null) })
+  expect(replaceMock).not.toHaveBeenCalled()
+  act(() => { window.dispatchEvent(new CustomEvent(AUTH_LOGOUT_STATE_EVENT, { detail: { pending: false, retry } })) })
+  fireEvent.click(screen.getByRole('button', { name: 'Reintentar cierre' }))
+  expect(retry).toHaveBeenCalledOnce()
 })
