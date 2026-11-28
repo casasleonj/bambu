@@ -6,6 +6,8 @@
  * the next user on the same device does not receive the previous user's
  * notifications.
  */
+import { awaitLogoutRead } from './logout-read'
+
 const SERVICE_WORKER_READY_TIMEOUT_MS = 3000
 
 async function serviceWorkerReadyWithTimeout(): Promise<ServiceWorkerRegistration | null> {
@@ -28,10 +30,10 @@ export async function unsubscribePushOnLogout(signal?: AbortSignal): Promise<voi
 
   signal?.throwIfAborted()
   try {
-    const registration = await serviceWorkerReadyWithTimeout()
+    const registration = await awaitLogoutRead(serviceWorkerReadyWithTimeout(), signal)
     signal?.throwIfAborted()
     if (!registration) return
-    const subscription = await registration.pushManager.getSubscription()
+    const subscription = await awaitLogoutRead(registration.pushManager.getSubscription(), signal)
 
     signal?.throwIfAborted()
     if (subscription) {
