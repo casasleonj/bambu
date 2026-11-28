@@ -173,6 +173,22 @@ function lista(
     throw new FiltroPedidosError(`Revisa el filtro «${key}».`);
   return items;
 }
+/** #859: Recorrido puede incluir los 62 sectores; el límite global de filtros
+ * (20) truncaba prioridades. Mantener límites separados de seguridad: hasta 80
+ * claves válidas y longitud combinada de 6000 caracteres en la URL.
+ */
+function listaRecorrido(p: URLSearchParams): string[] {
+  // Compatibilidad #913: la venta anónima no es barrio, se ignora como antes.
+  const items = [...new Set(p.getAll("recorrido").filter(v => v !== "venta-anonima"))];
+  if (items.length > 80 ||
+      items.reduce((n, valor) => n + valor.length, 0) > 6000 ||
+      items.some(v => !v || v.length > 100 ||
+        !/^(sin-barrio|[bt]:[^\u0000-\u001f]+)$/.test(v))) {
+    throw new FiltroPedidosError("Revisa las prioridades del recorrido.");
+  }
+  return items;
+}
+
 /** Clave de grupo: `sin-barrio`, `b:<id>` o `t:<texto normalizado>`; acotada y sin comodines. */
 function leerGrupoBarrio(p: URLSearchParams): string {
   const v = p.get("grupoBarrio") || "";
@@ -317,7 +333,7 @@ export function leerFiltrosConsulta(
         ? "barrio" : "",
     ),
     grupoBarrio: leerGrupoBarrio(p),
-    recorrido: lista(p, "recorrido").filter(v => /^(sin-barrio|[bt]:[^\u0000-\u001f]+)$/.test(v)),
+    recorrido: listaRecorrido(p),
     resumen: p.has("resumen")
       ? p.get("resumen") === "1"
       : [

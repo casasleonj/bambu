@@ -121,7 +121,9 @@ export function DashboardClient({
       ref.controller?.abort()
     }
   }, [])
-  const actualizar = useCallback(async () => {
+  // La lectura recibe el rango como argumento: así puede lanzarla el manejador que
+  // lo cambia, sin un efecto que llame setState de forma síncrona (#1041).
+  const cargarDashboard = useCallback(async (rango: { from: string; to: string } | null) => {
     if (!navigator.onLine) {
       setOffline(true)
       return
@@ -134,7 +136,7 @@ export function DashboardClient({
     setRefreshError(null)
     const timer = setTimeout(() => controller.abort(), 15000)
     try {
-      const params = rangoSeleccionado ? `?from=${encodeURIComponent(rangoSeleccionado.from)}&to=${encodeURIComponent(rangoSeleccionado.to)}` : ''
+      const params = rango ? `?from=${encodeURIComponent(rango.from)}&to=${encodeURIComponent(rango.to)}` : ''
       const res = await fetch(`/api/dashboard${params}`, {
         cache: 'no-store',
         signal: controller.signal,
@@ -173,10 +175,8 @@ export function DashboardClient({
       clearTimeout(timer)
       if (seq === solicitud.current.seq) setRefreshing(false)
     }
-  }, [rangoSeleccionado])
-  useEffect(() => {
-    if (rangoSeleccionado) void actualizar()
-  }, [rangoSeleccionado, actualizar])
+  }, [])
+  const actualizar = useCallback(() => cargarDashboard(rangoSeleccionado), [cargarDashboard, rangoSeleccionado])
   const programarActualizacionBase = useCallback(() => {
     if (!vivo.current) return
     if (temporizadorBase.current) clearTimeout(temporizadorBase.current)
@@ -208,6 +208,7 @@ export function DashboardClient({
     setData(null)
     setRefreshError(null)
     setRangoSeleccionado(siguiente)
+    if (siguiente) void cargarDashboard(siguiente)
   }
   const selectorFechas = (
     <div className="flex flex-wrap items-center gap-2 text-sm" aria-label="Filtro global de fecha del dashboard">
@@ -223,7 +224,9 @@ export function DashboardClient({
           solicitud.current.seq++
           setData(null)
           setRefreshError(null)
-          setRangoSeleccionado({ from: desde, to: hasta })
+          const rango = { from: desde, to: hasta }
+          setRangoSeleccionado(rango)
+          void cargarDashboard(rango)
         }}>Aplicar</button>
       </>}
       <span className="text-xs text-gray-500">{rangoSeleccionado ? `${rangoSeleccionado.from} a ${rangoSeleccionado.to}` : `Hoy · ${hoyBogota()}`}</span>
