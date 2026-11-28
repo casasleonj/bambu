@@ -54,8 +54,8 @@ describe("#1046 scroll infinito en Recorrido / Cercanía", () => {
     expect(result.current.hayMas).toBe(false);
     expect(window.location.search).toBe("?agrupar=barrio&pageSize=25");
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(String(fetchMock.mock.calls[0][0])).toContain("page=2");
-    expect(String(fetchMock.mock.calls[1][0])).toContain("page=3");
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining("page=2"), expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining("page=3"), expect.any(Object));
   });
 
   it("no dispara dos peticiones en paralelo por doble clic", async () => {
