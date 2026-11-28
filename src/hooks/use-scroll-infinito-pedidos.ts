@@ -43,7 +43,7 @@ export function useScrollInfinitoPedidos({
   });
   const enVuelo = useRef<AbortController | null>(null);
   const paginas = estado.alcance === alcance ? estado.paginas : SIN_PAGINAS;
-  const cargandoMas = estado.alcance === alcance && estado.cargando;
+  const cargandoMas = estado.alcance === alcance && estado.cargando && !!enVuelo.current;
   const errorMas = estado.alcance === alcance ? estado.error : null;
   const hayMas = !!inicial && (paginas.length + 1) * inicial.pageSize < inicial.total;
 
