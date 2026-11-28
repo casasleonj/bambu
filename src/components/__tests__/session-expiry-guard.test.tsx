@@ -190,6 +190,7 @@ describe('SessionExpiryGuard', () => {
 })
 
 it('shows the explicit logout state and does not redirect on an older verification', async () => {
+  resetIntentionalSignOut()
   mockSession = { user: { id: 'user-1' } } as unknown as Session
   mockStatus = 'authenticated'
   mockPathname = '/pedidos'
