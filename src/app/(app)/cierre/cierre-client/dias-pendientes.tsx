@@ -80,7 +80,9 @@ export function DiasPendientes({ estado, dias, fecha, hoy, deshabilitado, onEleg
       </div>
     )
   }
-  if (dias.length === 0) return null
+  // #1029: si hoy es la única fecha pendiente, no hace falta elegirla.
+  // Conservar la sección si hay fechas anteriores o un día distinto al actual.
+  if (dias.length === 0 || (dias.length === 1 && dias[0].fecha === hoy && fecha === hoy)) return null
 
   const bloqueo = diaQueBloquea(dias, fecha)
   const primeroObligatorio = dias.find((d) => d.obligatorio)
