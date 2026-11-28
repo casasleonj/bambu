@@ -85,17 +85,26 @@ test.describe('#859 Recorrido temporal por barrios', () => {
       await app.getByTestId('recorrido-toggle').click()
       await expect(app.getByTestId('scroll-infinito-pedidos')).toBeVisible()
       await expect(app.getByRole('navigation', {name:'Páginas de la consulta'})).toHaveCount(0)
-      const masRecorrido = app.getByTestId('scroll-infinito-cargar-mas')
-      if (await masRecorrido.count() && await masRecorrido.isEnabled()) await masRecorrido.click()
-      await expect(app.getByTestId('scroll-infinito-pedidos')).toContainText('Mostrando 27 de 27 pedidos')
+      // Si el IntersectionObserver inició una petición, esperar. Si no,
+      // activar el botón accesible cuando realmente esté habilitado.
+      const resumenScroll = app.getByTestId('scroll-infinito-pedidos')
+      await expect.poll(async () => {
+        if ((await resumenScroll.textContent())?.includes('Mostrando 27 de 27 pedidos')) return true
+        const boton = app.getByTestId('scroll-infinito-cargar-mas')
+        if (await boton.count() && await boton.isEnabled()) await boton.click()
+        return false
+      }, { timeout: 30_000 }).toBe(true)
       expect(new URL(page.url()).searchParams.get('page')).toBe('1')
       await expect(app.getByTestId('grupo-barrio-toggle-b:' + barrioId)).toHaveAttribute('aria-expanded', 'false')
 
       await app.getByTestId('cercania-toggle').click()
       await expect(app.getByTestId('scroll-infinito-pedidos')).toBeVisible()
-      const masCercania = app.getByTestId('scroll-infinito-cargar-mas')
-      if (await masCercania.count() && await masCercania.isEnabled()) await masCercania.click()
-      await expect(app.getByTestId('scroll-infinito-pedidos')).toContainText('Mostrando 27 de 27 pedidos')
+      await expect.poll(async () => {
+        if ((await resumenScroll.textContent())?.includes('Mostrando 27 de 27 pedidos')) return true
+        const boton = app.getByTestId('scroll-infinito-cargar-mas')
+        if (await boton.count() && await boton.isEnabled()) await boton.click()
+        return false
+      }, { timeout: 30_000 }).toBe(true)
       expect(new URL(page.url()).searchParams.get('page')).toBe('1')
       await expect(app.getByRole('navigation', {name:'Páginas de la consulta'})).toHaveCount(0)
 
