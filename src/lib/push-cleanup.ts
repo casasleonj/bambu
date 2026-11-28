@@ -22,20 +22,25 @@ async function serviceWorkerReadyWithTimeout(): Promise<ServiceWorkerRegistratio
   }
 }
 
-export async function unsubscribePushOnLogout(): Promise<void> {
+export async function unsubscribePushOnLogout(signal?: AbortSignal): Promise<void> {
   if (typeof window === 'undefined') return
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
 
+  signal?.throwIfAborted()
   try {
     const registration = await serviceWorkerReadyWithTimeout()
+    signal?.throwIfAborted()
     if (!registration) return
     const subscription = await registration.pushManager.getSubscription()
 
+    signal?.throwIfAborted()
     if (subscription) {
       const unsubscribed = await subscription.unsubscribe()
+      signal?.throwIfAborted()
       if (unsubscribed) {
         await fetch('/api/push/unsubscribe', {
           method: 'DELETE',
+          signal,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ endpoint: subscription.endpoint }),
         }).catch(() => {
@@ -43,7 +48,9 @@ export async function unsubscribePushOnLogout(): Promise<void> {
         })
       }
     }
+    signal?.throwIfAborted()
   } catch {
-    // Ignore cleanup errors during logout.
+    signal?.throwIfAborted()
+    // Preserve existing best-effort behavior for push cleanup.
   }
 }
