@@ -91,10 +91,17 @@ export function useScrollInfinitoPedidos({
       // Paginación por offset: si cambió el universo o se repite un ID,
       // detener la concatenación; no presentar una lista incorrecta como completa.
       const previos = new Set([...inicial.pedidos, ...paginas.flat()].map(p => p.id));
+      const hayDuplicados = resultado.pedidos.some(p => {
+        if (!p || typeof p.id !== "string" || previos.has(p.id)) return true;
+        previos.add(p.id);
+        return false;
+      });
+      const faltanEnPagina = (pagina - 1) * inicial.pageSize + resultado.pedidos.length < inicial.total;
       if (resultado.total !== inicial.total ||
           resultado.pedidos.length === 0 ||
-          resultado.pedidos.some(p => !p || typeof p.id !== "string" ||
-            previos.has(p.id) || (previos.add(p.id), false))) {
+          resultado.pedidos.length > inicial.pageSize ||
+          (resultado.pedidos.length < inicial.pageSize && faltanEnPagina) ||
+          hayDuplicados) {
         throw new Error("Los pedidos cambiaron durante el recorrido. Actualiza la lista para continuar sin duplicados.");
       }
       if (!controlador.signal.aborted) {
