@@ -43,6 +43,7 @@ export function SessionExpiryGuard() {
   const updateRef = useRef(update)
   const initialIdentity = useRef<string | null>(null)
   const [recovery, setRecovery] = useState<'idle' | 'unavailable'>('idle')
+  const logoutRef = useRef(false)
   const [logout, setLogout] = useState<LogoutStateDetail | null>(null)
   const transport = useSyncExternalStore(subscribeTransport, getSessionTransportState, () => 'unknown')
   useEffect(() => {
@@ -64,10 +65,11 @@ export function SessionExpiryGuard() {
   }, [session, logout])
 
   const verify = useCallback(async () => {
-    if (pending.current || hasRedirected.current || PUBLIC_PATHS.includes(pathname) || isIntentionalSignOut) return
+    if (logoutRef.current || pending.current || hasRedirected.current || PUBLIC_PATHS.includes(pathname) || isIntentionalSignOut) return
     pending.current = true
     try {
       const fresh = await updateRef.current()
+      if (logoutRef.current) return
       const result = getSessionTransportState()
       if (fresh?.authStatus === 'unavailable' || result === 'unavailable') {
         setRecovery('unavailable')
@@ -107,6 +109,7 @@ export function SessionExpiryGuard() {
       if (!(event instanceof CustomEvent)) return
       const detail: unknown = event.detail
       if (detail && typeof detail === 'object' && 'pending' in detail && typeof detail.pending === 'boolean' && 'retry' in detail && typeof detail.retry === 'function') {
+        logoutRef.current = true
         setLogout(detail as LogoutStateDetail)
       }
     }
