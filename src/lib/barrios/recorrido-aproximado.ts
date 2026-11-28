@@ -83,7 +83,7 @@ function costo(ruta: readonly Visita[], origen: Punto): number {
   return total
 }
 
-/** NN como semilla y mejora 2-opt para ruta abierta, sin retorno a planta. */
+/** Vecino más cercano: en cada paso, ir al centro más próximo al último visitado. */
 function ordenarVisitables(visitas: readonly Visita[], origen: Punto, primeroFijo: boolean): Visita[] {
   const quedan = [...visitas]
   const ruta: Visita[] = []
@@ -102,29 +102,6 @@ function ordenarVisitables(visitas: readonly Visita[], origen: Punto, primeroFij
     const siguiente = quedan.splice(elegido, 1)[0]
     ruta.push(siguiente)
     actual = siguiente.punto
-  }
-  // La distancia euclidiana simétrica permite delta 2-opt de solo dos bordes.
-  // No utilizar este optimizador para una matriz vial dirigida.
-  for (let vuelta = 0; vuelta < 64; vuelta++) {
-    let mejoro = false
-    for (let i = 1; i < ruta.length - 1; i++) {
-      // Mantener la primera parada: elegida por cercanía desde la planta (o por PO).
-      // 2-opt mejora solo los tramos siguientes para no cambiar el arranque.
-      const previo = i === 0 ? origen : ruta[i - 1].punto
-      for (let j = i + 1; j < ruta.length; j++) {
-        const posterior = j + 1 < ruta.length ? ruta[j + 1].punto : null
-        const vieja = distancia(previo, ruta[i].punto) +
-          (posterior ? distancia(ruta[j].punto, posterior) : 0)
-        const nueva = distancia(previo, ruta[j].punto) +
-          (posterior ? distancia(ruta[i].punto, posterior) : 0)
-        if (nueva < vieja - 1e-7) {
-          const invertida = ruta.slice(i,j+1).reverse()
-          ruta.splice(i,invertida.length,...invertida)
-          mejoro = true
-        }
-      }
-    }
-    if (!mejoro) break
   }
   return ruta
 }

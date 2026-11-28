@@ -22,6 +22,7 @@ import {
 } from "./barrios/grupo-barrio";
 import { remanentesPorProducto } from "./barrios/remanentes-barrio";
 import { ordenarBarriosFIFO } from "./barrios/fifo-barrio";
+import { nivelGestionBarrio } from "./barrios/prioridad-gestion-barrio";
 import { tipoDesdeCanal } from "./pedido-canal";
 import { endOfDayBogota, todayStringBogota } from "./dates";
 import { detalleUnidadesEntregadasDelDia } from "./unidades-entregadas-dia";
@@ -648,7 +649,7 @@ async function leerConsultaPedidos(
           tx.pedido.findMany({
             where: whereLista,
             select: {
-              id: true, clienteId: true, origen: true, fecha: true, createdAt: true, numero: true, estadoEntrega: true, fechaEntrega: true, direccionEntrega: true, barrioEntrega: true,
+              id: true, clienteId: true, origen: true, fecha: true, createdAt: true, numero: true, estadoEntrega: true, fechaEntrega: true, saldo: true, direccionEntrega: true, barrioEntrega: true,
               items: { select: { producto: true, cantPedido: true, cantEntrega: true, cantRegaloPedido: true, cantRegaloEntrega: true } },
               cliente: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
               negocio: { select: { direccion: true, barrio: true, barrioCanonico: canonico } },
@@ -723,9 +724,19 @@ async function leerConsultaPedidos(
         }
         if (f.agrupar === "barrio") {
           const posGrupo = new Map(grupos.map((g, i) => [g.clave, i]));
+          // #859: conservar FIFO entre pendientes/parciales dentro de cada barrio,
+          // pero nunca adelantar entregados a los que aún requieren gestión.
+          // Se aplica al conjunto COMPLETO antes de paginar, tanto en FIFO como Recorrido.
+          const nivelPorId = new Map(elegibles.map(c => [c.id, nivelGestionBarrio({
+            estadoEntrega: c.estadoEntrega,
+            fechaEntrega: c.fechaEntrega,
+            saldo: Number(c.saldo),
+            items: c.items,
+          }, ahora)]));
           ordenPagina = [...elegibles]
             .sort((a, b) =>
               (posGrupo.get(grupoPorId!.get(a.id)!.clave)! - posGrupo.get(grupoPorId!.get(b.id)!.clave)!) ||
+              (nivelPorId.get(a.id)! - nivelPorId.get(b.id)!) ||
               (a.createdAt.getTime() - b.createdAt.getTime()) ||
               (a.numero - b.numero) ||
               (a.id < b.id ? -1 : 1))

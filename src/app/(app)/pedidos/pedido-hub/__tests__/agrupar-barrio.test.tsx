@@ -279,12 +279,76 @@ describe("#913 — Recorrido inmediato y sin viaje al servidor", () => {
     expect(screen.getByTestId("grupo-barrio-venta-anonima")).not.toHaveTextContent("Por entregar");
     // la fila anónima no se rotula «Sin barrio»; la de un cliente registrado sin barrio sí
     expect(screen.queryByTestId("operacion-barrio-c")).toBeNull();
+    // En Recorrido los pedidos arrancan plegados; abrir el grupo registrado para verificar su etiqueta.
+    expect(screen.queryByTestId("operacion-barrio-b")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Desplegar pedidos de Sin barrio" }));
     expect(screen.getByTestId("operacion-barrio-b")).toHaveTextContent("Sin barrio");
     expect(orden().at(-1)).toBe("Barrio Ventas en punto sin cliente");
   });
 });
 
+describe("#859 — barrios plegables y movimiento directo en Recorrido", () => {
+  beforeEach(() => window.history.replaceState({}, "", "/pedidos"));
+
+  it("al activar Recorrido, los encabezados y totales quedan visibles, pero sus pedidos se contraen", () => {
+    montar([fila("a", 1, CENTRO), fila("b", 2, VILLA)], { grupos: [{ ...CENTRO, total: 2, unidadesPendientes: 3 }, { ...VILLA, total: 1, unidadesPendientes: 1 }] });
+    expect(screen.getByTestId("operacion-row-a")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Recorrido" }));
+    expect(screen.getByTestId("grupo-barrio-total-b:centro")).toHaveTextContent("2 pedidos");
+    expect(screen.getByTestId("grupo-barrio-b:centro")).toHaveTextContent("Por entregar: 3");
+    expect(screen.queryByTestId("operacion-row-a")).toBeNull();
+    expect(screen.queryByTestId("operacion-row-b")).toBeNull();
+    const toggle = screen.getByRole("button", { name: "Desplegar pedidos de Centro" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    expect(screen.getByTestId("operacion-row-a")).toBeInTheDocument();
+    expect(screen.queryByTestId("operacion-row-b")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Contraer pedidos de Centro" }));
+    expect(screen.queryByTestId("operacion-row-a")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Recorrido" }));
+    expect(screen.getByTestId("operacion-row-a")).toBeInTheDocument();
+    expect(screen.getByTestId("operacion-row-b")).toBeInTheDocument();
+  });
+
+  it("permite mover un barrio que no tiene filas en la página actual", () => {
+    const LEJANO = { clave: "b:lejano", etiqueta: "Barrio Lejano" };
+    montar([fila("a", 1, CENTRO), fila("b", 2, VILLA)], {
+      grupos: [
+        { ...CENTRO, total: 1 },
+        { ...VILLA, total: 1 },
+        { ...LEJANO, total: 30 },
+      ],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Recorrido" }));
+    fireEvent.change(screen.getByTestId("recorrido-barrio-select"), { target: { value: "b:lejano" } });
+    const destino = screen.getByTestId("recorrido-posicion-global");
+    expect(destino).toHaveValue("3");
+    fireEvent.change(destino, { target: { value: "2" } });
+    expect(new URLSearchParams(window.location.search).getAll("recorrido")).toEqual([
+      "b:centro", "b:lejano", "b:villa",
+    ]);
+    expect(destino).toHaveValue("2");
+  });
+
+  it("mueve un barrio de primera a tercera posición sin pasar por todas las filas", () => {
+    montar([fila("a", 1, CENTRO), fila("b", 2, VILLA), fila("c", 3, SIN)]);
+    fireEvent.click(screen.getByRole("button", { name: "Recorrido" }));
+    const posicion = screen.getByRole("combobox", { name: "Mover Centro a la posición" });
+    expect(posicion).toHaveValue("1");
+    fireEvent.change(posicion, { target: { value: "3" } });
+    expect(screen.getAllByRole("region").map(r => r.getAttribute("aria-label"))).toEqual([
+      "Barrio Villa Nueva", "Barrio Sin barrio", "Barrio Centro",
+    ]);
+    expect(new URLSearchParams(window.location.search).getAll("recorrido")).toEqual([
+      "b:villa", "sin-barrio", "b:centro",
+    ]);
+    expect(screen.queryByTestId("operacion-row-a")).toBeNull();
+  });
+});
+
 describe("#915 — arrastres y entregas anteriores dentro del grupo de su barrio", () => {
+  // Aislar el modo Recorrido de los casos previos: la navegación shallow conserva el query string.
+  beforeEach(() => window.history.replaceState({}, "", "/pedidos"));
   const entrega = (pedidoId: string, numero: number, g: { clave: string; etiqueta: string }) => ({
     pedidoId, numero, nombre: `Cliente ${numero}`, fechaPedido: "2026-10-28", estadoAlCorte: "PRIMERA_ENTREGA" as const,
     cantidadesDelRango: [{ producto: "PACA_AGUA", cantidad: 4 }], cantidadesAlCorte: [{ producto: "PACA_AGUA", cantidad: 4 }],

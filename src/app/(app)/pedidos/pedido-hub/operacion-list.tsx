@@ -217,6 +217,10 @@ export function OperacionList({
   const [modoRecorridoLocal, setModoRecorrido] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('recorrido'))
   const modoRecorrido = modoRecorridoExterno ?? modoRecorridoLocal
   const [barrioSeleccionado, setBarrioSeleccionado] = useState("")
+  // #859: Recorrido inicia compacto para ordenar barrios sin desplazarse entre pedidos.
+  // El modo General mantiene sus filas abiertas, salvo que el usuario las contraiga.
+  const [abiertosRecorrido, setAbiertosRecorrido] = useState<Set<string>>(() => new Set())
+  const [plegadosGeneral, setPlegadosGeneral] = useState<Set<string>>(() => new Set())
   // #913: el Recorrido cambia la URL SIN navegación de servidor (antes cada clic repetía la consulta
   // completa de la página en el servidor y solo después pedía los datos: dos viajes en serie).
   const urlParams = useShallowSearchParams()
@@ -288,13 +292,35 @@ export function OperacionList({
     const priorizar = (clave: string) => aplicarRecorrido(sugerirRecorridoBarrios(gruposRecorrido, clave).claves)
     const restablecer = () => aplicarRecorrido(sugerirRecorridoBarrios(gruposRecorrido).claves)
     const sinCentro = gruposRecorrido.filter(g => g.unidadesPendientes !== 0 && !centroCartograficoProvisional(g.etiqueta)).length
-    const mover = (clave: string, desplazamiento: number) => {
+    const moverAPosicion = (clave: string, posicion: number) => {
       const actual = [...ordenEfectivo]
       const indice = actual.indexOf(clave)
-      const destino = indice + desplazamiento
-      if (indice < 0 || destino < 0 || destino >= actual.length) return
-      ;[actual[indice], actual[destino]] = [actual[destino], actual[indice]]
+      if (indice < 0 || !Number.isInteger(posicion) || posicion < 1 || posicion > actual.length || indice === posicion - 1) return
+      actual.splice(indice, 1)
+      actual.splice(posicion - 1, 0, clave)
       aplicarRecorrido(actual)
+    }
+    const mover = (clave: string, desplazamiento: number) => {
+      const indice = ordenEfectivo.indexOf(clave)
+      if (indice < 0) return
+      moverAPosicion(clave, indice + desplazamiento + 1)
+    }
+    const alternarBarrio = (clave: string) => {
+      if (modoRecorrido) {
+        setAbiertosRecorrido(actual => {
+          const siguiente = new Set(actual)
+          if (siguiente.has(clave)) siguiente.delete(clave)
+          else siguiente.add(clave)
+          return siguiente
+        })
+      } else {
+        setPlegadosGeneral(actual => {
+          const siguiente = new Set(actual)
+          if (siguiente.has(clave)) siguiente.delete(clave)
+          else siguiente.add(clave)
+          return siguiente
+        })
+      }
     }
     return (
       <div data-testid="pedidos-agrupados-barrio">
@@ -323,6 +349,20 @@ export function OperacionList({
               ) : (
                 <span aria-disabled="true" className="rounded-md bg-stone-400 px-3 py-1.5 text-white">Llevar al primero</span>
               )}
+              <label htmlFor="recorrido-posicion-global" className="flex items-center gap-1 font-medium text-stone-700">
+                Mover a posición
+                <select id="recorrido-posicion-global"
+                  data-testid="recorrido-posicion-global"
+                  disabled={!barrioSeleccionado || !ordenEfectivo.includes(barrioSeleccionado)}
+                  value={barrioSeleccionado && ordenEfectivo.includes(barrioSeleccionado) ? String(ordenEfectivo.indexOf(barrioSeleccionado) + 1) : ''}
+                  onChange={e => { if (barrioSeleccionado) moverAPosicion(barrioSeleccionado, Number(e.target.value)) }}
+                  className="min-h-10 rounded-md border border-stone-400 bg-white px-2 py-1.5 text-xs disabled:opacity-50">
+                  <option value="">Selecciona barrio</option>
+                  {ordenEfectivo.map((_, indice) => (
+                    <option key={indice} value={indice + 1}>{indice + 1}</option>
+                  ))}
+                </select>
+              </label>
               <button type="button" onClick={restablecer} data-testid="recorrido-restablecer"
                 className="rounded-md border border-stone-400 bg-white px-3 py-1.5 text-stone-800">
                 ↻ Restablecer recorrido
@@ -336,27 +376,42 @@ export function OperacionList({
         </div>
         {bloquesVisibles.map((b, i) => {
           const total = consulta.grupos?.find((g) => g.clave === b.clave)?.total ?? b.filas.length
+          const abierto = modoRecorrido ? abiertosRecorrido.has(b.clave) : !plegadosGeneral.has(b.clave)
           return (
-            <section key={`${b.clave}-${i}`} aria-label={`Barrio ${b.etiqueta}`}>
+            <section key={b.clave} aria-label={`Barrio ${b.etiqueta}`}>
               <GrupoBarrioEncabezado
                 grupo={consulta.grupos?.find((g) => g.clave === b.clave) ?? { clave: b.clave, etiqueta: b.etiqueta, total }}
                 enPagina={b.filas.length}
                 soloEste={consulta.grupoActivo === b.clave}
+                abierto={abierto}
+                onAlternar={() => alternarBarrio(b.clave)}
                 onSoloEste={consulta.onGrupoBarrio ? () => consulta.onGrupoBarrio!(b.clave) : undefined}
                 onTodos={consulta.onGrupoBarrio ? () => consulta.onGrupoBarrio!(null) : undefined}
               />
               {modoRecorrido && b.clave !== CLAVE_VENTA_ANONIMA && (
-                <div className="mb-1 flex gap-2">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
                   <button type="button" onClick={() => mover(b.clave, -1)} aria-label={`Subir ${b.etiqueta}`} disabled={ordenEfectivo.indexOf(b.clave) === 0}
-                    className="rounded border px-2 py-1 text-xs disabled:pointer-events-none disabled:opacity-40">↑ Subir</button>
+                    className="min-h-10 rounded border px-3 py-1 text-xs disabled:pointer-events-none disabled:opacity-40">↑ Subir</button>
                   <button type="button" onClick={() => mover(b.clave, 1)} aria-label={`Bajar ${b.etiqueta}`} disabled={ordenEfectivo.indexOf(b.clave) === ordenEfectivo.length - 1}
-                    className="rounded border px-2 py-1 text-xs disabled:pointer-events-none disabled:opacity-40">↓ Bajar</button>
+                    className="min-h-10 rounded border px-3 py-1 text-xs disabled:pointer-events-none disabled:opacity-40">↓ Bajar</button>
+                  <label className="flex items-center gap-1 text-stone-700">
+                    Posición
+                    <select aria-label={`Mover ${b.etiqueta} a la posición`}
+                      data-testid={`recorrido-posicion-${b.clave}`}
+                      value={ordenEfectivo.indexOf(b.clave) + 1}
+                      onChange={e => moverAPosicion(b.clave, Number(e.target.value))}
+                      className="min-h-10 rounded border border-stone-400 bg-white px-2 py-1 text-xs">
+                      {ordenEfectivo.map((_, indice) => (
+                        <option key={indice} value={indice + 1}>{indice + 1}</option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
               )}
-              {b.filas.length > 0 && (
+              {abierto && b.filas.length > 0 && (
                 <OperacionConsulta pedidos={b.filas} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={onOpen} acciones={consulta} arrastre={arrastre} seleccion={seleccion}/>
               )}
-              {consulta.entregasAnteriores && entregasPorClave.has(b.clave) && bloquesVisibles.findIndex(x => x.clave === b.clave) === i && (
+              {abierto && consulta.entregasAnteriores && entregasPorClave.has(b.clave) && bloquesVisibles.findIndex(x => x.clave === b.clave) === i && (
                 <div className="mt-2" data-testid={`entregas-anteriores-${b.clave}`}>
                   <EntregasDestacadas
                     entregas={entregasPorClave.get(b.clave)!}
