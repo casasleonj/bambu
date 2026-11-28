@@ -1442,7 +1442,15 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await candidatos.first().click()
     await expect(app.getByTestId('pedidos-cercania')).toContainText('Seleccionados (1)')
     expect(consultasViales).toBe(0)
-    await app.getByRole('button', { name: 'Siguiente' }).click()
+    // #1046: Cercanía ya no navega a «Siguiente»; carga la página 2 sin
+    // perder el pedido seleccionado en la primera página.
+    await expect.poll(async () => {
+      if (await candidatos.count() && await candidatos.first().isVisible()) return true
+      const mas = app.getByTestId('scroll-infinito-cargar-mas')
+      if (await mas.count() && await mas.isEnabled()) await mas.click()
+      return false
+    }, { timeout: 30_000 }).toBe(true)
+    await expect(app.getByTestId('scroll-infinito-pedidos')).toContainText('Mostrando 2 de 2 pedidos')
     await expect(candidatos.first()).toBeVisible({ timeout: 20_000 })
     // La tarjeta se mueve a Seleccionados inmediatamente; .check() esperaría un locator ya inexistente.
     await candidatos.first().click()
