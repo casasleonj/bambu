@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sugerirRecorridoBarrios } from "@/lib/barrios/recorrido-aproximado";
 import { useShallowSearchParams } from "@/hooks/use-shallow-search-params";
 import { useConsultaPedidos } from "@/hooks/use-consulta-pedidos";
+import { useScrollInfinitoPedidos } from "@/hooks/use-scroll-infinito-pedidos";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import type { EstadoGestionAdmin } from "@/hooks/use-gestion-admin";
 import {
@@ -74,10 +75,56 @@ export function ConsultaPedidosHub(props: Props) {
     !consulta.error,
     props.initial,
   );
-  const datos = lectura?.datos,
+  const [cercaniaActivo, setCercaniaActivo] = useState(false);
+  const [modoRecorridoLocal, setModoRecorrido] = useState(false);
+  const prioridadesActuales = useMemo(() => new URLSearchParams(paramKey).getAll("recorrido"), [paramKey]);
+  // Las preferencias de ESTE recorrido se mantienen solo mientras la vista está montada:
+  // no se guardan globalmente para otro repartidor, día o viaje.
+  const prioridadesGuardadas = useRef<string[]>(prioridadesActuales);
+  // Cercanía es otro modo: que la URL tenga prioridades no puede activarlo a la vez.
+  const modoRecorrido = !cercaniaActivo && (modoRecorridoLocal || prioridadesActuales.length > 0);
+  const scrollActivo = modoRecorrido || cercaniaActivo;
+  const scroll = useScrollInfinitoPedidos({
+    activo: scrollActivo,
+    base: lectura?.datos ?? null,
+    filtros: consulta.filtros,
+    cambiando,
+    pendienteBase: pendiente,
+  });
+  const datos = scrollActivo ? (scroll.datos ?? lectura?.datos) : lectura?.datos,
     filtrosLeidos = lectura?.filtros,
     hayDatos = !!lectura;
   const { onTotal, onPedidos } = props;
+  // #1046: no solicitar repetidamente todas las páginas cuando los barrios
+  // están plegados y el centinela sigue dentro del viewport sin nuevo scroll.
+  const sentinelaScroll = useRef<HTMLDivElement | null>(null);
+  const autoPreparado = useRef(true);
+  const alcanceAuto = scrollActivo
+    ? parametrosConsulta({ ...consulta.filtros, page: 1 }).toString() : "";
+  useEffect(() => { autoPreparado.current = true; }, [alcanceAuto, scrollActivo]);
+  useEffect(() => {
+    if (!scrollActivo || !scroll.hayMas || scroll.cargandoMas || scroll.errorMas ||
+        pendiente || cambiando || !isOnline) return;
+    const nodo = sentinelaScroll.current;
+    if (!nodo || typeof IntersectionObserver === "undefined") return;
+    const observador = new IntersectionObserver(entradas => {
+      if (!entradas.some(entrada => entrada.isIntersecting)) {
+        autoPreparado.current = true;
+      } else if (autoPreparado.current) {
+        autoPreparado.current = false;
+        void scroll.cargarMas();
+      }
+    }, { rootMargin: "200px 0px" });
+    observador.observe(nodo);
+    return () => observador.disconnect();
+  }, [scrollActivo, scroll.hayMas, scroll.cargandoMas, scroll.errorMas,
+      scroll.cargarMas, pendiente, cambiando, isOnline]);
+  // En enlaces viejos con ?recorrido=...&page=N, el modo infinito empieza
+  // siempre desde la página 1. El modo General conserva la URL paginada.
+  useEffect(() => {
+    if (modoRecorrido && consulta.filtros.page !== 1)
+      params.set({ page: "1" }, { history: "replace" });
+  }, [modoRecorrido, consulta.filtros.page, params]);
   useEffect(() => {
     onTotal(datos?.total ?? 0);
     onPedidos([...(datos?.pedidos ?? []), ...(datos?.arrastrados ?? [])]);
@@ -113,14 +160,6 @@ export function ConsultaPedidosHub(props: Props) {
   );
   // #788: rango que había antes de pulsar «Ver todos los períodos» (solo se honra
   // mientras la búsqueda sea la misma que lo originó).
-  const [cercaniaActivo, setCercaniaActivo] = useState(false);
-  const [modoRecorridoLocal, setModoRecorrido] = useState(false);
-  const prioridadesActuales = useMemo(() => new URLSearchParams(paramKey).getAll("recorrido"), [paramKey]);
-  // Las preferencias de ESTE recorrido se mantienen solo mientras la vista está montada:
-  // no se guardan globalmente para otro repartidor, día o viaje.
-  const prioridadesGuardadas = useRef<string[]>(prioridadesActuales);
-  // Cercanía es otro modo: que la URL tenga prioridades no puede activarlo a la vez.
-  const modoRecorrido = !cercaniaActivo && (modoRecorridoLocal || prioridadesActuales.length > 0);
   useEffect(() => {
     if (prioridadesActuales.length > 0 && !cercaniaActivo) {
       prioridadesGuardadas.current = [...prioridadesActuales];
@@ -408,8 +447,11 @@ export function ConsultaPedidosHub(props: Props) {
               // Solo se suspende la prioridad en la URL mientras está activo GPS.
               // Al regresar a Recorrido se restaura exactamente el orden elegido.
               if (prioridadesActuales.length > 0) prioridadesGuardadas.current = [...prioridadesActuales];
-              params.set({ recorrido: undefined }, { history: "push" });
+              params.set({ recorrido: undefined, page: "1" }, { history: "push" });
               setModoRecorrido(false);
+            } else if (consulta.filtros.page !== 1) {
+              // La carga incremental siempre empieza desde la primera página.
+              params.set({ page: "1" }, { history: "replace" });
             }
             setCercaniaActivo(valor => !valor);
           }}>
@@ -599,7 +641,46 @@ export function ConsultaPedidosHub(props: Props) {
             )}
               </>
             )}
-            {datos && datos.total > datos.pageSize && (
+            {scrollActivo && datos && (
+              <div className="mt-4 space-y-2 border-t border-stone-200 pt-3 text-sm"
+                data-testid="scroll-infinito-pedidos">
+                <p className="text-slate-600" role="status" aria-live="polite">
+                  Mostrando {datos.pedidos.length} de {datos.total} pedidos
+                  {scroll.cargandoMas ? " · Cargando más…" : ""}
+                </p>
+                {scroll.errorMas && (
+                  <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950">
+                    {scroll.errorMas}
+                    <button type="button" onClick={() => void scroll.cargarMas()}
+                      disabled={scroll.cargandoMas || pendiente || cambiando || !isOnline}
+                      className="ml-2 min-h-11 rounded border border-amber-500 bg-white px-3 font-semibold disabled:opacity-50">
+                      Reintentar carga
+                    </button>
+                    <button type="button" onClick={refresh}
+                      className="ml-2 min-h-11 rounded border border-amber-500 bg-white px-3 font-semibold">
+                      Actualizar lista
+                    </button>
+                  </div>
+                )}
+                {scroll.hayMas && (
+                  <div ref={sentinelaScroll} data-testid="scroll-infinito-centinela"
+                    className="flex justify-center py-2">
+                    <button type="button" data-testid="scroll-infinito-cargar-mas"
+                      onClick={() => void scroll.cargarMas()}
+                      disabled={scroll.cargandoMas || pendiente || cambiando || !isOnline}
+                      className="min-h-11 rounded-lg border border-blue-400 bg-white px-5 font-semibold text-blue-800 disabled:opacity-50">
+                      {scroll.cargandoMas ? "Cargando más pedidos…" : !isOnline
+                        ? "Sin conexión: vuelve a conectarte"
+                        : "Cargar más pedidos"}
+                    </button>
+                  </div>
+                )}
+                {!scroll.hayMas && !pendiente && !cambiando && scroll.datos && datos.total > 0 && (
+                  <p className="text-center text-xs text-slate-500">Todos los pedidos de esta consulta están cargados.</p>
+                )}
+              </div>
+            )}
+            {!scrollActivo && datos && datos.total > datos.pageSize && (
               <nav
                 aria-label="Páginas de la consulta"
                 className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-stone-200 pt-3 text-xs text-slate-600"

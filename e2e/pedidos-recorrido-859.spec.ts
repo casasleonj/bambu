@@ -61,6 +61,58 @@ test.describe('#859 Recorrido temporal por barrios', () => {
       await expect(app.getByTestId('grupo-barrio-toggle-b:'+villaId)).toHaveAttribute('aria-expanded','false')
     })
 
+    test(vista + ': scroll infinito en ambos modos sin modificar la página de la URL', async ({page}) => {
+      await page.setViewportSize(viewport)
+      const barrioId = await generarPedidoEnBarrio('Centro')
+      const cliente = await db.cliente.findFirstOrThrow({ where: { barrioId } })
+      const admin = await db.user.findUniqueOrThrow({ where: { username: 'admin' } })
+      await db.$transaction(Array.from({length: 26}, (_, i) => db.pedido.create({
+        data: {
+          clienteId: cliente.id, createdById: admin.id, canal: 'DOMICILIO',
+          origen: 'PEDIDO', fecha, createdAt: new Date(fecha.getTime() + (i + 1) * 1000),
+          estado: 'PENDIENTE', estadoEntrega: 'PENDIENTE', estadoPago: 'PENDIENTE',
+          total: 2300, totalPagado: 0, saldo: 2300,
+          items: {create: {producto: 'PACA_AGUA', cantPedido: 1,
+            cantEntrega: 0, precio: 2300, subtotal: 2300}},
+        },
+      })))
+
+      await loginAs(page, 'admin')
+      await goto(page, '/pedidos?all=true&agrupar=barrio&pageSize=25')
+      const app = appMain(page)
+      await expect(app.getByRole('navigation', {name:'Páginas de la consulta'})).toBeVisible()
+
+      await app.getByTestId('recorrido-toggle').click()
+      await expect(app.getByTestId('scroll-infinito-pedidos')).toBeVisible()
+      await expect(app.getByRole('navigation', {name:'Páginas de la consulta'})).toHaveCount(0)
+      // Si el IntersectionObserver inició una petición, esperar. Si no,
+      // activar el botón accesible cuando realmente esté habilitado.
+      const resumenScroll = app.getByTestId('scroll-infinito-pedidos')
+      await expect.poll(async () => {
+        if ((await resumenScroll.textContent())?.includes('Mostrando 27 de 27 pedidos')) return true
+        const boton = app.getByTestId('scroll-infinito-cargar-mas')
+        if (await boton.count() && await boton.isEnabled()) await boton.click()
+        return false
+      }, { timeout: 30_000 }).toBe(true)
+      expect(new URL(page.url()).searchParams.get('page')).toBe('1')
+      await expect(app.getByTestId('grupo-barrio-toggle-b:' + barrioId)).toHaveAttribute('aria-expanded', 'false')
+
+      await app.getByTestId('cercania-toggle').click()
+      await expect(app.getByTestId('scroll-infinito-pedidos')).toBeVisible()
+      await expect.poll(async () => {
+        if ((await resumenScroll.textContent())?.includes('Mostrando 27 de 27 pedidos')) return true
+        const boton = app.getByTestId('scroll-infinito-cargar-mas')
+        if (await boton.count() && await boton.isEnabled()) await boton.click()
+        return false
+      }, { timeout: 30_000 }).toBe(true)
+      expect(new URL(page.url()).searchParams.get('page')).toBe('1')
+      await expect(app.getByRole('navigation', {name:'Páginas de la consulta'})).toHaveCount(0)
+
+      await app.getByTestId('cercania-toggle').click()
+      await expect(app.getByRole('navigation', {name:'Páginas de la consulta'})).toBeVisible()
+      await expect(app.getByTestId('scroll-infinito-pedidos')).toHaveCount(0)
+    })
+
     test(vista + ': Llevar primero se conserva al entrar a Cercanía y se restablece', async ({page}) => {
       await page.setViewportSize(viewport)
       const centroId = await generarPedidoEnBarrio('Centro')
