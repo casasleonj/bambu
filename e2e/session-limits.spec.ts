@@ -243,3 +243,61 @@ test('un cierre de A que esperaba su turno no cierra una cuenta B posterior', as
   expect((await readSession(other)).user?.sessionId).toBe(replacement.user?.sessionId)
   expect((await other.request.get('/api/config')).status()).toBe(200)
 })
+
+test('cierre con lectura de caché colgada: mensaje correcto, reintento y revocación', async ({ page }) => {
+  await skipBaseCaja(page)
+  await login(page, 'admin', 'admin123')
+  await page.goto('/mi-perfil')
+  const original = await readSession(page)
+  expect(original.user?.sessionId).toBeTruthy()
+  await page.evaluate(() => {
+    const read = caches.keys.bind(caches)
+    let first = true
+    caches.keys = () => {
+      if (first) {
+        first = false
+        return new Promise<string[]>(() => {})
+      }
+      return read()
+    }
+  })
+  await page.getByTestId('user-menu').click()
+  await page.getByTestId('logout-button').click()
+  await expect(page.getByTestId('session-recovery').getByRole('button', { name: 'Cerrando sesión…' })).toBeDisabled()
+  await expect(page.getByText('No se pudo confirmar el cierre', { exact: true })).toBeVisible({ timeout: 30_000 })
+  expect(await db.sesionActiva.findUnique({ where: { sessionId: original.user!.sessionId! } })).toBeNull()
+  await page.getByRole('button', { name: 'Reintentar cierre' }).click()
+  await expect(page).toHaveURL(/\/login\?reason=signedout/, { timeout: 30_000 })
+  await expect(page.getByText('Cerraste la sesión en este navegador.')).toBeVisible()
+  await page.goto('/mi-perfil')
+  await expect(page).toHaveURL(/\/login/)
+})
+
+test('logout móvil: revocación no confirmada, reintento y regreso seguro al login', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await skipBaseCaja(page)
+  await login(page, 'admin', 'admin123')
+  await page.goto('/mi-perfil')
+  const original = await readSession(page)
+  expect(original.user?.sessionId).toBeTruthy()
+  await page.route('**/api/auth/logout-session', route => route.fulfill({
+    status: 503,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: { code: 'SESSION_UNAVAILABLE' } }),
+  }), { times: 1 })
+  await page.getByTestId('user-menu').click()
+  await page.getByTestId('logout-button').click()
+  const overlay = page.getByTestId('session-recovery')
+  await expect(overlay.getByText('No se pudo confirmar el cierre', { exact: true })).toBeVisible()
+  expect(await db.sesionActiva.findUnique({ where: { sessionId: original.user!.sessionId! } })).not.toBeNull()
+  await expect(page).toHaveURL(/\/mi-perfil/)
+  const retry = overlay.getByRole('button', { name: 'Reintentar cierre' })
+  await expect(retry).toBeInViewport()
+  await retry.click()
+  await expect(page).toHaveURL(/\/login\?reason=signedout/, { timeout: 30_000 })
+  expect(await db.sesionActiva.findUnique({ where: { sessionId: original.user!.sessionId! } })).toBeNull()
+  await page.reload()
+  await expect(page.getByText('Cerraste la sesión en este navegador.')).toBeVisible()
+  await page.goto('/mi-perfil')
+  await expect(page).toHaveURL(/\/login/)
+})

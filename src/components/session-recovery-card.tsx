@@ -34,13 +34,13 @@ export function SessionRecoveryCard({
             )}
           </div>
           <h2 id={titleId} className="mb-2 mt-4 text-xl font-bold text-gray-900" role="status">
-            {checking ? 'Comprobando tu sesión' : logout ? 'No se pudo confirmar el cierre' : 'No pudimos comprobar tu sesión'}
+            {checking ? (logout ? 'Cerrando sesión…' : 'Comprobando tu sesión') : logout ? 'No se pudo confirmar el cierre' : 'No pudimos comprobar tu sesión'}
           </h2>
           <p className="mb-6 text-sm leading-relaxed text-gray-600">
-            {checking ? 'Espera un momento mientras comprobamos el acceso.' : logout ? 'El servicio no respondió. Reintenta para confirmar el cierre de sesión.' : 'El servicio no está disponible en este momento. Reintenta en unos segundos.'}
+            {checking ? (logout ? 'Estamos cerrando tu acceso de forma segura.' : 'Espera un momento mientras comprobamos el acceso.') : logout ? 'Comprueba tu conexión y vuelve a intentarlo.' : 'El servicio no está disponible en este momento. Reintenta en unos segundos.'}
           </p>
           <button ref={button} type="button" onClick={onRetry} disabled={checking} className="min-h-11 rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-blue-300">
-            {checking ? 'Comprobando…' : logout ? 'Reintentar cierre' : 'Reintentar'}
+            {checking ? (logout ? 'Cerrando sesión…' : 'Comprobando…') : logout ? 'Reintentar cierre' : 'Reintentar'}
           </button>
         </section>
       </div>

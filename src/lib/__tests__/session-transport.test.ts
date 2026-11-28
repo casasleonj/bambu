@@ -61,3 +61,21 @@ it('keeps a subsequent transition waiting until the entire session body complete
   expect(transition).toHaveBeenCalledOnce()
   expect(getSessionTransportState()).toBe('valid')
 })
+
+it.each([{ url: '/login?error=Configuration' }, { url: 'https://example.com/login?reason=signedout' }, {}])(
+  'rejects an ambiguous successful HTTP status for explicit logout: %j', async payload => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(payload)))
+    uninstall = installSessionTransport()
+    await expect(window.fetch('/api/auth/signout', {
+      method: 'POST', body: new URLSearchParams({ callbackUrl: '/login?reason=signedout' }),
+    })).rejects.toThrow('No se pudo confirmar')
+  },
+)
+
+it('accepts the fixed same-origin logout destination', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ url: '/login?reason=signedout' })))
+  uninstall = installSessionTransport()
+  await expect(window.fetch('/api/auth/signout', {
+    method: 'POST', body: new URLSearchParams({ callbackUrl: '/login?reason=signedout' }),
+  })).resolves.toBeInstanceOf(Response)
+})

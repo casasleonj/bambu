@@ -47,8 +47,22 @@ export function installSessionTransport(): () => void {
               ('user' in data && 'expires' in data && !('authStatus' in data))
             ))) setState('invalid')
             else setState('unavailable')
-          } else if (url.pathname === '/api/auth/signout' && !response.ok) {
-            throw new Error('No se pudo confirmar el cierre de sesión')
+          } else if (url.pathname === '/api/auth/signout') {
+            if (!response.ok) throw new Error('No se pudo confirmar el cierre de sesión')
+            const body = init?.body
+            const callback = typeof body === 'string' || body instanceof URLSearchParams
+              ? new URLSearchParams(body).get('callbackUrl') : null
+            // The SDK follows the server response. Reject an error URL or
+            // ambiguous response for our explicit logout, not a false success.
+            if (callback === '/login?reason=signedout') {
+              const data: unknown = await response.clone().json()
+              const target = data && typeof data === 'object' && 'url' in data && typeof data.url === 'string'
+                ? new URL(data.url, window.location.href) : null
+              if (!target || target.origin !== window.location.origin ||
+                  target.pathname !== '/login' || target.search !== '?reason=signedout' || target.hash) {
+                throw new Error('No se pudo confirmar el cierre de sesión')
+              }
+            }
           }
           return response
         } catch (error) {

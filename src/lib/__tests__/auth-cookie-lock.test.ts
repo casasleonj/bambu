@@ -44,3 +44,20 @@ it('does not turn an error after acquisition into a lock timeout', async () => {
   await vi.advanceTimersByTimeAsync(15_001)
   await assertion
 })
+
+it('bounds a fallback queue waiter without executing it after the timeout', async () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('navigator', {})
+  let release!: () => void
+  const first = withAuthCookieLock(() => new Promise<void>(resolve => { release = resolve }))
+  await Promise.resolve()
+  const expired = vi.fn(async () => undefined)
+  const queued = withAuthCookieLock(expired)
+  const assertion = expect(queued).rejects.toBeInstanceOf(AuthCookieLockError)
+  await vi.advanceTimersByTimeAsync(12_001)
+  await assertion
+  release()
+  await first
+  await withAuthCookieLock(async () => undefined)
+  expect(expired).not.toHaveBeenCalled()
+})

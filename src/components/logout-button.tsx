@@ -10,14 +10,15 @@ export function LogoutButton({ children, ...props }: Omit<ComponentProps<'button
   const { data: session } = useSession()
   const [pending, setPending] = useState(false)
   const busy = useRef(false)
-  const leave = async () => {
+  const leave = async (expectedSessionId: string | undefined) => {
     if (busy.current) return
     busy.current = true
     setPending(true)
-    const announce = (busy: boolean) => window.dispatchEvent(new CustomEvent<LogoutStateDetail>(AUTH_LOGOUT_STATE_EVENT, { detail: { pending: busy, retry: () => { void leave() } } }))
+    const announce = (busy: boolean) => window.dispatchEvent(new CustomEvent<LogoutStateDetail>(AUTH_LOGOUT_STATE_EVENT, { detail: { pending: busy, retry: () => { void leave(expectedSessionId) } } }))
     announce(true)
     try {
-      await logoutSafely(session?.user?.sessionId)
+      if (!expectedSessionId) throw new SessionChangedError()
+      await logoutSafely(expectedSessionId)
     } catch (error) {
       // A queued/retried intent from A must not close a later account B.
       if (error instanceof SessionChangedError) window.location.reload()
@@ -29,7 +30,7 @@ export function LogoutButton({ children, ...props }: Omit<ComponentProps<'button
   }
   return (
     <>
-      <button {...props} type="button" disabled={pending} onClick={() => { void leave() }}>
+      <button {...props} type="button" disabled={pending} onClick={() => { void leave(session?.user?.sessionId) }}>
         {pending ? 'Cerrando sesión…' : children}
       </button>
     </>
