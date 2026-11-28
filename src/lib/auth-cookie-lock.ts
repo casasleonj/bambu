@@ -27,7 +27,25 @@ export async function withAuthCookieLock<T>(action: () => Promise<T>): Promise<T
   }
   // Older/insecure browsers retain same-tab serialization. Web Locks supplies the
   // cross-tab guarantee in supported secure contexts (HTTPS and localhost).
-  const pending = fallbackQueue.then(action, action)
+  // A timed-out waiter must never run later, but the active writer retains ownership.
+  let expired = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      expired = true
+      reject(new AuthCookieLockError())
+    }, 12_000)
+  })
+  const start = () => {
+    clearTimeout(timer)
+    if (expired) throw new AuthCookieLockError()
+    return action()
+  }
+  const pending = fallbackQueue.then(start, start)
   fallbackQueue = pending.catch(() => undefined)
-  return pending
+  try {
+    return await Promise.race([pending, deadline])
+  } finally {
+    clearTimeout(timer)
+  }
 }
