@@ -263,7 +263,7 @@ test('cierre con lectura de caché colgada: mensaje correcto, reintento y revoca
   })
   await page.getByTestId('user-menu').click()
   await page.getByTestId('logout-button').click()
-  await expect(page.getByRole('button', { name: 'Cerrando sesión…' })).toBeDisabled()
+  await expect(page.getByTestId('session-recovery').getByRole('button', { name: 'Cerrando sesión…' })).toBeDisabled()
   await expect(page.getByText('No se pudo confirmar el cierre', { exact: true })).toBeVisible({ timeout: 30_000 })
   expect(await db.sesionActiva.findUnique({ where: { sessionId: original.user!.sessionId! } })).toBeNull()
   await page.getByRole('button', { name: 'Reintentar cierre' }).click()
