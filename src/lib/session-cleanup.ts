@@ -26,22 +26,47 @@ export async function revokeSessionOnLogout(expectedSessionId?: string): Promise
     })
     if (response.status === 409) throw new SessionChangedError()
     if (!response.ok) throw new Error('No se pudo confirmar el cierre de sesión')
+    const result: unknown = await response.json()
+    if (!result || typeof result !== 'object' || !('ok' in result) || result.ok !== true) {
+      throw new Error('No se pudo confirmar el cierre de sesión')
+    }
   } finally {
     clearTimeout(timer)
   }
 }
 
+export const LOGOUT_CLEANUP_TIMEOUT_MS = 10_000
+
 export async function logoutSafely(expectedSessionId?: string): Promise<void> {
-  await withAuthCookieLock(async () => {
+  // The visible deadline is deliberately separate from the lock lifetime.
+  // A browser cleanup operation may not be abortable. On timeout the caller
+  // can show a retry, but no later cookie writer may start until it settles.
+  const controller = new AbortController()
+  let rejectDeadline!: (error: Error) => void
+  const deadline = new Promise<never>((_, reject) => { rejectDeadline = reject })
+  const operation = withAuthCookieLock(async () => {
     markIntentionalSignOut()
     try {
       await revokeSessionOnLogout(expectedSessionId)
-      await unsubscribePushOnLogout()
-      await purgeSWCache()
+      const timer = setTimeout(() => {
+        const error = new Error('No se pudo confirmar el cierre de sesión')
+        controller.abort(error)
+        rejectDeadline(error)
+      }, LOGOUT_CLEANUP_TIMEOUT_MS)
+      try {
+        await unsubscribePushOnLogout(controller.signal)
+        controller.signal.throwIfAborted()
+        await purgeSWCache(controller.signal)
+        controller.signal.throwIfAborted()
+      } finally {
+        clearTimeout(timer)
+      }
+      // Never run a late signOut after a visible cleanup timeout.
       await signOut({ redirectTo: '/login?reason=signedout' })
     } catch (error) {
       resetIntentionalSignOut()
       throw error
     }
   })
+  await Promise.race([operation, deadline])
 }
