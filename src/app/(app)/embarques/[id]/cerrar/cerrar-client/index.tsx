@@ -1,5 +1,6 @@
 'use client'
 
+import { errorDeclaracionFechaVentaLibre } from '@/lib/declaracion-fecha-venta-libre-630'
 import { ComisionRepartidorDetalle } from '@/components/comision-repartidor-detalle'
 import type { ComisionRepartidor } from '@/lib/comision-repartidor-calculo'
 import { useState, useEffect, useMemo, useCallback } from 'react'
@@ -516,6 +517,8 @@ export default function CerrarEmbarqueClient() {
           cBolsaHielo: v.cBolsaHielo,
           pagos: v.pagos.filter((p) => p.monto > 0),
           obs: v.obs,
+          // #630 B1b: metadato auditado, NO fecha contable ni movimiento físico.
+          fechaDeclaradaVenta: v.fechaDeclaradaVenta,
         })),
       productos: productosRetorno,
       ...(v2 ? { cambiosDesdeSustituciones: true } : {}),
@@ -674,11 +677,17 @@ export default function CerrarEmbarqueClient() {
   // Ventas Libres (1) y Gastos (3) son opcionales y siempre válidos.
   // Cómputo inline (5 llamadas puras baratas), no useMemo: vive después de los
   // early-returns de `loading`/`!embarque`, donde un hook violaría rules-of-hooks.
+  // Cierre legacy V1 no aplica precios V2, pero sí debe bloquear una fecha inválida.
+  // Para V2 esta misma validación ya vive en validarVentaLibre().
+  const erroresFechaLegacy = ventasLibres.flatMap((v, i) => {
+    const error = errorDeclaracionFechaVentaLibre(v.fechaDeclaradaVenta)
+    return error ? [`Venta ${i + 1}: ${error}`] : []
+  })
   const pasoValidez: PasoValidez[] = [
     v2 ? pasoPedidosValidoV2(embarque.pedidos, cuadres) : pasoPedidosValido(cuadres),
     v2
       ? pasoVentasLibresValido(ventasLibres, ventasLibres.map((vl) => totalVentaLibre(vl, precios)))
-      : { valido: true, motivos: [] },
+      : { valido: erroresFechaLegacy.length === 0, motivos: erroresFechaLegacy },
     pasoFisicoValido(calculos.totalDiscrepancia, justificacion, !v2 || sustEstado === 'ok'),
     { valido: true, motivos: [] },
     (() => {
@@ -700,11 +709,11 @@ export default function CerrarEmbarqueClient() {
   ]
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="w-full min-w-0 max-w-5xl mx-auto">
       {/* Header sticky */}
       <div className="sticky top-0 z-20 bg-white border-b shadow-sm">
         <div className="max-w-5xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
             <div>
               <button onClick={() => router.push('/embarques')} className="text-sm text-blue-600 hover:underline">← Embarques</button>
               <h1 className="text-xl font-bold text-gray-900">
@@ -722,7 +731,7 @@ export default function CerrarEmbarqueClient() {
           </div>
 
           {/* Wizard steps (Fase 7): se puede retroceder, no saltar hacia adelante */}
-          <div className="flex gap-1 overflow-x-auto">
+          <div className="flex min-w-0 max-w-full gap-1 overflow-x-auto">
             {sections.map((sec, i) => {
               const isPast = i < activeSection
               const isCurrent = i === activeSection
@@ -756,7 +765,7 @@ export default function CerrarEmbarqueClient() {
         </div>
       </div>
 
-      <div className="px-4 py-6 space-y-6">
+      <div className="min-w-0 px-3 py-6 space-y-6 sm:px-4">
         {/* Section 0: Pedidos */}
         {activeSection === 0 && (
           <div className="space-y-4">
@@ -807,8 +816,8 @@ export default function CerrarEmbarqueClient() {
 
         {/* Section 1: Ventas Libres */}
         {activeSection === 1 && (
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between mb-4">
+          <div className="min-w-0 bg-white rounded-lg shadow-sm border p-3 sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <h2 className="text-lg font-semibold">Ventas Libres ({ventasLibres.length})</h2>
               <button
                 onClick={agregarVentaLibre}

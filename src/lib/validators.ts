@@ -1,3 +1,4 @@
+import { errorDeclaracionFechaVentaLibre } from '@/lib/declaracion-fecha-venta-libre-630'
 import { categoriaGastoValida, normalizarCategoriaGasto } from '@/lib/gastos-categorias'
 import { UnitPrice, MAX_UNIT_PRICE } from '@/shared/domain/unit-price'
 import { cantidadesRegaloValidas } from '@/shared/domain/cantidades-regalo'
@@ -967,6 +968,15 @@ export const CerrarEmbarqueSchema = z.object({
     negocioId: z.string().min(1).optional(),
     pedidoOrigenId: z.string().min(1).optional(),
     excepcionId: z.string().min(1).optional(),
+    // #630 F1-B1b: declaración opcional; NO se usa como fecha contable ni entrega verificada.
+    fechaDeclaradaVenta: z.object({
+      precision: z.enum(['DIA', 'INSTANTE']),
+      fecha: z.string().max(10),
+      hora: z.string().max(5).optional(),
+    }).superRefine((v, ctx) => {
+      const error = errorDeclaracionFechaVentaLibre(v)
+      if (error) ctx.addIssue({ code: z.ZodIssueCode.custom, message: error, path: ['fecha'] })
+    }).optional(),
   })).max(100, 'Demasiadas ventas libres en el cierre').optional().default([]),
   productos: z.array(z.object({
     producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),

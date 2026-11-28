@@ -79,6 +79,26 @@ describe('VentaLibreRowV2', () => {
     expect(screen.queryByTestId('vl-motivos')).toBeNull()
   })
 
+  it('#630 B1b: fecha desconocida por defecto, día declarado y error en hora', () => {
+    render(<Harness />)
+    const control = screen.getByTestId('vl-fecha-declarada-0')
+    expect(control).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /cuándo ocurrió esta venta/i }))
+    fireEvent.click(screen.getByLabelText('Conozco el día'))
+    expect(screen.getByLabelText('Día de la venta (declarado)')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Día de la venta (declarado)'), { target: { value: '2026-11-20' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar declaración' }))
+    expect(screen.getByRole('status')).toHaveTextContent('Se guardará únicamente')
+    fireEvent.click(screen.getByLabelText('Conozco día y hora'))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar declaración' }))
+    expect(screen.getByRole('alert')).toHaveTextContent(/hora válida/)
+    fireEvent.change(screen.getByLabelText('Hora declarada'), { target: { value: '23:58' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar declaración' }))
+    expect(screen.getByRole('status')).toHaveTextContent(/Se guardará únicamente/)
+    fireEvent.click(screen.getByLabelText('No conozco el momento'))
+    expect(screen.queryByLabelText('Día de la venta (declarado)')).not.toBeInTheDocument()
+  })
+
   it('con cliente y saldo muestra «fiado de X»; sin productos pero con pago lo marca', () => {
     render(<Harness />)
     fireEvent.change(screen.getByLabelText('¿A quién se le vendió?'), { target: { value: 'ana' } })

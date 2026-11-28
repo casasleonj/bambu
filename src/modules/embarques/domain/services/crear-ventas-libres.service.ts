@@ -1,3 +1,4 @@
+import { errorDeclaracionFechaVentaLibre, metadataDeclaracionFechaVentaLibre } from '@/lib/declaracion-fecha-venta-libre-630'
 /**
  * CrearVentasLibresService.
  *
@@ -64,6 +65,7 @@ export class CrearVentasLibresService {
       pedidoExcepcionCredito: { updateMany: (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => Promise<{ count: number }> }
       factura: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }
       receivableEntry: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }
+      historial: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }
     }
 
     let count = 0
@@ -171,6 +173,9 @@ export class CrearVentasLibresService {
       const estadoPago = calcularEstadoPago(totalVenta, totalPagado)
 
       const ahoraVenta = new Date()
+      // Defensa también en dominio para clientes que no pasen por el HTTP adapter.
+      const errorFecha = errorDeclaracionFechaVentaLibre(venta.fechaDeclaradaVenta, ahoraVenta)
+      if (errorFecha) throw new Error('FECHA_VENTA_LIBRE_INVALIDA: ' + errorFecha)
       const nuevaVenta = await tx.pedido.create({
         data: {
           numero: numeroVenta,
@@ -223,6 +228,19 @@ export class CrearVentasLibresService {
           },
         },
       })
+
+      if (venta.fechaDeclaradaVenta) {
+        // Misma transacción y dedup del cierre; NO reemplazar fecha/entregadoAt
+        // ni crear un segundo movimiento de entrega o recalcular comisiones.
+        await tx.historial.create({ data: {
+          entidad: 'Pedido', registroId: nuevaVenta.id, accion: 'CREATE',
+          datos: JSON.stringify(metadataDeclaracionFechaVentaLibre(
+            venta.fechaDeclaradaVenta, embarqueId, ahoraVenta,
+          )),
+          usuarioId: userId ?? null,
+          fecha: ahoraVenta,
+        } })
+      }
 
       // F2: consumo atómico, una sola vez, de la excepción de crédito autorizada.
       if (excepcionCreditoAplicada) {

@@ -57,6 +57,7 @@ export function toCerrarInput(
       negocioId: v.negocioId,
       pedidoOrigenId: v.pedidoOrigenId,
       excepcionId: v.excepcionId,
+      fechaDeclaradaVenta: v.fechaDeclaradaVenta,
     })),
     productosRetorno: productos,
     ...(cambiosDesdeSustituciones ? { cambiosDesdeSustituciones: true } : {}),
@@ -80,6 +81,7 @@ const CODIGOS_409 = ['PEDIDOS_SIN_RESOLVER', 'PEDIDO_FUERA_DEL_EMBARQUE', 'PEDID
 const CODIGOS_400 = [
   'VENTA_LIBRE_PAGO_SIN_PRODUCTOS', 'PAGO_EXCEDE_TOTAL', 'NEGOCIO_INVALIDO', 'PEDIDO_ORIGEN_INVALIDO',
   'VENTA_LIBRE_CLIENTE_NO_ENCONTRADO', 'PAGO_COMPLETO_OBLIGATORIO', 'EXCEPCION_CREDITO_YA_CONSUMIDA',
+  'FECHA_VENTA_LIBRE_INVALIDA',
 ]
 
 /** Traduce un error del caso de uso a la respuesta HTTP; `null` = no es un error conocido. */

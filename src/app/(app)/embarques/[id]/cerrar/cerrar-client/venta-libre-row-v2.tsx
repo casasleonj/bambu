@@ -1,3 +1,4 @@
+import { FechaDeclaradaVentaLibreControl } from './fecha-declarada-venta-libre-control'
 import { useMemo, useState } from 'react'
 import { useProductosDomicilio } from '@/hooks/use-productos-domicilio'
 import { useClienteSearch } from '@/hooks/use-cliente-search'
@@ -99,7 +100,7 @@ export function VentaLibreRowV2({
   }
 
   return (
-    <div className="mb-3 space-y-3 rounded-lg border p-3" data-testid={`venta-libre-v2-${index}`}>
+    <div className="mb-3 min-w-0 space-y-3 rounded-lg border p-3" data-testid={`venta-libre-v2-${index}`}>
       {hayCliente ? (
         <div className="flex items-center justify-between gap-2 rounded-lg bg-blue-50 p-3">
           <div>
@@ -122,7 +123,7 @@ export function VentaLibreRowV2({
             value={termino}
             onChange={(e) => setTermino(e.target.value)}
             placeholder="Nombre, apellido, tienda o celular"
-            className="h-11 w-full rounded-lg border px-3 text-sm"
+            className="h-11 min-w-0 w-full rounded-lg border px-3 text-sm"
             autoComplete="off"
           />
           {meetsMinSearchLength(termino.trim()) && (
@@ -159,7 +160,7 @@ export function VentaLibreRowV2({
               min={0}
               value={venta[key] as number}
               onChange={(e) => onUpdate(index, key, Math.max(0, parseInt(e.target.value, 10) || 0))}
-              className="h-11 w-full rounded-lg border px-2 text-sm"
+              className="h-11 min-w-0 w-full rounded-lg border px-2 text-sm"
             />
             <div className="text-[11px] text-gray-400">{precios[codigo as keyof PreciosVentaLibre] ? formatCurrency(precios[codigo as keyof PreciosVentaLibre] as number) : 'precio al guardar'} c/u</div>
           </div>
@@ -208,6 +209,12 @@ export function VentaLibreRowV2({
           {saldo > 0.01 ? `Queda por cobrar ${formatCurrency(saldo)}${hayCliente && !venta.anonima ? ` → fiado de ${venta.clienteNombre}` : ''}` : total > 0 ? 'Pagado completo' : 'Sin productos todavía'}
         </div>
       </div>
+
+      <FechaDeclaradaVentaLibreControl
+        index={index}
+        valor={venta.fechaDeclaradaVenta}
+        onChange={(valor) => onUpdate(index, 'fechaDeclaradaVenta', valor)}
+      />
 
       {motivos.length > 0 && (
         <ul className="space-y-1 text-sm text-red-700" data-testid="vl-motivos">

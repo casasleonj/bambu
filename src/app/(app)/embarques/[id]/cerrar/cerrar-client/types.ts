@@ -1,3 +1,4 @@
+import type { DeclaracionFechaVentaLibre } from '@/lib/declaracion-fecha-venta-libre-630'
 export { METODOS_PAGO_IDS as METODOS_PAGO } from '@/lib/metodos-pago'
 
 export interface Cliente {
@@ -149,6 +150,8 @@ export interface VentaLibre {
   anonima?: boolean
   /** Cierre V2: el cliente elegido está bloqueado (viene del buscador). */
   clienteBloqueado?: boolean
+  /** #630 B1b: declaración no certificada, opcional por venta. */
+  fechaDeclaradaVenta?: DeclaracionFechaVentaLibre
 }
 
 export function calcularMontoPagado(pagos: PagoItem[]): number {

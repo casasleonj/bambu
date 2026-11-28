@@ -32,6 +32,7 @@ async function seedEmbarqueEnRuta(page: Page, cargadas = 3) {
     horaSalida: '08:00',
     carga: [{ producto: 'PACA_AGUA', cargadas }],
   })
+  expect(eRes.ok(), 'crear embarque: ' + await eRes.text()).toBeTruthy()
   const eData = await eRes.json()
   const embarqueId = eData.data?.id || eData.embarque?.id
   expect(embarqueId, 'embarque creado').toBeTruthy()
